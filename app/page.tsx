@@ -1,21 +1,13 @@
 'use client';
 
-import { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { useEffect, useState } from 'react';
+import { createClient } from '@supabase/supabase-js';
+import { ShoppingBag, Package } from 'lucide-react';
+import Link from 'next/link';
 
-// Define the shape of our product data
-interface Product {
-  id: string;
-  name: string;
-  price: string; 
-  description: string;
-  image_url: string;
-}
-
-export default function ShopPage() {
-  const [products, setProducts] = useState<Product[]>([]);
+export default function Home() {
+  const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [purchasing, setPurchasing] = useState<string | null>(null);
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -27,18 +19,19 @@ export default function ShopPage() {
   }, []);
 
   const fetchProducts = async () => {
-    const { data, error } = await supabase.from('products').select('*');
-    if (error) console.error('Error fetching products:', error);
+    const { data, error } = await supabase
+      .from('products')
+      .select('*');
+
+    if (error) console.error('Error:', error);
     else setProducts(data || []);
     setLoading(false);
   };
 
-  const handleBuy = async (product: Product) => {
-    setPurchasing(product.id); 
-
+  const handleBuy = async (product: any) => {
+    // 1. Save the order to Supabase
     try {
-      // 1. Save Order to Database
-      const res = await fetch('/api/create-order', {
+      await fetch('/api/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -46,91 +39,75 @@ export default function ShopPage() {
           price: product.price 
         }),
       });
-
-      if (!res.ok) throw new Error("Failed to record order");
-
-      // 2. Launch WhatsApp
-      // REPLACE '2201234567' with your real WhatsApp number!
-      const phone = "2201234567"; 
-      const message = `Hello! I want to buy *${product.name}* for D${product.price}. Is it available?`;
-      const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-
-      window.open(url, '_blank');
-
-    } catch (err) {
-      alert("Could not connect to server, but opening WhatsApp anyway!");
-      const phone = "2201234567"; 
-      const message = `Hello! I want to buy *${product.name}* (System Error)`;
-      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
-    } finally {
-      setPurchasing(null);
+    } catch (e) {
+      console.error("Tracking error", e);
     }
+
+    // 2. Open WhatsApp
+    const message = `Hi! I want to buy ${product.name} for D${product.price}`;
+    const whatsappUrl = `https://wa.me/2200000000?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-xl font-bold">Loading Store... 🛒</div>;
+  if (loading) return <div className="p-10 text-center">Loading Store... 🛒</div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 font-sans">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white border-b sticky top-0 z-10 shadow-sm">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-black tracking-tighter text-black">🛍️ GAMBIA STORE</h1>
-          <a href="/login" className="text-sm font-medium text-gray-500 hover:text-black">
+      <nav className="bg-white border-b p-4 sticky top-0 z-10">
+        <div className="max-w-5xl mx-auto flex justify-between items-center">
+          <h1 className="text-2xl font-black flex items-center gap-2">
+            🛍️ GAMBIA STORE
+          </h1>
+          <Link href="/dashboard" className="text-sm font-medium text-gray-600 hover:text-black">
             Admin Login
-          </a>
+          </Link>
         </div>
-      </header>
-
-      {/* Hero Section */}
-      <div className="bg-blue-600 text-white py-16 px-4 text-center">
-        <h2 className="text-4xl font-bold mb-4">The Best Products in Town</h2>
-        <p className="text-blue-100 text-lg max-w-2xl mx-auto">
-          Shop the latest trends with instant delivery. Click to buy on WhatsApp!
-        </p>
-      </div>
+      </nav>
 
       {/* Product Grid */}
-      <main className="max-w-6xl mx-auto px-4 py-12">
-        {products.length === 0 ? (
-          <div className="text-center py-20 bg-white rounded-xl border border-dashed">
-            <p className="text-xl text-gray-500">No products found.</p>
-            <p className="text-sm text-gray-400 mt-2">Go to your Admin Dashboard to add some!</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-8">
-            {products.map((product) => (
-              <div key={product.id} className="bg-white rounded-2xl shadow-sm hover:shadow-xl transition-shadow border overflow-hidden flex flex-col">
-                {/* Product Image Area */}
-                <div className="h-48 bg-gray-100 relative flex items-center justify-center">
-                   <div className="text-6xl">📦</div>
-                </div>
+      <main className="max-w-5xl mx-auto p-4 md:p-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {products.map((product) => (
+            <div key={product.id} className="bg-white rounded-2xl shadow-sm border overflow-hidden hover:shadow-md transition-shadow">
+              
+              {/* IMAGE SECTION */}
+              <div className="h-48 bg-gray-100 flex items-center justify-center overflow-hidden relative">
+                {product.image_url ? (
+                  // If image exists, show it
+                  <img 
+                    src={product.image_url} 
+                    alt={product.name} 
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  // If no image, show the Box Icon
+                  <Package className="w-16 h-16 text-gray-300" />
+                )}
+              </div>
 
-                {/* Details */}
-                <div className="p-6 flex-1 flex flex-col">
-                  <h3 className="text-xl font-bold text-gray-900 mb-2">{product.name}</h3>
-                  <p className="text-gray-600 text-sm mb-4 line-clamp-2">{product.description}</p>
-                  
-                  <div className="mt-auto flex items-center justify-between pt-4 border-t">
-                    <span className="text-2xl font-bold text-green-600">D{product.price}</span>
-                    <button 
-                      onClick={() => handleBuy(product)}
-                      disabled={purchasing === product.id}
-                      className="bg-green-500 hover:bg-green-600 text-white px-5 py-2.5 rounded-lg font-bold shadow-sm transition-all flex items-center gap-2"
-                    >
-                      {purchasing === product.id ? (
-                        <span>Processing...</span>
-                      ) : (
-                        <>
-                          <span>👉 Buy</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
+              {/* DETAILS SECTION */}
+              <div className="p-5">
+                <h3 className="font-bold text-lg mb-1">{product.name}</h3>
+                <p className="text-sm text-gray-500 mb-4 line-clamp-2">
+                  {product.description || "No description available."}
+                </p>
+                
+                <div className="flex justify-between items-center">
+                  <span className="text-xl font-bold text-green-700">
+                    D{product.price}
+                  </span>
+                  <button 
+                    onClick={() => handleBuy(product)}
+                    className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors"
+                  >
+                    👉 Buy
+                  </button>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
+            </div>
+          ))}
+        </div>
       </main>
     </div>
   );
