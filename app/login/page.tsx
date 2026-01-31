@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { useRouter } from 'next/navigation';
+import { Lock, ArrowRight } from 'lucide-react';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -15,7 +16,6 @@ export default function LoginPage() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // Function to Log In
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -26,80 +26,56 @@ export default function LoginPage() {
     });
 
     if (error) {
-      alert('Login Failed: ' + error.message);
+      alert('Access Denied: ' + error.message);
       setLoading(false);
     } else {
-      router.push('/dashboard/products');
-      router.refresh();
+      // Success! Go to dashboard
+      router.push('/dashboard');
     }
-  };
-
-  // Function to Create User (New!)
-  const handleSignUp = async () => {
-    if (!email || !password) return alert("Please fill in email and password");
-    setLoading(true);
-
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-    });
-
-    if (error) {
-      alert('Sign Up Failed: ' + error.message);
-    } else {
-      alert('🎉 Account Created! You can now click Login.');
-    }
-    setLoading(false);
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
-      <div className="max-w-sm w-full bg-white p-8 rounded-xl shadow-lg border">
-        <h1 className="text-2xl font-bold text-center mb-6 text-gray-800">Store Admin Access</h1>
-        
-        <form onSubmit={handleLogin} className="space-y-4">
+    <div className="min-h-screen flex items-center justify-center bg-green-900 px-4">
+      <div className="bg-white w-full max-w-md p-8 rounded-3xl shadow-2xl">
+        <div className="text-center mb-8">
+          <div className="bg-green-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-green-700">
+            <Lock size={32} />
+          </div>
+          <h1 className="text-2xl font-black text-gray-900">Admin Access</h1>
+          <p className="text-gray-500 text-sm mt-2">Enter your credentials to manage the store.</p>
+        </div>
+
+        <form onSubmit={handleLogin} className="space-y-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700">Email</label>
-            <input
-              type="email"
+            <label className="block text-sm font-bold text-gray-700 mb-2">Email Address</label>
+            <input 
+              type="email" 
               required
+              className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500"
+              placeholder="admin@gambiastore.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 w-full p-2 border rounded-md"
-              placeholder="admin@store.com"
             />
           </div>
-
+          
           <div>
-            <label className="block text-sm font-medium text-gray-700">Password</label>
-            <input
-              type="password"
+            <label className="block text-sm font-bold text-gray-700 mb-2">Password</label>
+            <input 
+              type="password" 
               required
+              className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500"
+              placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 w-full p-2 border rounded-md"
-              placeholder="••••••••"
             />
           </div>
 
-          <div className="space-y-3 pt-2">
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-black text-white py-2 rounded-md font-bold hover:bg-gray-800 transition-colors"
-            >
-              {loading ? 'Working...' : 'Login'}
-            </button>
-
-            <button
-              type="button"
-              onClick={handleSignUp}
-              disabled={loading}
-              className="w-full bg-white text-black border border-gray-300 py-2 rounded-md font-medium hover:bg-gray-50 transition-colors text-sm"
-            >
-              Create New Account
-            </button>
-          </div>
+          <button 
+            disabled={loading}
+            className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-green-200"
+          >
+            {loading ? 'Verifying...' : <>Sign In <ArrowRight size={20} /></>}
+          </button>
         </form>
       </div>
     </div>
