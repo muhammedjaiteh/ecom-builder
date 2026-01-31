@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'; // <--- The Secret Ingredient
 import { useRouter } from 'next/navigation';
 import { Lock, ArrowRight } from 'lucide-react';
 
@@ -11,10 +11,8 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  // This special client saves the session to cookies automatically!
+  const supabase = createClientComponentClient();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,7 +27,8 @@ export default function LoginPage() {
       alert('Access Denied: ' + error.message);
       setLoading(false);
     } else {
-      // Success! Go to dashboard
+      // Refresh the router so it sees the new cookie immediately
+      router.refresh();
       router.push('/dashboard');
     }
   };
