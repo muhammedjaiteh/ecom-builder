@@ -35,7 +35,7 @@ export default function ProductPage() {
 
   // WhatsApp Logic
   const whatsappMessage = `Hello! I want to buy ${product.name} for D${product.price}.`;
-  const whatsappLink = `https://wa.me/2209999999?text=${encodeURIComponent(whatsappMessage)}`;
+  const whatsappLink = `https://wa.me/+447470187608?text=${encodeURIComponent(whatsappMessage)}`;
 
   // Record Order Logic (The same one we built earlier!)
   const handleBuy = async () => {
