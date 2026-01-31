@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import { CheckCircle, Package, ArrowLeft } from 'lucide-react';
+import Link from 'next/link';
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Connect to Supabase
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -18,82 +19,84 @@ export default function OrdersPage() {
   }, []);
 
   const fetchOrders = async () => {
-    // Get orders sorted by newest first
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('orders')
       .select('*')
       .order('created_at', { ascending: false });
-
-    if (error) console.error('Error fetching orders:', error);
-    else setOrders(data || []);
+    setOrders(data || []);
     setLoading(false);
   };
 
-  // Function to mark an order as "Completed"
-  const markCompleted = async (id: string) => {
-    const { error } = await supabase
-      .from('orders')
-      .update({ status: 'completed' })
-      .eq('id', id);
-
-    if (error) alert('Error updating order');
-    else fetchOrders(); // Refresh the list
+  const markComplete = async (id: string) => {
+    await supabase.from('orders').update({ status: 'completed' }).eq('id', id);
+    fetchOrders(); // Refresh list
   };
 
-  if (loading) return <div className="p-8">Loading Sales... 💰</div>;
-
   return (
-    <div className="max-w-5xl mx-auto">
-      <h1 className="text-3xl font-bold mb-8">💰 Order Dashboard</h1>
+    <div className="min-h-screen bg-gray-50 p-8 font-sans text-gray-900">
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center gap-4 mb-8">
+            <Link href="/dashboard" className="p-2 bg-white rounded-full border hover:bg-gray-100 transition-colors">
+                <ArrowLeft size={20} className="text-gray-600" />
+            </Link>
+            <h1 className="text-3xl font-black flex items-center gap-3 text-gray-900">
+                <Package className="text-green-600" size={32} /> 
+                Customer Orders
+            </h1>
+        </div>
 
-      <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-        <table className="w-full text-left">
-          <thead className="bg-gray-50 border-b">
-            <tr>
-              <th className="p-4 font-semibold text-gray-600">Product</th>
-              <th className="p-4 font-semibold text-gray-600">Price</th>
-              <th className="p-4 font-semibold text-gray-600">Status</th>
-              <th className="p-4 font-semibold text-gray-600">Date</th>
-              <th className="p-4 font-semibold text-gray-600 text-right">Action</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {orders.map((order) => (
-              <tr key={order.id} className="hover:bg-gray-50">
-                <td className="p-4 font-medium">{order.product_name}</td>
-                <td className="p-4 text-green-600 font-bold">D{order.price}</td>
-                <td className="p-4">
-                  <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                    order.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                  }`}>
-                    {order.status.toUpperCase()}
-                  </span>
-                </td>
-                <td className="p-4 text-gray-500 text-sm">
-                  {new Date(order.created_at).toLocaleDateString()}
-                </td>
-                <td className="p-4 text-right">
-                  {order.status !== 'completed' && (
-                    <button
-                      onClick={() => markCompleted(order.id)}
-                      className="bg-black text-white px-3 py-1 rounded-md text-sm hover:bg-gray-800"
-                    >
-                      Mark Done ✅
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-            
-            {orders.length === 0 && (
+        {/* Orders Table Card */}
+        <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+          <table className="w-full text-left">
+            <thead className="bg-green-50/50 border-b border-green-100">
               <tr>
-                <td colSpan={5} className="p-8 text-center text-gray-500">
-                  No orders yet. Go buy something! 🛒
-                </td>
+                <th className="p-5 font-bold text-green-900">Product</th>
+                <th className="p-5 font-bold text-green-900">Price</th>
+                <th className="p-5 font-bold text-green-900">Date</th>
+                <th className="p-5 font-bold text-green-900">Status</th>
+                <th className="p-5 font-bold text-green-900 text-right">Action</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {orders.map((order) => (
+                <tr key={order.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="p-5 font-bold text-lg">{order.product_name}</td>
+                  <td className="p-5 font-medium text-gray-600">D{order.price}</td>
+                  <td className="p-5 text-sm text-gray-500">
+                    {new Date(order.created_at).toLocaleDateString()}
+                  </td>
+                  <td className="p-5">
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+                      order.status === 'completed' 
+                        ? 'bg-green-100 text-green-700 border border-green-200' 
+                        : 'bg-yellow-100 text-yellow-700 border border-yellow-200'
+                    }`}>
+                      {order.status}
+                    </span>
+                  </td>
+                  <td className="p-5 text-right">
+                    {order.status !== 'completed' && (
+                      <button 
+                        onClick={() => markComplete(order.id)}
+                        className="bg-green-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-green-700 flex items-center gap-2 ml-auto shadow-green-200 shadow-md transition-all active:scale-95"
+                      >
+                        <CheckCircle size={16} /> Mark Done
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          
+          {orders.length === 0 && !loading && (
+              <div className="p-16 text-center text-gray-400 flex flex-col items-center">
+                  <Package size={48} className="mb-4 text-gray-200" />
+                  <p>No orders yet. Go make a sale! 💸</p>
+              </div>
+          )}
+        </div>
       </div>
     </div>
   );
