@@ -1,167 +1,139 @@
 'use client';
 
 import { useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
+import { Sparkles, ArrowLeft, Save, Loader2 } from 'lucide-react';
+import Link from 'next/link';
 
 export default function AddProduct() {
   const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
-  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
-  const [aiLoading, setAiLoading] = useState(false);
-  
+  const [generating, setGenerating] = useState(false); // State for AI loading
   const router = useRouter();
+  const supabase = createClientComponentClient();
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-
-  // 🤖 AI Generator
-  const handleAutoWrite = async () => {
+  // 🪄 The AI Magic Function
+  const handleGenerateAI = async () => {
     if (!name) return alert('Please enter a product name first!');
-    setAiLoading(true);
-
+    setGenerating(true);
+    
     try {
       const res = await fetch('/api/generate-description', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productName: name }),
+        body: JSON.stringify({ name }),
       });
+      
       const data = await res.json();
-      if (data.description) setDescription(data.description);
-    } catch (error) {
-      console.error(error);
-      alert('AI is tired. Please type manually.');
+      if (data.description) {
+        setDescription(data.description);
+      } else {
+        alert('AI Error: ' + (data.error || 'Unknown error'));
+      }
+    } catch (e) {
+      alert('Failed to connect to AI.');
     }
-    setAiLoading(false);
+    setGenerating(false);
   };
 
-  // 📤 Main Submit Function
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    try {
-      let imageUrl = "";
+    // Save to Supabase
+    const { error } = await supabase.from('products').insert({
+      name,
+      price: parseFloat(price),
+      description,
+      status: 'active'
+    });
 
-      // 1. Upload Image (if one was selected)
-      if (imageFile) {
-        // Create a unique name: "timestamp-filename"
-        const fileName = `${Date.now()}-${imageFile.name.replace(/\s/g, '-')}`;
-        
-        const { error: uploadError } = await supabase.storage
-          .from('products') // Accessing the bucket you just confirmed
-          .upload(fileName, imageFile);
-
-        if (uploadError) throw uploadError;
-
-        // Get the Public Link
-        const { data: publicUrlData } = supabase.storage
-          .from('products')
-          .getPublicUrl(fileName);
-
-        imageUrl = publicUrlData.publicUrl;
-      }
-
-      // 2. Save Product Data (with Image Link)
-      const { error } = await supabase.from('products').insert([
-        {
-          name,
-          description,
-          price: parseFloat(price),
-          image_url: imageUrl, 
-        },
-      ]);
-
-      if (error) throw error;
-
-      alert('Product created successfully! 🎉');
-      router.push('/dashboard/products');
-
-    } catch (error: any) {
-      console.error("Upload Error:", error);
-      alert('Error creating product: ' + error.message);
-    } finally {
-      setLoading(false);
+    if (error) {
+      alert(error.message);
+    } else {
+      router.push('/dashboard');
+      router.refresh();
     }
+    setLoading(false);
   };
 
   return (
-    <div className="max-w-xl mx-auto bg-white p-8 rounded-xl shadow-lg border">
-      <h1 className="text-2xl font-bold mb-6 text-gray-800">Add New Product</h1>
-      
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Product Name</label>
-          <input
-            type="text"
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-            placeholder="e.g. Baobab Juice"
-          />
+    <div className="min-h-screen bg-gray-50 p-6 flex justify-center items-start">
+      <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
+        
+        {/* Header */}
+        <div className="flex items-center gap-4 mb-8">
+          <Link href="/dashboard" className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+            <ArrowLeft size={24} className="text-gray-500" />
+          </Link>
+          <h1 className="text-2xl font-black text-gray-900">Add New Product</h1>
         </div>
 
-        <div>
-          <div className="flex justify-between items-center mb-1">
-            <label className="block text-sm font-medium text-gray-700">Description</label>
-            <button
-              type="button"
-              onClick={handleAutoWrite}
-              disabled={aiLoading}
-              className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full font-bold hover:bg-purple-200 transition-colors"
-            >
-              {aiLoading ? '✨ Thinking...' : '✨ AI Auto-Write'}
-            </button>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          
+          {/* Product Name */}
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2">Product Name</label>
+            <input 
+              type="text" 
+              required
+              placeholder="e.g. Handmade Leather Sandals"
+              className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition-all"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
           </div>
-          <textarea
-            required
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            className="w-full p-3 border rounded-lg h-32 focus:ring-2 focus:ring-blue-500 outline-none"
-            placeholder="Describe your product..."
-          />
-        </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Price (GMD)</label>
-          <input
-            type="number"
-            required
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
-            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-            placeholder="0.00"
-          />
-        </div>
+          {/* Price */}
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2">Price (Dalasi)</label>
+            <input 
+              type="number" 
+              required
+              placeholder="e.g. 1500"
+              className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition-all"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+            />
+          </div>
 
-        {/* Image Upload Field */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Product Image</label>
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(e) => {
-              if (e.target.files && e.target.files[0]) {
-                setImageFile(e.target.files[0]);
-              }
-            }}
-            className="w-full p-2 border rounded-lg bg-gray-50"
-          />
-        </div>
+          {/* AI Description Section */}
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <label className="block text-sm font-bold text-gray-700">Description</label>
+              
+              {/* THE MAGIC BUTTON */}
+              <button 
+                type="button"
+                onClick={handleGenerateAI}
+                disabled={generating}
+                className="text-xs bg-purple-100 hover:bg-purple-200 text-purple-700 px-3 py-1 rounded-full font-bold flex items-center gap-1 transition-all"
+              >
+                {generating ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                {generating ? 'Writing...' : 'Generate with AI'}
+              </button>
+            </div>
+            
+            <textarea 
+              rows={4}
+              placeholder="Enter details or use AI to generate..."
+              className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition-all"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition-colors shadow-md"
-        >
-          {loading ? 'Uploading...' : 'Create Product'}
-        </button>
-      </form>
+          <button 
+            disabled={loading}
+            className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-green-200 flex items-center justify-center gap-2 transition-all"
+          >
+            {loading ? 'Saving...' : <>Save Product <Save size={20} /></>}
+          </button>
+        </form>
+
+      </div>
     </div>
   );
 }

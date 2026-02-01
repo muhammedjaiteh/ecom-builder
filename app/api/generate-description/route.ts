@@ -1,31 +1,37 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { NextResponse } from "next/server";
+import { NextResponse } from 'next/server';
+import OpenAI from 'openai';
+
+// Connect to the AI using your secret key
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 export async function POST(request: Request) {
   try {
-    const { productName } = await request.json();
-    const apiKey = process.env.GEMINI_API_KEY;
+    const { name } = await request.json();
 
-    if (!apiKey) {
-      return NextResponse.json({ error: "API Key missing" }, { status: 500 });
-    }
-
-    const genAI = new GoogleGenerativeAI(apiKey);
+    // The Prompt Engineering: We teach the AI how to be a Gambian marketer
+    const prompt = `You are a professional sales expert for Gambia Store. 
+    Write a short, catchy, and premium product description for: "${name}".
     
-    // We use the model your scanner found. 
-    // If this fails due to account warm-up, we catch the error below.
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    Target Audience: Gambian locals and tourists.
+    Tone: Authentic, trustworthy, enthusiastic.
+    Requirements:
+    - Mention it is high quality.
+    - Mention "Available for instant delivery".
+    - Keep it under 3 sentences.
+    - Add 2 relevant emojis.`;
 
-    const prompt = `Write a short, catchy product description (max 2 sentences) for a product named "${productName}". Use emojis. Make it sound exciting for a customer in The Gambia.`;
+    const completion = await openai.chat.completions.create({
+      messages: [{ role: "user", content: prompt }],
+      model: "gpt-3.5-turbo",
+    });
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
+    const description = completion.choices[0].message.content;
 
-    return NextResponse.json({ description: text });
-  } catch (error: any) {
-    console.error("AI Error:", error);
-    // Graceful Fallback: If AI fails, return this generic text so the user isn't stuck.
-    return NextResponse.json({ description: "A high-quality product from our collection. ✨" });
+    return NextResponse.json({ description });
+  } catch (error) {
+    console.error('AI Error:', error);
+    return NextResponse.json({ error: 'AI failed to generate.' }, { status: 500 });
   }
 }
