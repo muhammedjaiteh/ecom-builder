@@ -3,19 +3,20 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { ArrowLeft, MessageCircle, X, Smartphone, Banknote } from 'lucide-react';
+import { ArrowLeft, MessageCircle, X, Smartphone, Banknote, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 
 export default function ProductPage() {
   const params = useParams();
   const [product, setProduct] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [showPayment, setShowPayment] = useState(false); // Controls the Popup
-  const [paymentMethod, setPaymentMethod] = useState('wave'); // Default to Wave
+  const [showPayment, setShowPayment] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState('wave');
+  const [isRedirecting, setIsRedirecting] = useState(false); // New state for loading animation
   
   const supabase = createClientComponentClient();
 
-  // 🏪 YOUR SHOP PHONE NUMBER (Change this to yours!)
+  // 🏪 YOUR SHOP PHONE NUMBER
   const SHOP_PHONE = "2207775555"; 
 
   useEffect(() => {
@@ -32,10 +33,20 @@ export default function ProductPage() {
     loadProduct();
   }, []);
 
-  // 🚀 The Smart WhatsApp Link Generator
-  const handleFinalOrder = () => {
+  // 🚀 The Silent Recorder + WhatsApp Redirect
+  const handleFinalOrder = async () => {
     if (!product) return;
+    setIsRedirecting(true); // Start loading spinner
 
+    // 1. Save Order to Database (The Silent Record)
+    await supabase.from('orders').insert({
+      product_name: product.name,
+      price: product.price,
+      status: 'new',
+      quantity: 1
+    });
+
+    // 2. Prepare WhatsApp Message
     const message = `👋 Hi, I want to buy *${product.name}* for *D${product.price}*.
     
 📦 *Order Details:*
@@ -44,8 +55,13 @@ export default function ProductPage() {
 
 Please confirm my order!`;
 
+    // 3. Launch WhatsApp
     const url = `https://wa.me/${SHOP_PHONE}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
+    
+    // 4. Close Popup & Stop Loading
+    setIsRedirecting(false);
+    setShowPayment(false);
   };
 
   if (loading) return <div className="p-10 text-center text-green-800">Loading Product...</div>;
@@ -83,7 +99,6 @@ Please confirm my order!`;
             {product.description || "A high-quality product from our collection. ✨"}
           </p>
 
-          {/* Guarantee Badge */}
           <div className="bg-green-50 p-4 rounded-xl flex items-center gap-3 text-green-800 text-sm font-medium border border-green-100">
             <span>🛡️</span>
             <span>Verified by Gambia Store. Money-back guarantee.</span>
@@ -103,12 +118,11 @@ Please confirm my order!`;
 
       </div>
 
-      {/* 💸 THE PAYMENT POPUP (The "Banjul Checkout") */}
+      {/* 💸 THE PAYMENT POPUP */}
       {showPayment && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl animate-in slide-in-from-bottom-10 duration-300">
             
-            {/* Popup Header */}
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-black text-gray-900">How will you pay?</h3>
               <button onClick={() => setShowPayment(false)} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200">
@@ -116,9 +130,8 @@ Please confirm my order!`;
               </button>
             </div>
 
-            {/* Payment Options */}
             <div className="space-y-3 mb-8">
-              {/* WAVE OPTION 🌊 */}
+              {/* WAVE */}
               <button 
                 onClick={() => setPaymentMethod('wave')}
                 className={`w-full p-4 rounded-xl border-2 flex items-center justify-between transition-all ${
@@ -135,7 +148,7 @@ Please confirm my order!`;
                 {paymentMethod === 'wave' && <div className="w-4 h-4 bg-blue-500 rounded-full"></div>}
               </button>
 
-              {/* QMONEY OPTION 🟨 */}
+              {/* QMONEY */}
               <button 
                 onClick={() => setPaymentMethod('qmoney')}
                 className={`w-full p-4 rounded-xl border-2 flex items-center justify-between transition-all ${
@@ -152,7 +165,7 @@ Please confirm my order!`;
                 {paymentMethod === 'qmoney' && <div className="w-4 h-4 bg-yellow-500 rounded-full"></div>}
               </button>
 
-              {/* CASH ON DELIVERY 💵 */}
+              {/* CASH */}
               <button 
                 onClick={() => setPaymentMethod('cash')}
                 className={`w-full p-4 rounded-xl border-2 flex items-center justify-between transition-all ${
@@ -170,12 +183,16 @@ Please confirm my order!`;
               </button>
             </div>
 
-            {/* Final Action Button */}
             <button 
               onClick={handleFinalOrder}
+              disabled={isRedirecting}
               className="w-full bg-black text-white font-bold py-4 rounded-2xl text-lg hover:bg-gray-900 transition-all flex items-center justify-center gap-2"
             >
-              Continue to WhatsApp <ArrowLeft className="rotate-180" size={20} />
+              {isRedirecting ? (
+                <>Processing <Loader2 className="animate-spin" /></>
+              ) : (
+                <>Continue to WhatsApp <ArrowLeft className="rotate-180" size={20} /></>
+              )}
             </button>
 
           </div>
