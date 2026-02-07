@@ -2,7 +2,7 @@
 
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useEffect, useState } from 'react';
-import { Package, TrendingUp, DollarSign, Plus, Trash2 } from 'lucide-react';
+import { Package, TrendingUp, DollarSign, Plus, Trash2, Share2 } from 'lucide-react';
 import Link from 'next/link'; // <--- We need this for navigation
 
 export default function Dashboard() {
@@ -116,8 +116,16 @@ export default function Dashboard() {
                     <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold uppercase tracking-wide">
                       Active
                     </span>
-                  </td>
-                  <td className="p-4 text-right">
+                    </td>
+                 <td className="p-4 text-right">
+                    {/* 👇 NEW SHARE BUTTON */}
+                    <Link href={`/dashboard/share/${product.id}`}>
+                      <button className="text-blue-400 hover:text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-colors mr-2">
+                        <Share2 size={18} />
+                      </button>
+                    </Link>
+
+                    {/* EXISTING DELETE BUTTON */}
                     <button 
                       onClick={() => handleDelete(product.id)}
                       className="text-red-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-colors"
