@@ -17,7 +17,7 @@ export default function ProductPage() {
   const supabase = createClientComponentClient();
 
   // 🏪 YOUR SHOP PHONE NUMBER
-  const SHOP_PHONE = "07470187608"; 
+  const SHOP_PHONE = "+447470187608"; 
 
   useEffect(() => {
     async function loadProduct() {
