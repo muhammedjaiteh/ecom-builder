@@ -1,135 +1,249 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Download, Share2, Phone } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
+import { useParams } from 'next/navigation';
+import { toPng } from 'html-to-image';
+import { Download, Palette, Type, ArrowLeft, Instagram, Sparkles } from 'lucide-react';
 import Link from 'next/link';
-import html2canvas from 'html2canvas';
 
-export default function ShareStudio() {
-  const params = useParams();
+// 🎨 HIGH-END THEME ENGINE
+// We include 'overlay: null' for themes that don't need it to keep TypeScript happy.
+const THEMES = {
+  minimal: {
+    name: 'Studio White',
+    desc: 'Clean, Apple-style minimalism.',
+    wrapper: 'bg-white',
+    textMain: 'text-gray-900',
+    textSub: 'text-gray-500',
+    priceTag: 'text-6xl font-black tracking-tighter text-black',
+    accent: 'bg-black text-white',
+    font: 'font-sans',
+    overlay: null
+  },
+  organic: {
+    name: 'Earth & Sage',
+    desc: 'Soft, natural, trustworthy.',
+    wrapper: 'bg-[#F2F0E9]', // Cream
+    textMain: 'text-[#2C3E2C]', // Dark Green
+    textSub: 'text-[#5F6F5F]',
+    priceTag: 'text-5xl font-bold text-[#2C3E2C] border-2 border-[#2C3E2C] rounded-full px-6 py-2 inline-block',
+    accent: 'bg-[#2C3E2C] text-[#F2F0E9]',
+    font: 'font-serif',
+    overlay: null
+  },
+  hype: {
+    name: 'Street Bold',
+    desc: 'High energy, high contrast.',
+    wrapper: 'bg-[#FAFAFA]', 
+    textMain: 'text-black',
+    textSub: 'text-gray-600',
+    // Uses a CSS pattern for background
+    overlay: 'bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px]',
+    priceTag: 'text-6xl font-black bg-yellow-400 px-4 transform -rotate-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]',
+    accent: 'bg-black text-white shadow-[4px_4px_0px_0px_rgba(250,204,21,1)]',
+    font: 'font-sans uppercase'
+  },
+  glass: {
+    name: 'Frosty Glass',
+    desc: 'Modern, blurred, gradients.',
+    wrapper: 'bg-gradient-to-br from-purple-900 via-blue-900 to-teal-800',
+    textMain: 'text-white',
+    textSub: 'text-blue-100',
+    priceTag: 'text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-white',
+    accent: 'bg-white/20 backdrop-blur-md border border-white/30 text-white',
+    font: 'font-sans',
+    overlay: null
+  }
+};
+
+export default function PremiumAdStudio() {
   const [product, setProduct] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const cardRef = useRef<HTMLDivElement>(null);
+  
+  // 🎛️ CONTROLS
+  const [currentTheme, setCurrentTheme] = useState<keyof typeof THEMES>('minimal');
+  const [headline, setHeadline] = useState('BACK IN STOCK');
+  const [showPrice, setShowPrice] = useState(true);
+
+  const params = useParams();
   const supabase = createClientComponentClient();
-  const router = useRouter();
+  const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    async function loadProduct() {
-      const { data } = await supabase
-        .from('products')
-        .select('*')
-        .eq('id', params.id)
-        .single();
-      
+    async function loadData() {
+      const { data } = await supabase.from('products').select('*').eq('id', params.id).single();
       if (data) setProduct(data);
       setLoading(false);
     }
-    loadProduct();
-  }, []);
+    loadData();
+  }, [params]);
 
-  // 📸 The Camera Function
   const handleDownload = async () => {
-    if (!cardRef.current) return;
-    
-    // Snap the photo
-    const canvas = await html2canvas(cardRef.current, {
-      scale: 2, // High resolution
-      backgroundColor: null, 
-    });
-
-    // Create a fake link to download it
-    const image = canvas.toDataURL("image/png");
-    const link = document.createElement("a");
-    link.href = image;
-    link.download = `gambia-store-${product.name}.png`;
-    link.click();
+    if (cardRef.current) {
+      const dataUrl = await toPng(cardRef.current, { quality: 1.0, pixelRatio: 3 });
+      const link = document.createElement('a');
+      link.download = `sanndikaa-post-${currentTheme}.png`;
+      link.href = dataUrl;
+      link.click();
+    }
   };
 
-  if (loading) return <div className="p-10 text-center">Loading Studio...</div>;
-  if (!product) return <div className="p-10 text-center">Product not found.</div>;
+  if (loading || !product) return <div className="p-20 text-center">Loading Studio...</div>;
+
+  const t = THEMES[currentTheme];
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 flex flex-col items-center">
+    <div className="min-h-screen bg-gray-100 p-4 md:p-8 font-sans flex flex-col items-center">
       
-      {/* Header */}
-      <div className="w-full max-w-4xl flex items-center justify-between mb-8">
-        <Link href="/dashboard" className="flex items-center gap-2 text-gray-500 hover:text-gray-900 transition-colors">
-          <ArrowLeft size={20} /> Back to Dashboard
+      {/* 🔙 Navigation */}
+      <div className="w-full max-w-7xl mb-6 flex justify-between items-center">
+        <Link href="/dashboard" className="flex items-center text-gray-500 hover:text-black transition-colors">
+          <ArrowLeft size={20} className="mr-2" /> Back to Dashboard
         </Link>
-        <h1 className="text-2xl font-black text-gray-900">WhatsApp Status Studio 📸</h1>
+        <div className="text-sm font-bold text-gray-400 uppercase tracking-widest hidden md:block">Sanndikaa Studio</div>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-12 items-start justify-center w-full max-w-6xl">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 w-full max-w-7xl">
         
-        {/* 🖼 PREVIEW AREA (This is what gets photographed) */}
-        <div className="flex-1 flex justify-center">
-          <div 
-            ref={cardRef}
-            className="w-[350px] h-[600px] bg-gradient-to-br from-green-800 to-green-950 text-white rounded-3xl p-8 relative shadow-2xl flex flex-col items-center text-center justify-between overflow-hidden border-4 border-yellow-400/20"
-          >
-            {/* Background Pattern */}
-            <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, #fff 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
-
-            {/* Top Logo */}
-            <div className="z-10 bg-white/10 backdrop-blur-md px-4 py-2 rounded-full border border-white/20">
-              <span className="font-black text-sm tracking-widest text-green-200">GAMBIA STORE 🇬🇲</span>
+        {/* 🎛️ LEFT PANEL: CONTROLS */}
+        <div className="lg:col-span-4 space-y-6">
+          <div className="bg-white p-6 rounded-3xl shadow-sm space-y-6">
+            
+            {/* Theme Grid */}
+            <div>
+              <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                <Palette size={16} /> Select Aesthetic
+              </h3>
+              <div className="grid grid-cols-1 gap-3">
+                {Object.entries(THEMES).map(([key, theme]) => (
+                  <button
+                    key={key}
+                    onClick={() => setCurrentTheme(key as any)}
+                    className={`p-4 rounded-xl text-left transition-all flex items-center justify-between group ${
+                      currentTheme === key 
+                        ? 'bg-gray-900 text-white shadow-lg scale-[1.02]' 
+                        : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    <div>
+                      <div className="font-bold text-sm">{theme.name}</div>
+                      <div className={`text-xs ${currentTheme === key ? 'text-gray-400' : 'text-gray-400'}`}>{theme.desc}</div>
+                    </div>
+                    {currentTheme === key && <Sparkles size={16} className="text-yellow-400" />}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* Product Info */}
-            <div className="z-10 flex-1 flex flex-col justify-center items-center w-full gap-6">
-              
-              {/* Product Image Placeholder */}
-              <div className="w-48 h-48 bg-white rounded-full shadow-2xl flex items-center justify-center overflow-hidden border-4 border-yellow-400">
-                {product.image_url ? (
-                    <img src={product.image_url} className="w-full h-full object-cover" />
-                ) : (
-                    <span className="text-4xl">🎁</span>
-                )}
-              </div>
-
-              <div>
-                <h2 className="text-3xl font-black leading-tight mb-2 drop-shadow-md">{product.name}</h2>
-                <div className="inline-block bg-yellow-400 text-green-900 font-black text-xl px-6 py-2 rounded-full shadow-lg transform -rotate-2">
-                  D{product.price}
+            {/* Text Controls */}
+            <div>
+              <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                <Type size={16} /> Customize
+              </h3>
+              <input 
+                type="text" 
+                value={headline}
+                onChange={(e) => setHeadline(e.target.value)}
+                className="w-full p-4 bg-gray-50 rounded-xl border-2 border-transparent focus:border-gray-900 focus:outline-none font-bold text-gray-900 text-lg transition-all"
+                placeholder="Write a hook..."
+              />
+              <div className="mt-4 flex items-center gap-3 cursor-pointer" onClick={() => setShowPrice(!showPrice)}>
+                <div className={`w-12 h-6 rounded-full p-1 transition-colors ${showPrice ? 'bg-green-500' : 'bg-gray-200'}`}>
+                  <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${showPrice ? 'translate-x-6' : 'translate-x-0'}`} />
                 </div>
+                <span className="text-sm font-medium text-gray-600">Show Price</span>
               </div>
-
-              <p className="text-green-100 text-sm opacity-90 font-medium px-4">
-                {product.description ? product.description.substring(0, 80) + "..." : "Authentic quality. Best price."}
-              </p>
             </div>
 
-            {/* Footer Call to Action */}
-            <div className="z-10 w-full bg-white text-green-900 p-4 rounded-2xl flex items-center justify-center gap-2 shadow-lg">
-              <Phone size={20} className="fill-green-900" />
-              <span className="font-bold text-lg">Order on WhatsApp</span>
-            </div>
-          </div>
-        </div>
-
-        {/* 🎛 CONTROL PANEL */}
-        <div className="w-full max-w-sm bg-white p-8 rounded-3xl shadow-xl border border-gray-100">
-          <div className="mb-6">
-            <h3 className="font-bold text-xl text-gray-900 mb-2">Share this Product</h3>
-            <p className="text-gray-500 text-sm">Use this generated card to post on your Status or send to customers.</p>
-          </div>
-
-          <div className="space-y-4">
+            {/* Download */}
             <button 
               onClick={handleDownload}
-              className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-green-200 flex items-center justify-center gap-3 transition-all active:scale-95"
+              className="w-full py-5 bg-black text-white rounded-2xl font-bold text-lg flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl"
             >
-              <Download size={20} /> Download Image
+              <Download size={22} /> Download Poster
             </button>
 
-            <div className="p-4 bg-yellow-50 rounded-xl border border-yellow-100 text-yellow-800 text-sm">
-              <strong>💡 Pro Tip:</strong> Download this image and post it to your WhatsApp Status. It includes your store branding automatically!
-            </div>
           </div>
         </div>
 
+        {/* 🎨 RIGHT PANEL: THE CANVAS */}
+        <div className="lg:col-span-8 bg-[#E5E5E5] rounded-3xl p-8 md:p-12 flex items-center justify-center border border-gray-200 overflow-hidden relative">
+          
+          {/* Background Grid Pattern */}
+          <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle, #000 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
+
+          {/* ✨ THE ACTUAL CARD ✨ */}
+          <div 
+            ref={cardRef}
+            className={`
+              relative w-[400px] h-[700px] shadow-2xl overflow-hidden flex flex-col justify-between p-8
+              transition-all duration-500
+              ${t.wrapper} ${t.font}
+            `}
+          >
+            {/* Optional Overlay Pattern */}
+            {t.overlay && <div className={`absolute inset-0 opacity-10 ${t.overlay} pointer-events-none`}></div>}
+
+            {/* HEADER */}
+            <div className="flex justify-between items-start z-10 relative">
+              <div className="flex items-center gap-2 opacity-80">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${t.accent}`}>S</div>
+                <span className={`text-xs font-bold tracking-[0.2em] uppercase ${t.textMain}`}>Sanndikaa</span>
+              </div>
+            </div>
+
+            {/* CENTER CONTENT */}
+            <div className="flex-1 flex flex-col justify-center items-center z-10 relative my-8">
+               
+               {/* 📦 THE VISUAL */}
+               <div className="relative group w-full aspect-square flex items-center justify-center mb-8">
+                  {currentTheme === 'glass' && <div className="absolute w-48 h-48 bg-cyan-400 rounded-full blur-[80px] opacity-40 animate-pulse"></div>}
+                  {currentTheme === 'hype' && <div className="absolute w-full h-full border-4 border-black translate-x-2 translate-y-2"></div>}
+                  
+                  <div className={`
+                    w-full h-full flex flex-col items-center justify-center rounded-3xl
+                    ${currentTheme === 'hype' ? 'bg-white border-4 border-black' : 'bg-transparent'}
+                    ${currentTheme === 'organic' ? 'bg-[#E6E4DC] rounded-full' : ''}
+                  `}>
+                     <span className="text-9xl filter drop-shadow-2xl transform group-hover:scale-110 transition-transform duration-500">📦</span>
+                     {currentTheme === 'hype' && <span className="absolute bottom-4 bg-black text-white text-xs px-2 font-bold uppercase">Fresh Drop</span>}
+                  </div>
+               </div>
+
+               {/* TEXT DETAILS */}
+               <div className="text-center space-y-4">
+                  <h1 className={`text-4xl leading-tight ${t.textMain} ${currentTheme === 'minimal' ? 'font-black tracking-tighter' : 'font-bold'}`}>
+                    {product.name}
+                  </h1>
+                  
+                  <p className={`text-lg italic ${t.textSub}`}>
+                    {headline}
+                  </p>
+
+                  {showPrice && (
+                    <div className="mt-4">
+                      <span className={`${t.priceTag}`}>D{product.price}</span>
+                    </div>
+                  )}
+               </div>
+            </div>
+
+            {/* FOOTER */}
+            <div className="z-10 relative">
+               <div className={`
+                 p-4 rounded-xl flex items-center justify-between
+                 ${t.accent}
+               `}>
+                  <span className="text-xs font-bold tracking-wider uppercase flex items-center gap-2">
+                     <Instagram size={14} /> Link in Bio
+                  </span>
+                  <span className="text-xs opacity-80">Sanndikaa.com</span>
+               </div>
+            </div>
+
+          </div>
+        </div>
       </div>
     </div>
   );

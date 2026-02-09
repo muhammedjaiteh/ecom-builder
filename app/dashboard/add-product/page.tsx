@@ -1,162 +1,181 @@
 'use client';
 
-import { useState } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Sparkles, ArrowLeft, Save, Loader2, UploadCloud } from 'lucide-react';
+import { Upload, Loader2, ArrowLeft, Image as ImageIcon } from 'lucide-react';
 import Link from 'next/link';
 
 export default function AddProduct() {
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
   const [description, setDescription] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  
   const [loading, setLoading] = useState(false);
-  const [generating, setGenerating] = useState(false);
   const router = useRouter();
   const supabase = createClientComponentClient();
 
-  // 🪄 The AI Magic Function
-  const handleGenerateAI = async () => {
-    if (!name) return alert('Please enter a Product Name first (so the AI knows what to write about)!');
-    
-    setGenerating(true);
-    try {
-      const res = await fetch('/api/generate-description', {
-        method: 'POST',
-        body: JSON.stringify({ name }),
-      });
-      
-      const data = await res.json();
-      
-      if (data.description) {
-        setDescription(data.description);
-      } else {
-        console.error("AI Error:", data);
-        alert('AI Error: ' + (data.error || 'Could not generate. Check console.'));
-      }
-    } catch (e) {
-      console.error("Connection Error:", e);
-      alert('Failed to connect to the AI brain.');
+  // 🖼️ Handle File Selection
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const selectedFile = e.target.files[0];
+      setFile(selectedFile);
+      setPreview(URL.createObjectURL(selectedFile)); // Show preview instantly
     }
-    setGenerating(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    const { error } = await supabase.from('products').insert({
-      name,
-      price: parseFloat(price),
-      description,
-      status: 'active'
-    });
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('No user found');
 
-    if (error) {
-      alert(error.message);
-    } else {
+      let image_url = null;
+
+      // 1. Upload Image (If selected)
+      if (file) {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${user.id}-${Math.random()}.${fileExt}`;
+        const filePath = `${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('product-images')
+          .upload(filePath, file);
+
+        if (uploadError) throw uploadError;
+
+        // 2. Get Public Link
+        const { data: { publicUrl } } = supabase.storage
+          .from('product-images')
+          .getPublicUrl(filePath);
+          
+        image_url = publicUrl;
+      }
+
+      // 3. Save Product to Database
+      const { error } = await supabase.from('products').insert({
+        name,
+        price,
+        description,
+        user_id: user.id,
+        image_url: image_url // Saving the link!
+      });
+
+      if (error) throw error;
+
       router.push('/dashboard');
       router.refresh();
+
+    } catch (error: any) {
+      alert('Error creating product: ' + error.message);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 flex justify-center items-start">
-      <div className="w-full max-w-2xl bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100">
-        
-        {/* Header Section */}
-        <div className="bg-green-900 p-8 text-white">
-          <Link href="/dashboard" className="inline-flex items-center text-green-200 hover:text-white mb-4 transition-colors">
-            <ArrowLeft size={20} className="mr-2" /> Back to Dashboard
-          </Link>
-          <h1 className="text-3xl font-black tracking-tight">Add New Product</h1>
-          <p className="text-green-200 opacity-80">Fill in the details below to list your item.</p>
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center py-12 px-4 sm:px-6 lg:px-8 font-sans">
+      
+      <div className="w-full max-w-md mb-8">
+        <Link href="/dashboard" className="flex items-center text-gray-500 hover:text-green-700 transition-colors">
+          <ArrowLeft size={20} className="mr-2" /> Back to Dashboard
+        </Link>
+      </div>
+
+      <div className="max-w-md w-full space-y-8 bg-white p-10 rounded-3xl shadow-xl">
+        <div className="text-center">
+          <h2 className="text-3xl font-black text-gray-900 tracking-tight">New Product</h2>
+          <p className="mt-2 text-sm text-gray-600">Add a premium item to your collection</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-8 space-y-8">
+        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           
-          {/* Product Name */}
-          <div>
-            <label className="block text-sm font-bold text-gray-900 mb-2">Product Name</label>
-            <input 
-              type="text" 
-              required
-              placeholder="e.g. Traditional Wonjo Juice"
-              className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-4 focus:ring-green-100 focus:border-green-500 outline-none transition-all font-medium"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
+          {/* 📸 Image Upload Area */}
+          <div className="space-y-2">
+            <label className="block text-sm font-bold text-gray-700">Product Image</label>
+            <div className="relative group">
+              <input 
+                type="file" 
+                accept="image/*" 
+                onChange={handleFileChange} 
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
+              />
+              <div className={`
+                border-2 border-dashed rounded-2xl h-48 flex flex-col items-center justify-center transition-all
+                ${preview ? 'border-green-500 bg-green-50' : 'border-gray-300 bg-gray-50 hover:bg-gray-100'}
+              `}>
+                {preview ? (
+                  <img src={preview} alt="Preview" className="h-full w-full object-cover rounded-2xl" />
+                ) : (
+                  <>
+                    <div className="p-4 bg-white rounded-full shadow-sm mb-3">
+                      <ImageIcon className="text-gray-400" size={24} />
+                    </div>
+                    <p className="text-sm text-gray-500 font-medium">Click to upload photo</p>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
 
-          {/* Price */}
-          <div>
-            <label className="block text-sm font-bold text-gray-900 mb-2">Price (Dalasi)</label>
-            <div className="relative">
-              <span className="absolute left-4 top-4 text-gray-400 font-bold">D</span>
-              <input 
-                type="number" 
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-1">Product Name</label>
+              <input
                 required
-                placeholder="150"
-                className="w-full p-4 pl-10 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-4 focus:ring-green-100 focus:border-green-500 outline-none transition-all font-medium"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="appearance-none rounded-xl relative block w-full px-4 py-3 border border-gray-300 placeholder-gray-400 text-gray-900 focus:outline-none focus:ring-green-500 focus:border-green-500 focus:z-10 sm:text-sm"
+                placeholder="e.g. Pure Baobab Juice"
               />
             </div>
-          </div>
 
-          {/* AI Section - The "CTO Design" Upgrade 🟣 */}
-          <div className="bg-purple-50 p-6 rounded-2xl border border-purple-100">
-            <div className="flex justify-between items-center mb-4">
-              <label className="block text-sm font-bold text-purple-900">Description</label>
-              <span className="text-xs font-bold bg-purple-200 text-purple-800 px-2 py-1 rounded-full uppercase tracking-wider">AI Powered</span>
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-1">Price (Dalasi)</label>
+              <div className="relative rounded-md shadow-sm">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <span className="text-gray-500 sm:text-sm">D</span>
+                </div>
+                <input
+                  required
+                  type="number"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  className="focus:ring-green-500 focus:border-green-500 block w-full pl-8 pr-12 sm:text-sm border-gray-300 rounded-xl py-3"
+                  placeholder="0.00"
+                />
+              </div>
             </div>
-            
-            <textarea 
-              rows={5}
-              placeholder="Type a description manually, or click the magic button below..."
-              className="w-full p-4 bg-white border border-purple-200 rounded-xl focus:ring-4 focus:ring-purple-100 focus:border-purple-500 outline-none transition-all text-gray-600 mb-4"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
 
-            {/* THE NEW HIGH-VISIBILITY BUTTON */}
-            <button 
-              type="button"
-              onClick={handleGenerateAI}
-              disabled={generating}
-              className="w-full group relative overflow-hidden bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-purple-200 hover:shadow-xl transition-all active:scale-[0.98] flex items-center justify-center gap-2"
-            >
-              {generating ? (
-                <>
-                  <Loader2 size={24} className="animate-spin" />
-                  <span>Connecting to Brain...</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles size={24} className="group-hover:animate-pulse text-yellow-300" />
-                  <span className="text-lg">Auto-Write Description</span>
-                </>
-              )}
-            </button>
-            <p className="text-center text-xs text-purple-400 mt-2">Powered by OpenAI & Gambia Store Intelligence</p>
-          </div>
-
-          {/* Product Image Placeholder (For future Vision AI) */}
-          <div>
-            <label className="block text-sm font-bold text-gray-900 mb-2">Product Image</label>
-            <div className="border-2 border-dashed border-gray-200 rounded-2xl p-8 flex flex-col items-center justify-center text-gray-400 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer">
-              <UploadCloud size={40} className="mb-2" />
-              <span className="text-sm font-medium">Click to upload image</span>
+            <div>
+               <label className="block text-sm font-bold text-gray-700 mb-1">Description</label>
+               <textarea
+                 rows={3}
+                 value={description}
+                 onChange={(e) => setDescription(e.target.value)}
+                 className="appearance-none rounded-xl relative block w-full px-4 py-3 border border-gray-300 placeholder-gray-400 text-gray-900 focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"
+                 placeholder="Tell your customers about the quality..."
+               />
             </div>
           </div>
 
-          {/* Save Button */}
-          <button 
+          <button
+            type="submit"
             disabled={loading}
-            className="w-full bg-green-600 hover:bg-green-700 text-white text-xl font-bold py-5 rounded-2xl shadow-xl shadow-green-200 hover:shadow-2xl transition-all flex items-center justify-center gap-3"
+            className="group relative w-full flex justify-center py-4 px-4 border border-transparent text-sm font-bold rounded-xl text-white bg-green-900 hover:bg-green-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 shadow-lg transition-all active:scale-[0.98]"
           >
-            {loading ? 'Saving to Database...' : <>Save Product <Save size={24} /></>}
+            {loading ? (
+              <Loader2 className="animate-spin" size={20} />
+            ) : (
+              <span className="flex items-center gap-2">
+                <Upload size={20} /> Publish Product
+              </span>
+            )}
           </button>
         </form>
       </div>
