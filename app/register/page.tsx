@@ -50,7 +50,7 @@ export default function Register() {
           <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
             <CheckCircle2 size={32} />
           </div>
-          <h2 className="text-2xl font-black text-gray-900 mb-2">Welcome to Gambia Store! 🇬🇲</h2>
+          <h2 className="text-2xl font-black text-gray-900 mb-2">Welcome to Sanndikaa! 🇬🇲</h2>
           <p className="text-gray-600 mb-6">
             We have sent a confirmation link to <strong>{email}</strong>. <br/>
             Please check your email to activate your shop.

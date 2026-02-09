@@ -75,7 +75,7 @@ export default function Dashboard() {
       {/* Sidebar */}
       <aside className="w-64 bg-green-900 text-white flex-shrink-0 hidden md:block">
         <div className="p-6">
-          <h1 className="text-2xl font-black tracking-tighter">GAMBIA<span className="text-green-400">ADMIN</span></h1>
+         <h1 className="text-2xl font-black tracking-tighter">SANNDI<span className="text-green-400">KAA</span></h1>
         </div>
         <nav className="mt-6 px-4 space-y-2">
           <a href="#" className="flex items-center gap-3 px-4 py-3 bg-green-800 rounded-xl text-white font-medium shadow-sm transition-all">
