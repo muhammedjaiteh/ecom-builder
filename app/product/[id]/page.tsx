@@ -111,19 +111,21 @@ export default function ProductPage() {
           {/* 📝 RIGHT: The Details Suite */}
           <div className="flex flex-col h-full justify-center space-y-8 pt-4">
             
-            {/* Seller Info */}
-            <div className="flex items-center gap-2 text-sm text-[#5F6F5F] font-medium tracking-wide">
-              <span className="bg-[#2C3E2C] text-white w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold">V</span>
-              Verified Seller
-              <span className="mx-2 text-gray-300">|</span>
-              <div className="flex text-yellow-500">
-                <Star size={14} fill="currentColor" />
-                <Star size={14} fill="currentColor" />
-                <Star size={14} fill="currentColor" />
-                <Star size={14} fill="currentColor" />
-                <Star size={14} fill="currentColor" />
+            {/* 🏪 NEW: Seller Signature (Linked) */}
+            <Link 
+              href="/shop/famwise" 
+              className="inline-flex items-center gap-3 group cursor-pointer w-max"
+            >
+              <div className="w-12 h-12 bg-[#2C3E2C] text-white rounded-full flex items-center justify-center text-lg font-serif font-bold shadow-md group-hover:scale-110 transition-transform">
+                F
               </div>
-            </div>
+              <div>
+                <p className="text-[10px] text-gray-400 font-bold tracking-widest uppercase mb-0.5">Sold By</p>
+                <p className="text-xl font-serif text-[#2C3E2C] group-hover:underline decoration-1 underline-offset-4">
+                  Famwise Store
+                </p>
+              </div>
+            </Link>
 
             {/* Title & Price */}
             <div>

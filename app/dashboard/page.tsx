@@ -73,7 +73,7 @@ export default function Dashboard() {
     <div className="flex min-h-screen bg-[#F9F8F6] font-sans text-[#2C3E2C]">
       
       {/* Sidebar */}
-       <aside className="w-64 bg-[#2C3E2C] text-white flex-shrink-0 hidden md:block relative">
+      <aside className="w-64 bg-[#2C3E2C] text-white flex-shrink-0 hidden md:block relative">
         <div className="p-8">
           <h1 className="text-2xl font-black tracking-tighter flex items-center gap-2">
             <span className="w-8 h-8 bg-white text-[#2C3E2C] rounded-full flex items-center justify-center text-xs font-serif">S</span>
@@ -119,34 +119,50 @@ export default function Dashboard() {
             </div>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-[#E6E4DC] flex items-center gap-4">
-                <div className="p-3 bg-blue-50 text-blue-900 rounded-xl">
-                    <Package size={24} />
-                </div>
+        {/* Stats & Shop Card */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
+            
+            {/* 🪪 NEW: The Shop Identity Card */}
+            <div className="md:col-span-1 bg-[#2C3E2C] text-[#F9F8F6] p-6 rounded-2xl shadow-lg flex flex-col justify-between relative overflow-hidden group">
+                <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
+                
                 <div>
-                    <p className="text-sm text-gray-500 font-medium">Total Products</p>
-                    <p className="text-2xl font-bold">{totalProducts}</p>
+                    <h3 className="text-xs font-bold tracking-widest uppercase opacity-70 mb-1">My Storefront</h3>
+                    <p className="text-xl font-serif truncate">{user?.email?.split('@')[0]} Store</p>
+                </div>
+                
+                <div className="mt-4">
+                    <Link 
+                      href="/shop/famwise"
+                      target="_blank"
+                      className="flex items-center justify-between bg-white/10 hover:bg-white/20 px-4 py-3 rounded-xl transition-all cursor-pointer backdrop-blur-sm"
+                    >
+                        <span className="text-sm font-bold">Visit Shop</span>
+                        <ExternalLink size={16} />
+                    </Link>
                 </div>
             </div>
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-[#E6E4DC] flex items-center gap-4">
-                <div className="p-3 bg-green-50 text-green-900 rounded-xl">
-                    <DollarSign size={24} />
+
+            {/* Existing Stats (Compact) */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-[#E6E4DC] flex flex-col justify-center">
+                <div className="flex items-center gap-3 mb-2 text-[#5F6F5F]">
+                    <Package size={18} /> <span className="text-xs font-bold uppercase tracking-wider">Products</span>
                 </div>
-                <div>
-                    <p className="text-sm text-gray-500 font-medium">Inventory Value</p>
-                    <p className="text-2xl font-bold">D{inventoryValue}</p>
-                </div>
+                <p className="text-3xl font-serif text-[#2C3E2C]">{totalProducts}</p>
             </div>
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-[#E6E4DC] flex items-center gap-4">
-                <div className="p-3 bg-purple-50 text-purple-900 rounded-xl">
-                    <TrendingUp size={24} />
+
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-[#E6E4DC] flex flex-col justify-center">
+                <div className="flex items-center gap-3 mb-2 text-[#5F6F5F]">
+                    <DollarSign size={18} /> <span className="text-xs font-bold uppercase tracking-wider">Value</span>
                 </div>
-                <div>
-                    <p className="text-sm text-gray-500 font-medium">Avg. Price</p>
-                    <p className="text-2xl font-bold">D{avgPrice}</p>
+                <p className="text-3xl font-serif text-[#2C3E2C]">D{inventoryValue}</p>
+            </div>
+
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-[#E6E4DC] flex flex-col justify-center">
+                <div className="flex items-center gap-3 mb-2 text-[#5F6F5F]">
+                    <TrendingUp size={18} /> <span className="text-xs font-bold uppercase tracking-wider">Avg. Price</span>
                 </div>
+                <p className="text-3xl font-serif text-[#2C3E2C]">D{avgPrice}</p>
             </div>
         </div>
 
@@ -180,7 +196,7 @@ export default function Dashboard() {
                                 <tr key={product.id} className="hover:bg-gray-50 transition-colors">
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-4">
-                                            {/* 📸 IMAGE THUMBNAIL LOGIC */}
+                                            {/* 📸 IMAGE THUMBNAIL */}
                                             <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 overflow-hidden relative border border-gray-200">
                                                 {product.image_url ? (
                                                     <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
