@@ -35,7 +35,7 @@ export default function ProductPage() {
       // STEP 2: Get the Seller's Shop Details
       const { data: shopData } = await supabase
         .from('shops')
-        .select('phone, shop_name, shop_slug')
+        .select('phone, shop_name, shop_slug, logo_url')
         .eq('id', productData.user_id)
         .single();
 
@@ -106,9 +106,15 @@ export default function ProductPage() {
           {/* Right: Details */}
           <div className="flex flex-col h-full justify-center space-y-8 pt-4">
             <Link href={`/shop/${product.shops?.shop_slug || 'famwise'}`} className="inline-flex items-center gap-3 group cursor-pointer w-max">
-              <div className="w-12 h-12 bg-[#2C3E2C] text-white rounded-full flex items-center justify-center text-lg font-serif font-bold shadow-md group-hover:scale-110 transition-transform">
-                {product.shops?.shop_name?.charAt(0) || 'F'}
-              </div>
+              <div className="w-12 h-12 rounded-full overflow-hidden shadow-md group-hover:scale-110 transition-transform bg-gray-100 flex items-center justify-center border border-gray-200">
+  {product.shops?.logo_url ? (
+     <img src={product.shops.logo_url} alt="Shop Logo" className="w-full h-full object-cover" />
+  ) : (
+     <span className="text-[#2C3E2C] font-bold text-lg font-serif">
+       {product.shops?.shop_name?.charAt(0) || 'S'}
+     </span>
+  )}
+</div>
               <div>
                 <p className="text-[10px] text-gray-400 font-bold tracking-widest uppercase mb-0.5">Sold By</p>
                 <p className="text-xl font-serif text-[#2C3E2C] group-hover:underline decoration-1 underline-offset-4">
