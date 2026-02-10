@@ -3,7 +3,7 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Package, Plus, LogOut, TrendingUp, DollarSign, ExternalLink, Trash2, Share2, Settings } from 'lucide-react';
+import { Package, Plus, LogOut, TrendingUp, DollarSign, ExternalLink, Trash2, Share2, Settings, Edit } from 'lucide-react';
 import Link from 'next/link';
 
 export default function Dashboard() {
@@ -87,7 +87,7 @@ export default function Dashboard() {
             <Package size={20} /> Overview
           </a>
 
-          {/* 📊 ANALYTICS TAB (Fixed Link) */}
+          {/* 📊 ANALYTICS TAB */}
           <Link href="/dashboard/analytics" className="flex items-center gap-3 px-4 py-3 text-green-100 hover:bg-white/5 rounded-xl transition-all">
              <TrendingUp size={20} /> Analytics
           </Link>
@@ -144,7 +144,7 @@ export default function Dashboard() {
                 
                 <div className="mt-4">
                     <Link 
-                      href={`/shop/${user?.email?.split('@')[0]}`} // Fallback link
+                      href={`/shop/${user?.email?.split('@')[0]}`} 
                       className="flex items-center justify-between bg-white/10 hover:bg-white/20 px-4 py-3 rounded-xl transition-all cursor-pointer backdrop-blur-sm"
                     >
                         <span className="text-sm font-bold">Visit Shop</span>
@@ -223,8 +223,11 @@ export default function Dashboard() {
                                             ACTIVE
                                         </span>
                                     </td>
+                                    
+                                    {/* ACTION COLUMN */}
                                     <td className="px-6 py-4 text-right">
                                         <div className="flex items-center justify-end gap-3">
+                                            
                                             {/* View Public Page */}
                                             <Link 
                                               href={`/product/${product.id}`}
@@ -242,6 +245,15 @@ export default function Dashboard() {
                                               title="Create Ad"
                                             >
                                                 <Share2 size={18} />
+                                            </Link>
+
+                                            {/* ✏️ EDIT BUTTON */}
+                                            <Link 
+                                              href={`/dashboard/edit/${product.id}`}
+                                              className="p-2 text-yellow-500 hover:text-yellow-700 hover:bg-yellow-50 rounded-full transition-all"
+                                              title="Edit Product"
+                                            >
+                                                <Edit size={18} />
                                             </Link>
                                             
                                             {/* Delete Button */}
