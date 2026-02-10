@@ -65,8 +65,13 @@ export default function ShopPage() {
       <div className="bg-[#2C3E2C] text-white pt-20 pb-16 px-6 relative overflow-hidden">
         <div className="max-w-7xl mx-auto relative z-10 text-center">
             
-            <div className="w-24 h-24 bg-white text-[#2C3E2C] rounded-full mx-auto mb-6 flex items-center justify-center text-3xl font-serif font-bold shadow-xl">
-                {shop.shop_name.charAt(0)}
+            {/* 📸 LOGO LOGIC: Image vs Letter */}
+            <div className="w-32 h-32 bg-white text-[#2C3E2C] rounded-full mx-auto mb-6 flex items-center justify-center shadow-xl overflow-hidden border-4 border-white/20">
+                {shop.logo_url ? (
+                   <img src={shop.logo_url} alt={shop.shop_name} className="w-full h-full object-cover" />
+                ) : (
+                   <span className="text-4xl font-serif font-bold">{shop.shop_name.charAt(0)}</span>
+                )}
             </div>
 
             <h1 className="text-4xl md:text-6xl font-serif font-medium mb-4">{shop.shop_name}</h1>
@@ -84,6 +89,8 @@ export default function ShopPage() {
                 </a>
             </div>
         </div>
+        
+        {/* Decorative Background */}
         <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(#fff 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
       </div>
 

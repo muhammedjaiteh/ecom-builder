@@ -3,7 +3,7 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Package, Plus, LogOut, TrendingUp, DollarSign, ExternalLink, Trash2, Share2 } from 'lucide-react';
+import { Package, Plus, LogOut, TrendingUp, DollarSign, ExternalLink, Trash2, Share2, Settings } from 'lucide-react';
 import Link from 'next/link';
 
 export default function Dashboard() {
@@ -89,6 +89,10 @@ export default function Dashboard() {
           </a>
           <Link href="/dashboard/add-product" className="flex items-center gap-3 px-4 py-3 text-green-100 hover:bg-white/5 rounded-xl transition-all">
              <Plus size={20} /> Add Product
+          </Link>
+          {/* ⚙️ NEW: SETTINGS LINK */}
+          <Link href="/dashboard/settings" className="flex items-center gap-3 px-4 py-3 text-green-100 hover:bg-white/5 rounded-xl transition-all">
+             <Settings size={20} /> Settings
           </Link>
         </nav>
 
