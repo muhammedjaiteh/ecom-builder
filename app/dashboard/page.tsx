@@ -80,17 +80,24 @@ export default function Dashboard() {
             SANNDI<span className="text-green-400">KAA</span>
           </h1>
         </div>
+        
         <nav className="mt-6 px-4 space-y-2">
+          {/* Overview Tab */}
           <a href="#" className="flex items-center gap-3 px-4 py-3 bg-white/10 rounded-xl text-white font-medium shadow-sm transition-all">
             <Package size={20} /> Overview
           </a>
-          <a href="#" className="flex items-center gap-3 px-4 py-3 text-green-100 hover:bg-white/5 rounded-xl transition-all">
-             <TrendingUp size={20} /> Orders
-          </a>
+
+          {/* 📊 ANALYTICS TAB (Fixed Link) */}
+          <Link href="/dashboard/analytics" className="flex items-center gap-3 px-4 py-3 text-green-100 hover:bg-white/5 rounded-xl transition-all">
+             <TrendingUp size={20} /> Analytics
+          </Link>
+
+          {/* Add Product Tab */}
           <Link href="/dashboard/add-product" className="flex items-center gap-3 px-4 py-3 text-green-100 hover:bg-white/5 rounded-xl transition-all">
              <Plus size={20} /> Add Product
           </Link>
-          {/* ⚙️ NEW: SETTINGS LINK */}
+          
+          {/* Settings Tab */}
           <Link href="/dashboard/settings" className="flex items-center gap-3 px-4 py-3 text-green-100 hover:bg-white/5 rounded-xl transition-all">
              <Settings size={20} /> Settings
           </Link>
@@ -126,7 +133,7 @@ export default function Dashboard() {
         {/* Stats & Shop Card */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
             
-            {/* 🪪 NEW: The Shop Identity Card */}
+            {/* 🪪 Shop Identity Card */}
             <div className="md:col-span-1 bg-[#2C3E2C] text-[#F9F8F6] p-6 rounded-2xl shadow-lg flex flex-col justify-between relative overflow-hidden group">
                 <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
                 
@@ -137,8 +144,7 @@ export default function Dashboard() {
                 
                 <div className="mt-4">
                     <Link 
-                      href="/shop/famwise"
-                      target="_blank"
+                      href={`/shop/${user?.email?.split('@')[0]}`} // Fallback link
                       className="flex items-center justify-between bg-white/10 hover:bg-white/20 px-4 py-3 rounded-xl transition-all cursor-pointer backdrop-blur-sm"
                     >
                         <span className="text-sm font-bold">Visit Shop</span>
@@ -147,7 +153,7 @@ export default function Dashboard() {
                 </div>
             </div>
 
-            {/* Existing Stats (Compact) */}
+            {/* Inventory Stats */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-[#E6E4DC] flex flex-col justify-center">
                 <div className="flex items-center gap-3 mb-2 text-[#5F6F5F]">
                     <Package size={18} /> <span className="text-xs font-bold uppercase tracking-wider">Products</span>
