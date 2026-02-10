@@ -3,26 +3,36 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Upload, Loader2, ArrowLeft, Image as ImageIcon } from 'lucide-react';
+import { Upload, Plus, Loader2, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 
 export default function AddProduct() {
+  const [loading, setLoading] = useState(false);
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
+  const [category, setCategory] = useState('Food'); // Default Category
   const [description, setDescription] = useState('');
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
-  
-  const [loading, setLoading] = useState(false);
-  const router = useRouter();
-  const supabase = createClientComponentClient();
+  const [image, setImage] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
-  // 🖼️ Handle File Selection
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const supabase = createClientComponentClient();
+  const router = useRouter();
+
+  // 🏷️ OUR CATEGORY LIST
+  const CATEGORIES = [
+    "Food",
+    "Fashion",
+    "Beauty",
+    "Home",
+    "Electronics",
+    "Other"
+  ];
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      const selectedFile = e.target.files[0];
-      setFile(selectedFile);
-      setPreview(URL.createObjectURL(selectedFile)); // Show preview instantly
+      const file = e.target.files[0];
+      setImage(file);
+      setPreviewUrl(URL.createObjectURL(file));
     }
   };
 
@@ -34,35 +44,30 @@ export default function AddProduct() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('No user found');
 
-      let image_url = null;
-
-      // 1. Upload Image (If selected)
-      if (file) {
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${user.id}-${Math.random()}.${fileExt}`;
-        const filePath = `${fileName}`;
-
+      let imageUrl = null;
+      if (image) {
+        const fileExt = image.name.split('.').pop();
+        const fileName = `${Math.random()}.${fileExt}`;
         const { error: uploadError } = await supabase.storage
           .from('product-images')
-          .upload(filePath, file);
+          .upload(fileName, image);
 
         if (uploadError) throw uploadError;
 
-        // 2. Get Public Link
         const { data: { publicUrl } } = supabase.storage
           .from('product-images')
-          .getPublicUrl(filePath);
-          
-        image_url = publicUrl;
+          .getPublicUrl(fileName);
+        
+        imageUrl = publicUrl;
       }
 
-      // 3. Save Product to Database
       const { error } = await supabase.from('products').insert({
         name,
         price,
+        category, // Saving the category!
         description,
-        user_id: user.id,
-        image_url: image_url // Saving the link!
+        image_url: imageUrl,
+        user_id: user.id
       });
 
       if (error) throw error;
@@ -71,113 +76,106 @@ export default function AddProduct() {
       router.refresh();
 
     } catch (error: any) {
-      alert('Error creating product: ' + error.message);
+      alert('Error adding product: ' + error.message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center py-12 px-4 sm:px-6 lg:px-8 font-sans">
-      
-      <div className="w-full max-w-md mb-8">
-        <Link href="/dashboard" className="flex items-center text-gray-500 hover:text-green-700 transition-colors">
-          <ArrowLeft size={20} className="mr-2" /> Back to Dashboard
+    <div className="min-h-screen bg-[#F9F8F6] font-sans text-[#2C3E2C] p-6 flex justify-center">
+      <div className="w-full max-w-2xl">
+        
+        <Link href="/dashboard" className="flex items-center text-gray-500 hover:text-green-700 mb-8 transition-colors">
+           <ArrowLeft size={20} className="mr-2" /> Cancel & Go Back
         </Link>
-      </div>
 
-      <div className="max-w-md w-full space-y-8 bg-white p-10 rounded-3xl shadow-xl">
-        <div className="text-center">
-          <h2 className="text-3xl font-black text-gray-900 tracking-tight">New Product</h2>
-          <p className="mt-2 text-sm text-gray-600">Add a premium item to your collection</p>
-        </div>
-
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+        <div className="bg-white p-8 rounded-3xl shadow-sm border border-[#E6E4DC]">
+          <h1 className="text-3xl font-serif font-bold mb-6">Add New Product</h1>
           
-          {/* 📸 Image Upload Area */}
-          <div className="space-y-2">
-            <label className="block text-sm font-bold text-gray-700">Product Image</label>
-            <div className="relative group">
-              <input 
-                type="file" 
-                accept="image/*" 
-                onChange={handleFileChange} 
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
-              />
-              <div className={`
-                border-2 border-dashed rounded-2xl h-48 flex flex-col items-center justify-center transition-all
-                ${preview ? 'border-green-500 bg-green-50' : 'border-gray-300 bg-gray-50 hover:bg-gray-100'}
-              `}>
-                {preview ? (
-                  <img src={preview} alt="Preview" className="h-full w-full object-cover rounded-2xl" />
-                ) : (
-                  <>
-                    <div className="p-4 bg-white rounded-full shadow-sm mb-3">
-                      <ImageIcon className="text-gray-400" size={24} />
-                    </div>
-                    <p className="text-sm text-gray-500 font-medium">Click to upload photo</p>
-                  </>
-                )}
-              </div>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            
+            {/* Image Upload */}
+            <div className="flex flex-col items-center p-6 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200 hover:border-green-500 transition-colors group">
+               {previewUrl ? (
+                 <div className="w-32 h-32 bg-gray-200 rounded-lg overflow-hidden mb-4 relative shadow-md">
+                   <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" />
+                 </div>
+               ) : (
+                 <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                   <Upload size={24} />
+                 </div>
+               )}
+               <label className="cursor-pointer bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg font-bold hover:bg-gray-50 transition-all">
+                 Choose Image
+                 <input type="file" className="hidden" accept="image/*" onChange={handleImageChange} />
+               </label>
             </div>
-          </div>
 
-          <div className="space-y-4">
+            {/* Product Name */}
             <div>
-              <label className="block text-sm font-bold text-gray-700 mb-1">Product Name</label>
-              <input
-                required
-                type="text"
+              <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Product Name</label>
+              <input 
+                type="text" 
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="appearance-none rounded-xl relative block w-full px-4 py-3 border border-gray-300 placeholder-gray-400 text-gray-900 focus:outline-none focus:ring-green-500 focus:border-green-500 focus:z-10 sm:text-sm"
-                placeholder="e.g. Pure Baobab Juice"
+                className="w-full p-4 bg-[#F9F8F6] border-none rounded-xl text-lg font-serif focus:ring-2 focus:ring-[#2C3E2C]"
+                placeholder="e.g. Baobab Juice"
+                required 
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-bold text-gray-700 mb-1">Price (Dalasi)</label>
-              <div className="relative rounded-md shadow-sm">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <span className="text-gray-500 sm:text-sm">D</span>
-                </div>
-                <input
-                  required
-                  type="number"
-                  value={price}
-                  onChange={(e) => setPrice(e.target.value)}
-                  className="focus:ring-green-500 focus:border-green-500 block w-full pl-8 pr-12 sm:text-sm border-gray-300 rounded-xl py-3"
-                  placeholder="0.00"
-                />
-              </div>
+            {/* Category & Price Row */}
+            <div className="grid grid-cols-2 gap-4">
+               <div>
+                  <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Category</label>
+                  <select 
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    className="w-full p-4 bg-[#F9F8F6] border-none rounded-xl font-bold text-gray-700 focus:ring-2 focus:ring-[#2C3E2C]"
+                  >
+                    {CATEGORIES.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+               </div>
+               <div>
+                  <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Price (Dalasi)</label>
+                  <input 
+                    type="number" 
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    className="w-full p-4 bg-[#F9F8F6] border-none rounded-xl text-lg font-bold text-green-700 focus:ring-2 focus:ring-[#2C3E2C]"
+                    placeholder="150"
+                    required 
+                  />
+               </div>
             </div>
 
+            {/* Description */}
             <div>
-               <label className="block text-sm font-bold text-gray-700 mb-1">Description</label>
-               <textarea
-                 rows={3}
-                 value={description}
-                 onChange={(e) => setDescription(e.target.value)}
-                 className="appearance-none rounded-xl relative block w-full px-4 py-3 border border-gray-300 placeholder-gray-400 text-gray-900 focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                 placeholder="Tell your customers about the quality..."
-               />
+              <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Description</label>
+              <textarea 
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={4}
+                className="w-full p-4 bg-[#F9F8F6] border-none rounded-xl text-gray-600 focus:ring-2 focus:ring-[#2C3E2C]"
+                placeholder="Describe your product..."
+              />
             </div>
-          </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="group relative w-full flex justify-center py-4 px-4 border border-transparent text-sm font-bold rounded-xl text-white bg-green-900 hover:bg-green-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 shadow-lg transition-all active:scale-[0.98]"
-          >
-            {loading ? (
-              <Loader2 className="animate-spin" size={20} />
-            ) : (
-              <span className="flex items-center gap-2">
-                <Upload size={20} /> Publish Product
-              </span>
-            )}
-          </button>
-        </form>
+            {/* Submit Button */}
+            <button 
+              type="submit" 
+              disabled={loading}
+              className="w-full bg-[#2C3E2C] hover:bg-black text-white py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 shadow-xl active:scale-[0.98] transition-all"
+            >
+              {loading ? <Loader2 className="animate-spin" /> : <Plus size={20} />}
+              {loading ? 'Publishing...' : 'Publish Product'}
+            </button>
+
+          </form>
+        </div>
       </div>
     </div>
   );
