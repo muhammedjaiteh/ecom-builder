@@ -163,17 +163,29 @@ export default function Dashboard() {
                     </div>
                     
                     <div className="flex items-center gap-2 md:gap-4">
-                       <Link href={`/product/${product.id}`} target="_blank" className="p-2 text-gray-400 hover:text-[#2C3E2C] hover:bg-white rounded-full transition-all" title="View">
-                          <ExternalLink size={18} />
-                       </Link>
-                       <button 
-                         onClick={() => handleDelete(product.id)}
-                         className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-all" 
-                         title="Delete"
-                       >
-                          <Trash2 size={18} />
-                       </button>
-                    </div>
+   {/* 1. VIEW BUTTON */}
+   <Link href={`/product/${product.id}`} target="_blank" className="p-2 text-gray-400 hover:text-[#2C3E2C] hover:bg-white rounded-full transition-all" title="View">
+      <ExternalLink size={18} />
+   </Link>
+
+   {/* 2. 🟡 EDIT BUTTON (THE MISSING PIECE) */}
+   <Link 
+      href={`/dashboard/edit/${product.id}`}
+      className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-all" 
+      title="Edit"
+   >
+      <Edit size={18} />
+   </Link>
+
+   {/* 3. DELETE BUTTON */}
+   <button 
+     onClick={() => handleDelete(product.id)}
+     className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-all" 
+     title="Delete"
+   >
+      <Trash2 size={18} />
+   </button>
+</div>
                  </div>
               ))}
            </div>
