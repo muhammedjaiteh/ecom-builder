@@ -3,14 +3,36 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Package, DollarSign, TrendingUp, Plus, Edit, Trash2, ExternalLink, BarChart3, Eye } from 'lucide-react';
+import { Package, DollarSign, TrendingUp, Plus, Edit, Trash2, ExternalLink, BarChart3, Eye, Image as ImageIcon, Upload } from 'lucide-react';
 import Link from 'next/link';
+
+type Product = {
+  id: string;
+  image_url: string | null;
+  name: string;
+  price: number;
+  category: string;
+};
+
+type Shop = {
+  id: string;
+  shop_name: string | null;
+  shop_slug: string | null;
+  banner_url: string | null;
+};
+
+type Lead = {
+  product_price: number | null;
+  product_name: string;
+};
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
-  const [products, setProducts] = useState<any[]>([]);
-  const [shop, setShop] = useState<any>(null);
-  
+  const [products, setProducts] = useState<Product[]>([]);
+  const [shop, setShop] = useState<Shop | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
+
   // 📊 ANALYTICS STATES
   const [totalLeads, setTotalLeads] = useState(0);
   const [potentialRevenue, setPotentialRevenue] = useState(0);
@@ -23,31 +45,32 @@ export default function Dashboard() {
     async function loadDashboard() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push('/login'); return; }
+      setUserId(user.id);
 
       // 1. Get Shop Details
       const { data: shopData } = await supabase
         .from('shops')
-        .select('*')
+        .select('id, shop_name, shop_slug, banner_url')
         .eq('id', user.id)
         .single();
-      setShop(shopData);
+      setShop(shopData as Shop | null);
 
       // 2. Get Products
       const { data: productData } = await supabase
         .from('products')
-        .select('*')
+        .select('id, image_url, name, price, category')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
-      
-      setProducts(productData || []);
+
+      setProducts((productData as Product[]) || []);
 
       // 3. Get LEADS (The Analytics Engine) 📈
       const { data: leadsData } = await supabase
         .from('leads')
-        .select('*')
+        .select('product_price, product_name')
         .eq('seller_id', user.id);
 
-      const leads = leadsData || [];
+      const leads = (leadsData as Lead[]) || [];
       setTotalLeads(leads.length);
 
       // Calculate Revenue
@@ -56,16 +79,58 @@ export default function Dashboard() {
 
       // Find Top Product
       if (leads.length > 0) {
-        const counts: any = {};
-        leads.forEach(l => { counts[l.product_name] = (counts[l.product_name] || 0) + 1; });
-        const top = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b);
+        const counts: Record<string, number> = {};
+        leads.forEach((lead) => { counts[lead.product_name] = (counts[lead.product_name] || 0) + 1; });
+        const top = Object.keys(counts).reduce((a, b) => (counts[a] > counts[b] ? a : b));
         setTopProduct(top);
       }
 
       setLoading(false);
     }
+
     loadDashboard();
-  }, [router]);
+  }, [router, supabase]);
+
+  const handleBannerUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !userId) return;
+
+    setUploadingBanner(true);
+
+    const fileExt = file.name.split('.').pop();
+    const filePath = `${userId}/${Date.now()}.${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('banners')
+      .upload(filePath, file, { upsert: false });
+
+    if (uploadError) {
+      alert('Error uploading banner. Please try again.');
+      setUploadingBanner(false);
+      return;
+    }
+
+    const { data: publicUrlData } = supabase.storage
+      .from('banners')
+      .getPublicUrl(filePath);
+
+    const bannerUrl = publicUrlData.publicUrl;
+
+    const { error: updateError } = await supabase
+      .from('shops')
+      .update({ banner_url: bannerUrl })
+      .eq('id', userId);
+
+    if (updateError) {
+      alert('Banner uploaded but failed to save to your shop profile.');
+      setUploadingBanner(false);
+      return;
+    }
+
+    setShop((prev) => (prev ? { ...prev, banner_url: bannerUrl } : prev));
+    setUploadingBanner(false);
+    event.target.value = '';
+  };
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this product?')) return;
@@ -78,7 +143,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-[#F9F8F6] font-sans text-[#2C3E2C] p-6 md:p-10">
-      
+
       {/* 🟢 HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
         <div>
@@ -105,7 +170,7 @@ export default function Dashboard() {
                  <span className="text-[10px] font-bold uppercase tracking-widest">Customer Interest</span>
               </div>
               <div className="text-5xl font-serif font-medium mb-1">{totalLeads}</div>
-              <p className="text-xs opacity-60">People clicked "Order"</p>
+              <p className="text-xs opacity-60">People clicked &quot;Order&quot;</p>
            </div>
         </div>
 
@@ -130,6 +195,41 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* 🖼️ STORE APPEARANCE */}
+      <div className="bg-white rounded-3xl border border-[#E6E4DC] shadow-sm overflow-hidden mb-12">
+        <div className="p-6 border-b border-gray-100 flex items-center gap-2 bg-gray-50/50">
+          <ImageIcon size={18} className="text-[#2C3E2C]" />
+          <h3 className="font-bold text-[#2C3E2C]">Store Appearance</h3>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <p className="text-sm text-gray-500">Upload a custom banner to personalize your storefront.</p>
+
+          <label className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-[#E6E4DC] hover:border-[#2C3E2C] cursor-pointer transition-colors text-sm font-semibold">
+            <Upload size={16} />
+            {uploadingBanner ? 'Uploading banner...' : 'Upload Store Banner'}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleBannerUpload}
+              disabled={uploadingBanner}
+            />
+          </label>
+
+          {shop?.banner_url && (
+            <div>
+              <p className="text-xs uppercase tracking-widest text-gray-400 mb-2">Current Banner</p>
+              <img
+                src={shop.banner_url}
+                alt="Store banner preview"
+                className="w-full max-w-xl h-28 object-cover rounded-xl border border-[#E6E4DC]"
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* 📦 INVENTORY LIST */}
       <div className="bg-white rounded-3xl border border-[#E6E4DC] shadow-sm overflow-hidden">
         <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
@@ -140,7 +240,7 @@ export default function Dashboard() {
         {products.length === 0 ? (
            <div className="p-12 text-center">
               <Package size={48} className="mx-auto text-gray-200 mb-4" />
-              <p className="text-gray-400 mb-4">You haven't listed any products yet.</p>
+              <p className="text-gray-400 mb-4">You have not listed any products yet.</p>
            </div>
         ) : (
            <div className="divide-y divide-gray-100">
@@ -148,14 +248,14 @@ export default function Dashboard() {
                  <div key={product.id} className="p-4 md:p-6 flex items-center justify-between group hover:bg-gray-50 transition-colors">
                     <div className="flex items-center gap-4 md:gap-6">
                        <div className="w-16 h-16 bg-gray-100 rounded-lg overflow-hidden border border-gray-200">
-                          {product.image_url && <img src={product.image_url} className="w-full h-full object-cover" />}
+                          {product.image_url && <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />}
                        </div>
                        <div>
                           <h4 className="font-bold text-lg text-[#2C3E2C]">{product.name}</h4>
                           <p className="text-sm text-gray-500">D{product.price} • <span className="text-green-600 font-bold text-xs uppercase">{product.category}</span></p>
                        </div>
                     </div>
-                    
+
                     <div className="flex items-center gap-2 md:gap-4">
                        <Link href={`/product/${product.id}`} target="_blank" className="p-2 text-gray-400 hover:text-[#2C3E2C] hover:bg-white rounded-full transition-all" title="View">
                           <ExternalLink size={18} />
