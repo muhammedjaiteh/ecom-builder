@@ -2,7 +2,7 @@
 
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useEffect, useState, use } from 'react';
-import { ArrowLeft, MessageCircle, ShoppingBag, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, MessageCircle, ShoppingBag, Share2, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 
 type Product = {
@@ -69,7 +69,12 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     );
     window.location.href = `https://wa.me/${cleanNumber}?text=${message}`;
   };
-
+const handleShareProduct = () => {
+    if (!product) return;
+    const url = window.location.href;
+    const message = encodeURIComponent(`🔥 Check out what I am selling on Sanndikaa:\n\n*${product.name}* for D${product.price}\n\nTap the link to buy it now:\n${url}`);
+    window.open(`https://wa.me/?text=${message}`, '_blank');
+  };
   if (loading) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#F9F8F6]">
       <ShoppingBag size={32} className="animate-pulse text-[#2C3E2C] mb-4" />
@@ -119,7 +124,9 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
           </div>
           <button onClick={handleOrderClick} className="w-full bg-[#2C3E2C] hover:bg-black text-white py-4 rounded-xl font-bold flex items-center justify-center gap-3 shadow-xl transition-all">
             <MessageCircle size={20} /> Order via WhatsApp
-          </button>
+          </button><button onClick={handleShareProduct} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 py-4 mt-3 rounded-xl font-bold flex items-center justify-center gap-3 transition-all">
+    <Share2 size={20} /> Share Product
+  </button>
         </div>
       </main>
     </div>
