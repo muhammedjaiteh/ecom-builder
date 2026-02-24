@@ -14,6 +14,7 @@ type Product = {
   category: string;
   shops: {
     shop_name: string;
+    shop_slug: string;
     whatsapp_number: string | null;
   };
 };
@@ -34,7 +35,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
           *,
           shops (
             shop_name,
-            whatsapp_number
+            whatsapp_number, shop_slug
           )
         `)
         .eq('id', productId)
@@ -117,10 +118,10 @@ const handleShareProduct = () => {
             <div className="w-10 h-10 bg-[#1a2e1a] rounded-full flex items-center justify-center text-white font-serif font-bold text-sm shadow-md">
                {product.shops?.shop_name.charAt(0)}
             </div>
-            <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Sold By</p>
-              <p className="text-sm font-bold text-[#1a2e1a]">{product.shops?.shop_name}</p>
-            </div>
+           <Link href={`/shop/${product.shops?.shop_slug}`} className="hover:opacity-70 transition-opacity cursor-pointer block">
+     <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Sold By</p>
+     <p className="text-sm font-bold text-[#1a2e1a] underline decoration-1 underline-offset-2">{product.shops?.shop_name}</p>
+   </Link>
           </div>
           <button onClick={handleOrderClick} className="w-full bg-[#2C3E2C] hover:bg-black text-white py-4 rounded-xl font-bold flex items-center justify-center gap-3 shadow-xl transition-all">
             <MessageCircle size={20} /> Order via WhatsApp
