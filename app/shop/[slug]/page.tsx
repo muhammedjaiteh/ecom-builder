@@ -58,26 +58,36 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
   return (
     <div className="min-h-screen bg-gray-50 pb-24 font-sans">
       
-      {/* Dynamic Header */}
+      {/* Premium Banner Header */}
       <div 
-        className="w-full py-16 px-4 text-center text-white flex flex-col items-center justify-center relative"
-        style={{ backgroundColor: brandColor }}
+        className="w-full py-24 px-4 text-center text-white flex flex-col items-center justify-center relative bg-cover bg-center overflow-hidden"
+        style={{ 
+          backgroundColor: brandColor,
+          backgroundImage: shop.banner_url ? `url(${shop.banner_url})` : 'none'
+        }}
       >
-        <h1 className="text-4xl md:text-5xl font-serif font-medium mb-2">{shop.shop_name}</h1>
-        <p className="text-sm font-light opacity-80 mb-6">Verified Seller on Sanndikaa</p>
+        {/* Dark Overlay - This makes sure white text is always readable */}
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"></div>
         
-        <div className="flex flex-wrap justify-center items-center gap-3">
-          <button onClick={handleChat} className="bg-green-500 hover:bg-green-400 text-white font-bold py-2.5 px-6 rounded-full flex items-center gap-2 transition-all shadow-md">
-            <MessageCircle size={18} /> Chat
-          </button>
+        <div className="relative z-10 flex flex-col items-center w-full max-w-4xl mx-auto">
+          <h1 className="text-4xl md:text-6xl font-serif font-medium mb-3 tracking-tight shadow-sm">{shop.shop_name}</h1>
+          <p className="text-sm font-bold tracking-widest uppercase opacity-90 mb-8 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+            Verified Seller on Sanndikaa
+          </p>
           
-          {/* 🚀 New Native Share Button */}
-          <button onClick={handleShareStore} className="bg-white/20 hover:bg-white/30 backdrop-blur-md text-white font-bold py-2.5 px-6 rounded-full flex items-center gap-2 transition-all shadow-md border border-white/30">
-            <Share2 size={18} /> Share Store
-          </button>
+          <div className="flex flex-wrap justify-center items-center gap-4">
+            <button onClick={handleChat} className="bg-green-500 hover:bg-green-400 text-white font-bold py-3 px-8 rounded-full flex items-center gap-2 transition-all shadow-lg hover:-translate-y-1">
+              <MessageCircle size={20} /> Chat with Seller
+            </button>
+            
+            <button onClick={handleShareStore} className="bg-white/20 hover:bg-white/30 backdrop-blur-md text-white font-bold py-3 px-8 rounded-full flex items-center gap-2 transition-all shadow-lg border border-white/30 hover:-translate-y-1">
+              <Share2 size={20} /> Share Store
+            </button>
+          </div>
         </div>
       </div>
-
+      
       {/* Products Grid */}
       <div className="max-w-6xl mx-auto px-4 mt-8">
         <p className="text-xs font-bold text-gray-400 mb-6 uppercase tracking-widest">

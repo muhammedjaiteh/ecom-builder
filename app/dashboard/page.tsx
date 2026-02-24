@@ -223,7 +223,7 @@ export default function Dashboard() {
               <img
                 src={shop.banner_url}
                 alt="Store banner preview"
-                className="w-full max-w-xl h-28 object-cover rounded-xl border border-[#E6E4DC]"
+                className="w-full h-48 object-cover rounded-xl border border-gray-200 shadow-sm"
               />
             </div>
           )}
