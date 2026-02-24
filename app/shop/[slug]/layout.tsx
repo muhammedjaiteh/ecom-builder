@@ -1,40 +1,33 @@
 import { createClient } from '@supabase/supabase-js';
-import type { Metadata } from 'next';
 
-type ShopLayoutProps = {
-  children: React.ReactNode;
-  params: Promise<{ slug: string }>;
-};
-
-export async function generateMetadata({ params }: ShopLayoutProps): Promise<Metadata> {
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL ?? '',
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
-  );
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+  const supabase = createClient(supabaseUrl, supabaseKey);
 
   const { data: shop } = await supabase
     .from('shops')
-    .select('shop_name, bio, banner_url, logo_url')
+    .select('*')
     .eq('shop_slug', slug)
     .single();
 
   const shopName = shop?.shop_name ?? 'Shop';
-  const description = shop?.bio || 'Discover this shop on Sanndikaa.';
-  const imageUrl = shop?.banner_url || shop?.logo_url;
+  const bio = shop?.bio ?? `Welcome to ${shopName} on Sanndikaa`;
+  
+  const images = [];
+  if (shop?.banner_url) images.push(shop.banner_url);
+  else if (shop?.logo_url) images.push(shop.logo_url);
 
   return {
     title: `${shopName} on Sanndikaa`,
-    description,
+    description: bio,
     openGraph: {
-      title: `${shopName} on Sanndikaa`,
-      description,
-      images: imageUrl ? [imageUrl] : [],
+      images: images,
     },
   };
 }
 
-export default function ShopLayout({ children }: ShopLayoutProps) {
-  return children;
+export default function ShopLayout({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
 }
