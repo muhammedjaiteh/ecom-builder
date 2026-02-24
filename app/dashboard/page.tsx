@@ -3,7 +3,7 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Package, DollarSign, TrendingUp, Plus, Edit, Trash2, ExternalLink, BarChart3, Eye, Image as ImageIcon, Upload } from 'lucide-react';
+import { Package, DollarSign, TrendingUp, Plus, Edit, Trash2, ExternalLink, BarChart3, Eye, Image as ImageIcon, Upload, Store } from 'lucide-react';
 import Link from 'next/link';
 
 type Product = {
@@ -19,6 +19,8 @@ type Shop = {
   shop_name: string | null;
   shop_slug: string | null;
   banner_url: string | null;
+  logo_url: string | null;
+  bio: string | null;
 };
 
 type Lead = {
@@ -32,6 +34,9 @@ export default function Dashboard() {
   const [shop, setShop] = useState<Shop | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [uploadingBanner, setUploadingBanner] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [bioInput, setBioInput] = useState('');
+  const [savingBio, setSavingBio] = useState(false);
 
   // 📊 ANALYTICS STATES
   const [totalLeads, setTotalLeads] = useState(0);
@@ -50,10 +55,11 @@ export default function Dashboard() {
       // 1. Get Shop Details
       const { data: shopData } = await supabase
         .from('shops')
-        .select('id, shop_name, shop_slug, banner_url')
+        .select('id, shop_name, shop_slug, banner_url, logo_url, bio')
         .eq('id', user.id)
         .single();
       setShop(shopData as Shop | null);
+      setBioInput((shopData as Shop | null)?.bio || '');
 
       // 2. Get Products
       const { data: productData } = await supabase
@@ -132,6 +138,70 @@ export default function Dashboard() {
     event.target.value = '';
   };
 
+
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !userId) return;
+
+    setUploadingLogo(true);
+
+    const fileExt = file.name.split('.').pop();
+    const filePath = `${userId}/${Date.now()}.${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('logos')
+      .upload(filePath, file, { upsert: false });
+
+    if (uploadError) {
+      alert('Error uploading logo. Please try again.');
+      setUploadingLogo(false);
+      return;
+    }
+
+    const { data: publicUrlData } = supabase.storage
+      .from('logos')
+      .getPublicUrl(filePath);
+
+    const logoUrl = publicUrlData.publicUrl;
+
+    const { error: updateError } = await supabase
+      .from('shops')
+      .update({ logo_url: logoUrl })
+      .eq('id', userId);
+
+    if (updateError) {
+      alert('Logo uploaded but failed to save to your shop profile.');
+      setUploadingLogo(false);
+      return;
+    }
+
+    setShop((prev) => (prev ? { ...prev, logo_url: logoUrl } : prev));
+    setUploadingLogo(false);
+    event.target.value = '';
+  };
+
+  const handleSaveBio = async () => {
+    if (!userId) return;
+
+    setSavingBio(true);
+    const sanitizedBio = bioInput.trim().slice(0, 150);
+
+    const { error } = await supabase
+      .from('shops')
+      .update({ bio: sanitizedBio })
+      .eq('id', userId);
+
+    if (error) {
+      alert('Failed to save bio. Please try again.');
+      setSavingBio(false);
+      return;
+    }
+
+    setShop((prev) => (prev ? { ...prev, bio: sanitizedBio } : prev));
+    setBioInput(sanitizedBio);
+    setSavingBio(false);
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this product?')) return;
     const { error } = await supabase.from('products').delete().eq('id', id);
@@ -202,7 +272,61 @@ export default function Dashboard() {
           <h3 className="font-bold text-[#2C3E2C]">Store Appearance</h3>
         </div>
 
-        <div className="p-6 space-y-4">
+        <div className="p-6 space-y-6">
+          <div className="space-y-3">
+            <p className="text-sm font-semibold text-[#2C3E2C]">Store Logo</p>
+            <div className="flex items-center gap-4">
+              <div className="h-20 w-20 overflow-hidden rounded-full border border-[#E6E4DC] bg-gray-100">
+                {shop?.logo_url ? (
+                  <img
+                    src={shop.logo_url}
+                    alt="Store logo preview"
+                    className="aspect-square h-full w-full rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-gray-400">
+                    <Store size={26} />
+                  </div>
+                )}
+              </div>
+
+              <label className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-[#E6E4DC] hover:border-[#2C3E2C] cursor-pointer transition-colors text-sm font-semibold">
+                <Upload size={16} />
+                {uploadingLogo ? 'Uploading logo...' : 'Upload Store Logo'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleLogoUpload}
+                  disabled={uploadingLogo}
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-[#2C3E2C]">Store Bio</p>
+              <span className="text-xs text-gray-400">{bioInput.length}/150</span>
+            </div>
+            <textarea
+              value={bioInput}
+              onChange={(event) => setBioInput(event.target.value.slice(0, 150))}
+              maxLength={150}
+              rows={3}
+              placeholder="Write a short store bio for your customers..."
+              className="w-full rounded-xl border border-[#E6E4DC] px-4 py-3 text-sm text-[#2C3E2C] outline-none transition focus:border-[#2C3E2C]"
+            />
+            <button
+              type="button"
+              onClick={handleSaveBio}
+              disabled={savingBio}
+              className="inline-flex items-center rounded-xl bg-[#2C3E2C] px-4 py-2 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {savingBio ? 'Saving...' : 'Save Bio'}
+            </button>
+          </div>
+
           <p className="text-sm text-gray-500">Upload a custom banner to personalize your storefront.</p>
 
           <label className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-[#E6E4DC] hover:border-[#2C3E2C] cursor-pointer transition-colors text-sm font-semibold">

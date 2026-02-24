@@ -3,7 +3,7 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import Link from 'next/link';
 import { use, useEffect, useMemo, useState } from 'react';
-import { BadgeCheck, MessageCircle, Share2, ShoppingBag } from 'lucide-react';
+import { BadgeCheck, MessageCircle, Share2, ShoppingBag, Store } from 'lucide-react';
 
 type Shop = {
   id: string;
@@ -11,6 +11,8 @@ type Shop = {
   shop_slug: string;
   whatsapp_number: string | null;
   banner_url: string | null;
+  logo_url: string | null;
+  bio: string | null;
 };
 
 type Product = {
@@ -102,27 +104,43 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
-      <header
-        className="relative w-full overflow-hidden"
-        style={
-          shop.banner_url
-            ? {
-                backgroundImage: `url(${shop.banner_url})`,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-              }
-            : { backgroundColor: '#111827' }
-        }
-      >
-        <div className="bg-gradient-to-t from-black/80 to-transparent px-4 pb-8 pt-14 text-white">
-          <div className="mx-auto max-w-md text-center">
-            <h1 className="text-3xl font-semibold tracking-tight">{shop.shop_name}</h1>
-            <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-white/20 px-3 py-1 text-xs font-medium backdrop-blur">
+      <header className="w-full">
+        <div
+          className="relative h-44 w-full overflow-hidden"
+          style={
+            shop.banner_url
+              ? {
+                  backgroundImage: `url(${shop.banner_url})`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                }
+              : { backgroundColor: '#111827' }
+          }
+        >
+          <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
+        </div>
+
+        <div className="relative z-10 -mt-12 px-4 pb-2">
+          <div className="mx-auto flex max-w-md flex-col items-center text-center">
+            <div className="h-24 w-24 overflow-hidden rounded-full border-4 border-white bg-gray-100 shadow-md">
+              {shop.logo_url ? (
+                <img src={shop.logo_url} alt={`${shop.shop_name} logo`} className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-gray-400">
+                  <Store size={34} />
+                </div>
+              )}
+            </div>
+
+            <h1 className="mt-4 text-3xl font-bold tracking-tight text-gray-900">{shop.shop_name}</h1>
+            <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700">
               <BadgeCheck size={14} />
               Verified Seller
             </div>
 
-            <div className="mt-6 flex items-center justify-center gap-3">
+            <p className="mt-3 max-w-xs text-center text-sm text-gray-500">{shop.bio || 'Welcome to our store.'}</p>
+
+            <div className="mt-5 flex items-center justify-center gap-3">
               <button
                 type="button"
                 onClick={handleChat}
@@ -134,7 +152,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
               <button
                 type="button"
                 onClick={handleShareStore}
-                className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/15 px-5 py-2.5 text-sm font-semibold text-white backdrop-blur transition hover:bg-white/25"
+                className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50"
               >
                 <Share2 size={16} />
                 Share Store
