@@ -19,7 +19,7 @@ type Product = {
   };
 };
 
-const PAYMENT_OPTIONS = ['Cash on Delivery', 'Mobile Money'] as const;
+const PAYMENT_OPTIONS = ['Cash on Delivery', 'Wave'] as const;
 
 export default function ProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: productId } = use(params);
@@ -140,7 +140,13 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
               {product.description || 'No description provided.'}
             </p>
           </div>
-
+{/* Restored Sold By Section */}
+          <div className="mb-8 border-t border-gray-100 pt-6">
+            <Link href={`/shop/${product.shops?.shop_slug}`} className="hover:opacity-70 transition-opacity cursor-pointer inline-block">
+              <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">Sold By</p>
+              <p className="text-base font-bold text-green-800 underline decoration-1 underline-offset-4">{product.shops?.shop_name}</p>
+            </Link>
+          </div>
           <div className="mb-6 border-y border-gray-200 py-4">
             <p className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-500">Payment Method</p>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
