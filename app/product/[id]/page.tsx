@@ -1,8 +1,8 @@
 'use client';
 
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { useEffect, useState, use } from 'react';
-import { ArrowLeft, MessageCircle, ShoppingBag, Share2, ShieldCheck } from 'lucide-react';
+import { use, useEffect, useState } from 'react';
+import { ArrowLeft, CheckCircle2, MessageCircle, Share2, ShoppingBag } from 'lucide-react';
 import Link from 'next/link';
 
 type Product = {
@@ -14,34 +14,40 @@ type Product = {
   category: string;
   shops: {
     shop_name: string;
+    shop_slug: string;
     whatsapp_number: string | null;
   };
 };
 
+const PAYMENT_OPTIONS = ['Cash on Delivery', 'Mobile Money'] as const;
+
 export default function ProductPage({ params }: { params: Promise<{ id: string }> }) {
-  // 🚀 FIXED: Properly unwrapping the Next.js 15 asynchronous params
-  const { id: productId } = use(params); 
-  
+  const { id: productId } = use(params);
+
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
+  const [paymentMethod, setPaymentMethod] = useState('Cash on Delivery');
   const supabase = createClientComponentClient();
 
   useEffect(() => {
     async function fetchProduct() {
       const { data, error } = await supabase
         .from('products')
-        .select(`
+        .select(
+          `
           *,
           shops (
             shop_name,
+            shop_slug,
             whatsapp_number
           )
-        `)
+        `
+        )
         .eq('id', productId)
         .single();
 
       if (error) {
-        console.error("Error fetching product:", error);
+        console.error('Error fetching product:', error);
       } else {
         setProduct(data as Product);
       }
@@ -53,80 +59,124 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
   const handleOrderClick = async () => {
     if (!product) return;
+
     await supabase.from('leads').insert({ product_id: product.id, shop_id: product.shops?.shop_name });
 
     const rawNumber = product.shops?.whatsapp_number;
     if (!rawNumber) {
-      alert("This seller has not updated their WhatsApp number yet!");
+      alert('This seller has not updated their WhatsApp number yet!');
       return;
     }
 
     let cleanNumber = rawNumber.replace(/\D/g, '');
-    if (cleanNumber.length === 7) cleanNumber = '220' + cleanNumber;
+    if (cleanNumber.length === 7) cleanNumber = `220${cleanNumber}`;
 
     const message = encodeURIComponent(
-      `Hello ${product.shops?.shop_name}! 👋\n\nI want to buy this from your Sanndikaa store:\n🛍️ *${product.name}*\n💰 *D${product.price}*\n\nIs this available?`
+      `Hello ${product.shops?.shop_name}! 👋\n\nI want to buy ${product.name} for D${product.price}.\nMy payment method is: ${paymentMethod}.\n\nIs this available?`
     );
     window.location.href = `https://wa.me/${cleanNumber}?text=${message}`;
   };
-const handleShareProduct = () => {
+
+  const handleShareProduct = () => {
     if (!product) return;
     const url = window.location.href;
-    const message = encodeURIComponent(`🔥 Check out what I am selling on Sanndikaa:\n\n*${product.name}* for D${product.price}\n\nTap the link to buy it now:\n${url}`);
+    const message = encodeURIComponent(
+      `🔥 Check out this product on Sanndikaa:\n\n*${product.name}* for D${product.price}\n\nTap the link to buy now:\n${url}`
+    );
     window.open(`https://wa.me/?text=${message}`, '_blank');
   };
-  if (loading) return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-[#F9F8F6]">
-      <ShoppingBag size={32} className="animate-pulse text-[#2C3E2C] mb-4" />
-      <p className="text-xs font-bold uppercase text-gray-500">Loading Product...</p>
-    </div>
-  );
 
-  if (!product) return (
-    <div className="min-h-screen flex items-center justify-center bg-[#F9F8F6]">
-      <div className="text-center">
-        <h1 className="text-2xl font-serif text-gray-800 mb-4">Product Not Found</h1>
-        <Link href="/" className="text-sm font-bold text-green-700 hover:underline">Back to Marketplace</Link>
+  if (loading)
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#F9F8F6]">
+        <ShoppingBag size={32} className="mb-4 animate-pulse text-[#2C3E2C]" />
+        <p className="text-xs font-bold uppercase text-gray-500">Loading Product...</p>
       </div>
-    </div>
-  );
+    );
+
+  if (!product)
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F9F8F6]">
+        <div className="text-center">
+          <h1 className="mb-4 text-2xl font-serif text-gray-800">Product Not Found</h1>
+          <Link href="/" className="text-sm font-bold text-green-700 hover:underline">
+            Back to Marketplace
+          </Link>
+        </div>
+      </div>
+    );
 
   return (
     <div className="min-h-screen bg-[#F9F8F6] pb-24 font-sans text-[#2C3E2C]">
       <nav className="p-6">
-        <Link href="/" className="inline-flex items-center gap-2 text-xs font-bold uppercase text-gray-500 hover:text-[#2C3E2C]">
+        <Link
+          href={`/shop/${product.shops?.shop_slug || ''}`}
+          className="inline-flex items-center gap-2 text-xs font-bold uppercase text-gray-500 hover:text-[#2C3E2C]"
+        >
           <ArrowLeft size={16} /> Back
         </Link>
       </nav>
-      <main className="max-w-4xl mx-auto px-6 grid md:grid-cols-2 gap-12 mt-4">
-        <div className="aspect-[4/5] bg-gray-100 rounded-2xl overflow-hidden shadow-sm border border-gray-200">
+
+      <main className="mx-auto mt-4 grid max-w-4xl gap-8 px-4 md:grid-cols-2 md:gap-12 md:px-6">
+        <div className="aspect-[4/5] overflow-hidden rounded-2xl border border-gray-200 bg-gray-100 shadow-sm">
           {product.image_url ? (
-            <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+            <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
           ) : (
-             <div className="w-full h-full flex items-center justify-center text-gray-300"><ShoppingBag size={48} /></div>
+            <div className="flex h-full w-full items-center justify-center text-gray-300">
+              <ShoppingBag size={48} />
+            </div>
           )}
         </div>
+
         <div className="flex flex-col justify-center">
-          <div className="mb-2"><span className="text-[10px] font-bold uppercase text-gray-400">{product.category || 'General'}</span></div>
-          <h1 className="text-4xl md:text-5xl font-serif font-medium text-[#1a2e1a] mb-4">{product.name}</h1>
-          <p className="text-3xl font-bold text-green-800 mb-6">D{product.price}</p>
-          <div className="bg-white p-4 rounded-xl border border-gray-100 mb-8 shadow-sm">
-            <p className="text-sm text-gray-600 font-light whitespace-pre-wrap">{product.description || 'No description provided.'}</p>
+          <div className="mb-2">
+            <span className="text-[10px] font-bold uppercase text-gray-400">{product.category || 'General'}</span>
           </div>
-          <div className="mb-8 flex items-center gap-3 border-t border-b border-gray-200 py-4">
-            <div className="w-10 h-10 bg-[#1a2e1a] rounded-full flex items-center justify-center text-white font-serif font-bold text-sm shadow-md">
-               {product.shops?.shop_name.charAt(0)}
-            </div>
-            <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Sold By</p>
-              <p className="text-sm font-bold text-[#1a2e1a]">{product.shops?.shop_name}</p>
+          <h1 className="mb-4 text-3xl font-semibold text-[#1a2e1a] md:text-5xl">{product.name}</h1>
+          <p className="mb-6 text-3xl font-bold text-green-800">D{product.price}</p>
+
+          <div className="mb-6 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+            <p className="whitespace-pre-wrap text-sm text-gray-600">
+              {product.description || 'No description provided.'}
+            </p>
+          </div>
+
+          <div className="mb-6 border-y border-gray-200 py-4">
+            <p className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-500">Payment Method</p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {PAYMENT_OPTIONS.map((option) => {
+                const selected = paymentMethod === option;
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => setPaymentMethod(option)}
+                    className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm font-semibold transition ${
+                      selected
+                        ? 'border-[#2C3E2C] bg-[#2C3E2C]/5 text-[#2C3E2C]'
+                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                    }`}
+                  >
+                    <span>{option}</span>
+                    {selected ? <CheckCircle2 size={18} /> : <span className="h-[18px] w-[18px] rounded-full border border-gray-300" />}
+                  </button>
+                );
+              })}
             </div>
           </div>
-          <button onClick={handleOrderClick} className="w-full bg-[#2C3E2C] hover:bg-black text-white py-4 rounded-xl font-bold flex items-center justify-center gap-3 shadow-xl transition-all">
+
+          <button
+            onClick={handleOrderClick}
+            className="flex w-full items-center justify-center gap-3 rounded-xl bg-[#2C3E2C] py-4 font-bold text-white shadow-xl transition-all hover:bg-black"
+          >
             <MessageCircle size={20} /> Order via WhatsApp
-          </button><button onClick={handleShareProduct} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 py-4 mt-3 rounded-xl font-bold flex items-center justify-center gap-3 transition-all">
-    <Share2 size={20} /> Share Product
-  </button>
+          </button>
+          <button
+            onClick={handleShareProduct}
+            className="mt-3 flex w-full items-center justify-center gap-3 rounded-xl bg-gray-100 py-4 font-bold text-gray-800 transition-all hover:bg-gray-200"
+          >
+            <Share2 size={20} /> Share Product
+          </button>
         </div>
       </main>
     </div>
