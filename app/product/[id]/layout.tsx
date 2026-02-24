@@ -30,7 +30,9 @@ export async function generateMetadata({ params }: ProductLayoutProps): Promise<
     .single();
 
   const productName = product?.name ?? 'Product';
-  const shopName = product?.shops?.shop_name ?? 'Shop';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const shopData: any = product?.shops;
+  const shopName = (Array.isArray(shopData) ? shopData[0]?.shop_name : shopData?.shop_name) ?? 'Shop';
   const price = product?.price ?? 0;
   const description = `Order for D${price} on Sanndikaa`;
 
