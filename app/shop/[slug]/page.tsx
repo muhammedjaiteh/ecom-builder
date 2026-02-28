@@ -34,7 +34,8 @@ const themeColors = {
 } as const;
 
 export default function ShopPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = use(params);
+  const resolvedParams = use(params);
+  const slug = decodeURIComponent(resolvedParams.slug);
 
   const [shop, setShop] = useState<Shop | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -142,61 +143,144 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       <header className="w-full">
-        <div
-          className="relative h-44 w-full overflow-hidden"
-          style={
-            shop.banner_url
-              ? {
-                  backgroundImage: `url(${shop.banner_url})`,
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center',
-                }
-              : { backgroundColor: '#111827' }
-          }
-        >
-          <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
-        </div>
+        {shop.store_layout === 'kairaba' ? (
+          <div className="px-4 pb-4 pt-12">
+            <div className="mx-auto flex max-w-xl flex-col items-center text-center">
+              <div className="h-24 w-24 overflow-hidden rounded-full border-4 border-white bg-gray-100 shadow-md">
+                {shop.logo_url ? (
+                  <img src={shop.logo_url} alt={`${shop.shop_name} logo`} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-gray-400">
+                    <Store size={34} />
+                  </div>
+                )}
+              </div>
 
-        <div className="relative z-10 -mt-12 px-4 pb-2">
-          <div className="mx-auto flex max-w-md flex-col items-center text-center">
-            <div className="h-24 w-24 overflow-hidden rounded-full border-4 border-white bg-gray-100 shadow-md">
-              {shop.logo_url ? (
-                <img src={shop.logo_url} alt={`${shop.shop_name} logo`} className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-gray-400">
-                  <Store size={34} />
-                </div>
-              )}
-            </div>
+              <h1 className="mt-6 text-4xl font-semibold tracking-tight text-gray-900">{shop.shop_name}</h1>
+              <div className={`mt-2 inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-semibold ${activeColor.text}`}>
+                <BadgeCheck size={14} />
+                Verified Seller
+              </div>
+              <p className="mt-4 max-w-md text-sm text-gray-500">{shop.bio || 'Welcome to our store.'}</p>
 
-            <h1 className="mt-4 text-3xl font-bold tracking-tight text-gray-900">{shop.shop_name}</h1>
-            <div className={`mt-2 inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-semibold ${activeColor.text}`}>
-              <BadgeCheck size={14} />
-              Verified Seller
-            </div>
-
-            <p className="mt-3 max-w-xs text-center text-sm text-gray-500">{shop.bio || 'Welcome to our store.'}</p>
-
-            <div className="mt-5 flex items-center justify-center gap-3">
-              <button
-                type="button"
-                onClick={handleChat}
-                className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 ${activeColor.bg}`}
-              >
-                <MessageCircle size={16} />
-                Chat
-              </button>
-              <button
-                type="button"
-                onClick={handleShareStore}
-                className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 ${activeColor.bg}`}
-              >
-                <Share2 size={16} />
-                Share Store
-              </button>
+              <div className="mt-6 flex items-center justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleChat}
+                  className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 ${activeColor.bg}`}
+                >
+                  <MessageCircle size={16} />
+                  Chat
+                </button>
+                <button
+                  type="button"
+                  onClick={handleShareStore}
+                  className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 ${activeColor.bg}`}
+                >
+                  <Share2 size={16} />
+                  Share Store
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        ) : shop.store_layout === 'serrekunda' ? (
+          <div className="px-4 py-4">
+            <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 rounded-2xl bg-white p-3 shadow-sm">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="h-14 w-14 shrink-0 overflow-hidden rounded-full border-2 border-white bg-gray-100 shadow-sm">
+                  {shop.logo_url ? (
+                    <img src={shop.logo_url} alt={`${shop.shop_name} logo`} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-gray-400">
+                      <Store size={22} />
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <h1 className="truncate text-lg font-bold text-gray-900">{shop.shop_name}</h1>
+                  <p className="truncate text-xs text-gray-500">{shop.bio || 'Welcome to our store.'}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleChat}
+                  className={`inline-flex items-center gap-1 rounded-full px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:opacity-90 ${activeColor.bg}`}
+                >
+                  <MessageCircle size={14} />
+                  Chat
+                </button>
+                <button
+                  type="button"
+                  onClick={handleShareStore}
+                  className={`inline-flex items-center gap-1 rounded-full px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:opacity-90 ${activeColor.bg}`}
+                >
+                  <Share2 size={14} />
+                  Share
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div
+              className="relative h-48 w-full overflow-hidden"
+              style={
+                shop.banner_url
+                  ? {
+                      backgroundImage: `url(${shop.banner_url})`,
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'center',
+                    }
+                  : { backgroundColor: '#111827' }
+              }
+            >
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
+            </div>
+
+            <div className="relative z-10 -mt-12 px-4 pb-2">
+              <div className="mx-auto flex max-w-md flex-col items-center text-center">
+                <div className="h-24 w-24 overflow-hidden rounded-full border-4 border-white bg-gray-100 shadow-md">
+                  {shop.logo_url ? (
+                    <img src={shop.logo_url} alt={`${shop.shop_name} logo`} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-gray-400">
+                      <Store size={34} />
+                    </div>
+                  )}
+                </div>
+
+                <h1 className="mt-4 text-3xl font-bold tracking-tight text-gray-900">{shop.shop_name}</h1>
+                <div className={`mt-2 inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-semibold ${activeColor.text}`}>
+                  <BadgeCheck size={14} />
+                  Verified Seller
+                </div>
+
+                <p className="mt-3 max-w-xs text-center text-sm text-gray-500">{shop.bio || 'Welcome to our store.'}</p>
+
+                <div className="mt-5 flex items-center justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleChat}
+                    className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 ${activeColor.bg}`}
+                  >
+                    <MessageCircle size={16} />
+                    Chat
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleShareStore}
+                    className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 ${activeColor.bg}`}
+                  >
+                    <Share2 size={16} />
+                    Share Store
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </header>
 
       <section className="px-4 pt-4">
