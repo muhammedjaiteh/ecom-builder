@@ -21,6 +21,8 @@ type Shop = {
   banner_url: string | null;
   logo_url: string | null;
   bio: string | null;
+  store_layout: string | null;
+  theme_color: string | null;
 };
 
 type Lead = {
@@ -37,6 +39,9 @@ export default function Dashboard() {
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [bioInput, setBioInput] = useState('');
   const [savingBio, setSavingBio] = useState(false);
+  const [storeLayout, setStoreLayout] = useState('bantaba');
+  const [themeColor, setThemeColor] = useState('emerald');
+  const [savingDesign, setSavingDesign] = useState(false);
 
   // 📊 ANALYTICS STATES
   const [totalLeads, setTotalLeads] = useState(0);
@@ -55,11 +60,13 @@ export default function Dashboard() {
       // 1. Get Shop Details
       const { data: shopData } = await supabase
         .from('shops')
-        .select('id, shop_name, shop_slug, banner_url, logo_url, bio')
+        .select('id, shop_name, shop_slug, banner_url, logo_url, bio, store_layout, theme_color')
         .eq('id', user.id)
         .single();
       setShop(shopData as Shop | null);
       setBioInput((shopData as Shop | null)?.bio || '');
+      setStoreLayout((shopData as Shop | null)?.store_layout || 'bantaba');
+      setThemeColor((shopData as Shop | null)?.theme_color || 'emerald');
 
       // 2. Get Products
       const { data: productData } = await supabase
@@ -209,6 +216,43 @@ export default function Dashboard() {
     else window.location.reload();
   };
 
+  const handleSaveDesignSettings = async () => {
+    if (!userId) return;
+
+    setSavingDesign(true);
+
+    const { error } = await supabase
+      .from('shops')
+      .update({
+        store_layout: storeLayout,
+        theme_color: themeColor,
+      })
+      .eq('id', userId);
+
+    if (error) {
+      alert('Failed to save design settings. Please try again.');
+      setSavingDesign(false);
+      return;
+    }
+
+    setShop((prev) => (prev ? { ...prev, store_layout: storeLayout, theme_color: themeColor } : prev));
+    setSavingDesign(false);
+  };
+
+  const layoutOptions = [
+    { value: 'bantaba', label: 'The Bantaba', subtitle: '2-Column Trust Grid' },
+    { value: 'kairaba', label: 'The Kairaba', subtitle: 'Full-Width Fashion Feed' },
+    { value: 'serrekunda', label: 'The Serrekunda', subtitle: 'Dense 3-Column Catalog' },
+  ];
+
+  const colorOptions = [
+    { value: 'emerald', className: 'bg-emerald-600' },
+    { value: 'midnight', className: 'bg-slate-900' },
+    { value: 'terracotta', className: 'bg-orange-700' },
+    { value: 'ocean', className: 'bg-blue-600' },
+    { value: 'rose', className: 'bg-rose-500' },
+  ];
+
   if (loading) return <div className="min-h-screen bg-[#F9F8F6] p-8 font-serif animate-pulse">Loading Command Center...</div>;
 
   return (
@@ -324,6 +368,66 @@ export default function Dashboard() {
               className="inline-flex items-center rounded-xl bg-[#2C3E2C] px-4 py-2 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-70"
             >
               {savingBio ? 'Saving...' : 'Save Bio'}
+            </button>
+          </div>
+
+          <div className="rounded-2xl border border-[#E6E4DC] bg-gradient-to-br from-white to-emerald-50/40 p-5 shadow-sm">
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-700">New</p>
+                <h4 className="text-lg font-bold text-[#1a2e1a]">Design Studio</h4>
+                <p className="text-xs text-gray-500">Choose the storefront layout and color signature that fits your brand.</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-xs font-bold uppercase tracking-widest text-[#2C3E2C]">Layout</p>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                {layoutOptions.map((layout) => (
+                  <button
+                    key={layout.value}
+                    type="button"
+                    onClick={() => setStoreLayout(layout.value)}
+                    className={`rounded-xl border bg-white p-4 text-left transition-all ${
+                      storeLayout === layout.value
+                        ? 'border-[#2C3E2C] ring-2 ring-[#2C3E2C]/30 shadow-md'
+                        : 'border-[#E6E4DC] hover:border-[#2C3E2C]/60'
+                    }`}
+                  >
+                    <p className="font-bold text-[#2C3E2C]">{layout.label}</p>
+                    <p className="text-xs text-gray-500">{layout.subtitle}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-5 space-y-3">
+              <p className="text-xs font-bold uppercase tracking-widest text-[#2C3E2C]">Theme Color</p>
+              <div className="flex items-center gap-3">
+                {colorOptions.map((color) => (
+                  <button
+                    key={color.value}
+                    type="button"
+                    onClick={() => setThemeColor(color.value)}
+                    className={`h-10 w-10 rounded-full ${color.className} transition-all ${
+                      themeColor === color.value
+                        ? 'ring-4 ring-offset-2 ring-[#2C3E2C]/35 ring-offset-white scale-105'
+                        : 'hover:scale-105'
+                    }`}
+                    aria-label={`Set theme color to ${color.value}`}
+                    title={color.value}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSaveDesignSettings}
+              disabled={savingDesign}
+              className="mt-6 inline-flex items-center rounded-xl bg-[#1a2e1a] px-4 py-2 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {savingDesign ? 'Saving design...' : 'Save Design Settings'}
             </button>
           </div>
 
