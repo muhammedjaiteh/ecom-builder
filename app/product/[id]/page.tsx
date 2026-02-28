@@ -16,8 +16,17 @@ type Product = {
     shop_name: string;
     shop_slug: string;
     whatsapp_number: string | null;
+    theme_color: 'emerald' | 'midnight' | 'terracotta' | 'ocean' | 'rose' | null;
   };
 };
+
+const themeColors = {
+  emerald: { bg: 'bg-emerald-600', text: 'text-emerald-600', ring: 'ring-emerald-600' },
+  midnight: { bg: 'bg-slate-900', text: 'text-slate-900', ring: 'ring-slate-900' },
+  terracotta: { bg: 'bg-orange-700', text: 'text-orange-700', ring: 'ring-orange-700' },
+  ocean: { bg: 'bg-blue-600', text: 'text-blue-600', ring: 'ring-blue-600' },
+  rose: { bg: 'bg-rose-500', text: 'text-rose-500', ring: 'ring-rose-500' },
+} as const;
 
 const PAYMENT_OPTIONS = ['Cash on Delivery', 'Wave'] as const;
 
@@ -33,16 +42,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     async function fetchProduct() {
       const { data, error } = await supabase
         .from('products')
-        .select(
-          `
-          *,
-          shops (
-            shop_name,
-            shop_slug,
-            whatsapp_number
-          )
-        `
-        )
+        .select('*, shops(shop_name, shop_slug, whatsapp_number, theme_color)')
         .eq('id', productId)
         .single();
 
@@ -56,6 +56,14 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
     fetchProduct();
   }, [productId, supabase]);
+
+  const shopData = product?.shops as
+    | Product['shops']
+    | Product['shops'][]
+    | null
+    | undefined;
+  const themeColor = Array.isArray(shopData) ? shopData[0]?.theme_color : shopData?.theme_color;
+  const activeColor = themeColor ? themeColors[themeColor] || themeColors.emerald : themeColors.emerald;
 
   const handleOrderClick = async () => {
     if (!product) return;
@@ -140,11 +148,15 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
               {product.description || 'No description provided.'}
             </p>
           </div>
-{/* Restored Sold By Section */}
           <div className="mb-8 border-t border-gray-100 pt-6">
-            <Link href={`/shop/${product.shops?.shop_slug}`} className="hover:opacity-70 transition-opacity cursor-pointer inline-block">
+            <Link
+              href={`/shop/${product.shops?.shop_slug}`}
+              className="hover:opacity-70 transition-opacity cursor-pointer inline-block"
+            >
               <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">Sold By</p>
-              <p className="text-base font-bold text-green-800 underline decoration-1 underline-offset-4">{product.shops?.shop_name}</p>
+              <p className="text-base font-bold text-green-800 underline decoration-1 underline-offset-4">
+                {product.shops?.shop_name}
+              </p>
             </Link>
           </div>
           <div className="mb-6 border-y border-gray-200 py-4">
@@ -173,7 +185,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
           <button
             onClick={handleOrderClick}
-            className="flex w-full items-center justify-center gap-3 rounded-xl bg-[#2C3E2C] py-4 font-bold text-white shadow-xl transition-all hover:bg-black"
+            className={`flex w-full items-center justify-center gap-3 rounded-xl py-4 font-bold text-white shadow-xl transition-all hover:opacity-90 ${activeColor.bg}`}
           >
             <MessageCircle size={20} /> Order via WhatsApp
           </button>
