@@ -34,7 +34,8 @@ const themeColors = {
 } as const;
 
 export default function ShopPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = use(params);
+  const resolvedParams = use(params);
+  const slug = decodeURIComponent(resolvedParams.slug);
 
   const [shop, setShop] = useState<Shop | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
