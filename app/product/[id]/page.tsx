@@ -1,9 +1,19 @@
 'use client';
 
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { use, useEffect, useState } from 'react';
-import { ArrowLeft, CheckCircle2, MessageCircle, Share2, ShoppingBag } from 'lucide-react';
+import { use, useEffect, useMemo, useState } from 'react';
+import { ArrowLeft, CheckCircle2, MapPin, MessageCircle, Share2, ShoppingBag, Truck } from 'lucide-react';
 import Link from 'next/link';
+
+type ShopInfo = {
+  shop_name: string;
+  shop_slug: string;
+  whatsapp_number: string | null;
+  theme_color: 'emerald' | 'midnight' | 'terracotta' | 'ocean' | 'rose' | null;
+  offers_delivery: boolean | null;
+  offers_pickup: boolean | null;
+  pickup_instructions: string | null;
+};
 
 type Product = {
   id: string;
@@ -12,12 +22,7 @@ type Product = {
   description: string;
   image_url: string | null;
   category: string;
-  shops: {
-    shop_name: string;
-    shop_slug: string;
-    whatsapp_number: string | null;
-    theme_color: 'emerald' | 'midnight' | 'terracotta' | 'ocean' | 'rose' | null;
-  };
+  shops: ShopInfo | ShopInfo[];
 };
 
 const themeColors = {
@@ -30,26 +35,37 @@ const themeColors = {
 
 const PAYMENT_OPTIONS = ['Cash on Delivery', 'Wave'] as const;
 
+type FulfillmentMethod = 'delivery' | 'pickup';
+
 export default function ProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: productId } = use(params);
 
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
-  const [paymentMethod, setPaymentMethod] = useState('Cash on Delivery');
+  const [paymentMethod, setPaymentMethod] = useState<(typeof PAYMENT_OPTIONS)[number]>('Cash on Delivery');
+  const [fulfillmentMethod, setFulfillmentMethod] = useState<FulfillmentMethod>('delivery');
+  const [deliveryAddress, setDeliveryAddress] = useState('');
+
   const supabase = createClientComponentClient();
 
   useEffect(() => {
     async function fetchProduct() {
       const { data, error } = await supabase
         .from('products')
-        .select('*, shops(shop_name, shop_slug, whatsapp_number, theme_color)')
+        .select(
+          '*, shops(shop_name, shop_slug, whatsapp_number, theme_color, offers_delivery, offers_pickup, pickup_instructions)'
+        )
         .eq('id', productId)
         .single();
 
       if (error) {
         console.error('Error fetching product:', error);
       } else {
+        const resolvedShopData = Array.isArray(data?.shops) ? data.shops[0] : data?.shops;
+        const defaultMethod: FulfillmentMethod = resolvedShopData?.offers_delivery ?? true ? 'delivery' : 'pickup';
+
         setProduct(data as Product);
+        setFulfillmentMethod(defaultMethod);
       }
       setLoading(false);
     }
@@ -57,20 +73,26 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     fetchProduct();
   }, [productId, supabase]);
 
-  const shopData = product?.shops as
-    | Product['shops']
-    | Product['shops'][]
-    | null
-    | undefined;
-  const themeColor = Array.isArray(shopData) ? shopData[0]?.theme_color : shopData?.theme_color;
+  const shopData = product?.shops as ShopInfo | ShopInfo[] | null | undefined;
+  const resolvedShop = useMemo(() => (Array.isArray(shopData) ? shopData[0] : shopData), [shopData]);
+
+  const themeColor = resolvedShop?.theme_color;
+  const offersDelivery = resolvedShop?.offers_delivery ?? true;
+  const offersPickup = resolvedShop?.offers_pickup ?? true;
+  const pickupInstructions = resolvedShop?.pickup_instructions?.trim() || '';
+
   const activeColor = themeColor ? themeColors[themeColor] || themeColors.emerald : themeColors.emerald;
-
   const handleOrderClick = async () => {
-    if (!product) return;
+    if (!product || !resolvedShop) return;
 
-    await supabase.from('leads').insert({ product_id: product.id, shop_id: product.shops?.shop_name });
+    if (fulfillmentMethod === 'delivery' && !deliveryAddress.trim()) {
+      alert('Please enter your delivery area/address so the seller can fulfill your order.');
+      return;
+    }
 
-    const rawNumber = product.shops?.whatsapp_number;
+    await supabase.from('leads').insert({ product_id: product.id, shop_id: resolvedShop.shop_name });
+
+    const rawNumber = resolvedShop.whatsapp_number;
     if (!rawNumber) {
       alert('This seller has not updated their WhatsApp number yet!');
       return;
@@ -79,9 +101,15 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     let cleanNumber = rawNumber.replace(/\D/g, '');
     if (cleanNumber.length === 7) cleanNumber = `220${cleanNumber}`;
 
+    const fulfillmentText =
+      fulfillmentMethod === 'delivery'
+        ? `Fulfillment: Delivery to ${deliveryAddress.trim()}.`
+        : 'Fulfillment: Pickup/Meetup.';
+
     const message = encodeURIComponent(
-      `Hello ${product.shops?.shop_name}! 👋\n\nI want to buy ${product.name} for D${product.price}.\nMy payment method is: ${paymentMethod}.\n\nIs this available?`
+      `Hello ${resolvedShop.shop_name}! 👋\n\nI want to buy ${product.name} for D${product.price}.\nMy payment method is: ${paymentMethod}.\n${fulfillmentText}\n\nIs this available?`
     );
+
     window.location.href = `https://wa.me/${cleanNumber}?text=${message}`;
   };
 
@@ -102,7 +130,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
       </div>
     );
 
-  if (!product)
+  if (!product || !resolvedShop)
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F9F8F6]">
         <div className="text-center">
@@ -118,7 +146,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     <div className="min-h-screen bg-[#F9F8F6] pb-24 font-sans text-[#2C3E2C]">
       <nav className="p-6">
         <Link
-          href={`/shop/${product.shops?.shop_slug || ''}`}
+          href={`/shop/${resolvedShop.shop_slug || ''}`}
           className="inline-flex items-center gap-2 text-xs font-bold uppercase text-gray-500 hover:text-[#2C3E2C]"
         >
           <ArrowLeft size={16} /> Back
@@ -144,21 +172,88 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
           <p className="mb-6 text-3xl font-bold text-green-800">D{product.price}</p>
 
           <div className="mb-6 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-            <p className="whitespace-pre-wrap text-sm text-gray-600">
-              {product.description || 'No description provided.'}
-            </p>
+            <p className="whitespace-pre-wrap text-sm text-gray-600">{product.description || 'No description provided.'}</p>
           </div>
+
           <div className="mb-8 border-t border-gray-100 pt-6">
-            <Link
-              href={`/shop/${product.shops?.shop_slug}`}
-              className="hover:opacity-70 transition-opacity cursor-pointer inline-block"
-            >
+            <Link href={`/shop/${resolvedShop.shop_slug}`} className="hover:opacity-70 transition-opacity cursor-pointer inline-block">
               <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">Sold By</p>
-              <p className="text-base font-bold text-green-800 underline decoration-1 underline-offset-4">
-                {product.shops?.shop_name}
-              </p>
+              <p className="text-base font-bold text-green-800 underline decoration-1 underline-offset-4">{resolvedShop.shop_name}</p>
             </Link>
           </div>
+
+          {(offersDelivery || offersPickup) && (
+            <div className="mb-6 border-t border-gray-100 pt-6">
+              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-500">How to Get Your Order</p>
+
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {offersDelivery && (
+                  <button
+                    type="button"
+                    onClick={() => setFulfillmentMethod('delivery')}
+                    className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm font-semibold transition ${
+                      fulfillmentMethod === 'delivery'
+                        ? `border-transparent ${activeColor.bg} text-white`
+                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                    }`}
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <Truck size={16} /> Delivery
+                    </span>
+                    {fulfillmentMethod === 'delivery' ? (
+                      <CheckCircle2 size={18} />
+                    ) : (
+                      <span className="h-[18px] w-[18px] rounded-full border border-gray-300" />
+                    )}
+                  </button>
+                )}
+
+                {offersPickup && (
+                  <button
+                    type="button"
+                    onClick={() => setFulfillmentMethod('pickup')}
+                    className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm font-semibold transition ${
+                      fulfillmentMethod === 'pickup'
+                        ? `border-transparent ${activeColor.bg} text-white`
+                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                    }`}
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <MapPin size={16} /> Pickup
+                    </span>
+                    {fulfillmentMethod === 'pickup' ? (
+                      <CheckCircle2 size={18} />
+                    ) : (
+                      <span className="h-[18px] w-[18px] rounded-full border border-gray-300" />
+                    )}
+                  </button>
+                )}
+              </div>
+
+              {fulfillmentMethod === 'delivery' && offersDelivery && (
+                <div className="mt-3 space-y-2">
+                  <label htmlFor="delivery-address" className="text-xs font-bold uppercase tracking-wide text-gray-500">
+                    Delivery Area / Address (Optional but recommended)
+                  </label>
+                  <textarea
+                    id="delivery-address"
+                    rows={3}
+                    value={deliveryAddress}
+                    onChange={(event) => setDeliveryAddress(event.target.value)}
+                    placeholder="Senegambia, near the petrol station"
+                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 outline-none transition focus:border-[#2C3E2C]"
+                  />
+                </div>
+              )}
+
+              {fulfillmentMethod === 'pickup' && offersPickup && (
+                <div className="mt-3 rounded-xl bg-gray-100 p-4 text-sm text-gray-700">
+                  {pickupInstructions || 'Pickup details will be shared by the seller after you place your order.'}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="mb-6 border-y border-gray-200 py-4">
             <p className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-500">Payment Method</p>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
