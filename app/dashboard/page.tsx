@@ -71,6 +71,25 @@ export default function Dashboard() {
   const supabase = createClientComponentClient();
   const router = useRouter();
 
+  const fetchShop = async (id: string) => {
+    const { data: shopData } = await supabase
+      .from('shops')
+      .select(
+        'id, shop_name, shop_slug, banner_url, logo_url, bio, store_layout, theme_color, offers_delivery, offers_pickup, pickup_instructions'
+      )
+      .eq('id', id)
+      .single();
+
+    const resolvedShop = shopData as Shop | null;
+    setShop(resolvedShop);
+    setBioInput(resolvedShop?.bio || '');
+    setStoreLayout(resolvedShop?.store_layout || 'bantaba');
+    setThemeColor(resolvedShop?.theme_color || 'emerald');
+    setOffersDelivery(resolvedShop?.offers_delivery ?? true);
+    setOffersPickup(resolvedShop?.offers_pickup ?? true);
+    setPickupInstructions(resolvedShop?.pickup_instructions || '');
+  };
+
   useEffect(() => {
     async function loadDashboard() {
       const {
@@ -82,22 +101,7 @@ export default function Dashboard() {
       }
       setUserId(user.id);
 
-      const { data: shopData } = await supabase
-        .from('shops')
-        .select(
-          'id, shop_name, shop_slug, banner_url, logo_url, bio, store_layout, theme_color, offers_delivery, offers_pickup, pickup_instructions'
-        )
-        .eq('id', user.id)
-        .single();
-
-      const resolvedShop = shopData as Shop | null;
-      setShop(resolvedShop);
-      setBioInput(resolvedShop?.bio || '');
-      setStoreLayout(resolvedShop?.store_layout || 'bantaba');
-      setThemeColor(resolvedShop?.theme_color || 'emerald');
-      setOffersDelivery(resolvedShop?.offers_delivery ?? true);
-      setOffersPickup(resolvedShop?.offers_pickup ?? true);
-      setPickupInstructions(resolvedShop?.pickup_instructions || '');
+      await fetchShop(user.id);
 
       const { data: productData } = await supabase
         .from('products')
