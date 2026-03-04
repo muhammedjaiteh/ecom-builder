@@ -83,7 +83,6 @@ export default function Dashboard() {
 
     const resolvedShop = shopData as Shop | null;
     setShop(resolvedShop);
-    setBannerUrl(resolvedShop?.banner_url || null);
     setBioInput(resolvedShop?.bio || '');
     setStoreLayout(resolvedShop?.store_layout || 'bantaba');
     setThemeColor(resolvedShop?.theme_color || 'emerald');
