@@ -54,6 +54,7 @@ export default function Dashboard() {
   const [shop, setShop] = useState<Shop | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [uploadingBanner, setUploadingBanner] = useState(false);
+  const [bannerUrl, setBannerUrl] = useState<string | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [bioInput, setBioInput] = useState('');
   const [savingBio, setSavingBio] = useState(false);
@@ -156,9 +157,9 @@ export default function Dashboard() {
 
     const { data: publicUrlData } = supabase.storage.from('banners').getPublicUrl(filePath);
 
-    const bannerUrl = publicUrlData.publicUrl;
+    const uploadedBannerUrl = publicUrlData.publicUrl;
 
-    const { error: updateError } = await supabase.from('shops').update({ banner_url: bannerUrl }).eq('id', userId);
+    const { error: updateError } = await supabase.from('shops').update({ banner_url: uploadedBannerUrl }).eq('id', userId);
 
     if (updateError) {
       alert('Banner uploaded but failed to save to your shop profile.');
@@ -166,9 +167,25 @@ export default function Dashboard() {
       return;
     }
 
-    setShop((prev) => (prev ? { ...prev, banner_url: bannerUrl } : prev));
+    setShop((prev) => (prev ? { ...prev, banner_url: uploadedBannerUrl } : prev));
+    setBannerUrl(uploadedBannerUrl);
     setUploadingBanner(false);
     event.target.value = '';
+  };
+
+
+  const handleRemoveBanner = async () => {
+    if (!userId) return;
+
+    const { error } = await supabase.from('shops').update({ banner_url: null }).eq('id', userId);
+
+    if (error) {
+      alert('Failed to remove banner. Please try again.');
+      return;
+    }
+
+    setShop((prev) => (prev ? { ...prev, banner_url: null } : prev));
+    setBannerUrl(null);
   };
 
   const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -513,14 +530,22 @@ export default function Dashboard() {
             <input type="file" accept="image/*" className="hidden" onChange={handleBannerUpload} disabled={uploadingBanner} />
           </label>
 
-          {shop?.banner_url && (
+          {bannerUrl && (
             <div>
               <p className="mb-2 text-xs uppercase tracking-widest text-gray-400">Current Banner</p>
               <img
-                src={shop.banner_url}
+                src={bannerUrl}
                 alt="Store banner preview"
                 className="h-48 w-full rounded-xl border border-gray-200 object-cover shadow-sm"
               />
+              <button
+                type="button"
+                onClick={handleRemoveBanner}
+                className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-red-500 transition-colors hover:text-red-700"
+              >
+                <Trash2 size={14} />
+                Remove Banner
+              </button>
             </div>
           )}
         </div>
