@@ -320,7 +320,7 @@ export default function Dashboard() {
             <Eye size={16} /> View Shop
           </Link>
           <Link
-            href="/dashboard/add-product"
+            href="/dashboard/add"
             className="flex items-center gap-2 rounded-xl bg-[#2C3E2C] px-6 py-3 text-xs font-bold uppercase tracking-widest text-white shadow-lg transition-all hover:bg-black"
           >
             <Plus size={16} /> Add Product

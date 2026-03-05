@@ -1,7 +1,7 @@
 'use client';
 
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { use, useEffect, useState } from 'react';
+import { use, useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Save, Loader2, ArrowLeft, Upload } from 'lucide-react';
 import Link from 'next/link';
