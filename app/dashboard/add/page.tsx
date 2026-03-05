@@ -1,95 +1,77 @@
 'use client';
 
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { use, useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Save, Loader2, ArrowLeft, Plus, Trash2, Star } from 'lucide-react';
+import { ArrowLeft, Loader2, Plus, Save, Sparkles, Star, Trash2 } from 'lucide-react';
 import Link from 'next/link';
-
-type ProductImage = {
-  id: string;
-  url: string;
-  isDefault: boolean;
-};
 
 const CATEGORY_OPTIONS = ['Food', 'Drinks', 'Beauty', 'Fashion', 'Electronics', 'General'] as const;
 const MAX_IMAGES = 5;
 
-export default function EditProductPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id: productId } = use(params);
-
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+export default function AddProductPage() {
+  const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [generating, setGenerating] = useState(false);
 
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
+  const [category, setCategory] = useState<(typeof CATEGORY_OPTIONS)[number]>('General');
   const [description, setDescription] = useState('');
-  const [category, setCategory] = useState('General');
-  const [images, setImages] = useState<ProductImage[]>([]);
+  const [images, setImages] = useState<{ url: string; isDefault: boolean }[]>([]);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const supabase = createClientComponentClient();
   const router = useRouter();
 
-  useEffect(() => {
-    async function fetchProduct() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        router.push('/login');
-        return;
-      }
-
-      const { data: product, error } = await supabase
-        .from('products')
-        .select('id, name, price, description, category, image_urls, image_url')
-        .eq('id', productId)
-        .eq('user_id', user.id)
-        .single();
-
-      if (error || !product) {
-        alert('Product not found!');
-        router.push('/dashboard');
-        return;
-      }
-
-      const existingUrls = Array.isArray(product.image_urls)
-        ? product.image_urls.filter((url: unknown): url is string => typeof url === 'string' && url.length > 0)
-        : product.image_url
-          ? [product.image_url]
-          : [];
-
-      const initialImages: ProductImage[] = existingUrls.slice(0, MAX_IMAGES).map((url: string, index: number) => ({
-        id: `${index}-${url}`,
-        url,
-        isDefault: index === 0,
-      }));
-
-      setName(product.name || '');
-      setPrice(String(product.price ?? ''));
-      setDescription(product.description || '');
-      setCategory(product.category || 'General');
-      setImages(initialImages);
-      setLoading(false);
+  const generateMagicDescription = () => {
+    if (!name.trim()) {
+      alert('Please enter a product name first!');
+      return;
     }
 
-    fetchProduct();
-  }, [productId, router, supabase]);
+    setGenerating(true);
 
-  const setAsPrimary = (imageId: string) => {
-    setImages((prev) => prev.map((image) => ({ ...image, isDefault: image.id === imageId })));
+    setTimeout(() => {
+      const lowerName = name.toLowerCase();
+      let aiText = `Discover the excellence of ${name}. High-quality, authentic, and designed to meet your needs.`;
+
+      if (category === 'Food') {
+        aiText = lowerName.includes('honey') || lowerName.includes('oil')
+          ? `Experience the untouched purity of ${name}. 100% natural and locally sourced with no additives.`
+          : `Experience the authentic taste of ${name}. Freshly prepared with the finest local ingredients.`;
+      }
+
+      if (category === 'Fashion') {
+        aiText = `Upgrade your wardrobe with ${name}. Crafted for comfort, style, and long-lasting quality.`;
+      }
+
+      if (category === 'Beauty') {
+        aiText = `Enhance your self-care routine with ${name}. Gentle, premium quality, and suitable for daily use.`;
+      }
+
+      if (category === 'Electronics') {
+        aiText = `Upgrade your tech with ${name}. Reliable performance, durable build, and sleek everyday usability.`;
+      }
+
+      setDescription(aiText);
+      setGenerating(false);
+    }, 1200);
   };
 
-  const removeImage = (imageId: string) => {
+  const setAsPrimary = (index: number) => {
+    setImages((prev) => prev.map((image, imageIndex) => ({ ...image, isDefault: imageIndex === index })));
+  };
+
+  const removeImage = (index: number) => {
     setImages((prev) => {
-      const next = prev.filter((image) => image.id !== imageId);
+      const next = prev.filter((_, imageIndex) => imageIndex !== index);
+
       if (next.length > 0 && !next.some((image) => image.isDefault)) {
         next[0] = { ...next[0], isDefault: true };
       }
-      return [...next];
+
+      return next;
     });
   };
 
@@ -106,32 +88,29 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       const {
         data: { user },
       } = await supabase.auth.getUser();
+
       if (!user) throw new Error('Not authenticated');
 
       const remainingSlots = MAX_IMAGES - images.length;
-      const selectedFiles = Array.from(files).slice(0, remainingSlots);
-      const uploadedImages: ProductImage[] = [];
+      const filesToUpload = Array.from(files).slice(0, remainingSlots);
+      const uploaded: { url: string; isDefault: boolean }[] = [];
 
-      for (const file of selectedFiles) {
+      for (const file of filesToUpload) {
         const fileExt = file.name.split('.').pop();
-        const fileName = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
+        const filePath = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
 
-        const { error: uploadError } = await supabase.storage.from('product-images').upload(fileName, file);
+        const { error: uploadError } = await supabase.storage.from('product-images').upload(filePath, file);
         if (uploadError) throw uploadError;
 
         const {
           data: { publicUrl },
-        } = supabase.storage.from('product-images').getPublicUrl(fileName);
+        } = supabase.storage.from('product-images').getPublicUrl(filePath);
 
-        uploadedImages.push({
-          id: crypto.randomUUID(),
-          url: publicUrl,
-          isDefault: false,
-        });
+        uploaded.push({ url: publicUrl, isDefault: false });
       }
 
       setImages((prev) => {
-        const next = [...prev, ...uploadedImages];
+        const next = [...prev, ...uploaded];
         if (next.length > 0 && !next.some((image) => image.isDefault)) {
           next[0] = { ...next[0], isDefault: true };
         }
@@ -142,29 +121,31 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       alert(`Image upload failed: ${message}`);
     } finally {
       setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      if (inputRef.current) inputRef.current.value = '';
     }
   };
 
-  const handleUpdate = async (event: React.FormEvent) => {
+  const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
-    setSaving(true);
+    setLoading(true);
 
     try {
-      const orderedImages = [...images].sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
-      const imageUrls = orderedImages.map((image) => image.url);
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
 
-      const { error } = await supabase
-        .from('products')
-        .update({
-          name,
-          price,
-          description,
-          category,
-          image_urls: imageUrls,
-          image_url: imageUrls[0] || null,
-        })
-        .eq('id', productId);
+      const orderedImages = [...images].sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
+
+      const { error } = await supabase.from('products').insert({
+        user_id: user.id,
+        name,
+        price: parseFloat(price),
+        category,
+        description,
+        image_urls: orderedImages.map((image) => image.url),
+        image_url: orderedImages[0]?.url || null,
+      });
 
       if (error) throw error;
 
@@ -172,27 +153,23 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       router.refresh();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      alert(`Error updating product: ${message}`);
+      alert(`Error: ${message}`);
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   };
-
-  if (loading) {
-    return <div className="min-h-screen bg-[#F9F8F6] flex items-center justify-center">Loading Editor...</div>;
-  }
 
   return (
     <div className="min-h-screen bg-[#F9F8F6] p-6 font-sans text-[#2C3E2C] flex justify-center">
       <div className="w-full max-w-2xl">
         <Link href="/dashboard" className="mb-8 flex items-center text-gray-500 transition-colors hover:text-green-700">
-          <ArrowLeft size={20} className="mr-2" /> Cancel &amp; Go Back
+          <ArrowLeft size={20} className="mr-2" /> Cancel
         </Link>
 
         <div className="rounded-3xl border border-[#E6E4DC] bg-white p-8 shadow-sm">
-          <h1 className="mb-6 text-3xl font-serif font-bold">Edit Product</h1>
+          <h1 className="mb-6 text-3xl font-serif font-bold">Add New Product</h1>
 
-          <form onSubmit={handleUpdate} className="space-y-6">
+          <form onSubmit={handleSave} className="space-y-6">
             <div>
               <div className="mb-2 flex items-center justify-between">
                 <label className="block text-xs font-bold uppercase tracking-widest text-gray-500">Product Gallery (up to 5)</label>
@@ -200,7 +177,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
               </div>
 
               <input
-                ref={fileInputRef}
+                ref={inputRef}
                 type="file"
                 accept="image/*"
                 multiple
@@ -211,23 +188,27 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
                 {Array.from({ length: MAX_IMAGES }).map((_, index) => {
                   const image = images[index];
+
                   if (image) {
                     return (
                       <div
-                        key={image.id}
+                        key={`${image.url}-${index}`}
                         className="group relative overflow-hidden rounded-2xl border border-[#E6E4DC] bg-white shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md"
                       >
                         <img src={image.url} alt={`Product ${index + 1}`} className="h-28 w-full object-cover" />
+
                         <button
                           type="button"
-                          onClick={() => removeImage(image.id)}
+                          onClick={() => removeImage(index)}
                           className="absolute right-2 top-2 rounded-full bg-black/60 p-1.5 text-white transition hover:bg-red-600"
+                          aria-label="Delete image"
                         >
                           <Trash2 size={14} />
                         </button>
+
                         <button
                           type="button"
-                          onClick={() => setAsPrimary(image.id)}
+                          onClick={() => setAsPrimary(index)}
                           className={`flex w-full items-center justify-center gap-1 px-2 py-2 text-[11px] font-semibold transition ${
                             image.isDefault
                               ? 'bg-emerald-50 text-emerald-700'
@@ -235,7 +216,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                           }`}
                         >
                           <Star size={12} className={image.isDefault ? 'fill-current' : ''} />
-                          {image.isDefault ? 'Primary' : 'Set as Primary'}
+                          {image.isDefault ? 'Primary' : 'Set Primary'}
                         </button>
                       </div>
                     );
@@ -245,7 +226,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                     <button
                       key={`empty-${index}`}
                       type="button"
-                      onClick={() => fileInputRef.current?.click()}
+                      onClick={() => inputRef.current?.click()}
                       disabled={uploading}
                       className="flex h-36 items-center justify-center rounded-2xl border-2 border-dashed border-[#D7D4CA] bg-[#F9F8F6] text-gray-400 transition-all duration-300 hover:border-[#2C3E2C] hover:text-[#2C3E2C] disabled:cursor-not-allowed disabled:opacity-60"
                     >
@@ -263,48 +244,54 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 className="w-full rounded-xl bg-[#F9F8F6] p-4 text-lg font-serif focus:ring-2 focus:ring-[#2C3E2C]"
+                placeholder="e.g. Royal Baobab Juice"
                 required
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">Price (Dalasi)</label>
+                <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">Category</label>
+                <select
+                  value={category}
+                  onChange={(event) => setCategory(event.target.value as (typeof CATEGORY_OPTIONS)[number])}
+                  className="w-full rounded-xl bg-[#F9F8F6] p-4 font-bold text-gray-700 focus:ring-2 focus:ring-[#2C3E2C]"
+                >
+                  {CATEGORY_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">Price (D)</label>
                 <input
                   type="number"
                   value={price}
                   onChange={(event) => setPrice(event.target.value)}
                   className="w-full rounded-xl bg-[#F9F8F6] p-4 text-lg font-bold text-green-700 focus:ring-2 focus:ring-[#2C3E2C]"
+                  placeholder="0.00"
                   required
                 />
               </div>
+            </div>
 
-              <div>
-                <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">Status</label>
-                <div className="w-full rounded-xl border border-green-200 bg-green-100 p-4 text-center font-bold text-green-800">Active</div>
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <label className="block text-xs font-bold uppercase tracking-widest text-gray-500">Description</label>
+                <button
+                  type="button"
+                  onClick={generateMagicDescription}
+                  disabled={generating || !name.trim()}
+                  className="flex items-center gap-2 rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-white shadow-md transition-transform hover:scale-105 disabled:opacity-60"
+                >
+                  {generating ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                  {generating ? 'Writing...' : 'AI Magic Write'}
+                </button>
               </div>
-            </div>
 
-            <div>
-              <label htmlFor="category" className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">
-                Category
-              </label>
-              <select
-                id="category"
-                value={category}
-                onChange={(event) => setCategory(event.target.value)}
-                className="w-full rounded-xl border border-[#E6E4DC] bg-[#F9F8F6] p-4 text-sm font-semibold text-[#2C3E2C] outline-none transition focus:border-[#2C3E2C]"
-              >
-                {CATEGORY_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">Description</label>
               <textarea
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
@@ -316,11 +303,11 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
 
             <button
               type="submit"
-              disabled={saving || uploading}
+              disabled={loading || uploading}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#2C3E2C] py-4 text-lg font-bold text-white shadow-xl transition-all hover:bg-black active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {saving ? <Loader2 className="animate-spin" /> : <Save size={20} />}
-              {saving ? 'Saving Changes...' : 'Update Product'}
+              {loading ? <Loader2 className="animate-spin" /> : <Save size={20} />}
+              {loading ? 'Publishing Product...' : 'Publish Product'}
             </button>
           </form>
         </div>
