@@ -1,32 +1,26 @@
 'use client';
 
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { use, useEffect, useRef, useState } from 'react';
+import { use, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Save, Loader2, ArrowLeft, Plus, Trash2, Star } from 'lucide-react';
+import { Save, Loader2, ArrowLeft, Upload } from 'lucide-react';
 import Link from 'next/link';
 
-type ProductImage = {
-  id: string;
-  url: string;
-  isDefault: boolean;
-};
-
 const CATEGORY_OPTIONS = ['Food', 'Drinks', 'Beauty', 'Fashion', 'Electronics', 'General'] as const;
-const MAX_IMAGES = 5;
 
 export default function EditProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: productId } = use(params);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
 
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('General');
-  const [images, setImages] = useState<ProductImage[]>([]);
+  const [currentImageUrl, setCurrentImageUrl] = useState('');
+  const [newImageFile, setNewImageFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const supabase = createClientComponentClient();
@@ -45,7 +39,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
 
       const { data: product, error } = await supabase
         .from('products')
-        .select('id, name, price, description, category, image_urls, image_url')
+        .select('id, name, price, description, image_url, category')
         .eq('id', productId)
         .eq('user_id', user.id)
         .single();
@@ -56,51 +50,28 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
         return;
       }
 
-      const existingUrls = Array.isArray(product.image_urls)
-        ? product.image_urls.filter((url: unknown): url is string => typeof url === 'string' && url.length > 0)
-        : product.image_url
-          ? [product.image_url]
-          : [];
-
-      const initialImages: ProductImage[] = existingUrls.slice(0, MAX_IMAGES).map((url: string, index: number) => ({
-        id: `${index}-${url}`,
-        url,
-        isDefault: index === 0,
-      }));
-
       setName(product.name || '');
       setPrice(String(product.price ?? ''));
       setDescription(product.description || '');
       setCategory(product.category || 'General');
-      setImages(initialImages);
+      setCurrentImageUrl(product.image_url || '');
       setLoading(false);
     }
 
     fetchProduct();
   }, [productId, router, supabase]);
 
-  const setAsPrimary = (imageId: string) => {
-    setImages((prev) => prev.map((image) => ({ ...image, isDefault: image.id === imageId })));
+  const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setNewImageFile(file);
+    setPreviewUrl(URL.createObjectURL(file));
   };
 
-  const removeImage = (imageId: string) => {
-    setImages((prev) => {
-      const next = prev.filter((image) => image.id !== imageId);
-      if (next.length > 0 && !next.some((image) => image.isDefault)) {
-        next[0] = { ...next[0], isDefault: true };
-      }
-      return [...next];
-    });
-  };
-
-  const handleUpload = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    if (images.length >= MAX_IMAGES) {
-      alert('You can upload up to 5 images only.');
-      return;
-    }
-
-    setUploading(true);
+  const handleUpdate = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
 
     try {
       const {
@@ -112,47 +83,19 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       const selectedFiles = Array.from(files).slice(0, remainingSlots);
       const uploadedImages: ProductImage[] = [];
 
-      for (const file of selectedFiles) {
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
+      if (newImageFile) {
+        const fileExt = newImageFile.name.split('.').pop();
+        const fileName = `${Math.random()}.${fileExt}`;
 
-        const { error: uploadError } = await supabase.storage.from('product-images').upload(fileName, file);
+        const { error: uploadError } = await supabase.storage.from('product-images').upload(fileName, newImageFile);
         if (uploadError) throw uploadError;
 
         const {
           data: { publicUrl },
         } = supabase.storage.from('product-images').getPublicUrl(fileName);
 
-        uploadedImages.push({
-          id: crypto.randomUUID(),
-          url: publicUrl,
-          isDefault: false,
-        });
+        finalImageUrl = publicUrl;
       }
-
-      setImages((prev) => {
-        const next = [...prev, ...uploadedImages];
-        if (next.length > 0 && !next.some((image) => image.isDefault)) {
-          next[0] = { ...next[0], isDefault: true };
-        }
-        return next;
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      alert(`Image upload failed: ${message}`);
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
-
-  const handleUpdate = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setSaving(true);
-
-    try {
-      const orderedImages = [...images].sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
-      const imageUrls = orderedImages.map((image) => image.url);
 
       const { error } = await supabase
         .from('products')
@@ -161,8 +104,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           price,
           description,
           category,
-          image_urls: imageUrls,
-          image_url: imageUrls[0] || null,
+          image_url: finalImageUrl,
         })
         .eq('id', productId);
 
@@ -193,67 +135,19 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           <h1 className="mb-6 text-3xl font-serif font-bold">Edit Product</h1>
 
           <form onSubmit={handleUpdate} className="space-y-6">
-            <div>
-              <div className="mb-2 flex items-center justify-between">
-                <label className="block text-xs font-bold uppercase tracking-widest text-gray-500">Product Gallery (up to 5)</label>
-                <span className="text-xs text-gray-400">{images.length}/{MAX_IMAGES}</span>
+            <div className="flex flex-col items-center rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 p-6">
+              <div className="relative mb-4 h-32 w-32 overflow-hidden rounded-lg bg-gray-200 shadow-md">
+                {previewUrl || currentImageUrl ? (
+                  <img src={previewUrl || currentImageUrl} alt="Preview" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-sm text-gray-400">No image</div>
+                )}
               </div>
 
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={(event) => void handleUpload(event.target.files)}
-              />
-
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
-                {Array.from({ length: MAX_IMAGES }).map((_, index) => {
-                  const image = images[index];
-                  if (image) {
-                    return (
-                      <div
-                        key={image.id}
-                        className="group relative overflow-hidden rounded-2xl border border-[#E6E4DC] bg-white shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md"
-                      >
-                        <img src={image.url} alt={`Product ${index + 1}`} className="h-28 w-full object-cover" />
-                        <button
-                          type="button"
-                          onClick={() => removeImage(image.id)}
-                          className="absolute right-2 top-2 rounded-full bg-black/60 p-1.5 text-white transition hover:bg-red-600"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setAsPrimary(image.id)}
-                          className={`flex w-full items-center justify-center gap-1 px-2 py-2 text-[11px] font-semibold transition ${
-                            image.isDefault
-                              ? 'bg-emerald-50 text-emerald-700'
-                              : 'bg-white text-gray-600 hover:bg-gray-50'
-                          }`}
-                        >
-                          <Star size={12} className={image.isDefault ? 'fill-current' : ''} />
-                          {image.isDefault ? 'Primary' : 'Set as Primary'}
-                        </button>
-                      </div>
-                    );
-                  }
-
-                  return (
-                    <button
-                      key={`empty-${index}`}
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={uploading}
-                      className="flex h-36 items-center justify-center rounded-2xl border-2 border-dashed border-[#D7D4CA] bg-[#F9F8F6] text-gray-400 transition-all duration-300 hover:border-[#2C3E2C] hover:text-[#2C3E2C] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {uploading ? <Loader2 className="animate-spin" size={20} /> : <Plus size={24} />}
-                    </button>
-                  );
-                })}
-              </div>
+              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 font-bold text-gray-700 transition-all hover:bg-gray-50">
+                <Upload size={16} /> Change Image
+                <input type="file" className="hidden" accept="image/*" onChange={handleImageChange} />
+              </label>
             </div>
 
             <div>
@@ -262,7 +156,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                 type="text"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
-                className="w-full rounded-xl bg-[#F9F8F6] p-4 text-lg font-serif focus:ring-2 focus:ring-[#2C3E2C]"
+                className="w-full rounded-xl border-none bg-[#F9F8F6] p-4 text-lg font-serif focus:ring-2 focus:ring-[#2C3E2C]"
                 required
               />
             </div>
@@ -274,7 +168,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                   type="number"
                   value={price}
                   onChange={(event) => setPrice(event.target.value)}
-                  className="w-full rounded-xl bg-[#F9F8F6] p-4 text-lg font-bold text-green-700 focus:ring-2 focus:ring-[#2C3E2C]"
+                  className="w-full rounded-xl border-none bg-[#F9F8F6] p-4 text-lg font-bold text-green-700 focus:ring-2 focus:ring-[#2C3E2C]"
                   required
                 />
               </div>
@@ -309,15 +203,15 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
                 rows={4}
-                className="w-full rounded-xl bg-[#F9F8F6] p-4 text-gray-600 focus:ring-2 focus:ring-[#2C3E2C]"
+                className="w-full rounded-xl border-none bg-[#F9F8F6] p-4 text-gray-600 focus:ring-2 focus:ring-[#2C3E2C]"
                 placeholder="Describe your product..."
               />
             </div>
 
             <button
               type="submit"
-              disabled={saving || uploading}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#2C3E2C] py-4 text-lg font-bold text-white shadow-xl transition-all hover:bg-black active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70"
+              disabled={saving}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#2C3E2C] py-4 text-lg font-bold text-white shadow-xl transition-all active:scale-[0.98] hover:bg-black disabled:cursor-not-allowed disabled:opacity-70"
             >
               {saving ? <Loader2 className="animate-spin" /> : <Save size={20} />}
               {saving ? 'Saving Changes...' : 'Update Product'}
