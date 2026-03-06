@@ -1,7 +1,7 @@
 'use client';
 
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { use, useEffect, useState, useRef } from 'react';
+import { use, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Save, Loader2, ArrowLeft, Upload } from 'lucide-react';
 import Link from 'next/link';
@@ -18,6 +18,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   const [price, setPrice] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('General');
+  const [status, setStatus] = useState('Active');
   const [currentImageUrl, setCurrentImageUrl] = useState('');
   const [newImageFile, setNewImageFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -38,7 +39,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
 
       const { data: product, error } = await supabase
         .from('products')
-        .select('id, name, price, description, image_url, category')
+        .select('id, name, price, description, image_url, category, status')
         .eq('id', productId)
         .eq('user_id', user.id)
         .single();
@@ -53,6 +54,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       setPrice(String(product.price ?? ''));
       setDescription(product.description || '');
       setCategory(product.category || 'General');
+      setStatus(product.status || 'Active');
       setCurrentImageUrl(product.image_url || '');
       setLoading(false);
     }
@@ -96,6 +98,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           price,
           description,
           category,
+          status,
           image_url: finalImageUrl,
         })
         .eq('id', productId);
@@ -167,7 +170,14 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
 
               <div>
                 <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">Status</label>
-                <div className="w-full rounded-xl border border-green-200 bg-green-100 p-4 text-center font-bold text-green-800">Active</div>
+                <select
+                  value={status}
+                  onChange={(event) => setStatus(event.target.value)}
+                  className="w-full rounded-xl border border-[#E6E4DC] bg-[#F9F8F6] p-4 text-sm font-semibold text-[#2C3E2C] outline-none transition focus:border-[#2C3E2C]"
+                >
+                  <option value="Active">Active (Visible to buyers)</option>
+                  <option value="Draft">Draft / Sold Out (Hidden from buyers)</option>
+                </select>
               </div>
             </div>
 
