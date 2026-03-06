@@ -17,6 +17,7 @@ export default function AddProductPage() {
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
   const [category, setCategory] = useState<(typeof CATEGORY_OPTIONS)[number]>('General');
+  const [status, setStatus] = useState('Active');
   const [description, setDescription] = useState('');
   const [images, setImages] = useState<{ url: string; isDefault: boolean }[]>([]);
 
@@ -142,6 +143,7 @@ export default function AddProductPage() {
         name,
         price: parseFloat(price),
         category,
+        status,
         description,
         image_urls: orderedImages.map((image) => image.url),
         image_url: orderedImages[0]?.url || null,
@@ -275,6 +277,18 @@ export default function AddProductPage() {
                   placeholder="0.00"
                   required
                 />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">Status</label>
+                <select
+                  value={status}
+                  onChange={(event) => setStatus(event.target.value)}
+                  className="w-full rounded-xl bg-[#F9F8F6] p-4 font-bold text-gray-700 focus:ring-2 focus:ring-[#2C3E2C]"
+                >
+                  <option value="Active">Active (Visible to buyers)</option>
+                  <option value="Draft">Draft / Sold Out (Hidden from buyers)</option>
+                </select>
               </div>
             </div>
 

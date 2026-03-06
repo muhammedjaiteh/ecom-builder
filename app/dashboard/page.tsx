@@ -303,7 +303,7 @@ export default function Dashboard() {
     return <div className="min-h-screen bg-[#F9F8F6] p-8 font-serif animate-pulse">Loading Command Center...</div>;
 
   return (
-    <div className="min-h-screen bg-[#F9F8F6] p-6 font-sans text-[#2C3E2C] md:p-10">
+    <div className="min-h-screen bg-[#F9F8F6] p-6 pb-32 font-sans text-[#2C3E2C] md:p-10 md:pb-32">
       <div className="mb-10 flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
         <div>
           <h1 className="text-3xl font-serif font-bold text-[#1a2e1a]">Dashboard</h1>
@@ -565,7 +565,10 @@ export default function Dashboard() {
         ) : (
           <div className="divide-y divide-gray-100">
             {products.map((product) => (
-              <div key={product.id} className="group flex items-center justify-between p-4 transition-colors hover:bg-gray-50 md:p-6">
+              <div
+                key={product.id}
+                className="group flex flex-col gap-4 p-4 transition-colors hover:bg-gray-50 md:flex-row md:items-center md:justify-between md:p-6"
+              >
                 <div className="flex items-center gap-4 md:gap-6">
                   <div className="h-16 w-16 overflow-hidden rounded-lg border border-gray-200 bg-gray-100">
                     {product.image_url && <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />}
@@ -579,28 +582,28 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 md:gap-4">
+                <div className="flex flex-wrap items-center gap-2">
                   <Link
                     href={`/product/${product.id}`}
                     target="_blank"
-                    className="rounded-full p-2 text-gray-400 transition-all hover:bg-white hover:text-[#2C3E2C]"
+                    className="inline-flex items-center gap-2 rounded-lg border border-[#E6E4DC] bg-white px-3 py-2 text-xs font-bold uppercase tracking-wide text-gray-600 transition hover:border-[#2C3E2C] hover:text-[#2C3E2C]"
                     title="View"
                   >
-                    <ExternalLink size={18} />
+                    <ExternalLink size={14} /> View
                   </Link>
                   <Link
                     href={`/dashboard/edit/${product.id}`}
-                    className="rounded-full p-2 text-gray-400 transition-all hover:bg-blue-50 hover:text-blue-600"
+                    className="inline-flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-bold uppercase tracking-wide text-blue-700 transition hover:border-blue-200 hover:bg-blue-100"
                     title="Edit"
                   >
-                    <Edit size={18} />
+                    <Edit size={14} /> Edit
                   </Link>
                   <button
                     onClick={() => handleDelete(product.id)}
-                    className="rounded-full p-2 text-gray-400 transition-all hover:bg-red-50 hover:text-red-600"
+                    className="inline-flex items-center gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-bold uppercase tracking-wide text-red-700 transition hover:border-red-200 hover:bg-red-100"
                     title="Delete"
                   >
-                    <Trash2 size={18} />
+                    <Trash2 size={14} /> Delete
                   </button>
                 </div>
               </div>
