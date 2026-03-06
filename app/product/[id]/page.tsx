@@ -22,6 +22,7 @@ type Product = {
   price: number;
   description: string;
   image_url: string | null;
+  image_urls?: string[] | null;
   category: string;
   status?: string | null;
   shops: ShopInfo | ShopInfo[];
@@ -95,6 +96,17 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
   const shopData = product?.shops as ShopInfo | ShopInfo[] | null | undefined;
   const resolvedShop = useMemo(() => (Array.isArray(shopData) ? shopData[0] : shopData), [shopData]);
 
+  const normalizedImageUrls = useMemo(() => {
+    if (!product) return [];
+
+    const galleryUrls = Array.isArray(product.image_urls)
+      ? product.image_urls.filter((url): url is string => typeof url === 'string' && url.trim().length > 0)
+      : [];
+
+    if (galleryUrls.length > 0) return galleryUrls;
+    return product.image_url ? [product.image_url] : [];
+  }, [product]);
+
   const themeColor = resolvedShop?.theme_color;
   const offersDelivery = resolvedShop?.offers_delivery ?? true;
   const offersPickup = resolvedShop?.offers_pickup ?? true;
@@ -113,12 +125,19 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
     await supabase.from('leads').insert({ product_id: product.id, shop_id: resolvedShop.shop_name });
 
-    const whatsappLink = generateWhatsAppLink(resolvedShop.whatsapp_number || resolvedShop.phone,
-      `Hello ${resolvedShop.shop_name}! 👋\n\nI want to buy ${product.name} for D${product.price}.\nMy payment method is: ${paymentMethod}.\n${
-        fulfillmentMethod === 'delivery'
-          ? `Fulfillment: Delivery to ${deliveryAddress.trim()}.`
-          : 'Fulfillment: Pickup/Meetup.'
-      }\n\nIs this available?`
+    const whatsappLink = generateWhatsAppLink(
+      resolvedShop.whatsapp_number || resolvedShop.phone,
+      `Hello ${resolvedShop.shop_name}! 👋
+
+I want to buy ${product.name} for D${product.price}.
+My payment method is: ${paymentMethod}.
+${
+  fulfillmentMethod === 'delivery'
+    ? `Fulfillment: Delivery to ${deliveryAddress.trim()}.`
+    : 'Fulfillment: Pickup/Meetup.'
+}
+
+Is this available?`
     );
 
     if (!whatsappLink) {
@@ -133,7 +152,12 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     if (!product) return;
     const url = window.location.href;
     const message = encodeURIComponent(
-      `🔥 Check out this product on Sanndikaa:\n\n*${product.name}* for D${product.price}\n\nTap the link to buy now:\n${url}`
+      `🔥 Check out this product on Sanndikaa:
+
+*${product.name}* for D${product.price}
+
+Tap the link to buy now:
+${url}`
     );
     window.open(`https://wa.me/?text=${message}`, '_blank');
   };
@@ -170,11 +194,23 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
       </nav>
 
       <main className="mx-auto mt-4 grid max-w-4xl gap-8 px-4 md:grid-cols-2 md:gap-12 md:px-6">
-        <div className="aspect-[4/5] overflow-hidden rounded-2xl border border-gray-200 bg-gray-100 shadow-sm">
-          {product.image_url ? (
-            <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
+        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-gray-100 shadow-sm">
+          {normalizedImageUrls.length > 0 ? (
+            <div className="relative w-full overflow-hidden">
+              <div className="flex w-full overflow-x-auto snap-x snap-mandatory scrollbar-hide">
+                {normalizedImageUrls.map((url, index) => (
+                  <div key={index} className="w-full flex-none snap-center relative aspect-square bg-gray-100">
+                    <img
+                      src={url}
+                      alt={`Product image ${index + 1}`}
+                      className="object-cover w-full h-full"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
           ) : (
-            <div className="flex h-full w-full items-center justify-center text-gray-300">
+            <div className="flex aspect-square w-full items-center justify-center text-gray-300">
               <ShoppingBag size={48} />
             </div>
           )}

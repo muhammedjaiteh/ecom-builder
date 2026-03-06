@@ -608,6 +608,8 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      <div className="h-48 w-full"></div>
     </div>
   );
 }
