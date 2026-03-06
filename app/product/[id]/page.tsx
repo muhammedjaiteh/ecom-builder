@@ -100,13 +100,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
   const offersDelivery = resolvedShop?.offers_delivery ?? true;
   const offersPickup = resolvedShop?.offers_pickup ?? true;
   const pickupInstructions = resolvedShop?.pickup_instructions?.trim() || '';
-  const isProductActive = (product?.status || '').toLowerCase() === 'active';
-
-  const galleryImages = (product?.image_urls?.filter((imageUrl): imageUrl is string => Boolean(imageUrl)) || []).length
-    ? (product?.image_urls?.filter((imageUrl): imageUrl is string => Boolean(imageUrl)) || [])
-    : product?.image_url
-      ? [product.image_url]
-      : [];
+  const isProductActive = product?.status === 'active';
 
   const activeColor = themeColor ? themeColors[themeColor] || themeColors.emerald : themeColors.emerald;
 
