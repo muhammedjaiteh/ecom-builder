@@ -8,6 +8,7 @@ import Link from 'next/link';
 type ShopInfo = {
   shop_name: string;
   shop_slug: string;
+  phone: string | null;
   whatsapp_number: string | null;
   theme_color: 'emerald' | 'midnight' | 'terracotta' | 'ocean' | 'rose' | null;
   offers_delivery: boolean | null;
@@ -22,6 +23,7 @@ type Product = {
   description: string;
   image_url: string | null;
   category: string;
+  status?: string | null;
   shops: ShopInfo | ShopInfo[];
 };
 
@@ -36,6 +38,23 @@ const themeColors = {
 const PAYMENT_OPTIONS = ['Cash on Delivery', 'Wave'] as const;
 
 type FulfillmentMethod = 'delivery' | 'pickup';
+
+function sanitizeGambianPhoneNumber(rawNumber?: string | null) {
+  if (!rawNumber) return null;
+
+  const numericOnly = rawNumber.replace(/\D/g, '');
+  if (!numericOnly) return null;
+
+  const withoutLeadingZero = numericOnly.startsWith('0') ? numericOnly.slice(1) : numericOnly;
+  return withoutLeadingZero.startsWith('220') ? withoutLeadingZero : `220${withoutLeadingZero}`;
+}
+
+function generateWhatsAppLink(number: string | null | undefined, message: string) {
+  const sanitizedNumber = sanitizeGambianPhoneNumber(number);
+  if (!sanitizedNumber) return null;
+
+  return `https://wa.me/${sanitizedNumber}?text=${encodeURIComponent(message)}`;
+}
 
 export default function ProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: productId } = use(params);
@@ -53,7 +72,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
       const { data, error } = await supabase
         .from('products')
         .select(
-          '*, shops(shop_name, shop_slug, whatsapp_number, theme_color, offers_delivery, offers_pickup, pickup_instructions)'
+          '*, shops(shop_name, shop_slug, phone, whatsapp_number, theme_color, offers_delivery, offers_pickup, pickup_instructions)'
         )
         .eq('id', productId)
         .single();
@@ -80,10 +99,12 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
   const offersDelivery = resolvedShop?.offers_delivery ?? true;
   const offersPickup = resolvedShop?.offers_pickup ?? true;
   const pickupInstructions = resolvedShop?.pickup_instructions?.trim() || '';
+  const isProductActive = product?.status === 'active';
 
   const activeColor = themeColor ? themeColors[themeColor] || themeColors.emerald : themeColors.emerald;
+
   const handleOrderClick = async () => {
-    if (!product || !resolvedShop) return;
+    if (!product || !resolvedShop || !isProductActive) return;
 
     if (fulfillmentMethod === 'delivery' && !deliveryAddress.trim()) {
       alert('Please enter your delivery area/address so the seller can fulfill your order.');
@@ -92,25 +113,20 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
     await supabase.from('leads').insert({ product_id: product.id, shop_id: resolvedShop.shop_name });
 
-    const rawNumber = resolvedShop.whatsapp_number;
-    if (!rawNumber) {
+    const whatsappLink = generateWhatsAppLink(resolvedShop.whatsapp_number || resolvedShop.phone,
+      `Hello ${resolvedShop.shop_name}! 👋\n\nI want to buy ${product.name} for D${product.price}.\nMy payment method is: ${paymentMethod}.\n${
+        fulfillmentMethod === 'delivery'
+          ? `Fulfillment: Delivery to ${deliveryAddress.trim()}.`
+          : 'Fulfillment: Pickup/Meetup.'
+      }\n\nIs this available?`
+    );
+
+    if (!whatsappLink) {
       alert('This seller has not updated their WhatsApp number yet!');
       return;
     }
 
-    let cleanNumber = rawNumber.replace(/\D/g, '');
-    if (cleanNumber.length === 7) cleanNumber = `220${cleanNumber}`;
-
-    const fulfillmentText =
-      fulfillmentMethod === 'delivery'
-        ? `Fulfillment: Delivery to ${deliveryAddress.trim()}.`
-        : 'Fulfillment: Pickup/Meetup.';
-
-    const message = encodeURIComponent(
-      `Hello ${resolvedShop.shop_name}! 👋\n\nI want to buy ${product.name} for D${product.price}.\nMy payment method is: ${paymentMethod}.\n${fulfillmentText}\n\nIs this available?`
-    );
-
-    window.location.href = `https://wa.me/${cleanNumber}?text=${message}`;
+    window.location.href = whatsappLink;
   };
 
   const handleShareProduct = () => {
@@ -182,108 +198,125 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
             </Link>
           </div>
 
-          {(offersDelivery || offersPickup) && (
-            <div className="mb-6 border-t border-gray-100 pt-6">
-              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-500">How to Get Your Order</p>
+          {isProductActive ? (
+            <>
+              {(offersDelivery || offersPickup) && (
+                <div className="mb-6 border-t border-gray-100 pt-6">
+                  <p className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-500">How to Get Your Order</p>
 
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {offersDelivery && (
-                  <button
-                    type="button"
-                    onClick={() => setFulfillmentMethod('delivery')}
-                    className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm font-semibold transition ${
-                      fulfillmentMethod === 'delivery'
-                        ? `border-transparent ${activeColor.bg} text-white`
-                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
-                    }`}
-                  >
-                    <span className="inline-flex items-center gap-2">
-                      <Truck size={16} /> Delivery
-                    </span>
-                    {fulfillmentMethod === 'delivery' ? (
-                      <CheckCircle2 size={18} />
-                    ) : (
-                      <span className="h-[18px] w-[18px] rounded-full border border-gray-300" />
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {offersDelivery && (
+                      <button
+                        type="button"
+                        onClick={() => setFulfillmentMethod('delivery')}
+                        className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm font-semibold transition ${
+                          fulfillmentMethod === 'delivery'
+                            ? `border-transparent ${activeColor.bg} text-white`
+                            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                        }`}
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          <Truck size={16} /> Delivery
+                        </span>
+                        {fulfillmentMethod === 'delivery' ? (
+                          <CheckCircle2 size={18} />
+                        ) : (
+                          <span className="h-[18px] w-[18px] rounded-full border border-gray-300" />
+                        )}
+                      </button>
                     )}
-                  </button>
-                )}
 
-                {offersPickup && (
-                  <button
-                    type="button"
-                    onClick={() => setFulfillmentMethod('pickup')}
-                    className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm font-semibold transition ${
-                      fulfillmentMethod === 'pickup'
-                        ? `border-transparent ${activeColor.bg} text-white`
-                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
-                    }`}
-                  >
-                    <span className="inline-flex items-center gap-2">
-                      <MapPin size={16} /> Pickup
-                    </span>
-                    {fulfillmentMethod === 'pickup' ? (
-                      <CheckCircle2 size={18} />
-                    ) : (
-                      <span className="h-[18px] w-[18px] rounded-full border border-gray-300" />
+                    {offersPickup && (
+                      <button
+                        type="button"
+                        onClick={() => setFulfillmentMethod('pickup')}
+                        className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm font-semibold transition ${
+                          fulfillmentMethod === 'pickup'
+                            ? `border-transparent ${activeColor.bg} text-white`
+                            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                        }`}
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          <MapPin size={16} /> Pickup
+                        </span>
+                        {fulfillmentMethod === 'pickup' ? (
+                          <CheckCircle2 size={18} />
+                        ) : (
+                          <span className="h-[18px] w-[18px] rounded-full border border-gray-300" />
+                        )}
+                      </button>
                     )}
-                  </button>
-                )}
+                  </div>
+
+                  {fulfillmentMethod === 'delivery' && offersDelivery && (
+                    <div className="mt-3 space-y-2">
+                      <label htmlFor="delivery-address" className="text-xs font-bold uppercase tracking-wide text-gray-500">
+                        Delivery Area / Address (Optional but recommended)
+                      </label>
+                      <textarea
+                        id="delivery-address"
+                        rows={3}
+                        value={deliveryAddress}
+                        onChange={(event) => setDeliveryAddress(event.target.value)}
+                        placeholder="Senegambia, near the petrol station"
+                        className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 outline-none transition focus:border-[#2C3E2C]"
+                      />
+                    </div>
+                  )}
+
+                  {fulfillmentMethod === 'pickup' && offersPickup && (
+                    <div className="mt-3 rounded-xl bg-gray-100 p-4 text-sm text-gray-700">
+                      {pickupInstructions || 'Pickup details will be shared by the seller after you place your order.'}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="mb-6 border-y border-gray-200 py-4">
+                <p className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-500">Payment Method</p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {PAYMENT_OPTIONS.map((option) => {
+                    const selected = paymentMethod === option;
+                    return (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() => setPaymentMethod(option)}
+                        className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm font-semibold transition ${
+                          selected
+                            ? 'border-[#2C3E2C] bg-[#2C3E2C]/5 text-[#2C3E2C]'
+                            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                        }`}
+                      >
+                        <span>{option}</span>
+                        {selected ? (
+                          <CheckCircle2 size={18} />
+                        ) : (
+                          <span className="h-[18px] w-[18px] rounded-full border border-gray-300" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
-              {fulfillmentMethod === 'delivery' && offersDelivery && (
-                <div className="mt-3 space-y-2">
-                  <label htmlFor="delivery-address" className="text-xs font-bold uppercase tracking-wide text-gray-500">
-                    Delivery Area / Address (Optional but recommended)
-                  </label>
-                  <textarea
-                    id="delivery-address"
-                    rows={3}
-                    value={deliveryAddress}
-                    onChange={(event) => setDeliveryAddress(event.target.value)}
-                    placeholder="Senegambia, near the petrol station"
-                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 outline-none transition focus:border-[#2C3E2C]"
-                  />
-                </div>
-              )}
-
-              {fulfillmentMethod === 'pickup' && offersPickup && (
-                <div className="mt-3 rounded-xl bg-gray-100 p-4 text-sm text-gray-700">
-                  {pickupInstructions || 'Pickup details will be shared by the seller after you place your order.'}
-                </div>
-              )}
-            </div>
+              <button
+                onClick={handleOrderClick}
+                className={`flex w-full items-center justify-center gap-3 rounded-xl py-4 font-bold text-white shadow-xl transition-all hover:opacity-90 ${activeColor.bg}`}
+              >
+                <MessageCircle size={20} /> Order via WhatsApp
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              disabled
+              className="mb-6 flex w-full cursor-not-allowed items-center justify-center gap-3 rounded-xl bg-gray-300 py-4 font-bold text-gray-600"
+            >
+              Sold Out
+            </button>
           )}
 
-          <div className="mb-6 border-y border-gray-200 py-4">
-            <p className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-500">Payment Method</p>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {PAYMENT_OPTIONS.map((option) => {
-                const selected = paymentMethod === option;
-                return (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => setPaymentMethod(option)}
-                    className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm font-semibold transition ${
-                      selected
-                        ? 'border-[#2C3E2C] bg-[#2C3E2C]/5 text-[#2C3E2C]'
-                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
-                    }`}
-                  >
-                    <span>{option}</span>
-                    {selected ? <CheckCircle2 size={18} /> : <span className="h-[18px] w-[18px] rounded-full border border-gray-300" />}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <button
-            onClick={handleOrderClick}
-            className={`flex w-full items-center justify-center gap-3 rounded-xl py-4 font-bold text-white shadow-xl transition-all hover:opacity-90 ${activeColor.bg}`}
-          >
-            <MessageCircle size={20} /> Order via WhatsApp
-          </button>
           <button
             onClick={handleShareProduct}
             className="mt-3 flex w-full items-center justify-center gap-3 rounded-xl bg-gray-100 py-4 font-bold text-gray-800 transition-all hover:bg-gray-200"
