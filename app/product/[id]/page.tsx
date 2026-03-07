@@ -46,15 +46,18 @@ function sanitizeGambianPhoneNumber(rawNumber?: string | null) {
   const numericOnly = rawNumber.replace(/\D/g, '');
   if (!numericOnly) return null;
 
-  const withoutLeadingZero = numericOnly.startsWith('0') ? numericOnly.slice(1) : numericOnly;
-  return withoutLeadingZero.startsWith('220') ? withoutLeadingZero : `220${withoutLeadingZero}`;
+  const withoutLeadingZeros = numericOnly.replace(/^0+/, '');
+  const localNumber = withoutLeadingZeros.replace(/^(220)+/, '');
+  if (!localNumber) return null;
+
+  return localNumber;
 }
 
 function generateWhatsAppLink(number: string | null | undefined, message: string) {
-  const sanitizedNumber = sanitizeGambianPhoneNumber(number);
-  if (!sanitizedNumber) return null;
+  const cleanNumber = sanitizeGambianPhoneNumber(number);
+  if (!cleanNumber) return null;
 
-  return `https://wa.me/${sanitizedNumber}?text=${encodeURIComponent(message)}`;
+  return `https://wa.me/220${cleanNumber}?text=${encodeURIComponent(message)}`;
 }
 
 export default function ProductPage({ params }: { params: Promise<{ id: string }> }) {
@@ -73,7 +76,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
       const { data, error } = await supabase
         .from('products')
         .select(
-          '*, shops(shop_name, shop_slug, phone, whatsapp_number, theme_color, offers_delivery, offers_pickup, pickup_instructions)'
+          'id, name, price, description, image_url, image_urls, category, status, shops(shop_name, shop_slug, phone, whatsapp_number, theme_color, offers_delivery, offers_pickup, pickup_instructions)'
         )
         .eq('id', productId)
         .single();
@@ -111,7 +114,9 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
   const offersDelivery = resolvedShop?.offers_delivery ?? true;
   const offersPickup = resolvedShop?.offers_pickup ?? true;
   const pickupInstructions = resolvedShop?.pickup_instructions?.trim() || '';
-  const isProductActive = product?.status === 'active';
+  const normalizedProductStatus = product?.status?.trim().toLowerCase();
+  const isSoldOut = normalizedProductStatus === 'sold_out' || normalizedProductStatus === 'inactive';
+  const isProductActive = !isSoldOut;
 
   const activeColor = themeColor ? themeColors[themeColor] || themeColors.emerald : themeColors.emerald;
 
