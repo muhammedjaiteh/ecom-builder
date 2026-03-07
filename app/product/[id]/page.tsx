@@ -46,18 +46,14 @@ function sanitizeGambianPhoneNumber(rawNumber?: string | null) {
   const numericOnly = rawNumber.replace(/\D/g, '');
   if (!numericOnly) return null;
 
-  const withoutLeadingZeros = numericOnly.replace(/^0+/, '');
-  const localNumber = withoutLeadingZeros.replace(/^(220)+/, '');
-  if (!localNumber) return null;
-
-  return localNumber;
+  return numericOnly;
 }
 
 function generateWhatsAppLink(number: string | null | undefined, message: string) {
   const cleanNumber = sanitizeGambianPhoneNumber(number);
   if (!cleanNumber) return null;
 
-  return `https://wa.me/220${cleanNumber}?text=${encodeURIComponent(message)}`;
+  return `https://wa.me/${cleanNumber}?text=${encodeURIComponent(message)}`;
 }
 
 export default function ProductPage({ params }: { params: Promise<{ id: string }> }) {
