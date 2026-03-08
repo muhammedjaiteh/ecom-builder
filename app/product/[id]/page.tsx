@@ -4,6 +4,8 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { use, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, CheckCircle2, MapPin, MessageCircle, Share2, ShoppingBag, Truck } from 'lucide-react';
 import Link from 'next/link';
+// IMPORTING OUR NEW CART BRAIN
+import { useCart } from '../../context/CartContext';
 
 type ShopInfo = {
   shop_name: string;
@@ -40,24 +42,11 @@ const PAYMENT_OPTIONS = ['Cash on Delivery', 'Wave'] as const;
 
 type FulfillmentMethod = 'delivery' | 'pickup';
 
-function sanitizeGambianPhoneNumber(rawNumber?: string | null) {
-  if (!rawNumber) return null;
-
-  const numericOnly = rawNumber.replace(/\D/g, '');
-  if (!numericOnly) return null;
-
-  return numericOnly;
-}
-
-function generateWhatsAppLink(number: string | null | undefined, message: string) {
-  const cleanNumber = sanitizeGambianPhoneNumber(number);
-  if (!cleanNumber) return null;
-
-  return `https://wa.me/${cleanNumber}?text=${encodeURIComponent(message)}`;
-}
-
 export default function ProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: productId } = use(params);
+
+  // TAPPING INTO THE CART BRAIN
+  const { addToCart, cartCount } = useCart();
 
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
@@ -116,31 +105,22 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
   const activeColor = themeColor ? themeColors[themeColor] || themeColors.emerald : themeColors.emerald;
 
-  const handleOrderClick = async () => {
+  // NEW ADD TO CART LOGIC
+  const handleAddToCart = () => {
     if (!product || !resolvedShop || !isProductActive) return;
 
-    if (fulfillmentMethod === 'delivery' && !deliveryAddress.trim()) {
-      alert('Please enter your delivery area/address so the seller can fulfill your order.');
-      return;
-    }
+    addToCart({
+      id: product.id,
+      name: product.name,
+      price: product.price,
+      image_url: normalizedImageUrls[0] || '',
+      shop_id: resolvedShop.shop_slug || resolvedShop.shop_name,
+      shop_name: resolvedShop.shop_name,
+      quantity: 1,
+    });
 
-    await supabase.from('leads').insert({ product_id: product.id, shop_id: resolvedShop.shop_name });
-
-    const whatsappLink = generateWhatsAppLink(
-      resolvedShop.whatsapp_number || resolvedShop.phone,
-      `Hello ${resolvedShop.shop_name}! 👋\n\nI want to buy *${product.name}* for D${product.price}.\nMy payment method is: ${paymentMethod}.\n${
-        fulfillmentMethod === 'delivery'
-          ? `Fulfillment: Delivery to ${deliveryAddress.trim()}.`
-          : 'Fulfillment: Pickup/Meetup.'
-      }\n\nIs this available?`
-    );
-
-    if (!whatsappLink) {
-      alert('This seller has not updated their WhatsApp number yet!');
-      return;
-    }
-
-    window.location.href = whatsappLink;
+    // Provide instant visual feedback
+    alert(`🛒 ${product.name} has been added to your cart!`);
   };
 
   const handleShareProduct = () => {
@@ -174,10 +154,8 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
   return (
     <div className="min-h-screen bg-gray-50 flex justify-center font-sans text-gray-900">
-      {/* Sleek Mobile-Optimized Container */}
       <div className="w-full max-w-md bg-white min-h-screen shadow-sm relative pb-32">
         
-        {/* Floating Back Button */}
         <nav className="absolute top-4 left-4 z-10">
           <Link
             href={`/shop/${resolvedShop.shop_slug || ''}`}
@@ -187,7 +165,6 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
           </Link>
         </nav>
 
-        {/* Massive Edge-to-Edge Image Section */}
         <div className="relative w-full h-[450px] bg-gray-100">
           {normalizedImageUrls.length > 0 ? (
             <div className="flex w-full h-full overflow-x-auto snap-x snap-mandatory scrollbar-hide">
@@ -208,7 +185,6 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
           )}
         </div>
 
-        {/* Clean Content Section */}
         <div className="p-6">
           <div className="mb-2">
             <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
@@ -234,7 +210,6 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
           <hr className="my-6 border-gray-100" />
 
-          {/* Description */}
           <div className="mb-8">
             <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">
               Description
@@ -244,81 +219,6 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
             </p>
           </div>
 
-          {/* Elegant Fulfillment & Payment Toggles */}
-          {isProductActive && (
-            <div className="mb-4">
-              {(offersDelivery || offersPickup) && (
-                <div className="mb-6">
-                  <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">Order Details</h3>
-                  <div className="grid grid-cols-2 gap-2 mb-3">
-                    {offersDelivery && (
-                      <button
-                        onClick={() => setFulfillmentMethod('delivery')}
-                        className={`flex items-center justify-center gap-2 rounded-xl border py-3 text-xs font-bold transition ${
-                          fulfillmentMethod === 'delivery'
-                            ? `border-transparent ${activeColor.bg} text-white`
-                            : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
-                        }`}
-                      >
-                        <Truck size={14} /> Delivery
-                      </button>
-                    )}
-                    {offersPickup && (
-                      <button
-                        onClick={() => setFulfillmentMethod('pickup')}
-                        className={`flex items-center justify-center gap-2 rounded-xl border py-3 text-xs font-bold transition ${
-                          fulfillmentMethod === 'pickup'
-                            ? `border-transparent ${activeColor.bg} text-white`
-                            : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
-                        }`}
-                      >
-                        <MapPin size={14} /> Pickup
-                      </button>
-                    )}
-                  </div>
-
-                  {fulfillmentMethod === 'delivery' && offersDelivery && (
-                    <textarea
-                      value={deliveryAddress}
-                      onChange={(event) => setDeliveryAddress(event.target.value)}
-                      placeholder="Enter Delivery Area (e.g. Senegambia)"
-                      className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 outline-none transition focus:border-gray-400 mb-4"
-                      rows={2}
-                    />
-                  )}
-                  {fulfillmentMethod === 'pickup' && offersPickup && (
-                    <div className="mb-4 rounded-xl bg-gray-50 p-4 text-xs text-gray-500 border border-gray-100">
-                      {pickupInstructions || 'Pickup details will be shared by the seller on WhatsApp.'}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div className="mb-4">
-                <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">Payment</h3>
-                <div className="grid grid-cols-2 gap-2">
-                  {PAYMENT_OPTIONS.map((option) => {
-                    const selected = paymentMethod === option;
-                    return (
-                      <button
-                        key={option}
-                        onClick={() => setPaymentMethod(option)}
-                        className={`rounded-xl border py-3 text-xs font-bold transition ${
-                          selected
-                            ? 'border-gray-900 bg-gray-900 text-white'
-                            : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
-                        }`}
-                      >
-                        {option}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Share Button (moved out of the way of the sticky footer) */}
           <button
             onClick={handleShareProduct}
             className="mt-8 flex w-full items-center justify-center gap-2 rounded-xl bg-gray-50 py-4 text-xs font-bold uppercase tracking-wider text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
@@ -327,15 +227,27 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
           </button>
         </div>
 
-        {/* The Magic Sticky Bottom Button */}
+        {/* THE NEW DYNAMIC BOTTOM ACTION BAR */}
         <div className="fixed bottom-0 w-full max-w-md bg-white/90 backdrop-blur-md border-t border-gray-100 p-4 pb-6 z-50 shadow-[0_-10px_40px_rgba(0,0,0,0.03)]">
           {isProductActive ? (
-            <button
-              onClick={handleOrderClick}
-              className={`flex w-full items-center justify-center gap-2 rounded-xl py-4 font-bold text-white shadow-lg transition-all hover:opacity-90 ${activeColor.bg}`}
-            >
-              <MessageCircle size={20} /> Order via WhatsApp
-            </button>
+            <div className="flex gap-2 w-full">
+              <button
+                onClick={handleAddToCart}
+                className={`flex-1 flex items-center justify-center gap-2 rounded-xl py-4 font-bold text-white shadow-lg transition-all hover:opacity-90 ${activeColor.bg}`}
+              >
+                <ShoppingBag size={20} /> Add to Cart
+              </button>
+              
+              {/* This button magically appears if there is something in the cart! */}
+              {cartCount > 0 && (
+                <Link
+                  href="/cart"
+                  className="flex items-center justify-center bg-gray-900 text-white px-6 rounded-xl font-bold shadow-lg hover:bg-black transition-colors"
+                >
+                  Cart ({cartCount})
+                </Link>
+              )}
+            </div>
           ) : (
             <button
               disabled
