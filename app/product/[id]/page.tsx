@@ -128,17 +128,11 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
     const whatsappLink = generateWhatsAppLink(
       resolvedShop.whatsapp_number || resolvedShop.phone,
-      `Hello ${resolvedShop.shop_name}! 👋
-
-I want to buy ${product.name} for D${product.price}.
-My payment method is: ${paymentMethod}.
-${
-  fulfillmentMethod === 'delivery'
-    ? `Fulfillment: Delivery to ${deliveryAddress.trim()}.`
-    : 'Fulfillment: Pickup/Meetup.'
-}
-
-Is this available?`
+      `Hello ${resolvedShop.shop_name}! 👋\n\nI want to buy *${product.name}* for D${product.price}.\nMy payment method is: ${paymentMethod}.\n${
+        fulfillmentMethod === 'delivery'
+          ? `Fulfillment: Delivery to ${deliveryAddress.trim()}.`
+          : 'Fulfillment: Pickup/Meetup.'
+      }\n\nIs this available?`
     );
 
     if (!whatsappLink) {
@@ -153,30 +147,25 @@ Is this available?`
     if (!product) return;
     const url = window.location.href;
     const message = encodeURIComponent(
-      `🔥 Check out this product on Sanndikaa:
-
-*${product.name}* for D${product.price}
-
-Tap the link to buy now:
-${url}`
+      `🔥 Check out this product on Sanndikaa:\n\n*${product.name}* for D${product.price}\n\nTap the link to buy now:\n${url}`
     );
     window.open(`https://wa.me/?text=${message}`, '_blank');
   };
 
   if (loading)
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#F9F8F6]">
-        <ShoppingBag size={32} className="mb-4 animate-pulse text-[#2C3E2C]" />
-        <p className="text-xs font-bold uppercase text-gray-500">Loading Product...</p>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
+        <ShoppingBag size={32} className="mb-4 animate-pulse text-gray-400" />
+        <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Loading Product...</p>
       </div>
     );
 
   if (!product || !resolvedShop)
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F9F8F6]">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <h1 className="mb-4 text-2xl font-serif text-gray-800">Product Not Found</h1>
-          <Link href="/" className="text-sm font-bold text-green-700 hover:underline">
+          <h1 className="mb-4 text-2xl font-bold text-gray-800">Product Not Found</h1>
+          <Link href="/" className="text-sm font-bold text-gray-500 hover:text-gray-800 transition">
             Back to Marketplace
           </Link>
         </div>
@@ -184,184 +173,180 @@ ${url}`
     );
 
   return (
-    <div className="min-h-screen bg-[#F9F8F6] pb-24 font-sans text-[#2C3E2C]">
-      <nav className="p-6">
-        <Link
-          href={`/shop/${resolvedShop.shop_slug || ''}`}
-          className="inline-flex items-center gap-2 text-xs font-bold uppercase text-gray-500 hover:text-[#2C3E2C]"
-        >
-          <ArrowLeft size={16} /> Back
-        </Link>
-      </nav>
+    <div className="min-h-screen bg-gray-50 flex justify-center font-sans text-gray-900">
+      {/* Sleek Mobile-Optimized Container */}
+      <div className="w-full max-w-md bg-white min-h-screen shadow-sm relative pb-32">
+        
+        {/* Floating Back Button */}
+        <nav className="absolute top-4 left-4 z-10">
+          <Link
+            href={`/shop/${resolvedShop.shop_slug || ''}`}
+            className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-gray-800 shadow-sm backdrop-blur-md transition hover:bg-white"
+          >
+            <ArrowLeft size={16} /> Back to Shop
+          </Link>
+        </nav>
 
-      <main className="mx-auto mt-4 grid max-w-4xl gap-8 px-4 md:grid-cols-2 md:gap-12 md:px-6">
-        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-gray-100 shadow-sm">
+        {/* Massive Edge-to-Edge Image Section */}
+        <div className="relative w-full h-[450px] bg-gray-100">
           {normalizedImageUrls.length > 0 ? (
-            <div className="relative w-full overflow-hidden">
-              <div className="flex w-full overflow-x-auto snap-x snap-mandatory scrollbar-hide">
-                {normalizedImageUrls.map((url, index) => (
-                  <div key={index} className="w-full flex-none snap-center relative aspect-square bg-gray-100">
-                    <img
-                      src={url}
-                      alt={`Product image ${index + 1}`}
-                      className="object-cover w-full h-full"
-                    />
-                  </div>
-                ))}
-              </div>
+            <div className="flex w-full h-full overflow-x-auto snap-x snap-mandatory scrollbar-hide">
+              {normalizedImageUrls.map((url, index) => (
+                <div key={index} className="w-full h-full flex-none snap-center relative bg-gray-100">
+                  <img
+                    src={url}
+                    alt={`Product image ${index + 1}`}
+                    className="object-cover w-full h-full"
+                  />
+                </div>
+              ))}
             </div>
           ) : (
-            <div className="flex aspect-square w-full items-center justify-center text-gray-300">
+            <div className="flex w-full h-full items-center justify-center text-gray-300">
               <ShoppingBag size={48} />
             </div>
           )}
         </div>
 
-        <div className="flex flex-col justify-center">
+        {/* Clean Content Section */}
+        <div className="p-6">
           <div className="mb-2">
-            <span className="text-[10px] font-bold uppercase text-gray-400">{product.category || 'General'}</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+              {product.category || 'General'}
+            </span>
           </div>
-          <h1 className="mb-4 text-3xl font-semibold text-[#1a2e1a] md:text-5xl">{product.name}</h1>
-          <p className="mb-6 text-3xl font-bold text-green-800">D{product.price}</p>
-
-          <div className="mb-6 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-            <p className="whitespace-pre-wrap text-sm text-gray-600">{product.description || 'No description provided.'}</p>
-          </div>
-
-          <div className="mb-8 border-t border-gray-100 pt-6">
-            <Link href={`/shop/${resolvedShop.shop_slug}`} className="hover:opacity-70 transition-opacity cursor-pointer inline-block">
-              <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">Sold By</p>
-              <p className="text-base font-bold text-green-800 underline decoration-1 underline-offset-4">{resolvedShop.shop_name}</p>
-            </Link>
+          
+          <div className="flex justify-between items-start mb-2">
+            <h1 className="text-2xl font-bold text-gray-900 leading-tight">
+              {product.name}
+            </h1>
+            <p className={`text-xl font-extrabold ${activeColor.text} ml-4 shrink-0`}>
+              D{product.price}
+            </p>
           </div>
 
-          {isProductActive ? (
-            <>
+          <Link href={`/shop/${resolvedShop.shop_slug}`} className="inline-block hover:opacity-70 transition-opacity">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">Sold By</p>
+            <p className={`text-sm font-bold ${activeColor.text} underline decoration-1 underline-offset-4`}>
+              {resolvedShop.shop_name}
+            </p>
+          </Link>
+
+          <hr className="my-6 border-gray-100" />
+
+          {/* Description */}
+          <div className="mb-8">
+            <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">
+              Description
+            </h3>
+            <p className="text-gray-500 leading-relaxed text-sm whitespace-pre-wrap">
+              {product.description || "A premium item from our exclusive collection."}
+            </p>
+          </div>
+
+          {/* Elegant Fulfillment & Payment Toggles */}
+          {isProductActive && (
+            <div className="mb-4">
               {(offersDelivery || offersPickup) && (
-                <div className="mb-6 border-t border-gray-100 pt-6">
-                  <p className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-500">How to Get Your Order</p>
-
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div className="mb-6">
+                  <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">Order Details</h3>
+                  <div className="grid grid-cols-2 gap-2 mb-3">
                     {offersDelivery && (
                       <button
-                        type="button"
                         onClick={() => setFulfillmentMethod('delivery')}
-                        className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm font-semibold transition ${
+                        className={`flex items-center justify-center gap-2 rounded-xl border py-3 text-xs font-bold transition ${
                           fulfillmentMethod === 'delivery'
                             ? `border-transparent ${activeColor.bg} text-white`
-                            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                            : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
                         }`}
                       >
-                        <span className="inline-flex items-center gap-2">
-                          <Truck size={16} /> Delivery
-                        </span>
-                        {fulfillmentMethod === 'delivery' ? (
-                          <CheckCircle2 size={18} />
-                        ) : (
-                          <span className="h-[18px] w-[18px] rounded-full border border-gray-300" />
-                        )}
+                        <Truck size={14} /> Delivery
                       </button>
                     )}
-
                     {offersPickup && (
                       <button
-                        type="button"
                         onClick={() => setFulfillmentMethod('pickup')}
-                        className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm font-semibold transition ${
+                        className={`flex items-center justify-center gap-2 rounded-xl border py-3 text-xs font-bold transition ${
                           fulfillmentMethod === 'pickup'
                             ? `border-transparent ${activeColor.bg} text-white`
-                            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                            : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
                         }`}
                       >
-                        <span className="inline-flex items-center gap-2">
-                          <MapPin size={16} /> Pickup
-                        </span>
-                        {fulfillmentMethod === 'pickup' ? (
-                          <CheckCircle2 size={18} />
-                        ) : (
-                          <span className="h-[18px] w-[18px] rounded-full border border-gray-300" />
-                        )}
+                        <MapPin size={14} /> Pickup
                       </button>
                     )}
                   </div>
 
                   {fulfillmentMethod === 'delivery' && offersDelivery && (
-                    <div className="mt-3 space-y-2">
-                      <label htmlFor="delivery-address" className="text-xs font-bold uppercase tracking-wide text-gray-500">
-                        Delivery Area / Address (Optional but recommended)
-                      </label>
-                      <textarea
-                        id="delivery-address"
-                        rows={3}
-                        value={deliveryAddress}
-                        onChange={(event) => setDeliveryAddress(event.target.value)}
-                        placeholder="Senegambia, near the petrol station"
-                        className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 outline-none transition focus:border-[#2C3E2C]"
-                      />
-                    </div>
+                    <textarea
+                      value={deliveryAddress}
+                      onChange={(event) => setDeliveryAddress(event.target.value)}
+                      placeholder="Enter Delivery Area (e.g. Senegambia)"
+                      className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 outline-none transition focus:border-gray-400 mb-4"
+                      rows={2}
+                    />
                   )}
-
                   {fulfillmentMethod === 'pickup' && offersPickup && (
-                    <div className="mt-3 rounded-xl bg-gray-100 p-4 text-sm text-gray-700">
-                      {pickupInstructions || 'Pickup details will be shared by the seller after you place your order.'}
+                    <div className="mb-4 rounded-xl bg-gray-50 p-4 text-xs text-gray-500 border border-gray-100">
+                      {pickupInstructions || 'Pickup details will be shared by the seller on WhatsApp.'}
                     </div>
                   )}
                 </div>
               )}
 
-              <div className="mb-6 border-y border-gray-200 py-4">
-                <p className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-500">Payment Method</p>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div className="mb-4">
+                <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">Payment</h3>
+                <div className="grid grid-cols-2 gap-2">
                   {PAYMENT_OPTIONS.map((option) => {
                     const selected = paymentMethod === option;
                     return (
                       <button
                         key={option}
-                        type="button"
                         onClick={() => setPaymentMethod(option)}
-                        className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm font-semibold transition ${
+                        className={`rounded-xl border py-3 text-xs font-bold transition ${
                           selected
-                            ? 'border-[#2C3E2C] bg-[#2C3E2C]/5 text-[#2C3E2C]'
-                            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                            ? 'border-gray-900 bg-gray-900 text-white'
+                            : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
                         }`}
                       >
-                        <span>{option}</span>
-                        {selected ? (
-                          <CheckCircle2 size={18} />
-                        ) : (
-                          <span className="h-[18px] w-[18px] rounded-full border border-gray-300" />
-                        )}
+                        {option}
                       </button>
                     );
                   })}
                 </div>
               </div>
+            </div>
+          )}
 
-              <button
-                onClick={handleOrderClick}
-                className={`flex w-full items-center justify-center gap-3 rounded-xl py-4 font-bold text-white shadow-xl transition-all hover:opacity-90 ${activeColor.bg}`}
-              >
-                <MessageCircle size={20} /> Order via WhatsApp
-              </button>
-            </>
+          {/* Share Button (moved out of the way of the sticky footer) */}
+          <button
+            onClick={handleShareProduct}
+            className="mt-8 flex w-full items-center justify-center gap-2 rounded-xl bg-gray-50 py-4 text-xs font-bold uppercase tracking-wider text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+          >
+            <Share2 size={16} /> Share Product
+          </button>
+        </div>
+
+        {/* The Magic Sticky Bottom Button */}
+        <div className="fixed bottom-0 w-full max-w-md bg-white/90 backdrop-blur-md border-t border-gray-100 p-4 pb-6 z-50 shadow-[0_-10px_40px_rgba(0,0,0,0.03)]">
+          {isProductActive ? (
+            <button
+              onClick={handleOrderClick}
+              className={`flex w-full items-center justify-center gap-2 rounded-xl py-4 font-bold text-white shadow-lg transition-all hover:opacity-90 ${activeColor.bg}`}
+            >
+              <MessageCircle size={20} /> Order via WhatsApp
+            </button>
           ) : (
             <button
-              type="button"
               disabled
-              className="mb-6 flex w-full cursor-not-allowed items-center justify-center gap-3 rounded-xl bg-gray-300 py-4 font-bold text-gray-600"
+              className="flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl bg-gray-200 py-4 font-bold text-gray-400"
             >
               Sold Out
             </button>
           )}
-
-          <button
-            onClick={handleShareProduct}
-            className="mt-3 flex w-full items-center justify-center gap-3 rounded-xl bg-gray-100 py-4 font-bold text-gray-800 transition-all hover:bg-gray-200"
-          >
-            <Share2 size={20} /> Share Product
-          </button>
         </div>
-      </main>
+
+      </div>
     </div>
   );
 }
