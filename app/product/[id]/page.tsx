@@ -65,6 +65,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
+  const [selectedImage, setSelectedImage] = useState('');
 
   const supabase = createClientComponentClient();
 
@@ -118,6 +119,12 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
     return [...galleryUrls, ...singleImage];
   }, [product]);
+
+
+  const activeSelectedImage = useMemo(() => {
+    if (normalizedImageUrls.length === 0) return null;
+    return selectedImage && normalizedImageUrls.includes(selectedImage) ? selectedImage : normalizedImageUrls[0];
+  }, [normalizedImageUrls, selectedImage]);
 
   const normalizedColors = useMemo(() => {
     return Array.isArray(product?.colors)
@@ -195,8 +202,8 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
   return (
     <div className="min-h-screen bg-[#F9F8F6] pb-28 text-[#1a2e1a]">
       <section className="relative h-[450px] w-full overflow-hidden bg-gray-200">
-        {normalizedImageUrls.length > 0 ? (
-          <img src={normalizedImageUrls[0]} alt={product.name} className="h-full w-full object-cover" />
+        {activeSelectedImage ? (
+          <img src={activeSelectedImage} alt={product.name} className="h-full w-full object-cover" />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
             <ShoppingBag className="h-14 w-14 text-gray-400" />
@@ -212,6 +219,30 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
           <ArrowLeft size={16} /> Back
         </Link>
       </section>
+
+      {normalizedImageUrls.length > 1 && (
+        <section className="mx-auto mt-4 flex max-w-3xl gap-3 overflow-x-auto px-4 md:px-6">
+          {normalizedImageUrls.map((imageUrl, index) => {
+            const isActive = imageUrl === activeSelectedImage;
+
+            return (
+              <button
+                key={`${imageUrl}-${index}`}
+                type="button"
+                onClick={() => setSelectedImage(imageUrl)}
+                className={`h-16 w-16 flex-none overflow-hidden rounded-lg border transition ${
+                  isActive
+                    ? `border-2 ${activeColor.border} opacity-100`
+                    : 'border-gray-200 opacity-60 hover:opacity-100'
+                }`}
+                aria-label={`Select product image ${index + 1}`}
+              >
+                <img src={imageUrl} alt={`${product.name} thumbnail ${index + 1}`} className="h-full w-full object-cover" />
+              </button>
+            );
+          })}
+        </section>
+      )}
 
       <main className="mx-auto max-w-3xl space-y-6 px-4 py-6 md:px-6">
         <header>
