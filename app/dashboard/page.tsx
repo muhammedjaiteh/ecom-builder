@@ -1,416 +1,615 @@
 'use client';
 
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Loader2, Plus, Save, Sparkles, Star, Trash2 } from 'lucide-react';
+import {
+  Package,
+  DollarSign,
+  TrendingUp,
+  Plus,
+  Edit,
+  Trash2,
+  ExternalLink,
+  BarChart3,
+  Eye,
+  Image as ImageIcon,
+  Upload,
+  Store,
+  Truck,
+  Handshake,
+} from 'lucide-react';
 import Link from 'next/link';
 
-const CATEGORY_OPTIONS = ['Food', 'Drinks', 'Beauty', 'Fashion', 'Electronics', 'General'] as const;
-const MAX_IMAGES = 5;
-
-type ThemeColor = 'emerald' | 'midnight' | 'terracotta' | 'ocean' | 'rose';
-
-const themeButtonClasses: Record<ThemeColor, string> = {
-  emerald: 'bg-emerald-600 hover:bg-emerald-700',
-  midnight: 'bg-slate-900 hover:bg-slate-950',
-  terracotta: 'bg-orange-700 hover:bg-orange-800',
-  ocean: 'bg-blue-600 hover:bg-blue-700',
-  rose: 'bg-rose-500 hover:bg-rose-600',
+type Product = {
+  id: string;
+  image_url: string | null;
+  name: string;
+  price: number;
+  category: string;
 };
 
-export default function AddProductPage() {
-  const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [generating, setGenerating] = useState(false);
+type Shop = {
+  id: string;
+  shop_name: string | null;
+  shop_slug: string | null;
+  banner_url: string | null;
+  logo_url: string | null;
+  bio: string | null;
+  store_layout: string | null;
+  theme_color: string | null;
+  offers_delivery: boolean | null;
+  offers_pickup: boolean | null;
+  pickup_instructions: string | null;
+};
 
-  const [name, setName] = useState('');
-  const [price, setPrice] = useState('');
-  const [category, setCategory] = useState<(typeof CATEGORY_OPTIONS)[number]>('General');
-  const [status, setStatus] = useState('Active');
-  const [description, setDescription] = useState('');
-  const [images, setImages] = useState<{ url: string; isDefault: boolean }[]>([]);
-  const [colorsInput, setColorsInput] = useState('');
-  const [sizesInput, setSizesInput] = useState('');
-  const [themeColor, setThemeColor] = useState<ThemeColor>('emerald');
+type Lead = {
+  product_price: number | null;
+  product_name: string;
+};
 
-  const inputRef = useRef<HTMLInputElement>(null);
+export default function Dashboard() {
+  const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [shop, setShop] = useState<Shop | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
+  const [bannerUrl, setBannerUrl] = useState<string | null>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [bioInput, setBioInput] = useState('');
+  const [savingBio, setSavingBio] = useState(false);
+  const [storeLayout, setStoreLayout] = useState('bantaba');
+  const [themeColor, setThemeColor] = useState('emerald');
+  const [offersDelivery, setOffersDelivery] = useState(true);
+  const [offersPickup, setOffersPickup] = useState(true);
+  const [pickupInstructions, setPickupInstructions] = useState('');
+  const [savingDesign, setSavingDesign] = useState(false);
+
+  const [totalLeads, setTotalLeads] = useState(0);
+  const [potentialRevenue, setPotentialRevenue] = useState(0);
+  const [topProduct, setTopProduct] = useState('None');
+
   const supabase = createClientComponentClient();
   const router = useRouter();
 
+  const fetchShop = async (id: string) => {
+    const { data: shopData } = await supabase
+      .from('shops')
+      .select(
+        'id, shop_name, shop_slug, banner_url, logo_url, bio, store_layout, theme_color, offers_delivery, offers_pickup, pickup_instructions'
+      )
+      .eq('id', id)
+      .single();
+
+    const resolvedShop = shopData as Shop | null;
+    setShop(resolvedShop);
+    setBioInput(resolvedShop?.bio || '');
+    setStoreLayout(resolvedShop?.store_layout || 'bantaba');
+    setThemeColor(resolvedShop?.theme_color || 'emerald');
+    setOffersDelivery(resolvedShop?.offers_delivery ?? true);
+    setOffersPickup(resolvedShop?.offers_pickup ?? true);
+    setPickupInstructions(resolvedShop?.pickup_instructions || '');
+  };
+
   useEffect(() => {
-    async function fetchThemeColor() {
+    async function loadDashboard() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-
-      if (!user) return;
-
-      const { data } = await supabase
-        .from('shops')
-        .select('theme_color')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      const nextTheme = data?.theme_color;
-      if (nextTheme && nextTheme in themeButtonClasses) {
-        setThemeColor(nextTheme as ThemeColor);
+      if (!user) {
+        router.push('/login');
+        return;
       }
-    }
+      setUserId(user.id);
 
-    void fetchThemeColor();
-  }, [supabase]);
+      await fetchShop(user.id);
 
-  const generateMagicDescription = () => {
-    if (!name.trim()) {
-      alert('Please enter a product name first!');
-      return;
-    }
+      const { data: productData } = await supabase
+        .from('products')
+        .select('id, image_url, name, price, category')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
 
-    setGenerating(true);
+      setProducts((productData as Product[]) || []);
 
-    setTimeout(() => {
-      const lowerName = name.toLowerCase();
-      let aiText = `Discover the excellence of ${name}. High-quality, authentic, and designed to meet your needs.`;
+      const { data: leadsData } = await supabase
+        .from('leads')
+        .select('product_price, product_name')
+        .eq('seller_id', user.id);
 
-      if (category === 'Food') {
-        aiText = lowerName.includes('honey') || lowerName.includes('oil')
-          ? `Experience the untouched purity of ${name}. 100% natural and locally sourced with no additives.`
-          : `Experience the authentic taste of ${name}. Freshly prepared with the finest local ingredients.`;
-      }
+      const leads = (leadsData as Lead[]) || [];
+      setTotalLeads(leads.length);
 
-      if (category === 'Fashion') {
-        aiText = `Upgrade your wardrobe with ${name}. Crafted for comfort, style, and long-lasting quality.`;
+      const revenue = leads.reduce((acc, lead) => acc + (lead.product_price || 0), 0);
+      setPotentialRevenue(revenue);
+
+      if (leads.length > 0) {
+        const counts: Record<string, number> = {};
+        leads.forEach((lead) => {
+          counts[lead.product_name] = (counts[lead.product_name] || 0) + 1;
+        });
+        const top = Object.keys(counts).reduce((a, b) => (counts[a] > counts[b] ? a : b));
+        setTopProduct(top);
       }
 
-      if (category === 'Beauty') {
-        aiText = `Enhance your self-care routine with ${name}. Gentle, premium quality, and suitable for daily use.`;
-      }
-
-      if (category === 'Electronics') {
-        aiText = `Upgrade your tech with ${name}. Reliable performance, durable build, and sleek everyday usability.`;
-      }
-
-      setDescription(aiText);
-      setGenerating(false);
-    }, 1200);
-  };
-
-  const setAsPrimary = (index: number) => {
-    setImages((prev) => prev.map((image, imageIndex) => ({ ...image, isDefault: imageIndex === index })));
-  };
-
-  const removeImage = (index: number) => {
-    setImages((prev) => {
-      const next = prev.filter((_, imageIndex) => imageIndex !== index);
-
-      if (next.length > 0 && !next.some((image) => image.isDefault)) {
-        next[0] = { ...next[0], isDefault: true };
-      }
-
-      return next;
-    });
-  };
-
-  const handleUpload = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    if (images.length >= MAX_IMAGES) {
-      alert('You can upload up to 5 images only.');
-      return;
-    }
-
-    setUploading(true);
-
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) throw new Error('Not authenticated');
-
-      const remainingSlots = MAX_IMAGES - images.length;
-      const filesToUpload = Array.from(files).slice(0, remainingSlots);
-      const uploaded: { url: string; isDefault: boolean }[] = [];
-
-      for (const file of filesToUpload) {
-        const fileExt = file.name.split('.').pop();
-        const filePath = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
-
-        const { error: uploadError } = await supabase.storage.from('product-images').upload(filePath, file);
-        if (uploadError) throw uploadError;
-
-        const {
-          data: { publicUrl },
-        } = supabase.storage.from('product-images').getPublicUrl(filePath);
-
-        uploaded.push({ url: publicUrl, isDefault: false });
-      }
-
-      setImages((prev) => {
-        const next = [...prev, ...uploaded];
-        if (next.length > 0 && !next.some((image) => image.isDefault)) {
-          next[0] = { ...next[0], isDefault: true };
-        }
-        return next;
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      alert(`Image upload failed: ${message}`);
-    } finally {
-      setUploading(false);
-      if (inputRef.current) inputRef.current.value = '';
-    }
-  };
-
-  const handleSave = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setLoading(true);
-
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      const orderedImages = [...images].sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
-      const colors = colorsInput
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
-      const sizes = sizesInput
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
-
-      const { error } = await supabase.from('products').insert({
-        user_id: user.id,
-        name,
-        price: parseFloat(price),
-        category,
-        status,
-        description,
-        image_urls: orderedImages.map((image) => image.url),
-        image_url: orderedImages[0]?.url || null,
-        colors: colors.length > 0 ? colors : null,
-        sizes: sizes.length > 0 ? sizes : null,
-      });
-
-      if (error) throw error;
-
-      router.push('/dashboard');
-      router.refresh();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      alert(`Error: ${message}`);
-    } finally {
       setLoading(false);
     }
+
+    loadDashboard();
+  }, [router, supabase]);
+
+  const handleBannerUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !userId) return;
+
+    setUploadingBanner(true);
+
+    const fileExt = file.name.split('.').pop();
+    const filePath = `${userId}/${Date.now()}.${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage.from('banners').upload(filePath, file, { upsert: false });
+
+    if (uploadError) {
+      alert('Error uploading banner. Please try again.');
+      setUploadingBanner(false);
+      return;
+    }
+
+    const { data: publicUrlData } = supabase.storage.from('banners').getPublicUrl(filePath);
+
+    const uploadedBannerUrl = publicUrlData.publicUrl;
+
+    const { error: updateError } = await supabase.from('shops').update({ banner_url: uploadedBannerUrl }).eq('id', userId);
+
+    if (updateError) {
+      alert('Banner uploaded but failed to save to your shop profile.');
+      setUploadingBanner(false);
+      return;
+    }
+
+    setShop((prev) => (prev ? { ...prev, banner_url: uploadedBannerUrl } : prev));
+    setBannerUrl(uploadedBannerUrl);
+    setUploadingBanner(false);
+    event.target.value = '';
   };
 
+
+  const handleRemoveBanner = async () => {
+    if (!userId) return;
+
+    const { error } = await supabase.from('shops').update({ banner_url: null }).eq('id', userId);
+
+    if (error) {
+      alert('Failed to remove banner. Please try again.');
+      return;
+    }
+
+    setShop((prev) => (prev ? { ...prev, banner_url: null } : prev));
+    setBannerUrl(null);
+  };
+
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !userId) return;
+
+    setUploadingLogo(true);
+
+    const fileExt = file.name.split('.').pop();
+    const filePath = `${userId}/${Date.now()}.${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage.from('logos').upload(filePath, file, { upsert: false });
+
+    if (uploadError) {
+      alert('Error uploading logo. Please try again.');
+      setUploadingLogo(false);
+      return;
+    }
+
+    const { data: publicUrlData } = supabase.storage.from('logos').getPublicUrl(filePath);
+
+    const logoUrl = publicUrlData.publicUrl;
+
+    const { error: updateError } = await supabase.from('shops').update({ logo_url: logoUrl }).eq('id', userId);
+
+    if (updateError) {
+      alert('Logo uploaded but failed to save to your shop profile.');
+      setUploadingLogo(false);
+      return;
+    }
+
+    setShop((prev) => (prev ? { ...prev, logo_url: logoUrl } : prev));
+    setUploadingLogo(false);
+    event.target.value = '';
+  };
+
+  const handleSaveBio = async () => {
+    if (!userId) return;
+
+    setSavingBio(true);
+    const sanitizedBio = bioInput.trim().slice(0, 150);
+
+    const { error } = await supabase.from('shops').update({ bio: sanitizedBio }).eq('id', userId);
+
+    if (error) {
+      alert('Failed to save bio. Please try again.');
+      setSavingBio(false);
+      return;
+    }
+
+    setShop((prev) => (prev ? { ...prev, bio: sanitizedBio } : prev));
+    setBioInput(sanitizedBio);
+    setSavingBio(false);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this product?')) return;
+    const { error } = await supabase.from('products').delete().eq('id', id);
+    if (error) alert('Error deleting');
+    else window.location.reload();
+  };
+
+  const handleSaveDesignSettings = async () => {
+    if (!userId) return;
+
+    setSavingDesign(true);
+
+    const { error } = await supabase
+      .from('shops')
+      .update({
+        store_layout: storeLayout,
+        theme_color: themeColor,
+        offers_delivery: offersDelivery,
+        offers_pickup: offersPickup,
+        pickup_instructions: offersPickup ? pickupInstructions.trim() : '',
+      })
+      .eq('id', userId);
+
+    if (error) {
+      alert('Failed to save design settings. Please try again.');
+      setSavingDesign(false);
+      return;
+    }
+
+    setShop((prev) =>
+      prev
+        ? {
+            ...prev,
+            store_layout: storeLayout,
+            theme_color: themeColor,
+            offers_delivery: offersDelivery,
+            offers_pickup: offersPickup,
+            pickup_instructions: offersPickup ? pickupInstructions.trim() : '',
+          }
+        : prev
+    );
+    setSavingDesign(false);
+  };
+
+  const layoutOptions = [
+    { value: 'bantaba', label: 'The Bantaba', subtitle: '2-Column Trust Grid' },
+    { value: 'kairaba', label: 'The Kairaba', subtitle: 'Full-Width Fashion Feed' },
+    { value: 'serrekunda', label: 'The Serrekunda', subtitle: 'Dense 3-Column Catalog' },
+  ];
+
+  const colorOptions = [
+    { value: 'emerald', className: 'bg-emerald-600' },
+    { value: 'midnight', className: 'bg-slate-900' },
+    { value: 'terracotta', className: 'bg-orange-700' },
+    { value: 'ocean', className: 'bg-blue-600' },
+    { value: 'rose', className: 'bg-rose-500' },
+  ];
+
+  if (loading)
+    return <div className="min-h-screen bg-[#F9F8F6] p-8 font-serif animate-pulse">Loading Command Center...</div>;
+
   return (
-    <div className="min-h-screen bg-[#F9F8F6] p-6 font-sans text-[#2C3E2C] flex justify-center">
-      <div className="w-full max-w-2xl">
-        <Link href="/dashboard" className="mb-8 flex items-center text-gray-500 transition-colors hover:text-green-700">
-          <ArrowLeft size={20} className="mr-2" /> Cancel
-        </Link>
+    <div className="min-h-screen bg-[#F9F8F6] p-6 font-sans text-[#2C3E2C] md:p-10">
+      <div className="mb-10 flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
+        <div>
+          <h1 className="text-3xl font-serif font-bold text-[#1a2e1a]">Dashboard</h1>
+          <p className="text-sm text-gray-500">
+            Welcome back, <span className="font-bold">{shop?.shop_name || 'Partner'}</span>.
+          </p>
+        </div>
+        <div className="flex gap-3">
+          <Link
+            href={`/shop/${shop?.shop_slug}`}
+            target="_blank"
+            className="flex items-center gap-2 rounded-xl border border-[#E6E4DC] bg-white px-6 py-3 text-xs font-bold uppercase tracking-widest transition-all hover:border-[#2C3E2C]"
+          >
+            <Eye size={16} /> View Shop
+          </Link>
+          <Link
+            href="/dashboard/add"
+            className="flex items-center gap-2 rounded-xl bg-[#2C3E2C] px-6 py-3 text-xs font-bold uppercase tracking-widest text-white shadow-lg transition-all hover:bg-black"
+          >
+            <Plus size={16} /> Add Product
+          </Link>
+        </div>
+      </div>
 
-        <div className="rounded-3xl border border-[#E6E4DC] bg-white p-8 shadow-sm">
-          <h1 className="mb-6 text-3xl font-serif font-bold">Add New Product</h1>
+      <div className="mb-12 grid grid-cols-1 gap-6 md:grid-cols-3">
+        <div className="group relative overflow-hidden rounded-3xl bg-[#1a2e1a] p-6 text-white shadow-xl">
+          <div className="absolute -mr-10 -mt-10 h-32 w-32 rounded-full bg-white/5 blur-2xl" />
+          <div className="relative z-10">
+            <div className="mb-2 flex items-center gap-2 opacity-70">
+              <BarChart3 size={18} />
+              <span className="text-[10px] font-bold uppercase tracking-widest">Customer Interest</span>
+            </div>
+            <div className="mb-1 text-5xl font-serif font-medium">{totalLeads}</div>
+            <p className="text-xs opacity-60">People clicked &quot;Order&quot;</p>
+          </div>
+        </div>
 
-          <form onSubmit={handleSave} className="space-y-6">
-            <div>
-              <div className="mb-2 flex items-center justify-between">
-                <label className="block text-xs font-bold uppercase tracking-widest text-gray-500">Product Gallery (up to 5)</label>
-                <span className="text-xs text-gray-400">{images.length}/{MAX_IMAGES}</span>
+        <div className="group rounded-3xl border border-[#E6E4DC] bg-white p-6 shadow-sm transition-colors hover:border-[#2C3E2C]">
+          <div className="mb-2 flex items-center gap-2 text-green-700">
+            <DollarSign size={18} />
+            <span className="text-[10px] font-bold uppercase tracking-widest">Potential Revenue</span>
+          </div>
+          <div className="mb-1 text-4xl font-serif font-medium text-[#2C3E2C]">D{potentialRevenue.toLocaleString()}</div>
+          <p className="text-xs text-gray-400">Value of interested leads</p>
+        </div>
+
+        <div className="group rounded-3xl border border-[#E6E4DC] bg-white p-6 shadow-sm transition-colors hover:border-[#2C3E2C]">
+          <div className="mb-2 flex items-center gap-2 text-orange-600">
+            <TrendingUp size={18} />
+            <span className="text-[10px] font-bold uppercase tracking-widest">Top Product</span>
+          </div>
+          <div className="mb-1 truncate line-clamp-1 text-2xl font-serif font-bold text-[#2C3E2C]" title={topProduct}>
+            {topProduct}
+          </div>
+          <p className="text-xs text-gray-400">Most requested item</p>
+        </div>
+      </div>
+
+      <div className="mb-12 overflow-hidden rounded-3xl border border-[#E6E4DC] bg-white shadow-sm">
+        <div className="flex items-center gap-2 border-b border-gray-100 bg-gray-50/50 p-6">
+          <ImageIcon size={18} className="text-[#2C3E2C]" />
+          <h3 className="font-bold text-[#2C3E2C]">Store Appearance</h3>
+        </div>
+
+        <div className="space-y-6 p-6">
+          <div className="space-y-3">
+            <p className="text-sm font-semibold text-[#2C3E2C]">Store Logo</p>
+            <div className="flex items-center gap-4">
+              <div className="h-20 w-20 overflow-hidden rounded-full border border-[#E6E4DC] bg-gray-100">
+                {shop?.logo_url ? (
+                  <img src={shop.logo_url} alt="Store logo preview" className="aspect-square h-full w-full rounded-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-gray-400">
+                    <Store size={26} />
+                  </div>
+                )}
               </div>
 
-              <input
-                ref={inputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={(event) => void handleUpload(event.target.files)}
-              />
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-[#E6E4DC] px-4 py-2 text-sm font-semibold transition-colors hover:border-[#2C3E2C]">
+                <Upload size={16} />
+                {uploadingLogo ? 'Uploading logo...' : 'Upload Store Logo'}
+                <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={uploadingLogo} />
+              </label>
+            </div>
+          </div>
 
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
-                {Array.from({ length: MAX_IMAGES }).map((_, index) => {
-                  const image = images[index];
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-[#2C3E2C]">Store Bio</p>
+              <span className="text-xs text-gray-400">{bioInput.length}/150</span>
+            </div>
+            <textarea
+              value={bioInput}
+              onChange={(event) => setBioInput(event.target.value.slice(0, 150))}
+              maxLength={150}
+              rows={3}
+              placeholder="Write a short store bio for your customers..."
+              className="w-full rounded-xl border border-[#E6E4DC] px-4 py-3 text-sm text-[#2C3E2C] outline-none transition focus:border-[#2C3E2C]"
+            />
+            <button
+              type="button"
+              onClick={handleSaveBio}
+              disabled={savingBio}
+              className="inline-flex items-center rounded-xl bg-[#2C3E2C] px-4 py-2 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {savingBio ? 'Saving...' : 'Save Bio'}
+            </button>
+          </div>
 
-                  if (image) {
-                    return (
-                      <div
-                        key={`${image.url}-${index}`}
-                        className="group relative overflow-hidden rounded-2xl border border-[#E6E4DC] bg-white shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md"
-                      >
-                        <img src={image.url} alt={`Product ${index + 1}`} className="h-28 w-full object-cover" />
-
-                        <button
-                          type="button"
-                          onClick={() => removeImage(index)}
-                          className="absolute right-2 top-2 rounded-full bg-black/60 p-1.5 text-white transition hover:bg-red-600"
-                          aria-label="Delete image"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setAsPrimary(index)}
-                          className={`flex w-full items-center justify-center gap-1 px-2 py-2 text-[11px] font-semibold transition ${
-                            image.isDefault
-                              ? 'bg-emerald-50 text-emerald-700'
-                              : 'bg-white text-gray-600 hover:bg-gray-50'
-                          }`}
-                        >
-                          <Star size={12} className={image.isDefault ? 'fill-current' : ''} />
-                          {image.isDefault ? 'Primary' : 'Set Primary'}
-                        </button>
-                      </div>
-                    );
-                  }
-
-                  return (
-                    <button
-                      key={`empty-${index}`}
-                      type="button"
-                      onClick={() => inputRef.current?.click()}
-                      disabled={uploading}
-                      className="flex h-36 items-center justify-center rounded-2xl border-2 border-dashed border-[#D7D4CA] bg-[#F9F8F6] text-gray-400 transition-all duration-300 hover:border-[#2C3E2C] hover:text-[#2C3E2C] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {uploading ? <Loader2 className="animate-spin" size={20} /> : <Plus size={24} />}
-                    </button>
-                  );
-                })}
+          <div className="rounded-2xl border border-[#E6E4DC] bg-gradient-to-br from-white to-emerald-50/40 p-5 shadow-sm">
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-700">New</p>
+                <h4 className="text-lg font-bold text-[#1a2e1a]">Design Studio</h4>
+                <p className="text-xs text-gray-500">Choose the storefront layout and color signature that fits your brand.</p>
               </div>
+            </div>
 
-              {images.length > 0 && (
-                <div className="mt-3 flex gap-2 overflow-x-auto">
-                  {images.map((image, index) => (
-                    <img
-                      key={`preview-${image.url}-${index}`}
-                      src={image.url}
-                      alt={`Preview ${index + 1}`}
-                      className="h-12 w-12 rounded-lg object-cover"
-                    />
-                  ))}
+            <div className="space-y-3">
+              <p className="text-xs font-bold uppercase tracking-widest text-[#2C3E2C]">Layout</p>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                {layoutOptions.map((layout) => (
+                  <button
+                    key={layout.value}
+                    type="button"
+                    onClick={() => setStoreLayout(layout.value)}
+                    className={`rounded-xl border bg-white p-4 text-left transition-all ${
+                      storeLayout === layout.value
+                        ? 'border-[#2C3E2C] ring-2 ring-[#2C3E2C]/30 shadow-md'
+                        : 'border-[#E6E4DC] hover:border-[#2C3E2C]/60'
+                    }`}
+                  >
+                    <p className="font-bold text-[#2C3E2C]">{layout.label}</p>
+                    <p className="text-xs text-gray-500">{layout.subtitle}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-5 space-y-3">
+              <p className="text-xs font-bold uppercase tracking-widest text-[#2C3E2C]">Theme Color</p>
+              <div className="flex items-center gap-3">
+                {colorOptions.map((color) => (
+                  <button
+                    key={color.value}
+                    type="button"
+                    onClick={() => setThemeColor(color.value)}
+                    className={`h-10 w-10 rounded-full ${color.className} transition-all ${
+                      themeColor === color.value
+                        ? 'scale-105 ring-4 ring-[#2C3E2C]/35 ring-offset-2 ring-offset-white'
+                        : 'hover:scale-105'
+                    }`}
+                    aria-label={`Set theme color to ${color.value}`}
+                    title={color.value}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-[#E6E4DC] bg-white p-5 shadow-sm">
+            <h4 className="text-lg font-bold text-[#1a2e1a]">Fulfillment Settings</h4>
+            <p className="mt-1 text-xs text-gray-500">How do you get your products to customers?</p>
+
+            <div className="mt-5 space-y-4">
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#E6E4DC] p-3 transition hover:border-[#2C3E2C]/60">
+                <input
+                  type="checkbox"
+                  checked={offersDelivery}
+                  onChange={(event) => setOffersDelivery(event.target.checked)}
+                  className="mt-1 h-4 w-4 rounded border-gray-300 text-[#2C3E2C] focus:ring-[#2C3E2C]"
+                />
+                <span className="flex items-center gap-2 text-sm font-medium text-[#2C3E2C]">
+                  <Truck size={16} />
+                  Offer Local Delivery
+                </span>
+              </label>
+
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#E6E4DC] p-3 transition hover:border-[#2C3E2C]/60">
+                <input
+                  type="checkbox"
+                  checked={offersPickup}
+                  onChange={(event) => setOffersPickup(event.target.checked)}
+                  className="mt-1 h-4 w-4 rounded border-gray-300 text-[#2C3E2C] focus:ring-[#2C3E2C]"
+                />
+                <span className="flex items-center gap-2 text-sm font-medium text-[#2C3E2C]">
+                  <Handshake size={16} />
+                  Offer Local Pickup / Meetup
+                </span>
+              </label>
+
+              {offersPickup && (
+                <div className="space-y-2">
+                  <label htmlFor="pickup-instructions" className="text-xs font-bold uppercase tracking-widest text-[#2C3E2C]">
+                    Pickup/Meetup Instructions
+                  </label>
+                  <textarea
+                    id="pickup-instructions"
+                    value={pickupInstructions}
+                    onChange={(event) => setPickupInstructions(event.target.value)}
+                    rows={3}
+                    placeholder="Meet at Westfield Monument"
+                    className="w-full rounded-xl border border-[#E6E4DC] px-4 py-3 text-sm text-[#2C3E2C] outline-none transition focus:border-[#2C3E2C]"
+                  />
                 </div>
               )}
             </div>
 
-            <div>
-              <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">Product Name</label>
-              <input
-                type="text"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                className="w-full rounded-xl bg-[#F9F8F6] p-4 text-lg font-serif focus:ring-2 focus:ring-[#2C3E2C]"
-                placeholder="e.g. Royal Baobab Juice"
-                required
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">Category</label>
-                <select
-                  value={category}
-                  onChange={(event) => setCategory(event.target.value as (typeof CATEGORY_OPTIONS)[number])}
-                  className="w-full rounded-xl bg-[#F9F8F6] p-4 font-bold text-gray-700 focus:ring-2 focus:ring-[#2C3E2C]"
-                >
-                  {CATEGORY_OPTIONS.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">Price (D)</label>
-                <input
-                  type="number"
-                  value={price}
-                  onChange={(event) => setPrice(event.target.value)}
-                  className="w-full rounded-xl bg-[#F9F8F6] p-4 text-lg font-bold text-green-700 focus:ring-2 focus:ring-[#2C3E2C]"
-                  placeholder="0.00"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">Status</label>
-                <select
-                  value={status}
-                  onChange={(event) => setStatus(event.target.value)}
-                  className="w-full rounded-xl bg-[#F9F8F6] p-4 font-bold text-gray-700 focus:ring-2 focus:ring-[#2C3E2C]"
-                >
-                  <option value="Active">Active (Visible to buyers)</option>
-                  <option value="Draft">Draft / Sold Out (Hidden from buyers)</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div>
-                <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">Colors (comma separated)</label>
-                <input
-                  type="text"
-                  value={colorsInput}
-                  onChange={(event) => setColorsInput(event.target.value)}
-                  className="w-full rounded-xl bg-[#F9F8F6] p-4 text-sm text-gray-700 focus:ring-2 focus:ring-[#2C3E2C]"
-                  placeholder="Red, Blue, Green"
-                />
-                <p className="mt-1 text-xs text-gray-400">Example: Red, Blue, Green</p>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">Sizes/Lengths (comma separated)</label>
-                <input
-                  type="text"
-                  value={sizesInput}
-                  onChange={(event) => setSizesInput(event.target.value)}
-                  className="w-full rounded-xl bg-[#F9F8F6] p-4 text-sm text-gray-700 focus:ring-2 focus:ring-[#2C3E2C]"
-                  placeholder="2 Metres, 5 Metres"
-                />
-                <p className="mt-1 text-xs text-gray-400">Example: 2 Metres, 5 Metres</p>
-              </div>
-            </div>
-
-            <div>
-              <div className="mb-2 flex items-center justify-between">
-                <label className="block text-xs font-bold uppercase tracking-widest text-gray-500">Description</label>
-                <button
-                  type="button"
-                  onClick={generateMagicDescription}
-                  disabled={generating || !name.trim()}
-                  className="flex items-center gap-2 rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-white shadow-md transition-transform hover:scale-105 disabled:opacity-60"
-                >
-                  {generating ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                  {generating ? 'Writing...' : 'AI Magic Write'}
-                </button>
-              </div>
-
-              <textarea
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                rows={4}
-                className="w-full rounded-xl bg-[#F9F8F6] p-4 text-gray-600 focus:ring-2 focus:ring-[#2C3E2C]"
-                placeholder="Describe your product..."
-              />
-            </div>
-
             <button
-              type="submit"
-              disabled={loading || uploading}
-              className={`flex w-full items-center justify-center gap-2 rounded-xl py-4 text-lg font-bold text-white shadow-xl transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70 ${themeButtonClasses[themeColor]}`}
+              type="button"
+              onClick={handleSaveDesignSettings}
+              disabled={savingDesign}
+              className="mt-6 inline-flex items-center rounded-xl bg-[#1a2e1a] px-4 py-2 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {loading ? <Loader2 className="animate-spin" /> : <Save size={20} />}
-              {loading ? 'Publishing Product...' : 'Publish Product'}
+              {savingDesign ? 'Saving settings...' : 'Save Design & Fulfillment Settings'}
             </button>
-          </form>
+          </div>
+
+          <p className="text-sm text-gray-500">Upload a custom banner to personalize your storefront.</p>
+
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-[#E6E4DC] px-4 py-2 text-sm font-semibold transition-colors hover:border-[#2C3E2C]">
+            <Upload size={16} />
+            {uploadingBanner ? 'Uploading banner...' : 'Upload Store Banner'}
+            <input type="file" accept="image/*" className="hidden" onChange={handleBannerUpload} disabled={uploadingBanner} />
+          </label>
+
+          {bannerUrl && (
+            <div>
+              <p className="mb-2 text-xs uppercase tracking-widest text-gray-400">Current Banner</p>
+              <img
+                src={bannerUrl}
+                alt="Store banner preview"
+                className="h-48 w-full rounded-xl border border-gray-200 object-cover shadow-sm"
+              />
+              <button
+                type="button"
+                onClick={handleRemoveBanner}
+                className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-red-500 transition-colors hover:text-red-700"
+              >
+                <Trash2 size={14} />
+                Remove Banner
+              </button>
+            </div>
+          )}
         </div>
       </div>
+
+      <div className="overflow-hidden rounded-3xl border border-[#E6E4DC] bg-white shadow-sm">
+        <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/50 p-6">
+          <h3 className="font-bold text-[#2C3E2C]">Active Inventory</h3>
+          <span className="rounded-md bg-[#2C3E2C] px-2 py-1 text-xs font-bold text-white">{products.length} Items</span>
+        </div>
+
+        {products.length === 0 ? (
+          <div className="p-12 text-center">
+            <Package size={48} className="mx-auto mb-4 text-gray-200" />
+            <p className="mb-4 text-gray-400">You have not listed any products yet.</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {products.map((product) => (
+              <div key={product.id} className="group flex items-center justify-between p-4 transition-colors hover:bg-gray-50 md:p-6">
+                <div className="flex items-center gap-4 md:gap-6">
+                  <div className="h-16 w-16 overflow-hidden rounded-lg border border-gray-200 bg-gray-100">
+                    {product.image_url && <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />}
+                  </div>
+                  <div>
+                    <h4 className="text-lg font-bold text-[#2C3E2C]">{product.name}</h4>
+                    <p className="text-sm text-gray-500">
+                      D{product.price} •{' '}
+                      <span className="text-xs font-bold uppercase text-green-600">{product.category}</span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 md:gap-4">
+                  <Link
+                    href={`/product/${product.id}`}
+                    target="_blank"
+                    className="rounded-full p-2 text-gray-400 transition-all hover:bg-white hover:text-[#2C3E2C]"
+                    title="View"
+                  >
+                    <ExternalLink size={18} />
+                  </Link>
+                  <Link
+                    href={`/dashboard/edit/${product.id}`}
+                    className="rounded-full p-2 text-gray-400 transition-all hover:bg-blue-50 hover:text-blue-600"
+                    title="Edit"
+                  >
+                    <Edit size={18} />
+                  </Link>
+                  <button
+                    onClick={() => handleDelete(product.id)}
+                    className="rounded-full p-2 text-gray-400 transition-all hover:bg-red-50 hover:text-red-600"
+                    title="Delete"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="h-48 w-full"></div>
     </div>
   );
 }

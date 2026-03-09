@@ -1,13 +1,23 @@
 'use client';
 
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Loader2, Plus, Save, Sparkles, Star, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 
 const CATEGORY_OPTIONS = ['Food', 'Drinks', 'Beauty', 'Fashion', 'Electronics', 'General'] as const;
 const MAX_IMAGES = 5;
+
+type ThemeColor = 'emerald' | 'midnight' | 'terracotta' | 'ocean' | 'rose';
+
+const themeButtonClasses: Record<ThemeColor, string> = {
+  emerald: 'bg-emerald-600 hover:bg-emerald-700',
+  midnight: 'bg-slate-900 hover:bg-slate-950',
+  terracotta: 'bg-orange-700 hover:bg-orange-800',
+  ocean: 'bg-blue-600 hover:bg-blue-700',
+  rose: 'bg-rose-500 hover:bg-rose-600',
+};
 
 export default function AddProductPage() {
   const [loading, setLoading] = useState(false);
@@ -20,10 +30,36 @@ export default function AddProductPage() {
   const [status, setStatus] = useState('Active');
   const [description, setDescription] = useState('');
   const [images, setImages] = useState<{ url: string; isDefault: boolean }[]>([]);
+  const [colorsInput, setColorsInput] = useState('');
+  const [sizesInput, setSizesInput] = useState('');
+  const [themeColor, setThemeColor] = useState<ThemeColor>('emerald');
 
   const inputRef = useRef<HTMLInputElement>(null);
   const supabase = createClientComponentClient();
   const router = useRouter();
+
+  useEffect(() => {
+    async function fetchThemeColor() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) return;
+
+      const { data } = await supabase
+        .from('shops')
+        .select('theme_color')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      const nextTheme = data?.theme_color;
+      if (nextTheme && nextTheme in themeButtonClasses) {
+        setThemeColor(nextTheme as ThemeColor);
+      }
+    }
+
+    void fetchThemeColor();
+  }, [supabase]);
 
   const generateMagicDescription = () => {
     if (!name.trim()) {
@@ -137,6 +173,14 @@ export default function AddProductPage() {
       if (!user) throw new Error('Not authenticated');
 
       const orderedImages = [...images].sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
+      const colors = colorsInput
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const sizes = sizesInput
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
 
       const { error } = await supabase.from('products').insert({
         user_id: user.id,
@@ -147,6 +191,8 @@ export default function AddProductPage() {
         description,
         image_urls: orderedImages.map((image) => image.url),
         image_url: orderedImages[0]?.url || null,
+        colors: colors.length > 0 ? colors : null,
+        sizes: sizes.length > 0 ? sizes : null,
       });
 
       if (error) throw error;
@@ -237,6 +283,19 @@ export default function AddProductPage() {
                   );
                 })}
               </div>
+
+              {images.length > 0 && (
+                <div className="mt-3 flex gap-2 overflow-x-auto">
+                  {images.map((image, index) => (
+                    <img
+                      key={`preview-${image.url}-${index}`}
+                      src={image.url}
+                      alt={`Preview ${index + 1}`}
+                      className="h-12 w-12 rounded-lg object-cover"
+                    />
+                  ))}
+                </div>
+              )}
             </div>
 
             <div>
@@ -292,6 +351,32 @@ export default function AddProductPage() {
               </div>
             </div>
 
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">Colors (comma separated)</label>
+                <input
+                  type="text"
+                  value={colorsInput}
+                  onChange={(event) => setColorsInput(event.target.value)}
+                  className="w-full rounded-xl bg-[#F9F8F6] p-4 text-sm text-gray-700 focus:ring-2 focus:ring-[#2C3E2C]"
+                  placeholder="Red, Blue, Green"
+                />
+                <p className="mt-1 text-xs text-gray-400">Example: Red, Blue, Green</p>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">Sizes/Lengths (comma separated)</label>
+                <input
+                  type="text"
+                  value={sizesInput}
+                  onChange={(event) => setSizesInput(event.target.value)}
+                  className="w-full rounded-xl bg-[#F9F8F6] p-4 text-sm text-gray-700 focus:ring-2 focus:ring-[#2C3E2C]"
+                  placeholder="2 Metres, 5 Metres"
+                />
+                <p className="mt-1 text-xs text-gray-400">Example: 2 Metres, 5 Metres</p>
+              </div>
+            </div>
+
             <div>
               <div className="mb-2 flex items-center justify-between">
                 <label className="block text-xs font-bold uppercase tracking-widest text-gray-500">Description</label>
@@ -318,7 +403,7 @@ export default function AddProductPage() {
             <button
               type="submit"
               disabled={loading || uploading}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#2C3E2C] py-4 text-lg font-bold text-white shadow-xl transition-all hover:bg-black active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70"
+              className={`flex w-full items-center justify-center gap-2 rounded-xl py-4 text-lg font-bold text-white shadow-xl transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70 ${themeButtonClasses[themeColor]}`}
             >
               {loading ? <Loader2 className="animate-spin" /> : <Save size={20} />}
               {loading ? 'Publishing Product...' : 'Publish Product'}
