@@ -218,6 +218,29 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-gray-500">{resolvedShop.shop_name}</p>
           <h1 className="mt-2 text-3xl font-extrabold leading-tight md:text-4xl">{product.name}</h1>
           <p className={`mt-3 text-3xl font-black ${activeColor.text}`}>D{product.price}</p>
+
+          <div className="mt-5">
+            <p className="mb-2 text-xs font-bold uppercase tracking-[0.15em] text-gray-500">Quantity</p>
+            <div className="inline-flex items-center rounded-xl border border-gray-200 bg-white">
+              <button
+                type="button"
+                onClick={() => setQuantity((current) => Math.max(1, current - 1))}
+                className="px-4 py-2 text-lg font-semibold text-gray-700 transition hover:bg-gray-100"
+                aria-label="Decrease quantity"
+              >
+                -
+              </button>
+              <span className="min-w-10 px-4 text-center text-sm font-semibold text-gray-800">{quantity}</span>
+              <button
+                type="button"
+                onClick={() => setQuantity((current) => current + 1)}
+                className="px-4 py-2 text-lg font-semibold text-gray-700 transition hover:bg-gray-100"
+                aria-label="Increase quantity"
+              >
+                +
+              </button>
+            </div>
+          </div>
         </header>
 
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -336,29 +359,6 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
                   </button>
                 );
               })}
-            </div>
-          </div>
-
-          <div>
-            <p className="mb-2 text-xs font-bold uppercase tracking-[0.15em] text-gray-500">Quantity</p>
-            <div className="inline-flex items-center rounded-xl border border-gray-200 bg-white">
-              <button
-                type="button"
-                onClick={() => setQuantity((current) => Math.max(1, current - 1))}
-                className="px-4 py-2 text-lg font-semibold text-gray-700 transition hover:bg-gray-100"
-                aria-label="Decrease quantity"
-              >
-                -
-              </button>
-              <span className="min-w-10 px-4 text-center text-sm font-semibold text-gray-800">{quantity}</span>
-              <button
-                type="button"
-                onClick={() => setQuantity((current) => current + 1)}
-                className="px-4 py-2 text-lg font-semibold text-gray-700 transition hover:bg-gray-100"
-                aria-label="Increase quantity"
-              >
-                +
-              </button>
             </div>
           </div>
         </section>
