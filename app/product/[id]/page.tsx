@@ -226,27 +226,29 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
             </div>
           )}
 
-          <div>
-            <p className="mb-2 text-xs font-bold uppercase tracking-[0.15em] text-gray-500">Payment Method</p>
-            <div className="grid grid-cols-2 gap-2">
-              {PAYMENT_OPTIONS.map((option) => {
-                const selected = paymentMethod === option;
-                return (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => setPaymentMethod(option)}
-                    className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition ${
-                      selected ? 'bg-black text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    {selected && <CheckCircle2 size={16} />}
-                    {option}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          <div className="mb-8">
+        <p className="mb-2 text-xs font-bold uppercase tracking-[0.15em] text-gray-500">Payment Method</p>
+        <div className="grid grid-cols-2 gap-2">
+          {PAYMENT_OPTIONS.map((option) => {
+            const selected = paymentMethod === option;
+            return (
+              <button
+                key={option}
+                type="button"
+                onClick={() => setPaymentMethod(option)}
+                className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 ${
+                  selected 
+                    ? `${activeColor.bg} text-white shadow-md scale-[1.02]` 
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {selected && <CheckCircle2 size={16} />}
+                {option}
+              </button>
+            );
+          })}
+        </div>
+      </div>
         </section>
       </main>
 
