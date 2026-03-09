@@ -5,10 +5,13 @@ import { use, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, CheckCircle2, Loader2, MapPin, MessageCircle, ShoppingBag, Truck } from 'lucide-react';
 import Link from 'next/link';
 
+type ThemeColor = 'emerald' | 'midnight' | 'terracotta' | 'ocean' | 'rose';
+
 type ShopInfo = {
   shop_name: string;
   shop_slug: string;
   whatsapp_number: string | null;
+  theme_color: ThemeColor | null;
 };
 
 type Product = {
@@ -16,6 +19,7 @@ type Product = {
   name: string;
   price: number;
   description: string | null;
+  image_url: string | null;
   image_urls: string[] | null;
   shops: ShopInfo | ShopInfo[];
 };
@@ -23,6 +27,14 @@ type Product = {
 type FulfillmentMethod = 'delivery' | 'pickup';
 
 const PAYMENT_OPTIONS = ['Cash on Delivery', 'Wave'] as const;
+
+const themeColors: Record<ThemeColor, { bg: string; text: string }> = {
+  emerald: { bg: 'bg-emerald-600', text: 'text-emerald-600' },
+  midnight: { bg: 'bg-slate-900', text: 'text-slate-900' },
+  terracotta: { bg: 'bg-orange-700', text: 'text-orange-700' },
+  ocean: { bg: 'bg-blue-600', text: 'text-blue-600' },
+  rose: { bg: 'bg-rose-500', text: 'text-rose-500' },
+};
 
 function sanitizePhoneNumber(rawNumber?: string | null) {
   if (!rawNumber) return null;
@@ -55,7 +67,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     async function fetchProduct() {
       const { data, error } = await supabase
         .from('products')
-        .select('id, name, price, description, image_urls, shops(shop_name, shop_slug, whatsapp_number)')
+        .select('id, name, price, description, image_url, image_urls, shops(shop_name, shop_slug, whatsapp_number, theme_color)')
         .eq('id', productId)
         .single();
 
@@ -76,12 +88,20 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     return Array.isArray(shopData) ? shopData[0] : shopData;
   }, [product?.shops]);
 
-  const primaryImage = useMemo(() => {
-    if (!product?.image_urls || product.image_urls.length === 0) return null;
+  const normalizedImageUrls = useMemo(() => {
+    if (!product) return [];
 
-    const firstValid = product.image_urls.find((img) => typeof img === 'string' && img.trim().length > 0);
-    return firstValid || null;
+    const galleryUrls = Array.isArray(product.image_urls)
+      ? product.image_urls.filter((img): img is string => typeof img === 'string' && img.trim().length > 0)
+      : [];
+
+    const singleImage = product.image_url && product.image_url.trim().length > 0 ? [product.image_url] : [];
+
+    return [...galleryUrls, ...singleImage];
   }, [product]);
+
+  const themeColor = resolvedShop?.theme_color;
+  const activeColor = themeColor ? themeColors[themeColor] || themeColors.emerald : themeColors.emerald;
 
   const handleOrderClick = () => {
     if (!product || !resolvedShop) return;
@@ -131,8 +151,8 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
   return (
     <div className="min-h-screen bg-[#F9F8F6] pb-28 text-[#1a2e1a]">
       <section className="relative h-[450px] w-full overflow-hidden bg-gray-200">
-        {primaryImage ? (
-          <img src={primaryImage} alt={product.name} className="h-full w-full object-cover" />
+        {normalizedImageUrls.length > 0 ? (
+          <img src={normalizedImageUrls[0]} alt={product.name} className="h-full w-full object-cover" />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
             <ShoppingBag className="h-14 w-14 text-gray-400" />
@@ -153,7 +173,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
         <header>
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-gray-500">{resolvedShop.shop_name}</p>
           <h1 className="mt-2 text-3xl font-extrabold leading-tight md:text-4xl">{product.name}</h1>
-          <p className="mt-3 text-3xl font-black text-[#102a10]">D{product.price}</p>
+          <p className={`mt-3 text-3xl font-black ${activeColor.text}`}>D{product.price}</p>
         </header>
 
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -170,9 +190,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
                 type="button"
                 onClick={() => setFulfillmentMethod('delivery')}
                 className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition ${
-                  fulfillmentMethod === 'delivery'
-                    ? 'bg-[#1a2e1a] text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  fulfillmentMethod === 'delivery' ? `${activeColor.bg} text-white` : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
                 <Truck size={16} /> Delivery
@@ -181,9 +199,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
                 type="button"
                 onClick={() => setFulfillmentMethod('pickup')}
                 className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition ${
-                  fulfillmentMethod === 'pickup'
-                    ? 'bg-[#1a2e1a] text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  fulfillmentMethod === 'pickup' ? `${activeColor.bg} text-white` : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
                 <MapPin size={16} /> Pickup
@@ -239,7 +255,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
           <button
             type="button"
             onClick={handleOrderClick}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1a2e1a] py-4 text-sm font-bold uppercase tracking-wide text-white shadow-lg transition hover:opacity-95"
+            className={`flex w-full items-center justify-center gap-2 rounded-xl py-4 text-sm font-bold uppercase tracking-wide text-white shadow-lg transition hover:opacity-95 ${activeColor.bg}`}
           >
             <MessageCircle size={18} /> Order via WhatsApp
           </button>
