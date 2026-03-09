@@ -3,7 +3,7 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import Link from 'next/link';
 import { use, useEffect, useMemo, useState } from 'react';
-import { BadgeCheck, MessageCircle, Share2, ShoppingBag, Store } from 'lucide-react';
+import { ArrowRight, BadgeCheck, MessageCircle, Share2, ShoppingBag, Store } from 'lucide-react';
 
 type Shop = {
   id: string;
@@ -112,13 +112,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
     window.location.href = `https://wa.me/${cleanWhatsappNumber}`;
   };
 
-  const handleOrderProduct = (product: Product) => {
-    if (!cleanWhatsappNumber || !shop) return;
-    const message = encodeURIComponent(
-      `Hi ${shop.shop_name}! I'd like to order:\n\n• ${product.name} - D${product.price}`
-    );
-    window.open(`https://wa.me/${cleanWhatsappNumber}?text=${message}`, '_blank');
-  };
+
 
   const getGridClasses = () => {
     switch (shop?.store_layout) {
@@ -319,32 +313,30 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
           </div>
         ) : shop.store_layout === 'kairaba' ? (
           filteredProducts.map((product) => (
-            <article key={product.id} className="overflow-hidden rounded-3xl bg-white shadow-sm">
-              <Link href={`/product/${product.id}`} className="block">
-                <div className="aspect-[4/5] w-full bg-gray-100">
-                  {product.image_url ? (
-                    <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-gray-300">
-                      <ShoppingBag size={40} />
-                    </div>
-                  )}
-                </div>
-              </Link>
+            <Link
+              href={`/product/${product.id}`}
+              key={product.id}
+              className="block overflow-hidden rounded-3xl bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+            >
+              <div className="aspect-[4/5] w-full bg-gray-100">
+                {product.image_url ? (
+                  <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-gray-300">
+                    <ShoppingBag size={40} />
+                  </div>
+                )}
+              </div>
               <div className="space-y-4 p-5">
                 <div>
                   <h2 className="text-2xl font-semibold text-gray-900">{product.name}</h2>
                   <p className="mt-1 text-xl font-bold text-gray-700">D{product.price}</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleOrderProduct(product)}
-                  className={`w-full rounded-full px-6 py-3 text-base font-semibold text-white transition hover:opacity-90 ${activeColor.bg}`}
-                >
-                  Order via WhatsApp
-                </button>
+                <span className="inline-flex items-center gap-2 rounded-full border border-black px-5 py-2 text-sm font-semibold text-black transition hover:bg-black hover:text-white">
+                  View Product <ArrowRight size={16} />
+                </span>
               </div>
-            </article>
+            </Link>
           ))
         ) : shop.store_layout === 'serrekunda' ? (
           filteredProducts.map((product) => (
