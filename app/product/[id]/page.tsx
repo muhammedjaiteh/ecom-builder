@@ -2,62 +2,42 @@
 
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { use, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, CheckCircle2, MapPin, MessageCircle, Share2, ShoppingBag, Truck } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Loader2, MapPin, MessageCircle, ShoppingBag, Truck } from 'lucide-react';
 import Link from 'next/link';
 
 type ShopInfo = {
   shop_name: string;
   shop_slug: string;
-  phone: string | null;
   whatsapp_number: string | null;
-  theme_color: 'emerald' | 'midnight' | 'terracotta' | 'ocean' | 'rose' | null;
-  offers_delivery: boolean | null;
-  offers_pickup: boolean | null;
-  pickup_instructions: string | null;
 };
 
 type Product = {
   id: string;
   name: string;
   price: number;
-  description: string;
-  image_url: string | null;
-  image_urls?: string[] | null;
-  category: string;
-  status?: string | null;
+  description: string | null;
+  image_urls: string[] | null;
   shops: ShopInfo | ShopInfo[];
 };
 
-const themeColors = {
-  emerald: { bg: 'bg-emerald-600', text: 'text-emerald-600', ring: 'ring-emerald-600' },
-  midnight: { bg: 'bg-slate-900', text: 'text-slate-900', ring: 'ring-slate-900' },
-  terracotta: { bg: 'bg-orange-700', text: 'text-orange-700', ring: 'ring-orange-700' },
-  ocean: { bg: 'bg-blue-600', text: 'text-blue-600', ring: 'ring-blue-600' },
-  rose: { bg: 'bg-rose-500', text: 'text-rose-500', ring: 'ring-rose-500' },
-} as const;
+type FulfillmentMethod = 'delivery' | 'pickup';
 
 const PAYMENT_OPTIONS = ['Cash on Delivery', 'Wave'] as const;
 
-type FulfillmentMethod = 'delivery' | 'pickup';
-
-function sanitizeGambianPhoneNumber(rawNumber?: string | null) {
+function sanitizePhoneNumber(rawNumber?: string | null) {
   if (!rawNumber) return null;
 
-  const numericOnly = rawNumber.replace(/\D/g, '');
-  if (!numericOnly) return null;
+  const cleanNumber = rawNumber.replace(/\D/g, '');
+  if (!cleanNumber) return null;
 
-  const withoutLeadingZeros = numericOnly.replace(/^0+/, '');
-  const localNumber = withoutLeadingZeros.replace(/^(220)+/, '');
-  if (!localNumber) return null;
-
-  return localNumber;
+  return cleanNumber;
 }
 
 function generateWhatsAppLink(number: string | null | undefined, message: string) {
-  const cleanNumber = sanitizeGambianPhoneNumber(number);
+  const cleanNumber = sanitizePhoneNumber(number);
   if (!cleanNumber) return null;
 
-  return `https://wa.me/220${cleanNumber}?text=${encodeURIComponent(message)}`;
+  return `https://wa.me/${cleanNumber}?text=${encodeURIComponent(message)}`;
 }
 
 export default function ProductPage({ params }: { params: Promise<{ id: string }> }) {
@@ -65,8 +45,8 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
-  const [paymentMethod, setPaymentMethod] = useState<(typeof PAYMENT_OPTIONS)[number]>('Cash on Delivery');
   const [fulfillmentMethod, setFulfillmentMethod] = useState<FulfillmentMethod>('delivery');
+  const [paymentMethod, setPaymentMethod] = useState<(typeof PAYMENT_OPTIONS)[number]>('Cash on Delivery');
   const [deliveryAddress, setDeliveryAddress] = useState('');
 
   const supabase = createClientComponentClient();
@@ -75,297 +55,196 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     async function fetchProduct() {
       const { data, error } = await supabase
         .from('products')
-        .select(
-          'id, name, price, description, image_url, image_urls, category, status, shops(shop_name, shop_slug, phone, whatsapp_number, theme_color, offers_delivery, offers_pickup, pickup_instructions)'
-        )
+        .select('id, name, price, description, image_urls, shops(shop_name, shop_slug, whatsapp_number)')
         .eq('id', productId)
         .single();
 
       if (error) {
         console.error('Error fetching product:', error);
       } else {
-        const resolvedShopData = Array.isArray(data?.shops) ? data.shops[0] : data?.shops;
-        const defaultMethod: FulfillmentMethod = resolvedShopData?.offers_delivery ?? true ? 'delivery' : 'pickup';
-
         setProduct(data as Product);
-        setFulfillmentMethod(defaultMethod);
       }
+
       setLoading(false);
     }
 
     fetchProduct();
   }, [productId, supabase]);
 
-  const shopData = product?.shops as ShopInfo | ShopInfo[] | null | undefined;
-  const resolvedShop = useMemo(() => (Array.isArray(shopData) ? shopData[0] : shopData), [shopData]);
+  const resolvedShop = useMemo(() => {
+    const shopData = product?.shops;
+    return Array.isArray(shopData) ? shopData[0] : shopData;
+  }, [product?.shops]);
 
-  const normalizedImageUrls = useMemo(() => {
-    if (!product) return [];
+  const primaryImage = useMemo(() => {
+    if (!product?.image_urls || product.image_urls.length === 0) return null;
 
-    const galleryUrls = Array.isArray(product.image_urls)
-      ? product.image_urls.filter((url): url is string => typeof url === 'string' && url.trim().length > 0)
-      : [];
-
-    if (galleryUrls.length > 0) return galleryUrls;
-    return product.image_url ? [product.image_url] : [];
+    const firstValid = product.image_urls.find((img) => typeof img === 'string' && img.trim().length > 0);
+    return firstValid || null;
   }, [product]);
 
-  const themeColor = resolvedShop?.theme_color;
-  const offersDelivery = resolvedShop?.offers_delivery ?? true;
-  const offersPickup = resolvedShop?.offers_pickup ?? true;
-  const pickupInstructions = resolvedShop?.pickup_instructions?.trim() || '';
-  const normalizedProductStatus = product?.status?.trim().toLowerCase();
-  const isSoldOut = normalizedProductStatus === 'sold_out' || normalizedProductStatus === 'inactive';
-  const isProductActive = !isSoldOut;
-
-  const activeColor = themeColor ? themeColors[themeColor] || themeColors.emerald : themeColors.emerald;
-
-  const handleOrderClick = async () => {
-    if (!product || !resolvedShop || !isProductActive) return;
+  const handleOrderClick = () => {
+    if (!product || !resolvedShop) return;
 
     if (fulfillmentMethod === 'delivery' && !deliveryAddress.trim()) {
-      alert('Please enter your delivery area/address so the seller can fulfill your order.');
+      alert('Please provide a delivery address to continue.');
       return;
     }
 
-    await supabase.from('leads').insert({ product_id: product.id, shop_id: resolvedShop.shop_name });
+    const message = `Hello ${resolvedShop.shop_name}! 👋\n\nI want to order: ${product.name}\nPrice: D${product.price}\nPayment: ${paymentMethod}\nFulfillment: ${
+      fulfillmentMethod === 'delivery' ? `Delivery to ${deliveryAddress.trim()}` : 'Pickup'
+    }\n\nIs this item available?`;
 
-    const whatsappLink = generateWhatsAppLink(
-      resolvedShop.whatsapp_number || resolvedShop.phone,
-      `Hello ${resolvedShop.shop_name}! 👋
-
-I want to buy ${product.name} for D${product.price}.
-My payment method is: ${paymentMethod}.
-${
-  fulfillmentMethod === 'delivery'
-    ? `Fulfillment: Delivery to ${deliveryAddress.trim()}.`
-    : 'Fulfillment: Pickup/Meetup.'
-}
-
-Is this available?`
-    );
-
+    const whatsappLink = generateWhatsAppLink(resolvedShop.whatsapp_number, message);
     if (!whatsappLink) {
-      alert('This seller has not updated their WhatsApp number yet!');
+      alert('This seller has not set up a valid WhatsApp number yet.');
       return;
     }
 
     window.location.href = whatsappLink;
   };
 
-  const handleShareProduct = () => {
-    if (!product) return;
-    const url = window.location.href;
-    const message = encodeURIComponent(
-      `🔥 Check out this product on Sanndikaa:
-
-*${product.name}* for D${product.price}
-
-Tap the link to buy now:
-${url}`
-    );
-    window.open(`https://wa.me/?text=${message}`, '_blank');
-  };
-
-  if (loading)
+  if (loading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#F9F8F6]">
-        <ShoppingBag size={32} className="mb-4 animate-pulse text-[#2C3E2C]" />
-        <p className="text-xs font-bold uppercase text-gray-500">Loading Product...</p>
+      <div className="flex min-h-screen items-center justify-center bg-[#F9F8F6] text-[#1a2e1a]">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <Loader2 className="h-5 w-5 animate-spin" /> Loading product...
+        </div>
       </div>
     );
+  }
 
-  if (!product || !resolvedShop)
+  if (!product || !resolvedShop) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F9F8F6]">
+      <div className="flex min-h-screen items-center justify-center bg-[#F9F8F6] p-6">
         <div className="text-center">
-          <h1 className="mb-4 text-2xl font-serif text-gray-800">Product Not Found</h1>
-          <Link href="/" className="text-sm font-bold text-green-700 hover:underline">
+          <ShoppingBag className="mx-auto mb-3 h-8 w-8 text-gray-400" />
+          <h1 className="mb-2 text-2xl font-bold text-[#1a2e1a]">Product Not Found</h1>
+          <Link href="/" className="text-sm font-semibold text-green-700 hover:underline">
             Back to Marketplace
           </Link>
         </div>
       </div>
     );
+  }
 
   return (
-    <div className="min-h-screen bg-[#F9F8F6] pb-24 font-sans text-[#2C3E2C]">
-      <nav className="p-6">
+    <div className="min-h-screen bg-[#F9F8F6] pb-28 text-[#1a2e1a]">
+      <section className="relative h-[450px] w-full overflow-hidden bg-gray-200">
+        {primaryImage ? (
+          <img src={primaryImage} alt={product.name} className="h-full w-full object-cover" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center">
+            <ShoppingBag className="h-14 w-14 text-gray-400" />
+          </div>
+        )}
+
+        <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-black/10" />
+
         <Link
           href={`/shop/${resolvedShop.shop_slug || ''}`}
-          className="inline-flex items-center gap-2 text-xs font-bold uppercase text-gray-500 hover:text-[#2C3E2C]"
+          className="absolute left-4 top-4 inline-flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-xs font-bold uppercase tracking-wide text-[#1a2e1a] shadow backdrop-blur hover:bg-white"
         >
           <ArrowLeft size={16} /> Back
         </Link>
-      </nav>
+      </section>
 
-      <main className="mx-auto mt-4 grid max-w-4xl gap-8 px-4 md:grid-cols-2 md:gap-12 md:px-6">
-        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-gray-100 shadow-sm">
-          {normalizedImageUrls.length > 0 ? (
-            <div className="relative w-full overflow-hidden">
-              <div className="flex w-full overflow-x-auto snap-x snap-mandatory scrollbar-hide">
-                {normalizedImageUrls.map((url, index) => (
-                  <div key={index} className="w-full flex-none snap-center relative aspect-square bg-gray-100">
-                    <img
-                      src={url}
-                      alt={`Product image ${index + 1}`}
-                      className="object-cover w-full h-full"
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="flex aspect-square w-full items-center justify-center text-gray-300">
-              <ShoppingBag size={48} />
-            </div>
-          )}
-        </div>
+      <main className="mx-auto max-w-3xl space-y-6 px-4 py-6 md:px-6">
+        <header>
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-gray-500">{resolvedShop.shop_name}</p>
+          <h1 className="mt-2 text-3xl font-extrabold leading-tight md:text-4xl">{product.name}</h1>
+          <p className="mt-3 text-3xl font-black text-[#102a10]">D{product.price}</p>
+        </header>
 
-        <div className="flex flex-col justify-center">
-          <div className="mb-2">
-            <span className="text-[10px] font-bold uppercase text-gray-400">{product.category || 'General'}</span>
-          </div>
-          <h1 className="mb-4 text-3xl font-semibold text-[#1a2e1a] md:text-5xl">{product.name}</h1>
-          <p className="mb-6 text-3xl font-bold text-green-800">D{product.price}</p>
+        <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">
+            {product.description || 'No description provided for this product.'}
+          </p>
+        </section>
 
-          <div className="mb-6 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-            <p className="whitespace-pre-wrap text-sm text-gray-600">{product.description || 'No description provided.'}</p>
-          </div>
-
-          <div className="mb-8 border-t border-gray-100 pt-6">
-            <Link href={`/shop/${resolvedShop.shop_slug}`} className="hover:opacity-70 transition-opacity cursor-pointer inline-block">
-              <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">Sold By</p>
-              <p className="text-base font-bold text-green-800 underline decoration-1 underline-offset-4">{resolvedShop.shop_name}</p>
-            </Link>
-          </div>
-
-          {isProductActive ? (
-            <>
-              {(offersDelivery || offersPickup) && (
-                <div className="mb-6 border-t border-gray-100 pt-6">
-                  <p className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-500">How to Get Your Order</p>
-
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {offersDelivery && (
-                      <button
-                        type="button"
-                        onClick={() => setFulfillmentMethod('delivery')}
-                        className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm font-semibold transition ${
-                          fulfillmentMethod === 'delivery'
-                            ? `border-transparent ${activeColor.bg} text-white`
-                            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
-                        }`}
-                      >
-                        <span className="inline-flex items-center gap-2">
-                          <Truck size={16} /> Delivery
-                        </span>
-                        {fulfillmentMethod === 'delivery' ? (
-                          <CheckCircle2 size={18} />
-                        ) : (
-                          <span className="h-[18px] w-[18px] rounded-full border border-gray-300" />
-                        )}
-                      </button>
-                    )}
-
-                    {offersPickup && (
-                      <button
-                        type="button"
-                        onClick={() => setFulfillmentMethod('pickup')}
-                        className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm font-semibold transition ${
-                          fulfillmentMethod === 'pickup'
-                            ? `border-transparent ${activeColor.bg} text-white`
-                            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
-                        }`}
-                      >
-                        <span className="inline-flex items-center gap-2">
-                          <MapPin size={16} /> Pickup
-                        </span>
-                        {fulfillmentMethod === 'pickup' ? (
-                          <CheckCircle2 size={18} />
-                        ) : (
-                          <span className="h-[18px] w-[18px] rounded-full border border-gray-300" />
-                        )}
-                      </button>
-                    )}
-                  </div>
-
-                  {fulfillmentMethod === 'delivery' && offersDelivery && (
-                    <div className="mt-3 space-y-2">
-                      <label htmlFor="delivery-address" className="text-xs font-bold uppercase tracking-wide text-gray-500">
-                        Delivery Area / Address (Optional but recommended)
-                      </label>
-                      <textarea
-                        id="delivery-address"
-                        rows={3}
-                        value={deliveryAddress}
-                        onChange={(event) => setDeliveryAddress(event.target.value)}
-                        placeholder="Senegambia, near the petrol station"
-                        className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 outline-none transition focus:border-[#2C3E2C]"
-                      />
-                    </div>
-                  )}
-
-                  {fulfillmentMethod === 'pickup' && offersPickup && (
-                    <div className="mt-3 rounded-xl bg-gray-100 p-4 text-sm text-gray-700">
-                      {pickupInstructions || 'Pickup details will be shared by the seller after you place your order.'}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div className="mb-6 border-y border-gray-200 py-4">
-                <p className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-500">Payment Method</p>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {PAYMENT_OPTIONS.map((option) => {
-                    const selected = paymentMethod === option;
-                    return (
-                      <button
-                        key={option}
-                        type="button"
-                        onClick={() => setPaymentMethod(option)}
-                        className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm font-semibold transition ${
-                          selected
-                            ? 'border-[#2C3E2C] bg-[#2C3E2C]/5 text-[#2C3E2C]'
-                            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
-                        }`}
-                      >
-                        <span>{option}</span>
-                        {selected ? (
-                          <CheckCircle2 size={18} />
-                        ) : (
-                          <span className="h-[18px] w-[18px] rounded-full border border-gray-300" />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
+        <section className="space-y-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div>
+            <p className="mb-2 text-xs font-bold uppercase tracking-[0.15em] text-gray-500">Fulfillment</p>
+            <div className="grid grid-cols-2 gap-2">
               <button
-                onClick={handleOrderClick}
-                className={`flex w-full items-center justify-center gap-3 rounded-xl py-4 font-bold text-white shadow-xl transition-all hover:opacity-90 ${activeColor.bg}`}
+                type="button"
+                onClick={() => setFulfillmentMethod('delivery')}
+                className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition ${
+                  fulfillmentMethod === 'delivery'
+                    ? 'bg-[#1a2e1a] text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
               >
-                <MessageCircle size={20} /> Order via WhatsApp
+                <Truck size={16} /> Delivery
               </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              disabled
-              className="mb-6 flex w-full cursor-not-allowed items-center justify-center gap-3 rounded-xl bg-gray-300 py-4 font-bold text-gray-600"
-            >
-              Sold Out
-            </button>
+              <button
+                type="button"
+                onClick={() => setFulfillmentMethod('pickup')}
+                className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition ${
+                  fulfillmentMethod === 'pickup'
+                    ? 'bg-[#1a2e1a] text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                <MapPin size={16} /> Pickup
+              </button>
+            </div>
+          </div>
+
+          {fulfillmentMethod === 'delivery' && (
+            <div>
+              <label
+                htmlFor="delivery-address"
+                className="mb-2 block text-xs font-bold uppercase tracking-[0.15em] text-gray-500"
+              >
+                Delivery Address
+              </label>
+              <textarea
+                id="delivery-address"
+                rows={3}
+                value={deliveryAddress}
+                onChange={(event) => setDeliveryAddress(event.target.value)}
+                placeholder="e.g. Kairaba Avenue, near Atlas petrol station"
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 outline-none transition focus:border-[#1a2e1a] focus:bg-white"
+              />
+            </div>
           )}
 
+          <div>
+            <p className="mb-2 text-xs font-bold uppercase tracking-[0.15em] text-gray-500">Payment Method</p>
+            <div className="grid grid-cols-2 gap-2">
+              {PAYMENT_OPTIONS.map((option) => {
+                const selected = paymentMethod === option;
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => setPaymentMethod(option)}
+                    className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition ${
+                      selected ? 'bg-black text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {selected && <CheckCircle2 size={16} />}
+                    {option}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-gray-200 bg-white/95 p-4 backdrop-blur">
+        <div className="mx-auto max-w-3xl">
           <button
-            onClick={handleShareProduct}
-            className="mt-3 flex w-full items-center justify-center gap-3 rounded-xl bg-gray-100 py-4 font-bold text-gray-800 transition-all hover:bg-gray-200"
+            type="button"
+            onClick={handleOrderClick}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1a2e1a] py-4 text-sm font-bold uppercase tracking-wide text-white shadow-lg transition hover:opacity-95"
           >
-            <Share2 size={20} /> Share Product
+            <MessageCircle size={18} /> Order via WhatsApp
           </button>
         </div>
-      </main>
+      </div>
     </div>
   );
 }
