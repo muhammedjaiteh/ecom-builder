@@ -1,7 +1,7 @@
 'use client';
 
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { use, useEffect, useMemo, useState } from 'react';
+import { use, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, CheckCircle2, Loader2, MapPin, MessageCircle, ShoppingBag, Truck } from 'lucide-react';
 import Link from 'next/link';
 
@@ -65,7 +65,8 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
-  const [selectedImage, setSelectedImage] = useState('');
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const carouselRef = useRef<HTMLDivElement | null>(null);
 
   const supabase = createClientComponentClient();
 
@@ -120,11 +121,6 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     return [...galleryUrls, ...singleImage];
   }, [product]);
 
-  const activeSelectedImage = useMemo(() => {
-    if (normalizedImageUrls.length === 0) return null;
-    return selectedImage && normalizedImageUrls.includes(selectedImage) ? selectedImage : normalizedImageUrls[0];
-  }, [normalizedImageUrls, selectedImage]);
-
   const normalizedColors = useMemo(() => {
     return Array.isArray(product?.colors)
       ? product.colors.filter((color): color is string => typeof color === 'string' && color.trim().length > 0)
@@ -139,6 +135,19 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
   const themeColor = resolvedShop?.theme_color;
   const activeColor = themeColor ? themeColors[themeColor] || themeColors.emerald : themeColors.emerald;
+  const currentImageIndex = Math.min(activeImageIndex, Math.max(normalizedImageUrls.length - 1, 0));
+
+  const handleCarouselScroll = () => {
+    const node = carouselRef.current;
+    if (!node) return;
+
+    const width = node.clientWidth || 1;
+    const nextIndex = Math.round(node.scrollLeft / width);
+
+    if (nextIndex !== activeImageIndex) {
+      setActiveImageIndex(nextIndex);
+    }
+  };
 
   const handleOrderClick = () => {
     if (!product || !resolvedShop) return;
@@ -201,8 +210,18 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
   return (
     <div className="min-h-screen bg-[#F9F8F6] pb-28 text-[#1a2e1a]">
       <section className="relative h-[450px] w-full overflow-hidden bg-gray-200">
-        {activeSelectedImage ? (
-          <img src={activeSelectedImage} alt={product.name} className="h-full w-full object-cover" />
+        {normalizedImageUrls.length > 0 ? (
+          <div
+            ref={carouselRef}
+            onScroll={handleCarouselScroll}
+            className="flex h-full w-full snap-x snap-mandatory overflow-x-auto scroll-smooth scrollbar-hide"
+          >
+            {normalizedImageUrls.map((imageUrl, index) => (
+              <div key={`${imageUrl}-${index}`} className="h-full w-full flex-shrink-0 snap-start">
+                <img src={imageUrl} alt={`${product.name} image ${index + 1}`} className="h-full w-full object-cover" />
+              </div>
+            ))}
+          </div>
         ) : (
           <div className="flex h-full w-full items-center justify-center">
             <ShoppingBag className="h-14 w-14 text-gray-400" />
@@ -217,31 +236,24 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
         >
           <ArrowLeft size={16} /> Back
         </Link>
+
+        {normalizedImageUrls.length > 1 && (
+          <div className="pointer-events-none absolute bottom-4 left-1/2 z-10 -translate-x-1/2">
+            <div className="flex items-center gap-1.5 rounded-full bg-black/20 px-2 py-1 backdrop-blur-sm">
+              {normalizedImageUrls.map((_, index) => {
+                const isActive = index === currentImageIndex;
+
+                return (
+                  <span
+                    key={`dot-${index}`}
+                    className={`h-1.5 w-1.5 rounded-full transition ${isActive ? activeColor.bg : 'bg-white/60'}`}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        )}
       </section>
-
-      {normalizedImageUrls.length > 1 && (
-        <section className="mx-auto mt-4 flex max-w-3xl gap-3 overflow-x-auto px-4 md:px-6">
-          {normalizedImageUrls.map((imageUrl, index) => {
-            const isActive = imageUrl === activeSelectedImage;
-
-            return (
-              <button
-                key={`${imageUrl}-${index}`}
-                type="button"
-                onClick={() => setSelectedImage(imageUrl)}
-                className={`h-16 w-16 flex-none overflow-hidden rounded-lg border transition ${
-                  isActive
-                    ? `border-2 ${activeColor.border} opacity-100`
-                    : 'border-gray-200 opacity-60 hover:opacity-100'
-                }`}
-                aria-label={`Select product image ${index + 1}`}
-              >
-                <img src={imageUrl} alt={`${product.name} thumbnail ${index + 1}`} className="h-full w-full object-cover" />
-              </button>
-            );
-          })}
-        </section>
-      )}
 
       <main className="mx-auto max-w-3xl space-y-6 px-4 py-6 md:px-6">
         <header>
