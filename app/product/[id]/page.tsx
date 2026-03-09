@@ -30,12 +30,12 @@ type FulfillmentMethod = 'delivery' | 'pickup';
 
 const PAYMENT_OPTIONS = ['Cash on Delivery', 'Wave'] as const;
 
-const themeColors: Record<ThemeColor, { bg: string; text: string }> = {
-  emerald: { bg: 'bg-emerald-600', text: 'text-emerald-600' },
-  midnight: { bg: 'bg-slate-900', text: 'text-slate-900' },
-  terracotta: { bg: 'bg-orange-700', text: 'text-orange-700' },
-  ocean: { bg: 'bg-blue-600', text: 'text-blue-600' },
-  rose: { bg: 'bg-rose-500', text: 'text-rose-500' },
+const themeColors: Record<ThemeColor, { bg: string; text: string; border: string }> = {
+  emerald: { bg: 'bg-emerald-600', text: 'text-emerald-600', border: 'border-emerald-600' },
+  midnight: { bg: 'bg-slate-900', text: 'text-slate-900', border: 'border-slate-900' },
+  terracotta: { bg: 'bg-orange-700', text: 'text-orange-700', border: 'border-orange-700' },
+  ocean: { bg: 'bg-blue-600', text: 'text-blue-600', border: 'border-blue-600' },
+  rose: { bg: 'bg-rose-500', text: 'text-rose-500', border: 'border-rose-500' },
 };
 
 function sanitizePhoneNumber(rawNumber?: string | null) {
@@ -64,6 +64,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
+  const [quantity, setQuantity] = useState(1);
 
   const supabase = createClientComponentClient();
 
@@ -148,9 +149,11 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
       .filter(Boolean)
       .join(', ');
 
+    const totalPrice = product.price * quantity;
+
     const productLine = variationDetails
-      ? `I want to buy ${product.name} (${variationDetails}) for D${product.price}.`
-      : `I want to buy ${product.name} for D${product.price}.`;
+      ? `I want to buy ${quantity}x ${product.name} (${variationDetails}) for a total of D${totalPrice}.`
+      : `I want to buy ${quantity}x ${product.name} for a total of D${totalPrice}.`;
 
     const message = `Hello ${resolvedShop.shop_name}! 👋\n\n${productLine}\nPayment: ${paymentMethod}\nFulfillment: ${
       fulfillmentMethod === 'delivery' ? `Delivery to ${deliveryAddress.trim()}` : 'Pickup'
@@ -226,49 +229,41 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
         <section className="space-y-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           {normalizedColors.length > 0 && (
             <div>
-              <p className="mb-2 text-xs font-bold uppercase tracking-[0.15em] text-gray-500">Select Color</p>
-              <div className="flex flex-wrap gap-2">
-                {normalizedColors.map((color) => {
-                  const selected = selectedColor === color;
-
-                  return (
-                    <button
-                      key={color}
-                      type="button"
-                      onClick={() => setSelectedColor(color)}
-                      className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                        selected ? `${activeColor.bg} border-transparent text-white` : 'border-gray-200 bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
-                    >
-                      {color}
-                    </button>
-                  );
-                })}
-              </div>
+              <label htmlFor="product-color" className="mb-2 block text-xs font-bold uppercase tracking-[0.15em] text-gray-500">
+                Select Color
+              </label>
+              <select
+                id="product-color"
+                value={selectedColor || ''}
+                onChange={(event) => setSelectedColor(event.target.value || null)}
+                className="w-full rounded-xl border border-gray-200 bg-transparent px-4 py-3 text-sm font-medium text-gray-700 outline-none transition focus:border-gray-400"
+              >
+                {normalizedColors.map((color) => (
+                  <option key={color} value={color}>
+                    {color}
+                  </option>
+                ))}
+              </select>
             </div>
           )}
 
           {normalizedSizes.length > 0 && (
             <div>
-              <p className="mb-2 text-xs font-bold uppercase tracking-[0.15em] text-gray-500">Select Size/Length</p>
-              <div className="flex flex-wrap gap-2">
-                {normalizedSizes.map((size) => {
-                  const selected = selectedSize === size;
-
-                  return (
-                    <button
-                      key={size}
-                      type="button"
-                      onClick={() => setSelectedSize(size)}
-                      className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                        selected ? `${activeColor.bg} border-transparent text-white` : 'border-gray-200 bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
-                    >
-                      {size}
-                    </button>
-                  );
-                })}
-              </div>
+              <label htmlFor="product-size" className="mb-2 block text-xs font-bold uppercase tracking-[0.15em] text-gray-500">
+                Select Size/Length
+              </label>
+              <select
+                id="product-size"
+                value={selectedSize || ''}
+                onChange={(event) => setSelectedSize(event.target.value || null)}
+                className="w-full rounded-xl border border-gray-200 bg-transparent px-4 py-3 text-sm font-medium text-gray-700 outline-none transition focus:border-gray-400"
+              >
+                {normalizedSizes.map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
             </div>
           )}
 
@@ -278,20 +273,24 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
               <button
                 type="button"
                 onClick={() => setFulfillmentMethod('delivery')}
-                className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition ${
-                  fulfillmentMethod === 'delivery' ? `${activeColor.bg} text-white` : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold transition ${
+                  fulfillmentMethod === 'delivery'
+                    ? `border-2 ${activeColor.border} ${activeColor.text} bg-white`
+                    : 'border-gray-200 bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
-                <Truck size={16} /> Delivery
+                {fulfillmentMethod === 'delivery' && <CheckCircle2 size={16} className={activeColor.text} />} <Truck size={16} /> Delivery
               </button>
               <button
                 type="button"
                 onClick={() => setFulfillmentMethod('pickup')}
-                className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition ${
-                  fulfillmentMethod === 'pickup' ? `${activeColor.bg} text-white` : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold transition ${
+                  fulfillmentMethod === 'pickup'
+                    ? `border-2 ${activeColor.border} ${activeColor.text} bg-white`
+                    : 'border-gray-200 bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
-                <MapPin size={16} /> Pickup
+                {fulfillmentMethod === 'pickup' && <CheckCircle2 size={16} className={activeColor.text} />} <MapPin size={16} /> Pickup
               </button>
             </div>
           </div>
@@ -328,15 +327,38 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
                     onClick={() => setPaymentMethod(option)}
                     className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold transition ${
                       selected
-                        ? `${activeColor.bg} border-transparent text-white`
+                        ? `border-2 ${activeColor.border} ${activeColor.text} bg-white`
                         : 'border-gray-200 bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                   >
-                    {selected && <CheckCircle2 size={16} className="text-white" />}
+                    {selected && <CheckCircle2 size={16} className={activeColor.text} />}
                     {option}
                   </button>
                 );
               })}
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-2 text-xs font-bold uppercase tracking-[0.15em] text-gray-500">Quantity</p>
+            <div className="inline-flex items-center rounded-xl border border-gray-200 bg-white">
+              <button
+                type="button"
+                onClick={() => setQuantity((current) => Math.max(1, current - 1))}
+                className="px-4 py-2 text-lg font-semibold text-gray-700 transition hover:bg-gray-100"
+                aria-label="Decrease quantity"
+              >
+                -
+              </button>
+              <span className="min-w-10 px-4 text-center text-sm font-semibold text-gray-800">{quantity}</span>
+              <button
+                type="button"
+                onClick={() => setQuantity((current) => current + 1)}
+                className="px-4 py-2 text-lg font-semibold text-gray-700 transition hover:bg-gray-100"
+                aria-label="Increase quantity"
+              >
+                +
+              </button>
             </div>
           </div>
         </section>
