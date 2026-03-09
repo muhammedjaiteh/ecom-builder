@@ -21,8 +21,7 @@ type Product = {
   description: string | null;
   image_url: string | null;
   image_urls: string[] | null;
-  colors: string[] | null;
-  sizes: string[] | null;
+
   shops: ShopInfo | ShopInfo[];
 };
 
@@ -71,28 +70,14 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     async function fetchProduct() {
       const { data, error } = await supabase
         .from('products')
-        .select(
-          'id, name, price, description, image_url, image_urls, colors, sizes, shops(shop_name, shop_slug, whatsapp_number, theme_color)'
-        )
+
         .eq('id', productId)
         .single();
 
       if (error) {
         console.error('Error fetching product:', error);
       } else {
-        const fetchedProduct = data as Product;
-        setProduct(fetchedProduct);
 
-        const defaultColor = Array.isArray(fetchedProduct.colors)
-          ? fetchedProduct.colors.find((color) => typeof color === 'string' && color.trim().length > 0) || null
-          : null;
-
-        const defaultSize = Array.isArray(fetchedProduct.sizes)
-          ? fetchedProduct.sizes.find((size) => typeof size === 'string' && size.trim().length > 0) || null
-          : null;
-
-        setSelectedColor(defaultColor);
-        setSelectedSize(defaultSize);
       }
 
       setLoading(false);
@@ -118,17 +103,6 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     return [...galleryUrls, ...singleImage];
   }, [product]);
 
-  const normalizedColors = useMemo(() => {
-    return Array.isArray(product?.colors)
-      ? product.colors.filter((color): color is string => typeof color === 'string' && color.trim().length > 0)
-      : [];
-  }, [product]);
-
-  const normalizedSizes = useMemo(() => {
-    return Array.isArray(product?.sizes)
-      ? product.sizes.filter((size): size is string => typeof size === 'string' && size.trim().length > 0)
-      : [];
-  }, [product]);
 
   const themeColor = resolvedShop?.theme_color;
   const activeColor = themeColor ? themeColors[themeColor] || themeColors.emerald : themeColors.emerald;
@@ -141,18 +115,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
       return;
     }
 
-    const variationDetails = [
-      selectedColor ? `Color: ${selectedColor}` : null,
-      selectedSize ? `Size: ${selectedSize}` : null,
-    ]
-      .filter(Boolean)
-      .join(', ');
 
-    const productLine = variationDetails
-      ? `I want to buy ${product.name} (${variationDetails}) for D${product.price}.`
-      : `I want to buy ${product.name} for D${product.price}.`;
-
-    const message = `Hello ${resolvedShop.shop_name}! 👋\n\n${productLine}\nPayment: ${paymentMethod}\nFulfillment: ${
       fulfillmentMethod === 'delivery' ? `Delivery to ${deliveryAddress.trim()}` : 'Pickup'
     }\n\nIs this item available?`;
 
@@ -224,123 +187,6 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
         </section>
 
         <section className="space-y-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          {normalizedColors.length > 0 && (
-            <div>
-              <p className="mb-2 text-xs font-bold uppercase tracking-[0.15em] text-gray-500">Select Color</p>
-              <div className="flex flex-wrap gap-2">
-                {normalizedColors.map((color) => {
-                  const selected = selectedColor === color;
-
-                  return (
-                    <button
-                      key={color}
-                      type="button"
-                      onClick={() => setSelectedColor(color)}
-                      className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                        selected ? `${activeColor.bg} border-transparent text-white` : 'border-gray-200 bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
-                    >
-                      {color}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {normalizedSizes.length > 0 && (
-            <div>
-              <p className="mb-2 text-xs font-bold uppercase tracking-[0.15em] text-gray-500">Select Size/Length</p>
-              <div className="flex flex-wrap gap-2">
-                {normalizedSizes.map((size) => {
-                  const selected = selectedSize === size;
-
-                  return (
-                    <button
-                      key={size}
-                      type="button"
-                      onClick={() => setSelectedSize(size)}
-                      className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                        selected ? `${activeColor.bg} border-transparent text-white` : 'border-gray-200 bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
-                    >
-                      {size}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          <div>
-            <p className="mb-2 text-xs font-bold uppercase tracking-[0.15em] text-gray-500">Fulfillment</p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setFulfillmentMethod('delivery')}
-                className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition ${
-                  fulfillmentMethod === 'delivery' ? `${activeColor.bg} text-white` : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                <Truck size={16} /> Delivery
-              </button>
-              <button
-                type="button"
-                onClick={() => setFulfillmentMethod('pickup')}
-                className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition ${
-                  fulfillmentMethod === 'pickup' ? `${activeColor.bg} text-white` : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                <MapPin size={16} /> Pickup
-              </button>
-            </div>
-          </div>
-
-          {fulfillmentMethod === 'delivery' && (
-            <div>
-              <label
-                htmlFor="delivery-address"
-                className="mb-2 block text-xs font-bold uppercase tracking-[0.15em] text-gray-500"
-              >
-                Delivery Address
-              </label>
-              <textarea
-                id="delivery-address"
-                rows={3}
-                value={deliveryAddress}
-                onChange={(event) => setDeliveryAddress(event.target.value)}
-                placeholder="e.g. Kairaba Avenue, near Atlas petrol station"
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 outline-none transition focus:border-[#1a2e1a] focus:bg-white"
-              />
-            </div>
-          )}
-
-          <div>
-            <p className="mb-2 text-xs font-bold uppercase tracking-[0.15em] text-gray-500">Payment Method</p>
-            <div className="grid grid-cols-2 gap-2">
-              {PAYMENT_OPTIONS.map((option) => {
-                const selected = paymentMethod === option;
-
-                return (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => setPaymentMethod(option)}
-                    className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold transition ${
-                      selected
-                        ? `${activeColor.bg} border-transparent text-white`
-                        : 'border-gray-200 bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    {selected && <CheckCircle2 size={16} className="text-white" />}
-                    {option}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </section>
-      </main>
 
       <div className="fixed inset-x-0 bottom-0 z-20 border-t border-gray-200 bg-white/95 p-4 backdrop-blur">
         <div className="mx-auto max-w-3xl">
