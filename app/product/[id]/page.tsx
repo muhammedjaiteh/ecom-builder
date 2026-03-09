@@ -62,9 +62,13 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
   const [fulfillmentMethod, setFulfillmentMethod] = useState<FulfillmentMethod>('delivery');
   const [paymentMethod, setPaymentMethod] = useState<(typeof PAYMENT_OPTIONS)[number]>('Cash on Delivery');
   const [deliveryAddress, setDeliveryAddress] = useState('');
+  
+  // Dynamic Variation State
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
+  
+  // Carousel State
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const carouselRef = useRef<HTMLDivElement | null>(null);
 
@@ -209,17 +213,22 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
   return (
     <div className="min-h-screen bg-[#F9F8F6] pb-28 text-[#1a2e1a]">
-      <section className="relative h-[450px] w-full overflow-hidden bg-gray-200">
+      {/* HERO IMAGE CAROUSEL SECTION */}
+      <section className="relative h-[450px] w-full bg-gray-200">
         {normalizedImageUrls.length > 0 ? (
           <div
             ref={carouselRef}
             onScroll={handleCarouselScroll}
             className="flex h-full w-full snap-x snap-mandatory overflow-x-auto scroll-smooth scrollbar-hide"
+            style={{ WebkitOverflowScrolling: 'touch' }}
           >
             {normalizedImageUrls.map((imageUrl, index) => (
-              <div key={`${imageUrl}-${index}`} className="h-full w-full flex-shrink-0 snap-start">
-                <img src={imageUrl} alt={`${product.name} image ${index + 1}`} className="h-full w-full object-cover" />
-              </div>
+              <img 
+                key={`${imageUrl}-${index}`} 
+                src={imageUrl} 
+                alt={`${product.name} image ${index + 1}`} 
+                className="min-w-full h-full flex-shrink-0 snap-center object-cover" 
+              />
             ))}
           </div>
         ) : (
@@ -228,7 +237,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
           </div>
         )}
 
-        <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-black/10" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-black/10" />
 
         <Link
           href={`/shop/${resolvedShop.shop_slug || ''}`}
@@ -242,7 +251,6 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
             <div className="flex items-center gap-1.5 rounded-full bg-black/20 px-2 py-1 backdrop-blur-sm">
               {normalizedImageUrls.map((_, index) => {
                 const isActive = index === currentImageIndex;
-
                 return (
                   <span
                     key={`dot-${index}`}
