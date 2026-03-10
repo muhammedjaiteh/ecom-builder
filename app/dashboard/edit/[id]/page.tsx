@@ -21,6 +21,39 @@ const themeButtonClasses: Record<ThemeColor, string> = {
 
 type ImageItem = { url: string; isDefault: boolean };
 
+const normalizeStringArray = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value
+      .filter((item): item is string => typeof item === 'string')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .filter((item): item is string => typeof item === 'string')
+          .map((item) => item.trim())
+          .filter(Boolean);
+      }
+    } catch {
+      // fall through to comma-separated parsing
+    }
+
+    return trimmed
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+};
+
 export default function EditProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: productId } = use(params);
 
@@ -77,9 +110,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
         return;
       }
 
-      const galleryUrls = Array.isArray(product.image_urls)
-        ? product.image_urls.filter((url): url is string => typeof url === 'string' && url.trim().length > 0)
-        : [];
+      const galleryUrls = normalizeStringArray(product.image_urls);
 
       const fallbackImage = product.image_url && product.image_url.trim().length > 0 ? [product.image_url] : [];
       const allImages = galleryUrls.length > 0 ? galleryUrls : fallbackImage;
@@ -90,8 +121,11 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       setCategory((product.category as (typeof CATEGORY_OPTIONS)[number]) || 'General');
       setStatus(product.status || 'Active');
       setImages(allImages.map((url, index) => ({ url, isDefault: index === 0 })));
-      setColorsInput(Array.isArray(product.colors) ? product.colors.join(', ') : '');
-      setSizesInput(Array.isArray(product.sizes) ? product.sizes.join(', ') : '');
+      const productColors = normalizeStringArray(product.colors);
+      const productSizes = normalizeStringArray(product.sizes);
+
+      setColorsInput(productColors.length > 0 ? productColors.join(', ') : '');
+      setSizesInput(productSizes.length > 0 ? productSizes.join(', ') : '');
       setLoading(false);
     }
 
@@ -126,7 +160,8 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
 
       if (!user) throw new Error('Not authenticated');
 
-      const filesToUpload = Array.from(files).slice(0, MAX_IMAGES);
+      const remainingSlots = Math.max(MAX_IMAGES - images.length, 0);
+      const filesToUpload = Array.from(files).slice(0, remainingSlots);
       const uploaded: ImageItem[] = [];
 
       for (const file of filesToUpload) {
@@ -144,10 +179,16 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       }
 
       if (uploaded.length > 0) {
-        uploaded[0].isDefault = true;
-      }
+        setImages((prev) => {
+          const hasPrimary = prev.some((image) => image.isDefault);
+          const nextUploads = uploaded.map((image, index) => ({
+            ...image,
+            isDefault: !hasPrimary && index === 0,
+          }));
 
-      setImages(uploaded);
+          return [...prev, ...nextUploads];
+        });
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       alert(`Image upload failed: ${message}`);
