@@ -33,6 +33,8 @@ const themeColors = {
   rose: { bg: 'bg-rose-500', text: 'text-rose-500', ring: 'ring-rose-500' },
 } as const;
 
+const fallbackThemeColor: keyof typeof themeColors = 'emerald';
+
 export default function ShopPage({ params }: { params: Promise<{ slug: string }> }) {
   const resolvedParams = use(params);
   const slug = decodeURIComponent(resolvedParams.slug);
@@ -96,7 +98,10 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
     return cleanNumber;
   })();
 
-  const activeColor = shop?.theme_color ? themeColors[shop.theme_color] || themeColors.emerald : themeColors.emerald;
+  const activeColor = useMemo(() => {
+    const themeKey = shop?.theme_color ?? fallbackThemeColor;
+    return themeColors[themeKey] ?? themeColors[fallbackThemeColor];
+  }, [shop?.theme_color]);
 
   const handleShareStore = () => {
     if (!shop) return;
