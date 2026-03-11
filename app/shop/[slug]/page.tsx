@@ -112,8 +112,6 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
     window.location.href = `https://wa.me/${cleanWhatsappNumber}`;
   };
 
-
-
   const getGridClasses = () => {
     switch (shop?.store_layout) {
       case 'kairaba':
@@ -135,149 +133,52 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      <header className="w-full">
-        {shop.store_layout === 'kairaba' ? (
-          <div className="px-4 pb-4 pt-12">
-            <div className="mx-auto flex max-w-xl flex-col items-center text-center">
-              <div className="h-24 w-24 overflow-hidden rounded-full border-4 border-white bg-gray-100 shadow-md">
-                {shop.logo_url ? (
-                  <img src={shop.logo_url} alt={`${shop.shop_name} logo`} className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-gray-400">
-                    <Store size={34} />
-                  </div>
-                )}
+    <div className="min-h-screen bg-white pb-20">
+      <header className="px-4 py-16">
+        <div className="mx-auto flex max-w-2xl flex-col items-center text-center">
+          <div className="h-28 w-28 overflow-hidden rounded-full border border-gray-200 bg-gray-100">
+            {shop.logo_url ? (
+              <img src={shop.logo_url} alt={`${shop.shop_name} logo`} className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center text-gray-400">
+                <Store size={34} />
               </div>
-
-              <h1 className="mt-6 text-4xl font-semibold tracking-tight text-gray-900">{shop.shop_name}</h1>
-              <div className={`mt-2 inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-semibold ${activeColor.text}`}>
-                <BadgeCheck size={14} />
-                Verified Seller
-              </div>
-              <p className="mt-4 max-w-md text-sm text-gray-500">{shop.bio || 'Welcome to our store.'}</p>
-
-              <div className="mt-6 flex items-center justify-center gap-3">
-                <button
-                  type="button"
-                  onClick={handleChat}
-                  className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 ${activeColor.bg}`}
-                >
-                  <MessageCircle size={16} />
-                  Chat
-                </button>
-                <button
-                  type="button"
-                  onClick={handleShareStore}
-                  className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 ${activeColor.bg}`}
-                >
-                  <Share2 size={16} />
-                  Share Store
-                </button>
-              </div>
-            </div>
+            )}
           </div>
-        ) : shop.store_layout === 'serrekunda' ? (
-          <div className="px-4 py-4">
-            <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 rounded-2xl bg-white p-3 shadow-sm">
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="h-14 w-14 shrink-0 overflow-hidden rounded-full border-2 border-white bg-gray-100 shadow-sm">
-                  {shop.logo_url ? (
-                    <img src={shop.logo_url} alt={`${shop.shop_name} logo`} className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-gray-400">
-                      <Store size={22} />
-                    </div>
-                  )}
-                </div>
-                <div className="min-w-0">
-                  <h1 className="truncate text-lg font-bold text-gray-900">{shop.shop_name}</h1>
-                  <p className="truncate text-xs text-gray-500">{shop.bio || 'Welcome to our store.'}</p>
-                </div>
-              </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleChat}
-                  className={`inline-flex items-center gap-1 rounded-full px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:opacity-90 ${activeColor.bg}`}
-                >
-                  <MessageCircle size={14} />
-                  Chat
-                </button>
-                <button
-                  type="button"
-                  onClick={handleShareStore}
-                  className={`inline-flex items-center gap-1 rounded-full px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:opacity-90 ${activeColor.bg}`}
-                >
-                  <Share2 size={14} />
-                  Share
-                </button>
-              </div>
-            </div>
+          <h1 className="mt-8 text-3xl font-extrabold tracking-tight text-gray-900">{shop.shop_name}</h1>
+          <div
+            className={`mt-3 inline-flex items-center gap-1 rounded-full border border-gray-200 px-3 py-1 text-xs font-semibold ${activeColor.text}`}
+          >
+            <BadgeCheck size={14} />
+            Verified Seller
           </div>
-        ) : (
-          <>
-            <div
-              className="relative h-48 w-full overflow-hidden"
-              style={
-                shop.banner_url
-                  ? {
-                      backgroundImage: `url(${shop.banner_url})`,
-                      backgroundSize: 'cover',
-                      backgroundPosition: 'center',
-                    }
-                  : { backgroundColor: '#111827' }
-              }
+          <p className="mx-auto mt-4 max-w-md text-center text-sm font-medium leading-relaxed text-gray-500">
+            {shop.bio || 'Welcome to our store.'}
+          </p>
+
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={handleChat}
+              className={`inline-flex items-center gap-2 rounded-full px-6 py-3 text-xs font-bold uppercase tracking-widest text-white transition hover:opacity-90 ${activeColor.bg}`}
             >
-              <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
-            </div>
-
-            <div className="relative z-10 -mt-12 px-4 pb-2">
-              <div className="mx-auto flex max-w-md flex-col items-center text-center">
-                <div className="h-24 w-24 overflow-hidden rounded-full border-4 border-white bg-gray-100 shadow-md">
-                  {shop.logo_url ? (
-                    <img src={shop.logo_url} alt={`${shop.shop_name} logo`} className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-gray-400">
-                      <Store size={34} />
-                    </div>
-                  )}
-                </div>
-
-                <h1 className="mt-4 text-3xl font-bold tracking-tight text-gray-900">{shop.shop_name}</h1>
-                <div className={`mt-2 inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-semibold ${activeColor.text}`}>
-                  <BadgeCheck size={14} />
-                  Verified Seller
-                </div>
-
-                <p className="mt-3 max-w-xs text-center text-sm text-gray-500">{shop.bio || 'Welcome to our store.'}</p>
-
-                <div className="mt-5 flex items-center justify-center gap-3">
-                  <button
-                    type="button"
-                    onClick={handleChat}
-                    className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 ${activeColor.bg}`}
-                  >
-                    <MessageCircle size={16} />
-                    Chat
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleShareStore}
-                    className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 ${activeColor.bg}`}
-                  >
-                    <Share2 size={16} />
-                    Share Store
-                  </button>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
+              <MessageCircle size={15} />
+              WhatsApp
+            </button>
+            <button
+              type="button"
+              onClick={handleShareStore}
+              className="inline-flex items-center gap-2 rounded-full border border-gray-200 px-6 py-3 text-xs font-bold uppercase tracking-widest text-gray-700 transition hover:border-gray-300"
+            >
+              <Share2 size={15} />
+              Share Store
+            </button>
+          </div>
+        </div>
       </header>
 
-      <section className="px-4 pt-4">
+      <section className="px-4 pb-6">
         <div className="hide-scrollbar overflow-x-auto whitespace-nowrap">
           <div className="inline-flex gap-2 pb-2">
             {categories.map((category) => {
@@ -287,9 +188,9 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                   key={category}
                   type="button"
                   onClick={() => setSelectedCategory(category)}
-                  className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                  className={`rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-wide transition ${
                     active
-                      ? `bg-white ring-2 ring-offset-1 ${activeColor.ring} ${activeColor.text}`
+                      ? `${activeColor.bg} text-white`
                       : 'border border-gray-200 bg-white text-gray-700'
                   }`}
                 >
@@ -301,84 +202,32 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
         </div>
       </section>
 
-      <main className={getGridClasses()}>
+      <main className="grid grid-cols-2 gap-x-4 gap-y-8 px-4 md:grid-cols-3">
         {filteredProducts.length === 0 ? (
-          <div
-            className={`rounded-2xl bg-white p-8 text-center shadow-sm ${
-              shop.store_layout === 'serrekunda' ? 'col-span-3' : 'col-span-full'
-            }`}
-          >
+          <div className="col-span-full rounded-lg border border-gray-100 p-10 text-center">
             <ShoppingBag className="mx-auto mb-3 text-gray-300" size={40} />
             <p className="text-sm font-medium text-gray-500">No products found in this category.</p>
           </div>
-        ) : shop.store_layout === 'kairaba' ? (
-          filteredProducts.map((product) => (
-            <Link
-              href={`/product/${product.id}`}
-              key={product.id}
-              className="block overflow-hidden rounded-3xl bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-            >
-              <div className="aspect-[4/5] w-full bg-gray-100">
-                {product.image_url ? (
-                  <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-full items-center justify-center text-gray-300">
-                    <ShoppingBag size={40} />
-                  </div>
-                )}
-              </div>
-              <div className="space-y-4 p-5">
-                <div>
-                  <h2 className="text-2xl font-semibold text-gray-900">{product.name}</h2>
-                  <p className="mt-1 text-xl font-bold text-gray-700">D{product.price}</p>
-                </div>
-                <span className="inline-flex items-center gap-2 rounded-full border border-black px-5 py-2 text-sm font-semibold text-black transition hover:bg-black hover:text-white">
-                  View Product <ArrowRight size={16} />
-                </span>
-              </div>
-            </Link>
-          ))
-        ) : shop.store_layout === 'serrekunda' ? (
-          filteredProducts.map((product) => (
-            <Link
-              href={`/product/${product.id}`}
-              key={product.id}
-              className="overflow-hidden rounded-xl bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow"
-            >
-              <div className="aspect-square bg-gray-100">
-                {product.image_url ? (
-                  <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-full items-center justify-center text-gray-300">
-                    <ShoppingBag size={20} />
-                  </div>
-                )}
-              </div>
-              <div className="p-2">
-                <h2 className="truncate text-xs font-medium text-gray-800">{product.name}</h2>
-                <p className="mt-0.5 text-xs font-bold text-gray-900">D{product.price}</p>
-              </div>
-            </Link>
-          ))
         ) : (
           filteredProducts.map((product) => (
-            <Link
-              href={`/product/${product.id}`}
-              key={product.id}
-              className="overflow-hidden rounded-2xl bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-            >
-              <div className="aspect-square bg-gray-100">
+            <Link href={`/product/${product.id}`} key={product.id} className="group block">
+              <div className="aspect-[4/5] w-full overflow-hidden rounded-md bg-gray-100">
                 {product.image_url ? (
-                  <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
+                  <img
+                    src={product.image_url}
+                    alt={product.name}
+                    className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+                  />
                 ) : (
                   <div className="flex h-full items-center justify-center text-gray-300">
                     <ShoppingBag size={32} />
                   </div>
                 )}
               </div>
-              <div className="p-3">
-                <h2 className="truncate text-sm font-medium text-gray-800">{product.name}</h2>
-                <p className="mt-1 text-sm font-bold text-gray-900">D{product.price}</p>
+
+              <div className="mt-3">
+                <h2 className="truncate text-sm font-medium text-gray-700">{product.name}</h2>
+                <p className="mt-1 text-sm font-bold text-black">D{product.price}</p>
               </div>
             </Link>
           ))
