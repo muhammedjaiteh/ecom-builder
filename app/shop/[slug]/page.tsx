@@ -112,8 +112,6 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
     window.location.href = `https://wa.me/${cleanWhatsappNumber}`;
   };
 
-
-
   const getGridClasses = () => {
     switch (shop?.store_layout) {
       case 'kairaba':
@@ -312,76 +310,86 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
             <p className="text-sm font-medium text-gray-500">No products found in this category.</p>
           </div>
         ) : shop.store_layout === 'kairaba' ? (
-          filteredProducts.map((product) => (
-            <Link
-              href={`/product/${product.id}`}
-              key={product.id}
-              className="block overflow-hidden rounded-3xl bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-            >
-              <div className="aspect-[4/5] w-full bg-gray-100">
-                {product.image_url ? (
-                  <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-full items-center justify-center text-gray-300">
-                    <ShoppingBag size={40} />
-                  </div>
-                )}
-              </div>
-              <div className="space-y-4 p-5">
-                <div>
-                  <h2 className="text-2xl font-semibold text-gray-900">{product.name}</h2>
-                  <p className="mt-1 text-xl font-bold text-gray-700">D{product.price}</p>
+          filteredProducts.map((product) => {
+            const productImage =
+              (product as Product & { image_urls?: string[] | null }).image_urls?.[0] || product.image_url;
+
+            return (
+              <Link href={`/product/${product.id}`} key={product.id} className="group block">
+                <div className="aspect-[4/5] rounded-2xl bg-stone-100 overflow-hidden relative">
+                  {productImage ? (
+                    <img
+                      src={productImage}
+                      alt={product.name}
+                      className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-gray-300">
+                      <ShoppingBag size={40} />
+                    </div>
+                  )}
                 </div>
-                <span className="inline-flex items-center gap-2 rounded-full border border-black px-5 py-2 text-sm font-semibold text-black transition hover:bg-black hover:text-white">
-                  View Product <ArrowRight size={16} />
-                </span>
-              </div>
-            </Link>
-          ))
+                <div className="mt-3">
+                  <h2 className="truncate text-[15px] font-medium leading-[1.35] text-neutral-950">{product.name}</h2>
+                  <p className="mt-1 text-[15px] font-medium leading-[1.35] text-neutral-950">D{product.price}</p>
+                </div>
+              </Link>
+            );
+          })
         ) : shop.store_layout === 'serrekunda' ? (
-          filteredProducts.map((product) => (
-            <Link
-              href={`/product/${product.id}`}
-              key={product.id}
-              className="overflow-hidden rounded-xl bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow"
-            >
-              <div className="aspect-square bg-gray-100">
-                {product.image_url ? (
-                  <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-full items-center justify-center text-gray-300">
-                    <ShoppingBag size={20} />
-                  </div>
-                )}
-              </div>
-              <div className="p-2">
-                <h2 className="truncate text-xs font-medium text-gray-800">{product.name}</h2>
-                <p className="mt-0.5 text-xs font-bold text-gray-900">D{product.price}</p>
-              </div>
-            </Link>
-          ))
+          filteredProducts.map((product) => {
+            const productImage =
+              (product as Product & { image_urls?: string[] | null }).image_urls?.[0] || product.image_url;
+
+            return (
+              <Link href={`/product/${product.id}`} key={product.id} className="group block">
+                <div className="aspect-[4/5] rounded-2xl bg-stone-100 overflow-hidden relative">
+                  {productImage ? (
+                    <img
+                      src={productImage}
+                      alt={product.name}
+                      className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-gray-300">
+                      <ShoppingBag size={20} />
+                    </div>
+                  )}
+                </div>
+                <div className="mt-3">
+                  <h2 className="truncate text-[15px] font-medium leading-[1.35] text-neutral-950">{product.name}</h2>
+                  <p className="mt-1 text-[15px] font-medium leading-[1.35] text-neutral-950">D{product.price}</p>
+                </div>
+              </Link>
+            );
+          })
         ) : (
-          filteredProducts.map((product) => (
-            <Link
-              href={`/product/${product.id}`}
-              key={product.id}
-              className="overflow-hidden rounded-2xl bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-            >
-              <div className="aspect-square bg-gray-100">
-                {product.image_url ? (
-                  <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-full items-center justify-center text-gray-300">
-                    <ShoppingBag size={32} />
-                  </div>
-                )}
-              </div>
-              <div className="p-3">
-                <h2 className="truncate text-sm font-medium text-gray-800">{product.name}</h2>
-                <p className="mt-1 text-sm font-bold text-gray-900">D{product.price}</p>
-              </div>
-            </Link>
-          ))
+          filteredProducts.map((product) => {
+            const productImage =
+              (product as Product & { image_urls?: string[] | null }).image_urls?.[0] || product.image_url;
+
+            return (
+              <Link href={`/product/${product.id}`} key={product.id} className="group block">
+                <div className="aspect-[4/5] rounded-2xl bg-stone-100 overflow-hidden relative">
+                  {productImage ? (
+                    <img
+                      src={productImage}
+                      alt={product.name}
+                      className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-gray-300">
+                      <ShoppingBag size={32} />
+                    </div>
+                  )}
+                </div>
+                <div className="mt-3">
+                  <h2 className="truncate text-[15px] font-medium leading-[1.35] text-neutral-950">{product.name}</h2>
+                  <p className="mt-1 text-[15px] font-medium leading-[1.35] text-neutral-950">D{product.price}</p>
+                </div>
+              </Link>
+            );
+          })
         )}
       </main>
     </div>
