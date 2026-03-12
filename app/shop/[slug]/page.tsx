@@ -130,14 +130,14 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
 
     switch (matchedLayout) {
       case 'kairaba':
-        return 'grid grid-cols-1 md:grid-cols-2 gap-12 p-4';
+        return 'mt-8 grid grid-cols-2 gap-x-4 gap-y-8 md:grid-cols-3 lg:grid-cols-4';
       case 'jollof':
         return 'grid grid-cols-2 gap-x-4 gap-y-8 p-4 md:gap-x-6 md:gap-y-10';
       case 'senegambia':
         return 'grid grid-cols-1 gap-8 p-4 md:gap-10';
       case 'bantaba':
       default:
-        return 'grid grid-cols-2 gap-4 p-4';
+        return 'mt-8 grid grid-cols-2 gap-x-4 gap-y-8 md:grid-cols-3 lg:grid-cols-4';
     }
   };
 
