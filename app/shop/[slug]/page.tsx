@@ -131,14 +131,18 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
             : 'bantaba';
 
     switch (matchedLayout) {
+      case 'serrekunda':
+        return 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4 md:gap-6';
+      case 'kairaba':
+        return 'flex flex-col gap-12 w-full max-w-3xl mx-auto';
+      case 'bantaba':
+        return 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8';
+      case 'jollof':
+        return 'grid grid-cols-2 md:grid-cols-3 gap-6';
       case 'senegambia':
         return 'grid grid-cols-1 md:grid-cols-2 gap-8';
-      case 'jollof':
-      case 'serrekunda':
-      case 'kairaba':
-      case 'bantaba':
       default:
-        return 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6 lg:gap-8';
+        return 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8';
     }
   };
 
@@ -341,14 +345,17 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
 
           switch (matchedLayout) {
             case 'serrekunda':
-            case 'kairaba':
               return filteredProducts.map((product) => {
                 const productImage =
                   (product as Product & { image_urls?: string[] | null }).image_urls?.[0] || product.image_url;
 
                 return (
-                  <Link href={`/product/${product.id}`} key={product.id} className="group block rounded-md border border-slate-100 bg-white p-3 shadow-sm transition-all hover:shadow-md">
-                    <div className="relative aspect-[4/5] overflow-hidden rounded-md bg-slate-100">
+                  <Link
+                    href={`/product/${product.id}`}
+                    key={product.id}
+                    className="group block rounded-md border border-slate-100 bg-white p-3 shadow-sm transition-all hover:shadow-md"
+                  >
+                    <div className="relative aspect-[4/5] w-full overflow-hidden rounded-md bg-slate-100">
                       {productImage ? (
                         <img
                           src={productImage}
@@ -356,12 +363,40 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                           className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.05]"
                         />
                       ) : (
-                        <div className="flex h-full items-center justify-center text-gray-300">
-                          <ShoppingBag size={40} />
+                        <div className="flex h-full items-center justify-center text-slate-300">
+                          <ShoppingBag size={36} />
                         </div>
                       )}
                     </div>
                     <div className="mt-2 text-slate-900">
+                      <h2 className="text-sm font-medium leading-tight md:text-base">{product.name}</h2>
+                      <p className="mt-1 text-sm font-bold">D{product.price}</p>
+                    </div>
+                  </Link>
+                );
+              });
+
+            case 'kairaba':
+              return filteredProducts.map((product) => {
+                const productImage =
+                  (product as Product & { image_urls?: string[] | null }).image_urls?.[0] || product.image_url;
+
+                return (
+                  <Link href={`/product/${product.id}`} key={product.id} className="group block">
+                    <div className="relative aspect-[4/5] w-full overflow-hidden rounded-md bg-slate-100 md:aspect-square">
+                      {productImage ? (
+                        <img
+                          src={productImage}
+                          alt={product.name}
+                          className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.05]"
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-slate-300">
+                          <ShoppingBag size={44} />
+                        </div>
+                      )}
+                    </div>
+                    <div className="mt-3 text-slate-900">
                       <h2 className="text-sm font-medium leading-tight md:text-base">{product.name}</h2>
                       <p className="mt-1 text-sm font-bold">D{product.price}</p>
                     </div>
@@ -376,7 +411,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
 
                 return (
                   <Link href={`/product/${product.id}`} key={product.id} className="group block rounded-lg bg-[#FCFBFA] p-3 shadow-sm">
-                    <div className="relative aspect-[4/5] overflow-hidden rounded-lg bg-stone-100">
+                    <div className="relative aspect-[4/5] w-full overflow-hidden rounded-lg bg-stone-100">
                       {productImage ? (
                         <img
                           src={productImage}
@@ -384,8 +419,8 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                           className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.05]"
                         />
                       ) : (
-                        <div className="flex h-full items-center justify-center text-[#2B2B2B]">
-                          <ShoppingBag size={40} />
+                        <div className="flex h-full items-center justify-center text-slate-400">
+                          <ShoppingBag size={36} />
                         </div>
                       )}
                     </div>
@@ -407,9 +442,9 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                   <Link
                     href={`/product/${product.id}`}
                     key={product.id}
-                    className={`group block rounded-none bg-[#121212] p-3 text-[#F9F6F0] shadow-lg ${index % 2 === 0 ? 'mt-8 md:mt-16' : ''}`}
+                    className={`group block rounded-none bg-[#121212] p-3 text-[#F9F6F0] ${index % 2 === 0 ? 'mt-12' : ''}`}
                   >
-                    <div className="relative aspect-[4/5] overflow-hidden bg-zinc-900">
+                    <div className="relative aspect-[4/5] w-full overflow-hidden bg-zinc-900">
                       {productImage ? (
                         <img
                           src={productImage}
@@ -418,7 +453,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                         />
                       ) : (
                         <div className="flex h-full items-center justify-center text-[#F9F6F0]/70">
-                          <ShoppingBag size={32} />
+                          <ShoppingBag size={36} />
                         </div>
                       )}
                     </div>
@@ -437,7 +472,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
 
                 return (
                   <Link href={`/product/${product.id}`} key={product.id} className="group block rounded-lg bg-black p-4 text-white">
-                    <div className="relative aspect-[3/4] overflow-hidden rounded-lg bg-zinc-900">
+                    <div className="relative aspect-[4/5] w-full overflow-hidden rounded-lg bg-zinc-900">
                       {productImage ? (
                         <img
                           src={productImage}
@@ -446,12 +481,12 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                         />
                       ) : (
                         <div className="flex h-full items-center justify-center text-white/70">
-                          <ShoppingBag size={32} />
+                          <ShoppingBag size={36} />
                         </div>
                       )}
                     </div>
-                    <div className="mt-4">
-                      <h2 className="text-sm font-medium leading-tight uppercase tracking-wide text-white md:text-base">{product.name}</h2>
+                    <div className="mt-3">
+                      <h2 className="text-sm font-medium leading-tight text-white md:text-base">{product.name}</h2>
                       <p className="mt-1 text-sm font-bold text-white">D{product.price}</p>
                     </div>
                   </Link>
