@@ -132,17 +132,17 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
 
     switch (matchedLayout) {
       case 'serrekunda':
-        return 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4 md:gap-6';
+        return 'mt-8 grid grid-cols-2 gap-x-4 gap-y-10 md:grid-cols-3 lg:grid-cols-3';
       case 'kairaba':
-        return 'flex flex-col gap-12 w-full max-w-3xl mx-auto';
+        return 'mt-8 flex flex-col gap-16 w-full max-w-2xl mx-auto';
       case 'bantaba':
-        return 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8';
+        return 'mt-8 grid grid-cols-2 gap-x-4 gap-y-10 md:grid-cols-3 lg:grid-cols-4';
       case 'jollof':
-        return 'grid grid-cols-2 md:grid-cols-3 gap-6';
+        return 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6';
       case 'senegambia':
-        return 'grid grid-cols-1 md:grid-cols-2 gap-8';
+        return 'mt-8 grid grid-cols-1 md:grid-cols-2 gap-8';
       default:
-        return 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8';
+        return 'mt-8 grid grid-cols-2 gap-x-4 gap-y-10 md:grid-cols-3 lg:grid-cols-4';
     }
   };
 
@@ -360,7 +360,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                         <img
                           src={productImage}
                           alt={product.name}
-                          className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.05]"
+                          className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.05]"
                         />
                       ) : (
                         <div className="flex h-full items-center justify-center text-slate-300">
@@ -383,12 +383,12 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
 
                 return (
                   <Link href={`/product/${product.id}`} key={product.id} className="group block">
-                    <div className="relative aspect-[4/5] w-full overflow-hidden rounded-md bg-slate-100 md:aspect-square">
+                    <div className="relative aspect-[4/5] w-full overflow-hidden bg-slate-100 md:aspect-square">
                       {productImage ? (
                         <img
                           src={productImage}
                           alt={product.name}
-                          className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.05]"
+                          className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.05]"
                         />
                       ) : (
                         <div className="flex h-full items-center justify-center text-slate-300">
@@ -416,7 +416,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                         <img
                           src={productImage}
                           alt={product.name}
-                          className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.05]"
+                          className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.05]"
                         />
                       ) : (
                         <div className="flex h-full items-center justify-center text-slate-400">
@@ -449,7 +449,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                         <img
                           src={productImage}
                           alt={product.name}
-                          className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.05]"
+                          className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.05]"
                         />
                       ) : (
                         <div className="flex h-full items-center justify-center text-[#F9F6F0]/70">
@@ -477,7 +477,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                         <img
                           src={productImage}
                           alt={product.name}
-                          className="h-full w-full object-cover grayscale transition-all duration-500 group-hover:grayscale-0"
+                          className="h-full w-full object-cover grayscale transition-all duration-700 group-hover:grayscale-0"
                         />
                       ) : (
                         <div className="flex h-full items-center justify-center text-white/70">
