@@ -119,23 +119,26 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
 
   const getGridClasses = () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const layoutString = String((shop as any)?.layout || '').toLowerCase();
-    const matchedLayout = layoutString.includes('serrekunda')
-      ? 'serrekunda'
+    const layoutString = String((shop as any)?.store_layout || '').toLowerCase();
+    const matchedLayout = layoutString.includes('senegambia')
+      ? 'senegambia'
       : layoutString.includes('jollof')
         ? 'jollof'
-        : layoutString.includes('senegambia')
-          ? 'senegambia'
-          : 'bantaba';
+        : layoutString.includes('serrekunda')
+          ? 'serrekunda'
+          : layoutString.includes('kairaba')
+            ? 'kairaba'
+            : 'bantaba';
 
     switch (matchedLayout) {
       case 'senegambia':
-        return 'mt-8 grid grid-cols-1 md:grid-cols-2 gap-8';
+        return 'grid grid-cols-1 md:grid-cols-2 gap-8';
       case 'jollof':
       case 'serrekunda':
+      case 'kairaba':
       case 'bantaba':
       default:
-        return 'mt-8 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4';
+        return 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6 lg:gap-8';
     }
   };
 
@@ -326,23 +329,26 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
         ) : (() => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const layoutString = String((shop as any)?.store_layout || '').toLowerCase();
-          const matchedLayout = layoutString.includes('serrekunda')
-            ? 'serrekunda'
+          const matchedLayout = layoutString.includes('senegambia')
+            ? 'senegambia'
             : layoutString.includes('jollof')
               ? 'jollof'
-              : layoutString.includes('senegambia')
-                ? 'senegambia'
-                : 'bantaba';
+              : layoutString.includes('serrekunda')
+                ? 'serrekunda'
+                : layoutString.includes('kairaba')
+                  ? 'kairaba'
+                  : 'bantaba';
 
           switch (matchedLayout) {
             case 'serrekunda':
+            case 'kairaba':
               return filteredProducts.map((product) => {
                 const productImage =
                   (product as Product & { image_urls?: string[] | null }).image_urls?.[0] || product.image_url;
 
                 return (
-                  <Link href={`/product/${product.id}`} key={product.id} className="group block rounded-lg bg-white p-4 shadow-sm">
-                    <div className="relative aspect-[4/5] overflow-hidden rounded-lg bg-stone-100">
+                  <Link href={`/product/${product.id}`} key={product.id} className="group block rounded-md border border-slate-100 bg-white p-3 shadow-sm transition-all hover:shadow-md">
+                    <div className="relative aspect-[4/5] overflow-hidden rounded-md bg-slate-100">
                       {productImage ? (
                         <img
                           src={productImage}
@@ -355,9 +361,9 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                         </div>
                       )}
                     </div>
-                    <div className="mt-3 text-[#1C1C1C]">
-                      <h2 className="font-serif text-[20px] leading-tight">{product.name}</h2>
-                      <p className="mt-1 font-sans text-[16px]">D{product.price}</p>
+                    <div className="mt-2 text-slate-900">
+                      <h2 className="text-sm font-medium leading-tight md:text-base">{product.name}</h2>
+                      <p className="mt-1 text-sm font-bold">D{product.price}</p>
                     </div>
                   </Link>
                 );
@@ -369,8 +375,8 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                   (product as Product & { image_urls?: string[] | null }).image_urls?.[0] || product.image_url;
 
                 return (
-                  <Link href={`/product/${product.id}`} key={product.id} className="group block rounded-lg bg-[#F4ECE2] p-4 shadow-sm">
-                    <div className="relative aspect-[4/5] overflow-hidden rounded-lg bg-[#d89a76]">
+                  <Link href={`/product/${product.id}`} key={product.id} className="group block rounded-lg bg-[#FCFBFA] p-3 shadow-sm">
+                    <div className="relative aspect-[4/5] overflow-hidden rounded-lg bg-stone-100">
                       {productImage ? (
                         <img
                           src={productImage}
@@ -383,9 +389,10 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                         </div>
                       )}
                     </div>
-                    <div className="mt-3 text-[#2B2B2B]">
-                      <h2 className="font-sans text-[28px] font-bold leading-[1.1] tracking-tight">{product.name}</h2>
-                      <p className="mt-1 font-serif text-[16px]">D{product.price}</p>
+                    <div className="mt-2 text-black">
+                      <p className="text-[10px] uppercase tracking-widest text-slate-500">VERIFIED SELLER</p>
+                      <h2 className="mt-1 text-sm font-medium leading-tight md:text-base">{product.name}</h2>
+                      <p className="mt-1 text-sm font-bold">D{product.price}</p>
                     </div>
                   </Link>
                 );
@@ -400,7 +407,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                   <Link
                     href={`/product/${product.id}`}
                     key={product.id}
-                    className={`group block bg-black p-4 text-[#F9F6F0] shadow-lg ${index % 2 === 0 ? 'mt-12' : ''}`}
+                    className={`group block rounded-none bg-[#121212] p-3 text-[#F9F6F0] shadow-lg ${index % 2 === 0 ? 'mt-8 md:mt-16' : ''}`}
                   >
                     <div className="relative aspect-[4/5] overflow-hidden bg-zinc-900">
                       {productImage ? (
@@ -416,8 +423,8 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                       )}
                     </div>
                     <div className="mt-3">
-                      <h2 className="font-sans text-[32px] font-bold leading-[1.05] tracking-tight">{product.name}</h2>
-                      <p className="mt-1 font-sans text-[16px] text-[#F9F6F0]/90">D{product.price}</p>
+                      <h2 className="text-sm font-medium leading-tight text-[#F9F6F0] md:text-base">{product.name}</h2>
+                      <p className="mt-1 text-sm font-bold text-[#F9F6F0]">D{product.price}</p>
                     </div>
                   </Link>
                 );
@@ -430,7 +437,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
 
                 return (
                   <Link href={`/product/${product.id}`} key={product.id} className="group block rounded-lg bg-black p-4 text-white">
-                    <div className="relative aspect-[4/5] overflow-hidden rounded-lg bg-zinc-900">
+                    <div className="relative aspect-[3/4] overflow-hidden rounded-lg bg-zinc-900">
                       {productImage ? (
                         <img
                           src={productImage}
@@ -444,8 +451,8 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                       )}
                     </div>
                     <div className="mt-4">
-                      <h2 className="font-serif text-[34px] uppercase leading-none tracking-tight">{product.name}</h2>
-                      <p className="mt-2 font-sans text-[16px] text-white/85">D{product.price}</p>
+                      <h2 className="text-sm font-medium leading-tight uppercase tracking-wide text-white md:text-base">{product.name}</h2>
+                      <p className="mt-1 text-sm font-bold text-white">D{product.price}</p>
                     </div>
                   </Link>
                 );
