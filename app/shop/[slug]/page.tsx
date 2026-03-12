@@ -13,7 +13,7 @@ type Shop = {
   banner_url: string | null;
   logo_url: string | null;
   bio: string | null;
-  store_layout: 'bantaba' | 'kairaba' | 'serrekunda' | null;
+  store_layout: 'bantaba' | 'kairaba' | 'serrekunda' | 'minimal' | 'boutique' | 'grid' | null;
   theme_color: 'emerald' | 'midnight' | 'terracotta' | 'ocean' | 'rose' | null;
 };
 
@@ -120,12 +120,15 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
   const getGridClasses = () => {
     switch (shop?.store_layout) {
       case 'kairaba':
+      case 'grid':
         return 'grid grid-cols-1 gap-8 p-4';
       case 'serrekunda':
-        return 'grid grid-cols-3 gap-2 p-3';
+      case 'boutique':
+        return 'grid grid-cols-2 gap-x-4 gap-y-8 p-4 md:gap-x-6 md:gap-y-10';
       case 'bantaba':
+      case 'minimal':
       default:
-        return 'grid grid-cols-2 gap-4 p-4';
+        return 'grid grid-cols-1 gap-8 p-4 md:gap-10';
     }
   };
 
@@ -308,7 +311,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
         {filteredProducts.length === 0 ? (
           <div
             className={`rounded-2xl bg-white p-8 text-center shadow-sm ${
-              shop.store_layout === 'serrekunda' ? 'col-span-3' : 'col-span-full'
+              shop.store_layout === 'serrekunda' || shop.store_layout === 'boutique' ? 'col-span-2' : 'col-span-full'
             }`}
           >
             <ShoppingBag className="mx-auto mb-3 text-gray-300" size={40} />
@@ -341,28 +344,33 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
               </Link>
             );
           })
-        ) : shop.store_layout === 'serrekunda' ? (
-          filteredProducts.map((product) => {
+        ) : shop.store_layout === 'serrekunda' || shop.store_layout === 'boutique' ? (
+          filteredProducts.map((product, index) => {
             const productImage =
               (product as Product & { image_urls?: string[] | null }).image_urls?.[0] || product.image_url;
 
             return (
-              <Link href={`/product/${product.id}`} key={product.id} className="group block">
-                <div className="aspect-[4/5] rounded-2xl bg-stone-100 overflow-hidden relative">
+              <Link
+                href={`/product/${product.id}`}
+                key={product.id}
+                className={`group block ${index % 2 === 1 ? 'md:mt-16' : ''}`}
+              >
+                <div className="relative aspect-[4/5] overflow-hidden rounded-[2rem] bg-stone-100">
                   {productImage ? (
                     <img
                       src={productImage}
                       alt={product.name}
-                      className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+                      className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.03]"
                     />
                   ) : (
                     <div className="flex h-full items-center justify-center text-gray-300">
-                      <ShoppingBag size={20} />
+                      <ShoppingBag size={24} />
                     </div>
                   )}
                 </div>
-                <div className="mt-3">
-                  <h2 className="truncate text-[15px] font-medium leading-[1.35] text-neutral-950">{product.name}</h2>
+                <div className="mt-3 px-1">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-neutral-400">BOUTIQUE SELECTION</p>
+                  <h2 className="mt-1 truncate text-[15px] font-medium leading-[1.35] text-neutral-950">{product.name}</h2>
                   <p className="mt-1 text-[15px] font-medium leading-[1.35] text-neutral-950">D{product.price}</p>
                 </div>
               </Link>
@@ -375,12 +383,12 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
 
             return (
               <Link href={`/product/${product.id}`} key={product.id} className="group block">
-                <div className="aspect-[4/5] rounded-2xl bg-stone-100 overflow-hidden relative">
+                <div className="relative aspect-[3/4] overflow-hidden rounded-3xl bg-stone-100">
                   {productImage ? (
                     <img
                       src={productImage}
                       alt={product.name}
-                      className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+                      className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.03]"
                     />
                   ) : (
                     <div className="flex h-full items-center justify-center text-gray-300">
@@ -388,7 +396,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                     </div>
                   )}
                 </div>
-                <div className="mt-3">
+                <div className="mt-3 px-1">
                   <h2 className="truncate text-[15px] font-medium leading-[1.35] text-neutral-950">{product.name}</h2>
                   <p className="mt-1 text-[15px] font-medium leading-[1.35] text-neutral-950">D{product.price}</p>
                 </div>
