@@ -345,36 +345,28 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
 
           switch (matchedLayout) {
             case 'serrekunda':
-              return filteredProducts.map((product) => {
-                const productImage =
-                  (product as Product & { image_urls?: string[] | null }).image_urls?.[0] || product.image_url;
-
-                return (
-                  <Link
-                    href={`/product/${product.id}`}
-                    key={product.id}
-                    className="group block rounded-md border border-slate-100 bg-white p-3 shadow-sm transition-all hover:shadow-md"
-                  >
-                    <div className="relative aspect-[4/5] w-full overflow-hidden rounded-md bg-slate-100">
-                      {productImage ? (
-                        <img
-                          src={productImage}
-                          alt={product.name}
-                          className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.05]"
-                        />
-                      ) : (
-                        <div className="flex h-full items-center justify-center text-slate-300">
-                          <ShoppingBag size={36} />
-                        </div>
-                      )}
-                    </div>
-                    <div className="mt-2 text-slate-900">
-                      <h2 className="text-sm font-medium leading-tight md:text-base">{product.name}</h2>
-                      <p className="mt-1 text-sm font-bold">D{product.price}</p>
-                    </div>
+      return (
+        <div className="mt-8 grid grid-cols-2 gap-x-4 gap-y-10 md:grid-cols-3 lg:grid-cols-3">
+          {products.map((product) => {
+            const imageUrl = product.image_url?.[0] || product.image_url || '/placeholder.png';
+            return (
+              <article key={product.id} className="group flex flex-col">
+                <Link href={`/product/${product.id}`} className="block overflow-hidden bg-stone-50">
+                  <div className="relative w-full aspect-[4/5]">
+                    <img src={imageUrl} alt={product.name} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                  </div>
+                </Link>
+                <div className="mt-4 flex flex-col">
+                  <Link href={`/product/${product.id}`}>
+                    <h3 className="text-sm font-medium text-neutral-900 truncate">{product.name}</h3>
                   </Link>
-                );
-              });
+                  <p className="mt-1 text-sm font-bold text-neutral-900">D{product.price}</p>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      );
 
             case 'kairaba':
               return filteredProducts.map((product) => {
