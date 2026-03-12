@@ -13,7 +13,7 @@ type Shop = {
   banner_url: string | null;
   logo_url: string | null;
   bio: string | null;
-  store_layout: 'bantaba' | 'kairaba' | 'serrekunda' | 'minimal' | 'boutique' | 'grid' | null;
+  store_layout?: string | null;
   theme_color: 'emerald' | 'midnight' | 'terracotta' | 'ocean' | 'rose' | null;
 };
 
@@ -118,17 +118,26 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
   };
 
   const getGridClasses = () => {
-    switch (shop?.store_layout) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const layoutString = String((shop as any)?.layout || '').toLowerCase();
+    const matchedLayout = layoutString.includes('kairaba')
+      ? 'kairaba'
+      : layoutString.includes('jollof')
+        ? 'jollof'
+        : layoutString.includes('senegambia')
+          ? 'senegambia'
+          : 'bantaba';
+
+    switch (matchedLayout) {
       case 'kairaba':
-      case 'grid':
-        return 'grid grid-cols-1 gap-8 p-4';
-      case 'serrekunda':
-      case 'boutique':
+        return 'grid grid-cols-1 md:grid-cols-2 gap-12 p-4';
+      case 'jollof':
         return 'grid grid-cols-2 gap-x-4 gap-y-8 p-4 md:gap-x-6 md:gap-y-10';
-      case 'bantaba':
-      case 'minimal':
-      default:
+      case 'senegambia':
         return 'grid grid-cols-1 gap-8 p-4 md:gap-10';
+      case 'bantaba':
+      default:
+        return 'grid grid-cols-2 gap-4 p-4';
     }
   };
 
@@ -308,16 +317,15 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
       </section>
 
       <main className={getGridClasses()}>
-        {filteredProducts.length === 0 ? (
-          <div
-            className={`rounded-2xl bg-white p-8 text-center shadow-sm ${
-              shop.store_layout === 'serrekunda' || shop.store_layout === 'boutique' ? 'col-span-2' : 'col-span-full'
-            }`}
-          >
-            <ShoppingBag className="mx-auto mb-3 text-gray-300" size={40} />
-            <p className="text-sm font-medium text-gray-500">No products found in this category.</p>
+        {!products || products.length === 0 ? (
+          <div className="col-span-full flex min-h-[45vh] flex-col items-center justify-center px-6 text-center">
+            <div className="mb-4 text-5xl" aria-hidden="true">🛍️</div>
+            <h2 className="text-2xl font-bold text-neutral-900">Shelves are empty</h2>
+            <p className="mt-2 max-w-md text-sm text-neutral-500">
+              This seller is currently updating their inventory. Please check back soon for fresh arrivals.
+            </p>
           </div>
-        ) : shop.store_layout === 'kairaba' ? (
+        ) : shop.store_layout === 'bantaba' || shop.store_layout === 'kairaba' ? (
           filteredProducts.map((product) => {
             const productImage =
               (product as Product & { image_urls?: string[] | null }).image_urls?.[0] || product.image_url;
@@ -344,7 +352,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
               </Link>
             );
           })
-        ) : shop.store_layout === 'serrekunda' || shop.store_layout === 'boutique' ? (
+        ) : shop.store_layout === 'jollof' ? (
           filteredProducts.map((product, index) => {
             const productImage =
               (product as Product & { image_urls?: string[] | null }).image_urls?.[0] || product.image_url;
@@ -376,7 +384,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
               </Link>
             );
           })
-        ) : (
+        ) : shop.store_layout === 'senegambia' ? (
           filteredProducts.map((product) => {
             const productImage =
               (product as Product & { image_urls?: string[] | null }).image_urls?.[0] || product.image_url;
@@ -397,6 +405,33 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                   )}
                 </div>
                 <div className="mt-3 px-1">
+                  <h2 className="truncate text-[15px] font-medium leading-[1.35] text-neutral-950">{product.name}</h2>
+                  <p className="mt-1 text-[15px] font-medium leading-[1.35] text-neutral-950">D{product.price}</p>
+                </div>
+              </Link>
+            );
+          })
+        ) : (
+          filteredProducts.map((product) => {
+            const productImage =
+              (product as Product & { image_urls?: string[] | null }).image_urls?.[0] || product.image_url;
+
+            return (
+              <Link href={`/product/${product.id}`} key={product.id} className="group block">
+                <div className="aspect-[4/5] rounded-2xl bg-stone-100 overflow-hidden relative">
+                  {productImage ? (
+                    <img
+                      src={productImage}
+                      alt={product.name}
+                      className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-gray-300">
+                      <ShoppingBag size={40} />
+                    </div>
+                  )}
+                </div>
+                <div className="mt-3">
                   <h2 className="truncate text-[15px] font-medium leading-[1.35] text-neutral-950">{product.name}</h2>
                   <p className="mt-1 text-[15px] font-medium leading-[1.35] text-neutral-950">D{product.price}</p>
                 </div>
