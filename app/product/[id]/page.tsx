@@ -273,7 +273,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
         <header>
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-gray-500">{resolvedShop.shop_name}</p>
           <h1 className="mt-2 text-3xl font-extrabold leading-tight md:text-4xl">{product.name}</h1>
-          <p className={`mt-3 text-3xl font-black ${activeColor.text}`}>D{product.price}</p>
+<p className="mt-3 text-3xl font-black text-gray-900">D{product.price}</p>
 
           <div className="mt-5">
             <p className="mb-2 text-xs font-bold uppercase tracking-[0.15em] text-gray-500">Quantity</p>
