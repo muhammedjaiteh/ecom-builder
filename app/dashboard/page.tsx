@@ -286,9 +286,31 @@ export default function Dashboard() {
   };
 
   const layoutOptions = [
-    { value: 'bantaba', label: 'The Bantaba', subtitle: '2-Column Trust Grid' },
-    { value: 'kairaba', label: 'The Kairaba', subtitle: 'Full-Width Fashion Feed' },
-    { value: 'serrekunda', label: 'The Serrekunda', subtitle: 'Dense 3-Column Catalog' },
+    {
+      id: 'serrekunda',
+      name: 'The Serrekunda',
+      description: 'A clean, dense 3-column minimalist catalog. Perfect for high-volume everyday fashion.',
+    },
+    {
+      id: 'bantaba',
+      name: 'The Bantaba',
+      description: 'A premium 4-column trust grid. Ideal for jewelry, watches, and verified brands.',
+    },
+    {
+      id: 'kairaba',
+      name: 'The Kairaba',
+      description: 'A single-column, full-width scrolling fashion feed. Edge-to-edge images for high-end aesthetics.',
+    },
+    {
+      id: 'jollof',
+      name: 'The Jollof',
+      description: 'An asymmetric, dark-mode staggered boutique gallery. Perfect for artistic collections.',
+    },
+    {
+      id: 'senegambia',
+      name: 'The Senegambia',
+      description: 'A massive, high-contrast 2-column editorial lookbook. Best for designer apparel.',
+    },
   ];
 
   const colorOptions = [
@@ -424,22 +446,34 @@ export default function Dashboard() {
 
             <div className="space-y-3">
               <p className="text-xs font-bold uppercase tracking-widest text-[#2C3E2C]">Layout</p>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                {layoutOptions.map((layout) => (
-                  <button
-                    key={layout.value}
-                    type="button"
-                    onClick={() => setStoreLayout(layout.value)}
-                    className={`rounded-xl border bg-white p-4 text-left transition-all ${
-                      storeLayout === layout.value
-                        ? 'border-[#2C3E2C] ring-2 ring-[#2C3E2C]/30 shadow-md'
-                        : 'border-[#E6E4DC] hover:border-[#2C3E2C]/60'
-                    }`}
-                  >
-                    <p className="font-bold text-[#2C3E2C]">{layout.label}</p>
-                    <p className="text-xs text-gray-500">{layout.subtitle}</p>
-                  </button>
-                ))}
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {layoutOptions.map((layout) => {
+                  const isActive = storeLayout === layout.id;
+                  return (
+                    <button
+                      key={layout.id}
+                      type="button"
+                      onClick={() => setStoreLayout(layout.id)}
+                      className={`rounded-2xl border bg-white p-4 text-left transition-all ${
+                        isActive
+                          ? 'border-[#2C3E2C] ring-2 ring-[#2C3E2C]/30 shadow-md'
+                          : 'border-[#E6E4DC] hover:border-[#2C3E2C]/60 hover:shadow-sm'
+                      }`}
+                    >
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <p className="font-bold text-[#2C3E2C]">{layout.name}</p>
+                        <span
+                          className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-widest ${
+                            isActive ? 'bg-[#2C3E2C] text-white' : 'bg-[#F4F2EB] text-[#2C3E2C]/80'
+                          }`}
+                        >
+                          {isActive ? 'Selected' : 'Layout'}
+                        </span>
+                      </div>
+                      <p className="text-xs leading-5 text-gray-500">{layout.description}</p>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
