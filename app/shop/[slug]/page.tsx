@@ -126,37 +126,36 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
           ? 'kairaba'
           : 'bantaba';
 
-  // Define global theme rules for the new bright editorial look
   const isBrightEditorial = matchedLayout === 'senegambia';
 
   const getPageBg = () => {
     if (isBrightEditorial) return 'bg-white';
-    if (matchedLayout === 'jollof') return 'bg-[#050505]'; // Jollof keeps its deep black
-    if (matchedLayout === 'bantaba') return 'bg-[#F9F8F6]'; // Bantaba keeps its soft sand
+    if (matchedLayout === 'jollof') return 'bg-[#050505]';
+    if (matchedLayout === 'bantaba') return 'bg-[#F9F8F6]';
     return 'bg-white';
   };
 
   const getGridClasses = () => {
     switch (matchedLayout) {
       case 'serrekunda':
-        return 'mt-10 grid grid-cols-2 gap-x-4 gap-y-12 px-4 md:px-8 md:grid-cols-3 lg:grid-cols-3 mx-auto max-w-6xl';
+        // 2 columns mobile (tight gaps), 3 columns desktop
+        return 'mt-8 grid grid-cols-2 md:grid-cols-3 gap-x-2 gap-y-8 md:gap-x-4 md:gap-y-12 px-3 md:px-8 mx-auto max-w-6xl';
       case 'bantaba':
-        return 'mt-10 grid grid-cols-2 gap-x-5 gap-y-12 px-4 md:px-8 md:grid-cols-3 lg:grid-cols-4 mx-auto max-w-7xl';
+        // 2 columns mobile (airy gaps), 3 tablet, 4 desktop
+        return 'mt-8 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-8 md:gap-x-5 md:gap-y-12 px-4 md:px-8 mx-auto max-w-7xl';
       case 'kairaba':
         return 'mt-12 w-full';
       case 'jollof':
         return 'mt-12 grid items-start grid-cols-2 gap-x-6 gap-y-16 px-4 md:px-8 md:grid-cols-3 lg:grid-cols-4 mx-auto max-w-7xl';
       case 'senegambia':
-        // Editorial grid: wider gaps, bigger products
         return 'mt-16 grid grid-cols-1 gap-12 px-4 md:px-10 md:grid-cols-2 mx-auto max-w-7xl pb-20';
       default:
-        return 'mt-10 grid grid-cols-2 gap-x-4 gap-y-10 px-4 md:px-8 md:grid-cols-3 lg:grid-cols-4 mx-auto max-w-7xl';
+        return 'mt-8 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-10 px-4 md:px-8 mx-auto max-w-7xl';
     }
   };
 
   const renderLayout = () => {
     switch (matchedLayout) {
-      // ... other layouts remain same ...
       case 'serrekunda':
         return filteredProducts.map((product) => {
           const productImage = product.image_urls?.[0] || product.image_url;
@@ -166,12 +165,12 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                 {productImage ? (
                   <img src={productImage} alt={product.name} className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.03]" />
                 ) : (
-                  <div className="flex h-full min-h-[220px] items-center justify-center text-slate-300"><ShoppingBag size={34} /></div>
+                  <div className="flex h-full min-h-[160px] md:min-h-[220px] items-center justify-center text-slate-300"><ShoppingBag className="w-6 h-6 md:w-8 md:h-8" /></div>
                 )}
               </div>
-              <div className="mt-4 flex flex-col items-center text-center text-neutral-900">
-                <h2 className="text-sm font-medium">{product.name}</h2>
-                <p className="mt-1 text-sm font-bold">D{product.price}</p>
+              <div className="mt-3 md:mt-4 flex flex-col items-center text-center text-neutral-900">
+                <h2 className="text-xs md:text-sm font-medium w-full truncate px-1">{product.name}</h2>
+                <p className="mt-0.5 md:mt-1 text-xs md:text-sm font-bold">D{product.price}</p>
               </div>
             </Link>
           );
@@ -181,20 +180,20 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
         return filteredProducts.map((product) => {
           const productImage = product.image_urls?.[0] || product.image_url;
           return (
-            <Link href={`/product/${product.id}`} key={product.id} className="group block rounded-xl bg-white p-3 shadow-sm border border-neutral-100 transition-shadow hover:shadow-md">
-              <div className="aspect-[4/5] w-full overflow-hidden rounded-lg bg-[#F9F8F6]">
+            <Link href={`/product/${product.id}`} key={product.id} className="group block rounded-lg md:rounded-xl bg-white p-2.5 md:p-3 shadow-sm border border-neutral-100 transition-all hover:shadow-md hover:-translate-y-0.5">
+              <div className="aspect-[4/5] w-full overflow-hidden rounded-md md:rounded-lg bg-[#F9F8F6]">
                 {productImage ? (
                   <img src={productImage} alt={product.name} className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.03]" />
                 ) : (
-                  <div className="flex h-full min-h-[220px] items-center justify-center text-slate-400"><ShoppingBag size={34} /></div>
+                  <div className="flex h-full min-h-[160px] md:min-h-[220px] items-center justify-center text-slate-400"><ShoppingBag className="w-6 h-6 md:w-8 md:h-8" /></div>
                 )}
               </div>
-              <div className="mt-4 flex flex-col items-center text-center text-gray-900">
-                <div className="mb-2 inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-1 text-[9px] font-bold tracking-widest text-emerald-700 uppercase">
-                  <BadgeCheck size={12} strokeWidth={2.5} /> Verified
+              <div className="mt-3 md:mt-4 flex flex-col items-center text-center text-gray-900">
+                <div className="mb-1.5 md:mb-2 inline-flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 md:px-2 py-0.5 md:py-1 text-[9px] md:text-[10px] font-bold tracking-widest text-emerald-700 uppercase">
+                  <BadgeCheck strokeWidth={2.5} className="w-3 h-3 md:w-3.5 md:h-3.5" /> <span>Verified</span>
                 </div>
-                <h2 className="w-full truncate px-2 text-sm font-medium">{product.name}</h2>
-                <p className="mt-1 text-sm font-bold">D{product.price}</p>
+                <h2 className="w-full truncate px-1 md:px-2 text-xs md:text-sm font-medium leading-tight">{product.name}</h2>
+                <p className="mt-1 text-xs md:text-sm font-bold">D{product.price}</p>
               </div>
             </Link>
           );
@@ -273,7 +272,6 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
           );
         });
 
-      // THE FIXED PREMIUM SENEGAMBIA LAYOUT
       case 'senegambia':
         return filteredProducts.map((product) => {
           const productImage = product.image_urls?.[0] || product.image_url;
@@ -284,7 +282,6 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                   <img 
                     src={productImage} 
                     alt={product.name} 
-                    // REMOVED GRAYSCALE, added premium slow scale hover
                     className="h-full w-full object-cover transition-all duration-1000 ease-out group-hover:scale-[1.03]" 
                   />
                 ) : (
@@ -294,7 +291,6 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                 )}
               </div>
               <div className="mt-8 flex flex-col items-center text-center px-4">
-                {/* Editorial typography */}
                 <h2 className="text-2xl font-serif tracking-tight text-gray-950 leading-tight">{product.name}</h2>
                 <p className="mt-3 text-base font-medium text-gray-700">D{product.price}</p>
                 <div className="mt-5 inline-flex items-center">
@@ -318,7 +314,6 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
   return (
     <div className={`min-h-screen pb-24 ${getPageBg()}`}>
       <header className="w-full">
-        {/* Senegambia Header: Bright, airy, editorial */}
         {isBrightEditorial ? (
              <div className="px-4 pb-16 pt-20 border-b border-gray-100 bg-white mb-12">
              <div className="mx-auto flex max-w-7xl flex-col items-center text-center">
@@ -329,7 +324,6 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                    <div className="flex h-full w-full items-center justify-center text-gray-400 bg-gray-50 rounded-full"><Store size={40} /></div>
                  )}
                </div>
-               {/* Editorial Serif Font for Shop Name */}
                <h1 className="mt-10 text-5xl md:text-6xl font-serif tracking-tighter text-gray-950">{shop.shop_name}</h1>
                <div className={`mt-5 inline-flex items-center gap-2 rounded-full bg-gray-50 border border-gray-100 px-5 py-2 text-sm font-semibold ${activeColor.text}`}>
                  <BadgeCheck size={16} /> Premium Curator
@@ -426,7 +420,6 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
         )}
       </header>
 
-      {/* Categories Section: Clean, premium pills */}
       <section className="mx-auto max-w-7xl px-4 pt-6 md:px-10 mb-6">
         <div className="hide-scrollbar overflow-x-auto whitespace-nowrap">
           <div className="inline-flex gap-3 pb-4">
@@ -439,9 +432,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                   onClick={() => setSelectedCategory(category)}
                   className={`rounded-full px-6 py-3 text-sm font-semibold transition-all duration-300 ${
                     active
-                      // Active state uses seller's chosen theme color
                       ? `${activeColor.bg} text-white shadow-md`
-                      // Inactive state is clean white/grey
                       : isBrightEditorial
                         ? 'bg-white text-gray-700 border border-gray-200 hover:border-gray-900 hover:text-gray-950'
                         : 'bg-white text-neutral-500 border border-neutral-200 hover:border-neutral-900 hover:text-neutral-900'
