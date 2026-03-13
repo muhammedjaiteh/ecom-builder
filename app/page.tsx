@@ -169,9 +169,12 @@ export default function GlobalHomepage() {
                 : 'Our curators are currently sourcing the best sellers for this category. Check back soon!'}
             </p>
             {shops.length === 0 && (
-              <Link href="/signup" className="mt-8 rounded-full bg-gray-900 px-8 py-3 text-sm font-bold uppercase tracking-widest text-white hover:bg-black transition-colors">
-                Claim Your Storefront
-              </Link>
+              <Link
+  href="/auth"
+  className="rounded-full bg-gray-900 px-5 py-2 text-xs font-bold uppercase tracking-widest text-white transition hover:bg-black"
+>
+  Open Boutique
+</Link>
             )}
           </div>
         ) : (
