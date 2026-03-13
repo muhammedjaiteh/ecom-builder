@@ -11,7 +11,7 @@ type Product = {
   price: number;
   image_url: string | null;
   image_urls: string[] | null;
-  category: string | null; // Added category so we can filter!
+  category: string | null; 
 };
 
 type Shop = {
@@ -23,7 +23,6 @@ type Shop = {
   products: Product[]; 
 };
 
-// Added Food & Culinary to the Worlds!
 const WORLDS = ['All', 'Fashion', 'Sneakers', 'Beauty & Wellness', 'Home & Artisan', 'Tech Accessories', 'Food & Culinary'];
 
 export default function GlobalHomepage() {
@@ -54,21 +53,17 @@ export default function GlobalHomepage() {
     fetchCuratedMall();
   }, [supabase]);
 
-  // THE FILTER ENGINE: This actually makes the tabs work!
   const displayedShops = useMemo(() => {
     if (activeWorld === 'All') return shops;
     
-    // Grabs the first word of the tab to match against the database (e.g., "Food", "Beauty", "Sneakers")
     const searchKey = activeWorld.split(' ')[0].toLowerCase(); 
 
     return shops.map(shop => {
-      // Find only the products in this shop that match the clicked category tab
       const matchingProducts = shop.products.filter(p => 
         p.category && p.category.toLowerCase().includes(searchKey)
       );
-      // Return the shop, but ONLY with the matching products on its shelf
       return { ...shop, products: matchingProducts };
-    }).filter(shop => shop.products.length > 0); // Hide the shop entirely if they don't sell this category
+    }).filter(shop => shop.products.length > 0); 
   }, [shops, activeWorld]);
 
   const spotlightProduct = shops
@@ -90,15 +85,15 @@ export default function GlobalHomepage() {
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] font-sans text-gray-900 selection:bg-gray-900 selection:text-white">
-      {/* 1. MINIMAL NAVIGATION */}
+      {/* 1. MINIMAL NAVIGATION - Links updated to /auth */}
       <nav className="sticky top-0 z-50 flex items-center justify-between border-b border-gray-200 bg-white/80 px-4 py-4 backdrop-blur-md md:px-10">
         <div className="text-xl font-black tracking-tighter text-gray-950 md:text-2xl">SANNDIKAA</div>
         <div className="flex items-center gap-4">
-          <Link href="/login" className="text-sm font-semibold text-gray-600 transition hover:text-gray-900">
+          <Link href="/auth" className="text-sm font-semibold text-gray-600 transition hover:text-gray-900">
             Seller Login
           </Link>
           <Link
-            href="/signup"
+            href="/auth"
             className="rounded-full bg-gray-900 px-5 py-2 text-xs font-bold uppercase tracking-widest text-white transition hover:bg-black"
           >
             Open Boutique
@@ -106,7 +101,7 @@ export default function GlobalHomepage() {
         </div>
       </nav>
 
-      {/* 2. THE EDITORIAL HERO - Height Reduced significantly! */}
+      {/* 2. THE EDITORIAL HERO */}
       <header className="relative flex h-[35vh] min-h-[350px] w-full items-center justify-center overflow-hidden bg-gray-900 md:min-h-[400px]">
         <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1441984904996-e0b6ba687e04?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center opacity-40 mix-blend-overlay grayscale" />
         <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/40 to-transparent" />
@@ -154,7 +149,6 @@ export default function GlobalHomepage() {
           </h2>
         </div>
 
-        {/* EMPTY STATE IF A CATEGORY HAS NO SELLERS YET */}
         {displayedShops.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-white py-24 text-center px-4 shadow-sm">
             <div className="h-16 w-16 mb-6 rounded-full bg-gray-50 flex items-center justify-center">
@@ -168,17 +162,14 @@ export default function GlobalHomepage() {
                 ? 'We are currently onboarding our founding sellers. Sanndikaa will soon feature the best curated products in the Gambia.' 
                 : 'Our curators are currently sourcing the best sellers for this category. Check back soon!'}
             </p>
+            {/* Empty State Link also updated to /auth */}
             {shops.length === 0 && (
-              <Link
-  href="/auth"
-  className="rounded-full bg-gray-900 px-5 py-2 text-xs font-bold uppercase tracking-widest text-white transition hover:bg-black"
->
-  Open Boutique
-</Link>
+              <Link href="/auth" className="mt-8 rounded-full bg-gray-900 px-8 py-3 text-sm font-bold uppercase tracking-widest text-white hover:bg-black transition-colors">
+                Claim Your Storefront
+              </Link>
             )}
           </div>
         ) : (
-          /* DYNAMIC GRID FOR SHOPS */
           <div className={getGridClass()}>
             {displayedShops.map((shop) => (
               <div key={shop.id} className="flex flex-col">
@@ -234,7 +225,6 @@ export default function GlobalHomepage() {
           </div>
         )}
 
-        {/* 5. THE HERO SPOTLIGHT */}
         {spotlightProduct && activeWorld === 'All' && (
           <div className="mt-24 overflow-hidden rounded-3xl bg-gray-900 shadow-xl">
             <div className="grid grid-cols-1 md:grid-cols-2 items-center">
