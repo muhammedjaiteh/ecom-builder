@@ -126,15 +126,11 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
           ? 'kairaba'
           : 'bantaba';
 
-  // Define global theme rules
-  const isDark = matchedLayout === 'senegambia';
-  const isJollof = matchedLayout === 'jollof';
-
+  // Light, airy backgrounds for all layouts
   const getPageBg = () => {
-    if (isDark) return 'bg-[#0a0a0a]';
-    if (isJollof) return 'bg-[#050505]'; // Deeper black for Jollof gallery
+    if (matchedLayout === 'jollof') return 'bg-[#FDFBF7]'; // Premium Off-White
     if (matchedLayout === 'bantaba') return 'bg-[#F9F8F6]'; // Softer sand
-    return 'bg-white';
+    return 'bg-white'; // Senegambia, Serrekunda, Kairaba
   };
 
   const getGridClasses = () => {
@@ -256,17 +252,17 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
           const productImage = product.image_urls?.[0] || product.image_url;
           return (
             <Link href={`/product/${product.id}`} key={product.id} className={`group flex flex-col ${index % 2 !== 0 ? 'md:mt-24' : ''}`}>
-              <div className="aspect-[4/5] w-full overflow-hidden bg-[#1A1A1A]">
+              <div className="aspect-[4/5] w-full overflow-hidden bg-[#F0EBE1]">
                 {productImage ? (
-                  <img src={productImage} alt={product.name} className="h-full w-full object-cover transition-transform duration-1000 ease-out group-hover:scale-[1.07] opacity-90 group-hover:opacity-100" />
+                  <img src={productImage} alt={product.name} className="h-full w-full object-cover transition-transform duration-1000 ease-out group-hover:scale-[1.03] opacity-95 group-hover:opacity-100" />
                 ) : (
-                  <div className="flex h-full min-h-[220px] items-center justify-center text-white/10"><ShoppingBag size={34} /></div>
+                  <div className="flex h-full min-h-[220px] items-center justify-center text-neutral-300"><ShoppingBag size={34} /></div>
                 )}
               </div>
-              <div className="mt-5 flex flex-col px-2 text-[#F4F4F4]">
+              <div className="mt-5 flex flex-col px-2 text-neutral-900">
                 <p className="text-[10px] text-neutral-500 uppercase tracking-widest mb-1">Gallery Item</p>
                 <h2 className="text-sm font-semibold uppercase tracking-wide">{product.name}</h2>
-                <p className="mt-1.5 text-sm font-light text-neutral-400">D{product.price}</p>
+                <p className="mt-1.5 text-sm font-medium text-neutral-600">D{product.price}</p>
               </div>
             </Link>
           );
@@ -276,17 +272,17 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
         return filteredProducts.map((product) => {
           const productImage = product.image_urls?.[0] || product.image_url;
           return (
-            <Link href={`/product/${product.id}`} key={product.id} className="group flex flex-col text-white">
-              <div className="aspect-[4/5] w-full overflow-hidden bg-[#111]">
+            <Link href={`/product/${product.id}`} key={product.id} className="group flex flex-col text-neutral-900">
+              <div className="aspect-[4/5] w-full overflow-hidden bg-neutral-100">
                 {productImage ? (
                   <img src={productImage} alt={product.name} className="h-full w-full object-cover grayscale transition-all duration-700 group-hover:scale-[1.03] group-hover:grayscale-0" />
                 ) : (
-                  <div className="flex h-full min-h-[220px] items-center justify-center text-white/30"><ShoppingBag size={36} /></div>
+                  <div className="flex h-full min-h-[220px] items-center justify-center text-neutral-300"><ShoppingBag size={36} /></div>
                 )}
               </div>
               <div className="mt-6 flex flex-col items-center text-center">
-                <h2 className="text-xl font-serif tracking-wide text-white">{product.name}</h2>
-                <p className="mt-2 text-sm font-medium text-gray-400">D{product.price}</p>
+                <h2 className="text-xl font-serif tracking-wide text-neutral-900">{product.name}</h2>
+                <p className="mt-2 text-sm font-medium text-neutral-500">D{product.price}</p>
               </div>
             </Link>
           );
@@ -355,24 +351,24 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
           <>
             <div
               className="relative h-56 w-full overflow-hidden"
-              style={shop.banner_url ? { backgroundImage: `url(${shop.banner_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : { backgroundColor: isDark || isJollof ? '#111' : '#E5E5E5' }}
+              style={shop.banner_url ? { backgroundImage: `url(${shop.banner_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : { backgroundColor: '#E5E5E5' }}
             >
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
             </div>
             <div className="relative z-10 -mt-16 px-4 pb-8">
               <div className="mx-auto flex max-w-md flex-col items-center text-center">
-                <div className={`h-28 w-28 overflow-hidden rounded-full border-4 ${isDark || isJollof ? 'border-[#0a0a0a] bg-zinc-900' : 'border-white bg-white'} shadow-md`}>
+                <div className="h-28 w-28 overflow-hidden rounded-full border-4 border-white bg-white shadow-md">
                   {shop.logo_url ? (
                     <img src={shop.logo_url} alt={`${shop.shop_name} logo`} className="h-full w-full object-cover" />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center text-gray-400"><Store size={34} /></div>
                   )}
                 </div>
-                <h1 className={`mt-5 text-3xl font-bold tracking-tight ${isDark || isJollof ? 'text-white' : 'text-gray-900'}`}>{shop.shop_name}</h1>
-                <div className={`mt-3 inline-flex items-center gap-1.5 rounded-full ${isDark || isJollof ? 'bg-zinc-900 border border-zinc-800' : 'bg-white border border-neutral-100'} px-4 py-1.5 text-xs font-semibold ${activeColor.text}`}>
+                <h1 className="mt-5 text-3xl font-bold tracking-tight text-gray-900">{shop.shop_name}</h1>
+                <div className={`mt-3 inline-flex items-center gap-1.5 rounded-full bg-white border border-neutral-100 px-4 py-1.5 text-xs font-semibold ${activeColor.text}`}>
                   <BadgeCheck size={14} /> Verified Seller
                 </div>
-                <p className={`mt-4 max-w-xs text-center text-sm ${isDark || isJollof ? 'text-neutral-400' : 'text-neutral-500'}`}>{shop.bio || 'Welcome to our premium store.'}</p>
+                <p className="mt-4 max-w-xs text-center text-sm text-neutral-500">{shop.bio || 'Welcome to our premium store.'}</p>
                 <div className="mt-6 flex items-center justify-center gap-4">
                   <button type="button" onClick={handleChat} className={`inline-flex items-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 ${activeColor.bg}`}>
                     <MessageCircle size={16} /> Chat
@@ -396,12 +392,8 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                   onClick={() => setSelectedCategory(category)}
                   className={`rounded-full px-5 py-2.5 text-sm font-semibold transition-all duration-300 ${
                     active
-                      ? isDark || isJollof 
-                        ? 'bg-white text-black' 
-                        : `bg-neutral-900 text-white shadow-md`
-                      : isDark || isJollof
-                        ? 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-white'
-                        : 'bg-white text-neutral-500 border border-neutral-200 hover:border-neutral-900 hover:text-neutral-900'
+                      ? `bg-neutral-900 text-white shadow-md`
+                      : 'bg-white text-neutral-500 border border-neutral-200 hover:border-neutral-900 hover:text-neutral-900'
                   }`}
                 >
                   {category}
@@ -416,8 +408,8 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
         {!products || products.length === 0 ? (
           <div className="col-span-full flex min-h-[45vh] flex-col items-center justify-center px-6 text-center">
             <div className="mb-6 text-5xl opacity-80" aria-hidden="true">🛍️</div>
-            <h2 className={`text-2xl font-serif ${isDark || isJollof ? 'text-white' : 'text-neutral-900'}`}>Collection Empty</h2>
-            <p className={`mt-3 max-w-md text-sm ${isDark || isJollof ? 'text-neutral-500' : 'text-neutral-500'}`}>
+            <h2 className="text-2xl font-serif text-neutral-900">Collection Empty</h2>
+            <p className="mt-3 max-w-md text-sm text-neutral-500">
               The curator is currently updating this collection. Please return shortly for new arrivals.
             </p>
           </div>
