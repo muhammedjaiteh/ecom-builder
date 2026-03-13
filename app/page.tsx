@@ -85,15 +85,17 @@ export default function GlobalHomepage() {
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] font-sans text-gray-900 selection:bg-gray-900 selection:text-white">
-      {/* 1. MINIMAL NAVIGATION - Links updated to /auth */}
+      {/* 1. MINIMAL NAVIGATION */}
       <nav className="sticky top-0 z-50 flex items-center justify-between border-b border-gray-200 bg-white/80 px-4 py-4 backdrop-blur-md md:px-10">
         <div className="text-xl font-black tracking-tighter text-gray-950 md:text-2xl">SANNDIKAA</div>
         <div className="flex items-center gap-4">
-          <Link href="/auth" className="text-sm font-semibold text-gray-600 transition hover:text-gray-900">
+          {/* Changed to /login */}
+          <Link href="/login" className="text-sm font-semibold text-gray-600 transition hover:text-gray-900">
             Seller Login
           </Link>
+          {/* Changed to /login */}
           <Link
-            href="/auth"
+            href="/login"
             className="rounded-full bg-gray-900 px-5 py-2 text-xs font-bold uppercase tracking-widest text-white transition hover:bg-black"
           >
             Open Boutique
