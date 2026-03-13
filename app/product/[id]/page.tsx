@@ -5,13 +5,11 @@ import { use, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, CheckCircle2, Loader2, MapPin, MessageCircle, ShoppingBag, Truck } from 'lucide-react';
 import Link from 'next/link';
 
-type ThemeColor = 'emerald' | 'midnight' | 'terracotta' | 'ocean' | 'rose';
-
 type ShopInfo = {
   shop_name: string;
   shop_slug: string;
   whatsapp_number: string | null;
-  theme_color: ThemeColor | null;
+  theme_color: string | null; // Upgraded to accept any color string
 };
 
 type Product = {
@@ -30,12 +28,19 @@ type FulfillmentMethod = 'delivery' | 'pickup';
 
 const PAYMENT_OPTIONS = ['Cash on Delivery', 'Wave'] as const;
 
-const themeColors: Record<ThemeColor, { bg: string; text: string; border: string }> = {
+// THE FIX: The 11-Color Luxury Dictionary
+const themeColors: Record<string, { bg: string; text: string; border: string }> = {
   emerald: { bg: 'bg-emerald-600', text: 'text-emerald-600', border: 'border-emerald-600' },
   midnight: { bg: 'bg-slate-900', text: 'text-slate-900', border: 'border-slate-900' },
   terracotta: { bg: 'bg-orange-700', text: 'text-orange-700', border: 'border-orange-700' },
   ocean: { bg: 'bg-blue-600', text: 'text-blue-600', border: 'border-blue-600' },
   rose: { bg: 'bg-rose-500', text: 'text-rose-500', border: 'border-rose-500' },
+  champagne: { bg: 'bg-[#D7C0AE]', text: 'text-[#B89F8A]', border: 'border-[#D7C0AE]' },
+  sage: { bg: 'bg-[#8A9A86]', text: 'text-[#6B7A68]', border: 'border-[#8A9A86]' },
+  onyx: { bg: 'bg-[#1A1A1A]', text: 'text-[#1A1A1A]', border: 'border-[#1A1A1A]' },
+  crimson: { bg: 'bg-[#8B0000]', text: 'text-[#8B0000]', border: 'border-[#8B0000]' },
+  sand: { bg: 'bg-[#C2B280]', text: 'text-[#A39461]', border: 'border-[#C2B280]' },
+  stone: { bg: 'bg-[#8B8C89]', text: 'text-[#6C6D6A]', border: 'border-[#8B8C89]' },
 };
 
 function sanitizePhoneNumber(rawNumber?: string | null) {
@@ -137,6 +142,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
       : [];
   }, [product]);
 
+  // Maps the selected theme color, defaults to emerald if undefined/missing
   const themeColor = resolvedShop?.theme_color;
   const activeColor = themeColor ? themeColors[themeColor] || themeColors.emerald : themeColors.emerald;
   const currentImageIndex = Math.min(activeImageIndex, Math.max(normalizedImageUrls.length - 1, 0));
