@@ -14,7 +14,7 @@ type Shop = {
   logo_url: string | null;
   bio: string | null;
   store_layout?: string | null;
-  theme_color: 'emerald' | 'midnight' | 'terracotta' | 'ocean' | 'rose' | null;
+  theme_color: string | null; // Updated to accept any color string
 };
 
 type Product = {
@@ -26,15 +26,22 @@ type Product = {
   category: string | null;
 };
 
-const themeColors = {
+// THE FIX: The Storefront now knows all 11 Luxury Colors
+const themeColors: Record<string, { bg: string; text: string; ring: string }> = {
   emerald: { bg: 'bg-emerald-600', text: 'text-emerald-600', ring: 'ring-emerald-600' },
   midnight: { bg: 'bg-slate-900', text: 'text-slate-900', ring: 'ring-slate-900' },
   terracotta: { bg: 'bg-orange-700', text: 'text-orange-700', ring: 'ring-orange-700' },
   ocean: { bg: 'bg-blue-600', text: 'text-blue-600', ring: 'ring-blue-600' },
   rose: { bg: 'bg-rose-500', text: 'text-rose-500', ring: 'ring-rose-500' },
-} as const;
+  champagne: { bg: 'bg-[#D7C0AE]', text: 'text-[#B89F8A]', ring: 'ring-[#D7C0AE]' },
+  sage: { bg: 'bg-[#8A9A86]', text: 'text-[#6B7A68]', ring: 'ring-[#8A9A86]' },
+  onyx: { bg: 'bg-[#1A1A1A]', text: 'text-[#1A1A1A]', ring: 'ring-[#1A1A1A]' },
+  crimson: { bg: 'bg-[#8B0000]', text: 'text-[#8B0000]', ring: 'ring-[#8B0000]' },
+  sand: { bg: 'bg-[#C2B280]', text: 'text-[#A39461]', ring: 'ring-[#C2B280]' },
+  stone: { bg: 'bg-[#8B8C89]', text: 'text-[#6C6D6A]', ring: 'ring-[#8B8C89]' },
+};
 
-const fallbackThemeColor: keyof typeof themeColors = 'emerald';
+const fallbackThemeColor = 'emerald';
 
 export default function ShopPage({ params }: { params: Promise<{ slug: string }> }) {
   const resolvedParams = use(params);
@@ -138,10 +145,8 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
   const getGridClasses = () => {
     switch (matchedLayout) {
       case 'serrekunda':
-        // 2 columns mobile (tight gaps), 3 columns desktop
         return 'mt-8 grid grid-cols-2 md:grid-cols-3 gap-x-2 gap-y-8 md:gap-x-4 md:gap-y-12 px-3 md:px-8 mx-auto max-w-6xl';
       case 'bantaba':
-        // 2 columns mobile (airy gaps), 3 tablet, 4 desktop
         return 'mt-8 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-8 md:gap-x-5 md:gap-y-12 px-4 md:px-8 mx-auto max-w-7xl';
       case 'kairaba':
         return 'mt-12 w-full';
