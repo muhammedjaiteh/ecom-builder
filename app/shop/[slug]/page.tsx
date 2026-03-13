@@ -126,11 +126,14 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
           ? 'kairaba'
           : 'bantaba';
 
-  // Light, airy backgrounds for all layouts
+  // Define global theme rules for the new bright editorial look
+  const isBrightEditorial = matchedLayout === 'senegambia';
+
   const getPageBg = () => {
-    if (matchedLayout === 'jollof') return 'bg-[#FDFBF7]'; // Premium Off-White
-    if (matchedLayout === 'bantaba') return 'bg-[#F9F8F6]'; // Softer sand
-    return 'bg-white'; // Senegambia, Serrekunda, Kairaba
+    if (isBrightEditorial) return 'bg-white';
+    if (matchedLayout === 'jollof') return 'bg-[#050505]'; // Jollof keeps its deep black
+    if (matchedLayout === 'bantaba') return 'bg-[#F9F8F6]'; // Bantaba keeps its soft sand
+    return 'bg-white';
   };
 
   const getGridClasses = () => {
@@ -144,7 +147,8 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
       case 'jollof':
         return 'mt-12 grid items-start grid-cols-2 gap-x-6 gap-y-16 px-4 md:px-8 md:grid-cols-3 lg:grid-cols-4 mx-auto max-w-7xl';
       case 'senegambia':
-        return 'mt-12 grid grid-cols-1 gap-10 px-4 md:px-8 md:grid-cols-2 mx-auto max-w-6xl';
+        // Editorial grid: wider gaps, bigger products
+        return 'mt-16 grid grid-cols-1 gap-12 px-4 md:px-10 md:grid-cols-2 mx-auto max-w-7xl pb-20';
       default:
         return 'mt-10 grid grid-cols-2 gap-x-4 gap-y-10 px-4 md:px-8 md:grid-cols-3 lg:grid-cols-4 mx-auto max-w-7xl';
     }
@@ -152,6 +156,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
 
   const renderLayout = () => {
     switch (matchedLayout) {
+      // ... other layouts remain same ...
       case 'serrekunda':
         return filteredProducts.map((product) => {
           const productImage = product.image_urls?.[0] || product.image_url;
@@ -252,37 +257,51 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
           const productImage = product.image_urls?.[0] || product.image_url;
           return (
             <Link href={`/product/${product.id}`} key={product.id} className={`group flex flex-col ${index % 2 !== 0 ? 'md:mt-24' : ''}`}>
-              <div className="aspect-[4/5] w-full overflow-hidden bg-[#F0EBE1]">
+              <div className="aspect-[4/5] w-full overflow-hidden bg-[#1A1A1A]">
                 {productImage ? (
-                  <img src={productImage} alt={product.name} className="h-full w-full object-cover transition-transform duration-1000 ease-out group-hover:scale-[1.03] opacity-95 group-hover:opacity-100" />
+                  <img src={productImage} alt={product.name} className="h-full w-full object-cover transition-transform duration-1000 ease-out group-hover:scale-[1.07] opacity-90 group-hover:opacity-100" />
                 ) : (
-                  <div className="flex h-full min-h-[220px] items-center justify-center text-neutral-300"><ShoppingBag size={34} /></div>
+                  <div className="flex h-full min-h-[220px] items-center justify-center text-white/10"><ShoppingBag size={34} /></div>
                 )}
               </div>
-              <div className="mt-5 flex flex-col px-2 text-neutral-900">
+              <div className="mt-5 flex flex-col px-2 text-[#F4F4F4]">
                 <p className="text-[10px] text-neutral-500 uppercase tracking-widest mb-1">Gallery Item</p>
                 <h2 className="text-sm font-semibold uppercase tracking-wide">{product.name}</h2>
-                <p className="mt-1.5 text-sm font-medium text-neutral-600">D{product.price}</p>
+                <p className="mt-1.5 text-sm font-light text-neutral-400">D{product.price}</p>
               </div>
             </Link>
           );
         });
 
+      // THE FIXED PREMIUM SENEGAMBIA LAYOUT
       case 'senegambia':
         return filteredProducts.map((product) => {
           const productImage = product.image_urls?.[0] || product.image_url;
           return (
-            <Link href={`/product/${product.id}`} key={product.id} className="group flex flex-col text-neutral-900">
-              <div className="aspect-[4/5] w-full overflow-hidden bg-neutral-100">
+            <Link href={`/product/${product.id}`} key={product.id} className="group flex flex-col bg-white">
+              <div className="aspect-[4/5] w-full overflow-hidden bg-[#F7F7F7]">
                 {productImage ? (
-                  <img src={productImage} alt={product.name} className="h-full w-full object-cover grayscale transition-all duration-700 group-hover:scale-[1.03] group-hover:grayscale-0" />
+                  <img 
+                    src={productImage} 
+                    alt={product.name} 
+                    // REMOVED GRAYSCALE, added premium slow scale hover
+                    className="h-full w-full object-cover transition-all duration-1000 ease-out group-hover:scale-[1.03]" 
+                  />
                 ) : (
-                  <div className="flex h-full min-h-[220px] items-center justify-center text-neutral-300"><ShoppingBag size={36} /></div>
+                  <div className="flex h-full min-h-[300px] items-center justify-center text-neutral-300 bg-neutral-100">
+                    <ShoppingBag size={40} />
+                  </div>
                 )}
               </div>
-              <div className="mt-6 flex flex-col items-center text-center">
-                <h2 className="text-xl font-serif tracking-wide text-neutral-900">{product.name}</h2>
-                <p className="mt-2 text-sm font-medium text-neutral-500">D{product.price}</p>
+              <div className="mt-8 flex flex-col items-center text-center px-4">
+                {/* Editorial typography */}
+                <h2 className="text-2xl font-serif tracking-tight text-gray-950 leading-tight">{product.name}</h2>
+                <p className="mt-3 text-base font-medium text-gray-700">D{product.price}</p>
+                <div className="mt-5 inline-flex items-center">
+                    <span className={`text-xs font-semibold uppercase tracking-widest border-b-2 pb-1 ${activeColor.text} border-current`}>
+                        View Details
+                    </span>
+                </div>
               </div>
             </Link>
           );
@@ -299,7 +318,34 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
   return (
     <div className={`min-h-screen pb-24 ${getPageBg()}`}>
       <header className="w-full">
-        {shop.store_layout === 'kairaba' ? (
+        {/* Senegambia Header: Bright, airy, editorial */}
+        {isBrightEditorial ? (
+             <div className="px-4 pb-16 pt-20 border-b border-gray-100 bg-white mb-12">
+             <div className="mx-auto flex max-w-7xl flex-col items-center text-center">
+               <div className="h-32 w-32 overflow-hidden rounded-full border border-gray-100 bg-white shadow-sm p-1">
+                 {shop.logo_url ? (
+                   <img src={shop.logo_url} alt={`${shop.shop_name} logo`} className="h-full w-full object-cover rounded-full" />
+                 ) : (
+                   <div className="flex h-full w-full items-center justify-center text-gray-400 bg-gray-50 rounded-full"><Store size={40} /></div>
+                 )}
+               </div>
+               {/* Editorial Serif Font for Shop Name */}
+               <h1 className="mt-10 text-5xl md:text-6xl font-serif tracking-tighter text-gray-950">{shop.shop_name}</h1>
+               <div className={`mt-5 inline-flex items-center gap-2 rounded-full bg-gray-50 border border-gray-100 px-5 py-2 text-sm font-semibold ${activeColor.text}`}>
+                 <BadgeCheck size={16} /> Premium Curator
+               </div>
+               <p className="mt-8 max-w-2xl text-base text-gray-600 leading-relaxed font-normal">{shop.bio || 'Discover our exclusive, handpicked collection.'}</p>
+               <div className="mt-12 flex items-center justify-center gap-4">
+                 <button type="button" onClick={handleChat} className={`inline-flex items-center gap-2.5 rounded-full px-8 py-3.5 text-base font-semibold text-white shadow-sm transition hover:opacity-90 ${activeColor.bg}`}>
+                   <MessageCircle size={18} /> Contact Showroom
+                 </button>
+                 <button type="button" onClick={handleShareStore} className={`inline-flex items-center gap-2.5 rounded-full px-8 py-3.5 text-base font-semibold text-gray-800 bg-white border border-gray-200 shadow-sm transition hover:bg-gray-50`}>
+                   <Share2 size={18} /> Share Collection
+                 </button>
+               </div>
+             </div>
+           </div>
+        ) : shop.store_layout === 'kairaba' ? (
           <div className="px-4 pb-12 pt-16">
             <div className="mx-auto flex max-w-xl flex-col items-center text-center">
               <div className="h-28 w-28 overflow-hidden rounded-full border border-neutral-200 bg-white shadow-sm">
@@ -380,7 +426,8 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
         )}
       </header>
 
-      <section className="mx-auto max-w-7xl px-4 pt-4 md:px-8">
+      {/* Categories Section: Clean, premium pills */}
+      <section className="mx-auto max-w-7xl px-4 pt-6 md:px-10 mb-6">
         <div className="hide-scrollbar overflow-x-auto whitespace-nowrap">
           <div className="inline-flex gap-3 pb-4">
             {categories.map((category) => {
@@ -390,10 +437,14 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                   key={category}
                   type="button"
                   onClick={() => setSelectedCategory(category)}
-                  className={`rounded-full px-5 py-2.5 text-sm font-semibold transition-all duration-300 ${
+                  className={`rounded-full px-6 py-3 text-sm font-semibold transition-all duration-300 ${
                     active
-                      ? `bg-neutral-900 text-white shadow-md`
-                      : 'bg-white text-neutral-500 border border-neutral-200 hover:border-neutral-900 hover:text-neutral-900'
+                      // Active state uses seller's chosen theme color
+                      ? `${activeColor.bg} text-white shadow-md`
+                      // Inactive state is clean white/grey
+                      : isBrightEditorial
+                        ? 'bg-white text-gray-700 border border-gray-200 hover:border-gray-900 hover:text-gray-950'
+                        : 'bg-white text-neutral-500 border border-neutral-200 hover:border-neutral-900 hover:text-neutral-900'
                   }`}
                 >
                   {category}
@@ -406,11 +457,11 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
 
       <main className={getGridClasses()}>
         {!products || products.length === 0 ? (
-          <div className="col-span-full flex min-h-[45vh] flex-col items-center justify-center px-6 text-center">
+          <div className="col-span-full flex min-h-[45vh] flex-col items-center justify-center px-6 text-center bg-gray-50 rounded-2xl border border-gray-100">
             <div className="mb-6 text-5xl opacity-80" aria-hidden="true">🛍️</div>
-            <h2 className="text-2xl font-serif text-neutral-900">Collection Empty</h2>
-            <p className="mt-3 max-w-md text-sm text-neutral-500">
-              The curator is currently updating this collection. Please return shortly for new arrivals.
+            <h2 className="text-2xl font-serif text-gray-950">Collection Empty</h2>
+            <p className="mt-3 max-w-md text-sm text-gray-600 leading-relaxed">
+              The showroom curator is currently finalizing this collection. Please accept our apologies and check back shortly for exclusive arrivals.
             </p>
           </div>
         ) : (
