@@ -285,40 +285,48 @@ export default function Dashboard() {
     setSavingDesign(false);
   };
 
+  // UPGRADE 1: Refined, numberless luxury layout descriptions
   const layoutOptions = [
     {
       id: 'serrekunda',
       name: 'The Serrekunda',
-      description: 'A clean, dense 3-column minimalist catalog. Perfect for high-volume everyday fashion.',
+      description: 'A clean, dense minimalist catalog. Perfect for high-volume everyday fashion.',
     },
     {
       id: 'bantaba',
       name: 'The Bantaba',
-      description: 'A premium 4-column trust grid. Ideal for jewelry, watches, and verified brands.',
+      description: 'A premium, airy trust layout with floating cards. Ideal for jewelry, watches, and verified brands.',
     },
     {
       id: 'kairaba',
       name: 'The Kairaba',
-      description: 'A single-column, full-width scrolling fashion feed. Edge-to-edge images for high-end aesthetics.',
+      description: 'An exclusive side-by-side editorial hero with a curated feed. Perfect for high-end aesthetics.',
     },
     {
       id: 'jollof',
       name: 'The Jollof',
-      description: 'An asymmetric, dark-mode staggered boutique gallery. Perfect for artistic collections.',
+      description: 'An asymmetric, premium off-white boutique gallery. Perfect for artistic collections.',
     },
     {
       id: 'senegambia',
       name: 'The Senegambia',
-      description: 'A massive, high-contrast 2-column editorial lookbook. Best for designer apparel.',
+      description: 'A massive, bright, and airy high-fashion editorial lookbook. Best for designer apparel.',
     },
   ];
 
+  // UPGRADE 2: The Expanded 11-Color Luxury Palette
   const colorOptions = [
-    { value: 'emerald', className: 'bg-emerald-600' },
-    { value: 'midnight', className: 'bg-slate-900' },
-    { value: 'terracotta', className: 'bg-orange-700' },
-    { value: 'ocean', className: 'bg-blue-600' },
-    { value: 'rose', className: 'bg-rose-500' },
+    { value: 'emerald', name: 'Emerald', className: 'bg-emerald-600' },
+    { value: 'midnight', name: 'Midnight', className: 'bg-slate-900' },
+    { value: 'terracotta', name: 'Terracotta', className: 'bg-orange-700' },
+    { value: 'ocean', name: 'Ocean', className: 'bg-blue-600' },
+    { value: 'rose', name: 'Rose', className: 'bg-rose-500' },
+    { value: 'champagne', name: 'Champagne', className: 'bg-[#D7C0AE]' },
+    { value: 'sage', name: 'Sage', className: 'bg-[#8A9A86]' },
+    { value: 'onyx', name: 'Onyx', className: 'bg-[#1A1A1A]' },
+    { value: 'crimson', name: 'Crimson', className: 'bg-[#8B0000]' },
+    { value: 'sand', name: 'Sand', className: 'bg-[#C2B280]' },
+    { value: 'stone', name: 'Stone', className: 'bg-[#8B8C89]' },
   ];
 
   if (loading)
@@ -477,24 +485,27 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="mt-5 space-y-3">
+            <div className="mt-8 space-y-3">
               <p className="text-xs font-bold uppercase tracking-widest text-[#2C3E2C]">Theme Color</p>
-              <div className="flex items-center gap-3">
+              <div className="grid grid-cols-6 gap-3 sm:grid-cols-11 md:gap-4">
                 {colorOptions.map((color) => (
                   <button
                     key={color.value}
                     type="button"
                     onClick={() => setThemeColor(color.value)}
-                    className={`h-10 w-10 rounded-full ${color.className} transition-all ${
+                    title={color.name}
+                    className={`h-10 w-10 rounded-full transition-all ${color.className} ${
                       themeColor === color.value
-                        ? 'scale-105 ring-4 ring-[#2C3E2C]/35 ring-offset-2 ring-offset-white'
-                        : 'hover:scale-105'
+                        ? 'scale-110 shadow-md ring-2 ring-[#2C3E2C]/50 ring-offset-2 ring-offset-white'
+                        : 'opacity-80 hover:scale-105 hover:opacity-100'
                     }`}
-                    aria-label={`Set theme color to ${color.value}`}
-                    title={color.value}
+                    aria-label={`Set theme color to ${color.name}`}
                   />
                 ))}
               </div>
+              <p className="mt-2 text-sm text-gray-500">
+                Selected: <span className="font-semibold text-[#2C3E2C]">{colorOptions.find(c => c.value === themeColor)?.name || 'Emerald'}</span>
+              </p>
             </div>
           </div>
 
@@ -502,35 +513,46 @@ export default function Dashboard() {
             <h4 className="text-lg font-bold text-[#1a2e1a]">Fulfillment Settings</h4>
             <p className="mt-1 text-xs text-gray-500">How do you get your products to customers?</p>
 
-            <div className="mt-5 space-y-4">
-              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#E6E4DC] p-3 transition hover:border-[#2C3E2C]/60">
-                <input
-                  type="checkbox"
-                  checked={offersDelivery}
-                  onChange={(event) => setOffersDelivery(event.target.checked)}
-                  className="mt-1 h-4 w-4 rounded border-gray-300 text-[#2C3E2C] focus:ring-[#2C3E2C]"
-                />
-                <span className="flex items-center gap-2 text-sm font-medium text-[#2C3E2C]">
-                  <Truck size={16} />
-                  Offer Local Delivery
-                </span>
-              </label>
-
-              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#E6E4DC] p-3 transition hover:border-[#2C3E2C]/60">
-                <input
-                  type="checkbox"
-                  checked={offersPickup}
-                  onChange={(event) => setOffersPickup(event.target.checked)}
-                  className="mt-1 h-4 w-4 rounded border-gray-300 text-[#2C3E2C] focus:ring-[#2C3E2C]"
-                />
-                <span className="flex items-center gap-2 text-sm font-medium text-[#2C3E2C]">
-                  <Handshake size={16} />
-                  Offer Local Pickup / Meetup
-                </span>
-              </label>
+            {/* UPGRADE 3: The Segmented Control */}
+            <div className="mt-5 space-y-6">
+              <div className="flex w-full max-w-md items-center rounded-xl bg-gray-100 p-1.5 shadow-inner">
+                <button
+                  type="button"
+                  onClick={() => { setOffersDelivery(true); setOffersPickup(false); }}
+                  className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition-all duration-200 ${
+                    offersDelivery && !offersPickup
+                      ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Delivery Only
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setOffersDelivery(false); setOffersPickup(true); }}
+                  className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition-all duration-200 ${
+                    !offersDelivery && offersPickup
+                      ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Pickup Only
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setOffersDelivery(true); setOffersPickup(true); }}
+                  className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition-all duration-200 ${
+                    offersDelivery && offersPickup
+                      ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Both Available
+                </button>
+              </div>
 
               {offersPickup && (
-                <div className="space-y-2">
+                <div className="space-y-2 max-w-md">
                   <label htmlFor="pickup-instructions" className="text-xs font-bold uppercase tracking-widest text-[#2C3E2C]">
                     Pickup/Meetup Instructions
                   </label>
@@ -539,7 +561,7 @@ export default function Dashboard() {
                     value={pickupInstructions}
                     onChange={(event) => setPickupInstructions(event.target.value)}
                     rows={3}
-                    placeholder="Meet at Westfield Monument"
+                    placeholder="E.g., Meet at Westfield Monument or pickup from shop."
                     className="w-full rounded-xl border border-[#E6E4DC] px-4 py-3 text-sm text-[#2C3E2C] outline-none transition focus:border-[#2C3E2C]"
                   />
                 </div>
@@ -550,7 +572,7 @@ export default function Dashboard() {
               type="button"
               onClick={handleSaveDesignSettings}
               disabled={savingDesign}
-              className="mt-6 inline-flex items-center rounded-xl bg-[#1a2e1a] px-4 py-2 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-70"
+              className="mt-6 inline-flex items-center rounded-xl bg-[#1a2e1a] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-70"
             >
               {savingDesign ? 'Saving settings...' : 'Save Design & Fulfillment Settings'}
             </button>
