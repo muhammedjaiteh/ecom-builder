@@ -132,15 +132,15 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
   const getGridClasses = () => {
     switch (matchedLayout) {
       case 'serrekunda':
-        return 'mt-8 grid grid-cols-2 gap-x-4 gap-y-10 md:grid-cols-3 lg:grid-cols-3';
+        return 'mt-8 grid grid-cols-2 gap-x-4 gap-y-10 bg-white md:grid-cols-3 lg:grid-cols-3';
       case 'bantaba':
-        return 'mt-8 grid grid-cols-2 gap-x-4 gap-y-10 rounded-xl bg-[#FCFBFA] p-3 md:grid-cols-3 lg:grid-cols-4';
+        return 'mt-8 grid grid-cols-2 gap-x-4 gap-y-10 bg-[#F5F4F1] p-4 md:grid-cols-3 lg:grid-cols-4';
       case 'kairaba':
-        return 'mt-8 mx-auto flex w-full max-w-2xl flex-col gap-24';
+        return 'mt-8 w-full';
       case 'jollof':
-        return 'mt-8 grid grid-cols-2 gap-6 md:grid-cols-3 lg:grid-cols-4';
+        return 'mt-8 grid grid-cols-2 gap-6 bg-[#FAFAF8] p-4 md:grid-cols-3 lg:grid-cols-4';
       case 'senegambia':
-        return 'mt-8 grid grid-cols-1 gap-8 md:grid-cols-2';
+        return 'mt-8 grid grid-cols-1 gap-8 bg-black p-4 md:grid-cols-2';
       default:
         return 'mt-8 grid grid-cols-2 gap-x-4 gap-y-10 md:grid-cols-3 lg:grid-cols-4';
     }
@@ -154,8 +154,8 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
             (product as Product & { image_urls?: string[] | null }).image_urls?.[0] || product.image_url;
 
           return (
-            <Link href={`/product/${product.id}`} key={product.id} className="group block rounded-sm bg-white p-2.5 transition-all hover:shadow-sm">
-              <div className="aspect-[4/5] w-full overflow-hidden bg-slate-100">
+            <Link href={`/product/${product.id}`} key={product.id} className="group block">
+              <div className="aspect-[4/5] w-full overflow-hidden bg-neutral-100">
                 {productImage ? (
                   <img
                     src={productImage}
@@ -168,9 +168,9 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                   </div>
                 )}
               </div>
-              <div className="mt-3 text-slate-900">
+              <div className="mt-2 text-neutral-900">
                 <h2 className="truncate text-sm font-medium">{product.name}</h2>
-                <p className="mt-1 text-sm font-bold">D{product.price}</p>
+                <p className="text-sm font-bold">D{product.price}</p>
               </div>
             </Link>
           );
@@ -182,8 +182,8 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
             (product as Product & { image_urls?: string[] | null }).image_urls?.[0] || product.image_url;
 
           return (
-            <Link href={`/product/${product.id}`} key={product.id} className="group block rounded-lg bg-white p-3 shadow-sm transition-shadow hover:shadow-md">
-              <div className="aspect-[4/5] w-full overflow-hidden rounded-md bg-[#FCFBFA]">
+            <Link href={`/product/${product.id}`} key={product.id} className="group block rounded-xl bg-white p-3 shadow-sm transition-shadow hover:shadow-md">
+              <div className="aspect-[4/5] w-full overflow-hidden rounded-lg bg-[#F5F4F1]">
                 {productImage ? (
                   <img
                     src={productImage}
@@ -197,7 +197,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                 )}
               </div>
               <div className="mt-3 text-black">
-                <p className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest text-emerald-600">
+                <p className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-1 text-[10px] font-medium text-green-700">
                   <BadgeCheck size={12} />
                   VERIFIED SELLER
                 </p>
@@ -209,32 +209,74 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
         });
 
       case 'kairaba':
-        return filteredProducts.map((product) => {
-          const productImage =
-            (product as Product & { image_urls?: string[] | null }).image_urls?.[0] || product.image_url;
+        if (filteredProducts.length === 0) return null;
 
-          return (
-            <Link href={`/product/${product.id}`} key={product.id} className="group block">
-              <div className="aspect-[4/5] w-full overflow-hidden bg-slate-100">
-                {productImage ? (
-                  <img
-                    src={productImage}
-                    alt={product.name}
-                    className="aspect-[4/5] w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.05]"
-                  />
-                ) : (
-                  <div className="flex h-full min-h-[320px] items-center justify-center text-slate-300">
-                    <ShoppingBag size={44} />
-                  </div>
-                )}
-              </div>
-              <div className="mt-4 text-center text-slate-900">
-                <h2 className="truncate text-sm font-medium">{product.name}</h2>
-                <p className="mt-1 text-sm font-bold">D{product.price}</p>
-              </div>
-            </Link>
-          );
-        });
+        return (
+          <>
+            <div className="mx-auto mb-16 w-full max-w-5xl">
+              {(() => {
+                const heroProduct = filteredProducts[0];
+                const heroImage =
+                  (heroProduct as Product & { image_urls?: string[] | null }).image_urls?.[0] || heroProduct.image_url;
+
+                return (
+                  <Link href={`/product/${heroProduct.id}`} className="group block">
+                    <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+                      <div className="aspect-[4/5] w-full overflow-hidden bg-neutral-100 md:col-span-2">
+                        {heroImage ? (
+                          <img
+                            src={heroImage}
+                            alt={heroProduct.name}
+                            className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.05]"
+                          />
+                        ) : (
+                          <div className="flex h-full min-h-[420px] items-center justify-center text-neutral-300">
+                            <ShoppingBag size={56} />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-end md:pb-6">
+                        <div className="w-full border-t border-neutral-200 pt-4 md:border-t-0 md:border-l md:pl-6 md:pt-0">
+                          <h2 className="truncate text-sm font-medium text-neutral-900">{heroProduct.name}</h2>
+                          <p className="mt-1 text-sm font-bold text-neutral-900">D{heroProduct.price}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })()}
+            </div>
+
+            <div className="grid grid-cols-2 gap-x-4 gap-y-10 md:grid-cols-3">
+              {filteredProducts.slice(1).map((product) => {
+                const productImage =
+                  (product as Product & { image_urls?: string[] | null }).image_urls?.[0] || product.image_url;
+
+                return (
+                  <Link href={`/product/${product.id}`} key={product.id} className="group block">
+                    <div className="aspect-[4/5] w-full overflow-hidden bg-neutral-100">
+                      {productImage ? (
+                        <img
+                          src={productImage}
+                          alt={product.name}
+                          className="aspect-[4/5] w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.05]"
+                        />
+                      ) : (
+                        <div className="flex h-full min-h-[240px] items-center justify-center text-neutral-300">
+                          <ShoppingBag size={40} />
+                        </div>
+                      )}
+                    </div>
+                    <div className="mt-2 text-neutral-900">
+                      <h2 className="truncate text-sm font-medium">{product.name}</h2>
+                      <p className="text-sm font-bold">D{product.price}</p>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </>
+        );
 
       case 'jollof':
         return filteredProducts.map((product, index) => {
@@ -242,12 +284,8 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
             (product as Product & { image_urls?: string[] | null }).image_urls?.[0] || product.image_url;
 
           return (
-            <Link
-              href={`/product/${product.id}`}
-              key={product.id}
-              className={`group block rounded-none bg-[#0a0a0a] p-3 text-[#F9F6F0] ${index % 2 === 0 ? 'md:mt-16' : ''}`}
-            >
-              <div className="aspect-[4/5] w-full overflow-hidden bg-black/40">
+            <Link href={`/product/${product.id}`} key={product.id} className={`group block p-1 ${index % 2 === 0 ? 'mt-12' : ''}`}>
+              <div className="aspect-[4/5] w-full overflow-hidden bg-[#F0ECE5]">
                 {productImage ? (
                   <img
                     src={productImage}
@@ -255,15 +293,15 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                     className="aspect-[4/5] w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.05]"
                   />
                 ) : (
-                  <div className="flex h-full min-h-[220px] items-center justify-center text-[#F9F6F0]/70">
+                  <div className="flex h-full min-h-[220px] items-center justify-center text-[#3A322B]/50">
                     <ShoppingBag size={34} />
                   </div>
                 )}
               </div>
-              <div className="mt-3">
-                <p className="text-xs uppercase tracking-widest text-[#F9F6F0]/75">CURATED EDIT</p>
-                <h2 className="mt-1 truncate text-sm font-medium text-[#F9F6F0]">{product.name}</h2>
-                <p className="mt-1 text-sm font-bold text-[#F9F6F0]">D{product.price}</p>
+              <div className="mt-3 px-1 text-[#3A322B]">
+                <p className="text-xs uppercase tracking-[0.18em] text-[#3A322B]/70">GALLERY CURATION</p>
+                <h2 className="mt-1 truncate text-sm font-medium">{product.name}</h2>
+                <p className="mt-1 text-sm font-bold">D{product.price}</p>
               </div>
             </Link>
           );
