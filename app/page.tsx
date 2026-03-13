@@ -1,7 +1,7 @@
 'use client';
 
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { ArrowRight, ShoppingBag, Sparkles, Store, TrendingUp } from 'lucide-react';
 
@@ -11,6 +11,7 @@ type Product = {
   price: number;
   image_url: string | null;
   image_urls: string[] | null;
+  category: string | null; // Added category so we can filter!
 };
 
 type Shop = {
@@ -22,7 +23,8 @@ type Shop = {
   products: Product[]; 
 };
 
-const WORLDS = ['All', 'Fashion', 'Sneakers', 'Beauty & Wellness', 'Home & Artisan', 'Tech Accessories'];
+// Added Food & Culinary to the Worlds!
+const WORLDS = ['All', 'Fashion', 'Sneakers', 'Beauty & Wellness', 'Home & Artisan', 'Tech Accessories', 'Food & Culinary'];
 
 export default function GlobalHomepage() {
   const [activeWorld, setActiveWorld] = useState('All');
@@ -32,19 +34,17 @@ export default function GlobalHomepage() {
 
   useEffect(() => {
     async function fetchCuratedMall() {
-      // It will fetch whatever you have! Even if it's just 1 or 2 sellers.
       const { data, error } = await supabase
         .from('shops')
         .select(`
           id, shop_name, shop_slug, logo_url, theme_color,
-          products (id, name, price, image_url, image_urls)
+          products (id, name, price, image_url, image_urls, category)
         `)
         .limit(10); 
 
       if (error) {
         console.error('Error fetching mall data:', error);
       } else {
-        // Only show shops that actually have products uploaded
         const activeShops = (data as unknown as Shop[]).filter((shop) => shop.products && shop.products.length > 0);
         setShops(activeShops);
       }
@@ -53,6 +53,23 @@ export default function GlobalHomepage() {
 
     fetchCuratedMall();
   }, [supabase]);
+
+  // THE FILTER ENGINE: This actually makes the tabs work!
+  const displayedShops = useMemo(() => {
+    if (activeWorld === 'All') return shops;
+    
+    // Grabs the first word of the tab to match against the database (e.g., "Food", "Beauty", "Sneakers")
+    const searchKey = activeWorld.split(' ')[0].toLowerCase(); 
+
+    return shops.map(shop => {
+      // Find only the products in this shop that match the clicked category tab
+      const matchingProducts = shop.products.filter(p => 
+        p.category && p.category.toLowerCase().includes(searchKey)
+      );
+      // Return the shop, but ONLY with the matching products on its shelf
+      return { ...shop, products: matchingProducts };
+    }).filter(shop => shop.products.length > 0); // Hide the shop entirely if they don't sell this category
+  }, [shops, activeWorld]);
 
   const spotlightProduct = shops
     .flatMap((shop) => shop.products.map(p => ({ ...p, shop })))
@@ -66,9 +83,8 @@ export default function GlobalHomepage() {
     );
   }
 
-  // Dynamic grid styling based on how many early sellers you have
   const getGridClass = () => {
-    if (shops.length === 1) return 'grid grid-cols-1 max-w-2xl mx-auto';
+    if (displayedShops.length === 1) return 'grid grid-cols-1 max-w-2xl mx-auto';
     return 'grid grid-cols-1 md:grid-cols-2 gap-12 lg:gap-16';
   };
 
@@ -90,17 +106,17 @@ export default function GlobalHomepage() {
         </div>
       </nav>
 
-      {/* 2. THE EDITORIAL HERO */}
-      <header className="relative flex h-[60vh] min-h-[500px] w-full items-center justify-center overflow-hidden bg-gray-900 md:h-[70vh]">
+      {/* 2. THE EDITORIAL HERO - Height Reduced significantly! */}
+      <header className="relative flex h-[35vh] min-h-[350px] w-full items-center justify-center overflow-hidden bg-gray-900 md:min-h-[400px]">
         <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1441984904996-e0b6ba687e04?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center opacity-40 mix-blend-overlay grayscale" />
         <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/40 to-transparent" />
         
         <div className="relative z-10 flex flex-col items-center text-center px-4">
-          <p className="mb-4 text-xs font-bold uppercase tracking-[0.3em] text-gray-300 md:text-sm">The Discovery Edit</p>
-          <h1 className="max-w-4xl text-5xl font-serif leading-tight text-white md:text-7xl">
+          <p className="mb-3 text-xs font-bold uppercase tracking-[0.3em] text-gray-300 md:text-sm">The Discovery Edit</p>
+          <h1 className="max-w-4xl text-4xl font-serif leading-tight text-white md:text-6xl">
             Gambia's Premier <br /> Digital Shopping District.
           </h1>
-          <p className="mt-6 max-w-xl text-sm font-medium leading-relaxed text-gray-300 md:text-base">
+          <p className="mt-4 max-w-xl text-xs font-medium leading-relaxed text-gray-300 md:text-sm">
             Explore curated collections from the finest independent boutiques, sneaker resellers, and artisans.
           </p>
         </div>
@@ -132,28 +148,36 @@ export default function GlobalHomepage() {
         <div className="mb-12 flex items-center justify-between">
           <h2 className="flex items-center gap-3 text-2xl font-serif text-gray-900 md:text-3xl">
             <Sparkles className="h-6 w-6 text-yellow-600" /> 
-            {shops.length <= 2 ? 'Exclusive Founding Boutiques' : 'Trending Boutiques'}
+            {activeWorld === 'All' 
+              ? (shops.length <= 2 ? 'Exclusive Founding Boutiques' : 'Trending Boutiques')
+              : `Curated ${activeWorld}`}
           </h2>
         </div>
 
-        {/* EMPTY STATE FOR BRAND NEW LAUNCH */}
-        {shops.length === 0 ? (
+        {/* EMPTY STATE IF A CATEGORY HAS NO SELLERS YET */}
+        {displayedShops.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-white py-24 text-center px-4 shadow-sm">
             <div className="h-16 w-16 mb-6 rounded-full bg-gray-50 flex items-center justify-center">
               <Store className="h-8 w-8 text-gray-400" />
             </div>
-            <h3 className="text-2xl font-serif text-gray-900">The District is Preparing to Launch.</h3>
+            <h3 className="text-2xl font-serif text-gray-900">
+              {shops.length === 0 ? 'The District is Preparing to Launch.' : `No boutiques found in ${activeWorld}.`}
+            </h3>
             <p className="mt-3 max-w-md text-sm text-gray-500 leading-relaxed">
-              We are currently onboarding our founding sellers. Sanndikaa will soon feature the best curated fashion, sneakers, and artisans in the Gambia.
+              {shops.length === 0 
+                ? 'We are currently onboarding our founding sellers. Sanndikaa will soon feature the best curated products in the Gambia.' 
+                : 'Our curators are currently sourcing the best sellers for this category. Check back soon!'}
             </p>
-            <Link href="/signup" className="mt-8 rounded-full bg-gray-900 px-8 py-3 text-sm font-bold uppercase tracking-widest text-white hover:bg-black transition-colors">
-              Claim Your Storefront
-            </Link>
+            {shops.length === 0 && (
+              <Link href="/signup" className="mt-8 rounded-full bg-gray-900 px-8 py-3 text-sm font-bold uppercase tracking-widest text-white hover:bg-black transition-colors">
+                Claim Your Storefront
+              </Link>
+            )}
           </div>
         ) : (
-          /* DYNAMIC GRID FOR 1, 2, or MORE SELLERS */
+          /* DYNAMIC GRID FOR SHOPS */
           <div className={getGridClass()}>
-            {shops.map((shop) => (
+            {displayedShops.map((shop) => (
               <div key={shop.id} className="flex flex-col">
                 <div className="mb-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -208,7 +232,7 @@ export default function GlobalHomepage() {
         )}
 
         {/* 5. THE HERO SPOTLIGHT */}
-        {spotlightProduct && (
+        {spotlightProduct && activeWorld === 'All' && (
           <div className="mt-24 overflow-hidden rounded-3xl bg-gray-900 shadow-xl">
             <div className="grid grid-cols-1 md:grid-cols-2 items-center">
               <div className="aspect-square md:aspect-auto md:h-[600px] w-full overflow-hidden bg-gray-800">
