@@ -18,6 +18,7 @@ import {
   Store,
   Truck,
   Handshake,
+  LogOut
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -71,7 +72,10 @@ export default function Dashboard() {
 
   const supabase = createClientComponentClient();
   const router = useRouter();
-
+const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push('/login');
+  };
   const fetchShop = async (id: string) => {
     const { data: shopData } = await supabase
       .from('shops')
@@ -341,20 +345,26 @@ export default function Dashboard() {
             Welcome back, <span className="font-bold">{shop?.shop_name || 'Partner'}</span>.
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Link
             href={`/shop/${shop?.shop_slug}`}
             target="_blank"
-            className="flex items-center gap-2 rounded-xl border border-[#E6E4DC] bg-white px-6 py-3 text-xs font-bold uppercase tracking-widest transition-all hover:border-[#2C3E2C]"
+            className="flex items-center gap-2 rounded-xl border border-[#E6E4DC] bg-white px-4 py-3 text-xs font-bold uppercase tracking-widest transition-all hover:border-[#2C3E2C]"
           >
             <Eye size={16} /> View Shop
           </Link>
           <Link
             href="/dashboard/add"
-            className="flex items-center gap-2 rounded-xl bg-[#2C3E2C] px-6 py-3 text-xs font-bold uppercase tracking-widest text-white shadow-lg transition-all hover:bg-black"
+            className="flex items-center gap-2 rounded-xl bg-[#2C3E2C] px-4 py-3 text-xs font-bold uppercase tracking-widest text-white shadow-lg transition-all hover:bg-black"
           >
             <Plus size={16} /> Add Product
           </Link>
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-xs font-bold uppercase tracking-widest text-red-600 transition-all hover:bg-red-100 hover:text-red-700"
+          >
+            <LogOut size={16} /> Log Out
+          </button>
         </div>
       </div>
 
