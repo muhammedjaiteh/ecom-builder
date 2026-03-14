@@ -14,7 +14,7 @@ type Shop = {
   logo_url: string | null;
   bio: string | null;
   store_layout?: string | null;
-  theme_color: string | null; // Updated to accept any color string
+  theme_color: string | null;
 };
 
 type Product = {
@@ -26,7 +26,6 @@ type Product = {
   category: string | null;
 };
 
-// THE FIX: The Storefront now knows all 11 Luxury Colors
 const themeColors: Record<string, { bg: string; text: string; ring: string }> = {
   emerald: { bg: 'bg-emerald-600', text: 'text-emerald-600', ring: 'ring-emerald-600' },
   midnight: { bg: 'bg-slate-900', text: 'text-slate-900', ring: 'ring-slate-900' },
@@ -137,7 +136,8 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
 
   const getPageBg = () => {
     if (isBrightEditorial) return 'bg-white';
-    if (matchedLayout === 'jollof') return 'bg-[#050505]';
+    // THE FIX: Changed Jollof from #050505 to a beautiful luxury cream
+    if (matchedLayout === 'jollof') return 'bg-[#FDFBF7]';
     if (matchedLayout === 'bantaba') return 'bg-[#F9F8F6]';
     return 'bg-white';
   };
@@ -257,21 +257,22 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
         );
 
       case 'jollof':
+        // THE FIX: Changed to Light/Bright Luxury Mode!
         return filteredProducts.map((product, index) => {
           const productImage = product.image_urls?.[0] || product.image_url;
           return (
             <Link href={`/product/${product.id}`} key={product.id} className={`group flex flex-col ${index % 2 !== 0 ? 'md:mt-24' : ''}`}>
-              <div className="aspect-[4/5] w-full overflow-hidden bg-[#1A1A1A]">
+              <div className="aspect-[4/5] w-full overflow-hidden bg-white shadow-sm border border-gray-100">
                 {productImage ? (
-                  <img src={productImage} alt={product.name} className="h-full w-full object-cover transition-transform duration-1000 ease-out group-hover:scale-[1.07] opacity-90 group-hover:opacity-100" />
+                  <img src={productImage} alt={product.name} className="h-full w-full object-cover transition-transform duration-1000 ease-out group-hover:scale-[1.05]" />
                 ) : (
-                  <div className="flex h-full min-h-[220px] items-center justify-center text-white/10"><ShoppingBag size={34} /></div>
+                  <div className="flex h-full min-h-[220px] items-center justify-center text-gray-300"><ShoppingBag size={34} /></div>
                 )}
               </div>
-              <div className="mt-5 flex flex-col px-2 text-[#F4F4F4]">
-                <p className="text-[10px] text-neutral-500 uppercase tracking-widest mb-1">Gallery Item</p>
-                <h2 className="text-sm font-semibold uppercase tracking-wide">{product.name}</h2>
-                <p className="mt-1.5 text-sm font-light text-neutral-400">D{product.price}</p>
+              <div className="mt-5 flex flex-col px-2 text-gray-900">
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-1">Gallery Item</p>
+                <h2 className="text-sm font-bold uppercase tracking-wide">{product.name}</h2>
+                <p className="mt-1.5 text-sm font-medium text-gray-600">D{product.price}</p>
               </div>
             </Link>
           );
