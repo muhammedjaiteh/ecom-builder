@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, Loader2, Plus, Save, Star, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 
-const CATEGORY_OPTIONS = ['Food', 'Drinks', 'Beauty', 'Fashion', 'Electronics', 'General'] as const;
+const CATEGORY_OPTIONS = ['Food & Culinary', 'Drinks', 'Beauty & Wellness', 'Fashion', 'Sneakers', 'Home & Artisan', 'Tech Accessories', 'General'] as const;
 const MAX_IMAGES = 5;
 
 type ThemeColor = 'emerald' | 'midnight' | 'terracotta' | 'ocean' | 'rose';
