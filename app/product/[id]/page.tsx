@@ -9,7 +9,7 @@ type ShopInfo = {
   shop_name: string;
   shop_slug: string;
   whatsapp_number: string | null;
-  theme_color: string | null; // Upgraded to accept any color string
+  theme_color: string | null;
 };
 
 type Product = {
@@ -28,7 +28,6 @@ type FulfillmentMethod = 'delivery' | 'pickup';
 
 const PAYMENT_OPTIONS = ['Cash on Delivery', 'Wave'] as const;
 
-// THE FIX: The 11-Color Luxury Dictionary
 const themeColors: Record<string, { bg: string; text: string; border: string }> = {
   emerald: { bg: 'bg-emerald-600', text: 'text-emerald-600', border: 'border-emerald-600' },
   midnight: { bg: 'bg-slate-900', text: 'text-slate-900', border: 'border-slate-900' },
@@ -43,11 +42,15 @@ const themeColors: Record<string, { bg: string; text: string; border: string }> 
   stone: { bg: 'bg-[#8B8C89]', text: 'text-[#6C6D6A]', border: 'border-[#8B8C89]' },
 };
 
+// THE FIX 1: Add the 220 Country Code Automatically!
 function sanitizePhoneNumber(rawNumber?: string | null) {
   if (!rawNumber) return null;
 
-  const cleanNumber = rawNumber.replace(/\D/g, '');
+  let cleanNumber = rawNumber.replace(/\D/g, '');
   if (!cleanNumber) return null;
+  
+  // If they just typed 7 digits (e.g. 3000000), add the Gambia code
+  if (cleanNumber.length === 7) cleanNumber = `220${cleanNumber}`;
 
   return cleanNumber;
 }
@@ -68,12 +71,10 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
   const [paymentMethod, setPaymentMethod] = useState<(typeof PAYMENT_OPTIONS)[number]>('Cash on Delivery');
   const [deliveryAddress, setDeliveryAddress] = useState('');
   
-  // Dynamic Variation State
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
   
-  // Carousel State
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const carouselRef = useRef<HTMLDivElement | null>(null);
 
@@ -142,7 +143,6 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
       : [];
   }, [product]);
 
-  // Maps the selected theme color, defaults to emerald if undefined/missing
   const themeColor = resolvedShop?.theme_color;
   const activeColor = themeColor ? themeColors[themeColor] || themeColors.emerald : themeColors.emerald;
   const currentImageIndex = Math.min(activeImageIndex, Math.max(normalizedImageUrls.length - 1, 0));
@@ -159,6 +159,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     }
   };
 
+  // THE FIX 2: The Luxury WhatsApp Message Format!
   const handleOrderClick = () => {
     if (!product || !resolvedShop) return;
 
@@ -175,14 +176,18 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
       .join(', ');
 
     const totalPrice = product.price * quantity;
+    const currentUrl = window.location.href; // Grabs the exact product link!
 
-    const productLine = variationDetails
-      ? `I want to buy ${quantity}x ${product.name} (${variationDetails}) for a total of D${totalPrice}.`
-      : `I want to buy ${quantity}x ${product.name} for a total of D${totalPrice}.`;
+    const itemDescription = variationDetails
+      ? `${quantity}x ${product.name} (${variationDetails})`
+      : `${quantity}x ${product.name}`;
 
-    const message = `Hello ${resolvedShop.shop_name}! 👋\n\n${productLine}\nPayment: ${paymentMethod}\nFulfillment: ${
-      fulfillmentMethod === 'delivery' ? `Delivery to ${deliveryAddress.trim()}` : 'Pickup'
-    }\n\nIs this item available?`;
+    const fulfillmentString = fulfillmentMethod === 'delivery' 
+      ? `Delivery to: ${deliveryAddress.trim()}` 
+      : `Store Pickup`;
+
+    // Using * around text makes it BOLD in WhatsApp!
+    const message = `🥂 *New Sanndikaa Order!*\n\nHi ${resolvedShop.shop_name}! I would like to order:\n\n🛍️ *Item:* ${itemDescription}\n🏷️ *Total Price:* D${totalPrice}\n🚚 *Fulfillment:* ${fulfillmentString}\n💳 *Payment:* ${paymentMethod}\n🔗 *Product Link:* ${currentUrl}\n\nPlease let me know how to proceed!`;
 
     const whatsappLink = generateWhatsAppLink(resolvedShop.whatsapp_number, message);
     if (!whatsappLink) {
@@ -273,7 +278,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
         <header>
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-gray-500">{resolvedShop.shop_name}</p>
           <h1 className="mt-2 text-3xl font-extrabold leading-tight md:text-4xl">{product.name}</h1>
-<p className="mt-3 text-3xl font-black text-gray-900">D{product.price}</p>
+          <p className="mt-3 text-3xl font-black text-gray-900">D{product.price}</p>
 
           <div className="mt-5">
             <p className="mb-2 text-xs font-bold uppercase tracking-[0.15em] text-gray-500">Quantity</p>
