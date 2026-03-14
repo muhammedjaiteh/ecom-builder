@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, Loader2, Plus, Save, Sparkles, Star, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 
-const CATEGORY_OPTIONS = ['Food', 'Drinks', 'Beauty', 'Fashion', 'Electronics', 'General'] as const;
+const CATEGORY_OPTIONS = ['Food & Culinary', 'Drinks', 'Beauty & Wellness', 'Fashion', 'Sneakers', 'Home & Artisan', 'Tech Accessories', 'General'] as const;
 const MAX_IMAGES = 5;
 
 type ThemeColor = 'emerald' | 'midnight' | 'terracotta' | 'ocean' | 'rose';
@@ -73,24 +73,23 @@ export default function AddProductPage() {
       const lowerName = name.toLowerCase();
       let aiText = `Discover the excellence of ${name}. High-quality, authentic, and designed to meet your needs.`;
 
-      if (category === 'Food') {
+if (category === 'Food & Culinary') {
         aiText = lowerName.includes('honey') || lowerName.includes('oil')
           ? `Experience the untouched purity of ${name}. 100% natural and locally sourced with no additives.`
           : `Experience the authentic taste of ${name}. Freshly prepared with the finest local ingredients.`;
       }
 
-      if (category === 'Fashion') {
+      if (category === 'Fashion' || category === 'Sneakers') {
         aiText = `Upgrade your wardrobe with ${name}. Crafted for comfort, style, and long-lasting quality.`;
       }
 
-      if (category === 'Beauty') {
+      if (category === 'Beauty & Wellness') {
         aiText = `Enhance your self-care routine with ${name}. Gentle, premium quality, and suitable for daily use.`;
       }
 
-      if (category === 'Electronics') {
+      if (category === 'Tech Accessories') {
         aiText = `Upgrade your tech with ${name}. Reliable performance, durable build, and sleek everyday usability.`;
       }
-
       setDescription(aiText);
       setGenerating(false);
     }, 1200);
