@@ -122,6 +122,40 @@ export default function GlobalHomepage() {
         </div>
       </header>
 
+      {/* THE FIX: DISTRICT SPOTLIGHT MOVED TO THE TOP! */}
+      {spotlightProduct && activeWorld === 'All' && (
+        <section className="mx-auto max-w-7xl px-4 py-12 md:px-10">
+          <div className="overflow-hidden rounded-3xl bg-gray-900 shadow-xl">
+            <div className="grid grid-cols-1 md:grid-cols-2 items-center">
+              <div className="aspect-square md:aspect-auto md:h-[600px] w-full overflow-hidden bg-gray-800">
+                <img 
+                  src={spotlightProduct.image_urls?.[0] || spotlightProduct.image_url!} 
+                  alt={spotlightProduct.name}
+                  className="h-full w-full object-cover opacity-90 transition duration-700 hover:opacity-100 hover:scale-[1.02]"
+                />
+              </div>
+              <div className="flex flex-col justify-center p-10 md:p-16 text-center md:text-left">
+                <p className="mb-4 flex items-center justify-center md:justify-start gap-2 text-xs font-bold uppercase tracking-[0.2em] text-yellow-500">
+                  <TrendingUp size={16} /> District Spotlight
+                </p>
+                <h2 className="text-4xl font-serif text-white md:text-5xl leading-tight">{spotlightProduct.name}</h2>
+                <p className="mt-4 text-sm font-medium text-gray-400 uppercase tracking-widest">
+                  Curated by {spotlightProduct.shop.shop_name}
+                </p>
+                <div className="mt-8">
+                  <Link 
+                    href={`/product/${spotlightProduct.id}`}
+                    className="inline-flex items-center gap-2 rounded-full bg-white px-8 py-4 text-sm font-bold uppercase tracking-widest text-gray-900 transition hover:bg-gray-200"
+                  >
+                    View Details
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* 3. CURATED WORLDS (THE PORTALS) */}
       <section className="border-b border-gray-200 bg-white px-4 py-4 md:px-10">
         <div className="hide-scrollbar flex w-full overflow-x-auto">
@@ -143,6 +177,7 @@ export default function GlobalHomepage() {
         </div>
       </section>
 
+      {/* 4. MAIN BOUTIQUE GRID */}
       <main className="mx-auto max-w-7xl px-4 py-16 md:px-10">
         
         <div className="mb-12 flex items-center justify-between">
@@ -167,7 +202,6 @@ export default function GlobalHomepage() {
                 ? 'We are currently onboarding our founding sellers. Sanndikaa will soon feature the best curated products in the Gambia.' 
                 : 'Our curators are currently sourcing the best sellers for this category. Check back soon!'}
             </p>
-            {/* Empty State Link also updated to /auth */}
             {shops.length === 0 && (
               <Link href="/auth" className="mt-8 rounded-full bg-gray-900 px-8 py-3 text-sm font-bold uppercase tracking-widest text-white hover:bg-black transition-colors">
                 Claim Your Storefront
@@ -227,37 +261,6 @@ export default function GlobalHomepage() {
                 </div>
               </div>
             ))}
-          </div>
-        )}
-
-        {spotlightProduct && activeWorld === 'All' && (
-          <div className="mt-24 overflow-hidden rounded-3xl bg-gray-900 shadow-xl">
-            <div className="grid grid-cols-1 md:grid-cols-2 items-center">
-              <div className="aspect-square md:aspect-auto md:h-[600px] w-full overflow-hidden bg-gray-800">
-                <img 
-                  src={spotlightProduct.image_urls?.[0] || spotlightProduct.image_url!} 
-                  alt={spotlightProduct.name}
-                  className="h-full w-full object-cover opacity-90 transition duration-700 hover:opacity-100 hover:scale-[1.02]"
-                />
-              </div>
-              <div className="flex flex-col justify-center p-10 md:p-16 text-center md:text-left">
-                <p className="mb-4 flex items-center justify-center md:justify-start gap-2 text-xs font-bold uppercase tracking-[0.2em] text-yellow-500">
-                  <TrendingUp size={16} /> District Spotlight
-                </p>
-                <h2 className="text-4xl font-serif text-white md:text-5xl leading-tight">{spotlightProduct.name}</h2>
-                <p className="mt-4 text-sm font-medium text-gray-400 uppercase tracking-widest">
-                  Curated by {spotlightProduct.shop.shop_name}
-                </p>
-                <div className="mt-8">
-                  <Link 
-                    href={`/product/${spotlightProduct.id}`}
-                    className="inline-flex items-center gap-2 rounded-full bg-white px-8 py-4 text-sm font-bold uppercase tracking-widest text-gray-900 transition hover:bg-gray-200"
-                  >
-                    View Details
-                  </Link>
-                </div>
-              </div>
-            </div>
           </div>
         )}
       </main>
