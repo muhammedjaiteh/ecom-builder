@@ -90,12 +90,10 @@ export default function GlobalHomepage() {
         <div className="text-xl font-black tracking-tighter text-gray-950 md:text-2xl">SANNDIKAA</div>
         <div className="flex items-center gap-4">
           
-          {/* This one stays /login for returning sellers */}
           <Link href="/login" className="text-sm font-semibold text-gray-600 transition hover:text-gray-900">
             Seller Login
           </Link>
           
-          {/* Change this one to your actual registration URL (like /register) */}
           <Link
             href="/register" 
             className="rounded-full bg-gray-900 px-5 py-2 text-xs font-bold uppercase tracking-widest text-white transition hover:bg-black"
@@ -122,10 +120,43 @@ export default function GlobalHomepage() {
         </div>
       </header>
 
-      {/* THE FIX: DISTRICT SPOTLIGHT MOVED TO THE TOP! */}
-      {spotlightProduct && activeWorld === 'All' && (
-        <section className="mx-auto max-w-7xl px-4 py-12 md:px-10">
-          <div className="overflow-hidden rounded-3xl bg-gray-900 shadow-xl">
+      {/* 3. CURATED WORLDS (THE PORTALS) */}
+      <section className="border-b border-gray-200 bg-white px-4 py-4 md:px-10">
+        <div className="hide-scrollbar flex w-full overflow-x-auto">
+          <div className="flex gap-2 pb-2 md:gap-4">
+            {WORLDS.map((world) => (
+              <button
+                key={world}
+                onClick={() => setActiveWorld(world)}
+                className={`whitespace-nowrap rounded-full px-6 py-2.5 text-sm font-semibold transition-all ${
+                  activeWorld === world
+                    ? 'bg-gray-900 text-white shadow-md'
+                    : 'bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-900'
+                }`}
+              >
+                {world}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* 4. MAIN BOUTIQUE GRID & SPOTLIGHT */}
+      <main className="mx-auto max-w-7xl px-4 py-16 md:px-10">
+        
+        {/* THE HEADING */}
+        <div className="mb-12 flex items-center justify-between">
+          <h2 className="flex items-center gap-3 text-2xl font-serif text-gray-900 md:text-3xl">
+            <Sparkles className="h-6 w-6 text-yellow-600" /> 
+            {activeWorld === 'All' 
+              ? (shops.length <= 2 ? 'Exclusive Founding Boutiques' : 'Trending Boutiques')
+              : `Curated ${activeWorld}`}
+          </h2>
+        </div>
+
+        {/* THE FIX: DISTRICT SPOTLIGHT RIGHT UNDER THE HEADING! */}
+        {spotlightProduct && activeWorld === 'All' && (
+          <div className="mb-16 overflow-hidden rounded-3xl bg-gray-900 shadow-xl">
             <div className="grid grid-cols-1 md:grid-cols-2 items-center">
               <div className="aspect-square md:aspect-auto md:h-[600px] w-full overflow-hidden bg-gray-800">
                 <img 
@@ -153,42 +184,9 @@ export default function GlobalHomepage() {
               </div>
             </div>
           </div>
-        </section>
-      )}
+        )}
 
-      {/* 3. CURATED WORLDS (THE PORTALS) */}
-      <section className="border-b border-gray-200 bg-white px-4 py-4 md:px-10">
-        <div className="hide-scrollbar flex w-full overflow-x-auto">
-          <div className="flex gap-2 pb-2 md:gap-4">
-            {WORLDS.map((world) => (
-              <button
-                key={world}
-                onClick={() => setActiveWorld(world)}
-                className={`whitespace-nowrap rounded-full px-6 py-2.5 text-sm font-semibold transition-all ${
-                  activeWorld === world
-                    ? 'bg-gray-900 text-white shadow-md'
-                    : 'bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-900'
-                }`}
-              >
-                {world}
-              </button>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* 4. MAIN BOUTIQUE GRID */}
-      <main className="mx-auto max-w-7xl px-4 py-16 md:px-10">
-        
-        <div className="mb-12 flex items-center justify-between">
-          <h2 className="flex items-center gap-3 text-2xl font-serif text-gray-900 md:text-3xl">
-            <Sparkles className="h-6 w-6 text-yellow-600" /> 
-            {activeWorld === 'All' 
-              ? (shops.length <= 2 ? 'Exclusive Founding Boutiques' : 'Trending Boutiques')
-              : `Curated ${activeWorld}`}
-          </h2>
-        </div>
-
+        {/* THE REST OF THE BOUTIQUES */}
         {displayedShops.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-white py-24 text-center px-4 shadow-sm">
             <div className="h-16 w-16 mb-6 rounded-full bg-gray-50 flex items-center justify-center">
