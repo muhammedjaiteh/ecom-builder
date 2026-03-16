@@ -12,6 +12,12 @@ type ShopInfo = {
   theme_color: string | null;
 };
 
+// UPGRADE 1: Added the ProductVariant type
+type ProductVariant = {
+  variant_name: string;
+  variant_value: string;
+};
+
 type Product = {
   id: string;
   name: string;
@@ -22,6 +28,7 @@ type Product = {
   colors: string[] | null;
   sizes: string[] | null;
   shops: ShopInfo | ShopInfo[];
+  product_variants?: ProductVariant[] | null; // The new Enterprise Vault
 };
 
 type FulfillmentMethod = 'delivery' | 'pickup';
@@ -42,14 +49,12 @@ const themeColors: Record<string, { bg: string; text: string; border: string }> 
   stone: { bg: 'bg-[#8B8C89]', text: 'text-[#6C6D6A]', border: 'border-[#8B8C89]' },
 };
 
-// THE FIX 1: Add the 220 Country Code Automatically!
 function sanitizePhoneNumber(rawNumber?: string | null) {
   if (!rawNumber) return null;
 
   let cleanNumber = rawNumber.replace(/\D/g, '');
   if (!cleanNumber) return null;
   
-  // If they just typed 7 digits (e.g. 3000000), add the Gambia code
   if (cleanNumber.length === 7) cleanNumber = `220${cleanNumber}`;
 
   return cleanNumber;
@@ -82,10 +87,11 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
   useEffect(() => {
     async function fetchProduct() {
+      // UPGRADE 2: Notice product_variants(variant_name, variant_value) is now in the query!
       const { data, error } = await supabase
         .from('products')
         .select(
-          'id, name, price, description, image_url, image_urls, colors, sizes, shops(shop_name, shop_slug, whatsapp_number, theme_color)'
+          'id, name, price, description, image_url, image_urls, colors, sizes, shops(shop_name, shop_slug, whatsapp_number, theme_color), product_variants(variant_name, variant_value)'
         )
         .eq('id', productId)
         .single();
@@ -96,16 +102,23 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
         const fetchedProduct = data as Product;
         setProduct(fetchedProduct);
 
-        const defaultColor = Array.isArray(fetchedProduct.colors)
-          ? fetchedProduct.colors.find((color) => typeof color === 'string' && color.trim().length > 0) || null
-          : null;
+        // Extracting available colors from both new variants table and old legacy columns
+        const availableColors = (() => {
+          const dbColors = fetchedProduct.product_variants?.filter(v => v.variant_name.toLowerCase() === 'color').map(v => v.variant_value) || [];
+          const legacyColors = Array.isArray(fetchedProduct.colors) ? fetchedProduct.colors : [];
+          return [...dbColors, ...legacyColors].filter(c => typeof c === 'string' && c.trim().length > 0);
+        })();
 
-        const defaultSize = Array.isArray(fetchedProduct.sizes)
-          ? fetchedProduct.sizes.find((size) => typeof size === 'string' && size.trim().length > 0) || null
-          : null;
+        // Extracting available sizes from both new variants table and old legacy columns
+        const availableSizes = (() => {
+          const dbSizes = fetchedProduct.product_variants?.filter(v => v.variant_name.toLowerCase() === 'size').map(v => v.variant_value) || [];
+          const legacySizes = Array.isArray(fetchedProduct.sizes) ? fetchedProduct.sizes : [];
+          return [...dbSizes, ...legacySizes].filter(s => typeof s === 'string' && s.trim().length > 0);
+        })();
 
-        setSelectedColor(defaultColor);
-        setSelectedSize(defaultSize);
+        // Auto-select the first available option
+        setSelectedColor(availableColors.length > 0 ? availableColors[0] : null);
+        setSelectedSize(availableSizes.length > 0 ? availableSizes[0] : null);
       }
 
       setLoading(false);
@@ -131,16 +144,21 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     return [...galleryUrls, ...singleImage];
   }, [product]);
 
+  // UPGRADE 3: Properly mapping the variants into the UI dropdowns
   const normalizedColors = useMemo(() => {
-    return Array.isArray(product?.colors)
-      ? product.colors.filter((color): color is string => typeof color === 'string' && color.trim().length > 0)
-      : [];
+    if (!product) return [];
+    const dbColors = product.product_variants?.filter(v => v.variant_name.toLowerCase() === 'color').map(v => v.variant_value) || [];
+    const legacyColors = Array.isArray(product.colors) ? product.colors : [];
+    const combined = [...dbColors, ...legacyColors].filter((c): c is string => typeof c === 'string' && c.trim().length > 0);
+    return Array.from(new Set(combined)); // Deduplicates just in case
   }, [product]);
 
   const normalizedSizes = useMemo(() => {
-    return Array.isArray(product?.sizes)
-      ? product.sizes.filter((size): size is string => typeof size === 'string' && size.trim().length > 0)
-      : [];
+    if (!product) return [];
+    const dbSizes = product.product_variants?.filter(v => v.variant_name.toLowerCase() === 'size').map(v => v.variant_value) || [];
+    const legacySizes = Array.isArray(product.sizes) ? product.sizes : [];
+    const combined = [...dbSizes, ...legacySizes].filter((s): s is string => typeof s === 'string' && s.trim().length > 0);
+    return Array.from(new Set(combined)); // Deduplicates just in case
   }, [product]);
 
   const themeColor = resolvedShop?.theme_color;
@@ -159,7 +177,6 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     }
   };
 
-  // THE FIX 2: The Luxury WhatsApp Message Format!
   const handleOrderClick = () => {
     if (!product || !resolvedShop) return;
 
@@ -176,7 +193,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
       .join(', ');
 
     const totalPrice = product.price * quantity;
-    const currentUrl = window.location.href; // Grabs the exact product link!
+    const currentUrl = window.location.href;
 
     const itemDescription = variationDetails
       ? `${quantity}x ${product.name} (${variationDetails})`
@@ -186,7 +203,6 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
       ? `Delivery to: ${deliveryAddress.trim()}` 
       : `Store Pickup`;
 
-    // Using * around text makes it BOLD in WhatsApp!
     const message = `🥂 *New Sanndikaa Order!*\n\nHi ${resolvedShop.shop_name}! I would like to order:\n\n🛍️ *Item:* ${itemDescription}\n🏷️ *Total Price:* D${totalPrice}\n🚚 *Fulfillment:* ${fulfillmentString}\n💳 *Payment:* ${paymentMethod}\n🔗 *Product Link:* ${currentUrl}\n\nPlease let me know how to proceed!`;
 
     const whatsappLink = generateWhatsAppLink(resolvedShop.whatsapp_number, message);
