@@ -2,17 +2,18 @@
 
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { use, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, CheckCircle2, Loader2, MapPin, MessageCircle, ShoppingBag, Truck } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Loader2, MapPin, MessageCircle, ShoppingBag, Truck, User } from 'lucide-react';
 import Link from 'next/link';
 
+// UPGRADE 1: Added 'id' to ShopInfo so we can link the order to the correct shop!
 type ShopInfo = {
+  id: string;
   shop_name: string;
   shop_slug: string;
   whatsapp_number: string | null;
   theme_color: string | null;
 };
 
-// UPGRADE 1: Added the ProductVariant type
 type ProductVariant = {
   variant_name: string;
   variant_value: string;
@@ -28,7 +29,7 @@ type Product = {
   colors: string[] | null;
   sizes: string[] | null;
   shops: ShopInfo | ShopInfo[];
-  product_variants?: ProductVariant[] | null; // The new Enterprise Vault
+  product_variants?: ProductVariant[] | null;
 };
 
 type FulfillmentMethod = 'delivery' | 'pickup';
@@ -51,19 +52,15 @@ const themeColors: Record<string, { bg: string; text: string; border: string }> 
 
 function sanitizePhoneNumber(rawNumber?: string | null) {
   if (!rawNumber) return null;
-
   let cleanNumber = rawNumber.replace(/\D/g, '');
   if (!cleanNumber) return null;
-  
   if (cleanNumber.length === 7) cleanNumber = `220${cleanNumber}`;
-
   return cleanNumber;
 }
 
 function generateWhatsAppLink(number: string | null | undefined, message: string) {
   const cleanNumber = sanitizePhoneNumber(number);
   if (!cleanNumber) return null;
-
   return `https://wa.me/${cleanNumber}?text=${encodeURIComponent(message)}`;
 }
 
@@ -72,6 +69,11 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isProcessingOrder, setIsProcessingOrder] = useState(false); // NEW: Loading state for checkout
+
+  // Checkout Form States
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
   const [fulfillmentMethod, setFulfillmentMethod] = useState<FulfillmentMethod>('delivery');
   const [paymentMethod, setPaymentMethod] = useState<(typeof PAYMENT_OPTIONS)[number]>('Cash on Delivery');
   const [deliveryAddress, setDeliveryAddress] = useState('');
@@ -87,11 +89,10 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
   useEffect(() => {
     async function fetchProduct() {
-      // UPGRADE 2: Notice product_variants(variant_name, variant_value) is now in the query!
       const { data, error } = await supabase
         .from('products')
         .select(
-          'id, name, price, description, image_url, image_urls, colors, sizes, shops(shop_name, shop_slug, whatsapp_number, theme_color), product_variants(variant_name, variant_value)'
+          'id, name, price, description, image_url, image_urls, colors, sizes, shops(id, shop_name, shop_slug, whatsapp_number, theme_color), product_variants(variant_name, variant_value)'
         )
         .eq('id', productId)
         .single();
@@ -102,28 +103,23 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
         const fetchedProduct = data as Product;
         setProduct(fetchedProduct);
 
-        // Extracting available colors from both new variants table and old legacy columns
         const availableColors = (() => {
           const dbColors = fetchedProduct.product_variants?.filter(v => v.variant_name.toLowerCase() === 'color').map(v => v.variant_value) || [];
           const legacyColors = Array.isArray(fetchedProduct.colors) ? fetchedProduct.colors : [];
           return [...dbColors, ...legacyColors].filter(c => typeof c === 'string' && c.trim().length > 0);
         })();
 
-        // Extracting available sizes from both new variants table and old legacy columns
         const availableSizes = (() => {
           const dbSizes = fetchedProduct.product_variants?.filter(v => v.variant_name.toLowerCase() === 'size').map(v => v.variant_value) || [];
           const legacySizes = Array.isArray(fetchedProduct.sizes) ? fetchedProduct.sizes : [];
           return [...dbSizes, ...legacySizes].filter(s => typeof s === 'string' && s.trim().length > 0);
         })();
 
-        // Auto-select the first available option
         setSelectedColor(availableColors.length > 0 ? availableColors[0] : null);
         setSelectedSize(availableSizes.length > 0 ? availableSizes[0] : null);
       }
-
       setLoading(false);
     }
-
     fetchProduct();
   }, [productId, supabase]);
 
@@ -134,23 +130,19 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
   const normalizedImageUrls = useMemo(() => {
     if (!product) return [];
-
     const galleryUrls = Array.isArray(product.image_urls)
       ? product.image_urls.filter((img): img is string => typeof img === 'string' && img.trim().length > 0)
       : [];
-
     const singleImage = product.image_url && product.image_url.trim().length > 0 ? [product.image_url] : [];
-
     return [...galleryUrls, ...singleImage];
   }, [product]);
 
-  // UPGRADE 3: Properly mapping the variants into the UI dropdowns
   const normalizedColors = useMemo(() => {
     if (!product) return [];
     const dbColors = product.product_variants?.filter(v => v.variant_name.toLowerCase() === 'color').map(v => v.variant_value) || [];
     const legacyColors = Array.isArray(product.colors) ? product.colors : [];
     const combined = [...dbColors, ...legacyColors].filter((c): c is string => typeof c === 'string' && c.trim().length > 0);
-    return Array.from(new Set(combined)); // Deduplicates just in case
+    return Array.from(new Set(combined)); 
   }, [product]);
 
   const normalizedSizes = useMemo(() => {
@@ -158,7 +150,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     const dbSizes = product.product_variants?.filter(v => v.variant_name.toLowerCase() === 'size').map(v => v.variant_value) || [];
     const legacySizes = Array.isArray(product.sizes) ? product.sizes : [];
     const combined = [...dbSizes, ...legacySizes].filter((s): s is string => typeof s === 'string' && s.trim().length > 0);
-    return Array.from(new Set(combined)); // Deduplicates just in case
+    return Array.from(new Set(combined)); 
   }, [product]);
 
   const themeColor = resolvedShop?.theme_color;
@@ -168,50 +160,105 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
   const handleCarouselScroll = () => {
     const node = carouselRef.current;
     if (!node) return;
-
     const width = node.clientWidth || 1;
     const nextIndex = Math.round(node.scrollLeft / width);
-
     if (nextIndex !== activeImageIndex) {
       setActiveImageIndex(nextIndex);
     }
   };
 
-  const handleOrderClick = () => {
+  // UPGRADE 2: The Enterprise Order Hijack
+  const handleOrderClick = async () => {
     if (!product || !resolvedShop) return;
+
+    // Validation
+    if (!customerName.trim() || !customerPhone.trim()) {
+      alert('Please enter your Name and Phone Number so the seller can contact you.');
+      return;
+    }
 
     if (fulfillmentMethod === 'delivery' && !deliveryAddress.trim()) {
       alert('Please provide a delivery address to continue.');
       return;
     }
 
+    setIsProcessingOrder(true);
+
     const variationDetails = [
       selectedColor ? `Color: ${selectedColor}` : null,
       selectedSize ? `Size: ${selectedSize}` : null,
-    ]
-      .filter(Boolean)
-      .join(', ');
+    ].filter(Boolean).join(', ');
 
     const totalPrice = product.price * quantity;
     const currentUrl = window.location.href;
+    const itemDescription = variationDetails ? `${quantity}x ${product.name} (${variationDetails})` : `${quantity}x ${product.name}`;
+    const fulfillmentString = fulfillmentMethod === 'delivery' ? `Delivery to: ${deliveryAddress.trim()}` : `Store Pickup`;
 
-    const itemDescription = variationDetails
-      ? `${quantity}x ${product.name} (${variationDetails})`
-      : `${quantity}x ${product.name}`;
+    try {
+      // Step 1: Save the Customer
+      const { data: customerData, error: customerError } = await supabase
+        .from('customers')
+        .insert({
+          name: customerName,
+          phone_number: customerPhone,
+          location: fulfillmentMethod === 'delivery' ? deliveryAddress : 'Pickup',
+        })
+        .select()
+        .single();
 
-    const fulfillmentString = fulfillmentMethod === 'delivery' 
-      ? `Delivery to: ${deliveryAddress.trim()}` 
-      : `Store Pickup`;
+      if (customerError) throw customerError;
 
-    const message = `🥂 *New Sanndikaa Order!*\n\nHi ${resolvedShop.shop_name}! I would like to order:\n\n🛍️ *Item:* ${itemDescription}\n🏷️ *Total Price:* D${totalPrice}\n🚚 *Fulfillment:* ${fulfillmentString}\n💳 *Payment:* ${paymentMethod}\n🔗 *Product Link:* ${currentUrl}\n\nPlease let me know how to proceed!`;
+      // Step 2: Save the Order
+      const { data: orderData, error: orderError } = await supabase
+        .from('orders')
+        .insert({
+          shop_id: resolvedShop.id,
+          customer_id: customerData.id,
+          total_amount: totalPrice,
+          fulfillment_method: fulfillmentMethod,
+          status: 'pending',
+        })
+        .select()
+        .single();
 
-    const whatsappLink = generateWhatsAppLink(resolvedShop.whatsapp_number, message);
-    if (!whatsappLink) {
-      alert('This seller has not set up a valid WhatsApp number yet.');
-      return;
+      if (orderError) throw orderError;
+
+      // Step 3: Save the Order Item
+      const { error: itemError } = await supabase
+        .from('order_items')
+        .insert({
+          order_id: orderData.id,
+          product_id: product.id,
+          quantity: quantity,
+          price_at_time: product.price,
+          variant_details: variationDetails || 'None',
+        });
+
+      if (itemError) throw itemError;
+
+      // Step 4: Generate WhatsApp Message with Order Reference
+      const orderRef = orderData.id.split('-')[0].toUpperCase(); 
+      const message = `🥂 *New Sanndikaa Order!* (Ref: #${orderRef})\n\nHi ${resolvedShop.shop_name}! I would like to order:\n\n🛍️ *Item:* ${itemDescription}\n👤 *Customer:* ${customerName}\n📞 *Phone:* ${customerPhone}\n🏷️ *Total Price:* D${totalPrice}\n🚚 *Fulfillment:* ${fulfillmentString}\n💳 *Payment:* ${paymentMethod}\n🔗 *Product Link:* ${currentUrl}\n\nPlease let me know how to proceed!`;
+
+      const whatsappLink = generateWhatsAppLink(resolvedShop.whatsapp_number, message);
+      if (!whatsappLink) {
+        alert('This seller has not set up a valid WhatsApp number yet.');
+        setIsProcessingOrder(false);
+        return;
+      }
+
+      // Fire the WhatsApp Redirect!
+      window.location.href = whatsappLink;
+
+    } catch (error) {
+      console.error("Vault Error:", error);
+      // Fallback: If DB fails for any reason, still send them to WhatsApp so the seller gets the sale!
+      alert("Opening WhatsApp...");
+      const fallbackMessage = `🥂 *New Sanndikaa Order!*\n\nHi ${resolvedShop.shop_name}! I would like to order:\n\n🛍️ *Item:* ${itemDescription}\n👤 *Customer:* ${customerName}\n📞 *Phone:* ${customerPhone}\n🏷️ *Total Price:* D${totalPrice}\n🚚 *Fulfillment:* ${fulfillmentString}\n💳 *Payment:* ${paymentMethod}\n🔗 *Product Link:* ${currentUrl}\n\nPlease let me know how to proceed!`;
+      const fallbackLink = generateWhatsAppLink(resolvedShop.whatsapp_number, fallbackMessage);
+      if (fallbackLink) window.location.href = fallbackLink;
+      setIsProcessingOrder(false);
     }
-
-    window.location.href = whatsappLink;
   };
 
   if (loading) {
@@ -303,7 +350,6 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
                 type="button"
                 onClick={() => setQuantity((current) => Math.max(1, current - 1))}
                 className="px-4 py-2 text-lg font-semibold text-gray-700 transition hover:bg-gray-100"
-                aria-label="Decrease quantity"
               >
                 -
               </button>
@@ -312,7 +358,6 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
                 type="button"
                 onClick={() => setQuantity((current) => current + 1)}
                 className="px-4 py-2 text-lg font-semibold text-gray-700 transition hover:bg-gray-100"
-                aria-label="Increase quantity"
               >
                 +
               </button>
@@ -366,8 +411,43 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
               </select>
             </div>
           )}
+        </section>
 
+        {/* UPGRADE 3: Customer Details & Checkout Form */}
+        <section className="space-y-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div>
+            <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <User size={20} className={activeColor.text} /> Customer Details
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="mb-2 block text-xs font-bold uppercase tracking-[0.15em] text-gray-500">
+                  Your Full Name
+                </label>
+                <input
+                  type="text"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="e.g. Lamin Jallow"
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 outline-none transition focus:border-[#1a2e1a] focus:bg-white"
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-xs font-bold uppercase tracking-[0.15em] text-gray-500">
+                  Phone / WhatsApp Number
+                </label>
+                <input
+                  type="tel"
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  placeholder="e.g. 7000000"
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 outline-none transition focus:border-[#1a2e1a] focus:bg-white"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-gray-100">
             <p className="mb-2 text-xs font-bold uppercase tracking-[0.15em] text-gray-500">Fulfillment</p>
             <div className="grid grid-cols-2 gap-2">
               <button
@@ -419,7 +499,6 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
             <div className="grid grid-cols-2 gap-2">
               {PAYMENT_OPTIONS.map((option) => {
                 const selected = paymentMethod === option;
-
                 return (
                   <button
                     key={option}
@@ -446,9 +525,11 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
           <button
             type="button"
             onClick={handleOrderClick}
-            className={`flex w-full items-center justify-center gap-2 rounded-xl py-4 text-sm font-bold uppercase tracking-wide text-white shadow-lg transition hover:opacity-95 ${activeColor.bg}`}
+            disabled={isProcessingOrder}
+            className={`flex w-full items-center justify-center gap-2 rounded-xl py-4 text-sm font-bold uppercase tracking-wide text-white shadow-lg transition hover:opacity-95 disabled:opacity-70 ${activeColor.bg}`}
           >
-            <MessageCircle size={18} /> Order via WhatsApp
+            {isProcessingOrder ? <Loader2 size={18} className="animate-spin" /> : <MessageCircle size={18} />} 
+            {isProcessingOrder ? 'Processing Order...' : 'Order via WhatsApp'}
           </button>
         </div>
       </div>
