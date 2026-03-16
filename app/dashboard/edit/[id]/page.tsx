@@ -97,9 +97,10 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
         setThemeColor(nextTheme as ThemeColor);
       }
 
+      // UPGRADE 1: Fetching the product_variants data
       const { data: product, error } = await supabase
         .from('products')
-        .select('id, name, price, description, image_url, image_urls, category, status, colors, sizes')
+        .select('id, name, price, description, image_url, image_urls, category, status, colors, sizes, product_variants(variant_name, variant_value)')
         .eq('id', productId)
         .eq('user_id', user.id)
         .single();
@@ -111,7 +112,6 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       }
 
       const galleryUrls = normalizeStringArray(product.image_urls);
-
       const fallbackImage = product.image_url && product.image_url.trim().length > 0 ? [product.image_url] : [];
       const allImages = galleryUrls.length > 0 ? galleryUrls : fallbackImage;
 
@@ -121,11 +121,18 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       setCategory((product.category as (typeof CATEGORY_OPTIONS)[number]) || 'General');
       setStatus(product.status || 'Active');
       setImages(allImages.map((url, index) => ({ url, isDefault: index === 0 })));
-      const productColors = normalizeStringArray(product.colors);
-      const productSizes = normalizeStringArray(product.sizes);
 
-      setColorsInput(productColors.length > 0 ? productColors.join(', ') : '');
-      setSizesInput(productSizes.length > 0 ? productSizes.join(', ') : '');
+      // UPGRADE 2: Combine legacy arrays with the new database vault for seamless loading
+      const dbColors = product.product_variants?.filter((v: any) => v.variant_name.toLowerCase() === 'color').map((v: any) => v.variant_value) || [];
+      const legacyColors = normalizeStringArray(product.colors);
+      const combinedColors = Array.from(new Set([...dbColors, ...legacyColors]));
+
+      const dbSizes = product.product_variants?.filter((v: any) => v.variant_name.toLowerCase() === 'size').map((v: any) => v.variant_value) || [];
+      const legacySizes = normalizeStringArray(product.sizes);
+      const combinedSizes = Array.from(new Set([...dbSizes, ...legacySizes]));
+
+      setColorsInput(combinedColors.join(', '));
+      setSizesInput(combinedSizes.join(', '));
       setLoading(false);
     }
 
@@ -198,22 +205,18 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
     }
   };
 
+  // UPGRADE 3: The Wipe and Replace Variant Update Strategy
   const handleUpdate = async (event: React.FormEvent) => {
     event.preventDefault();
     setSaving(true);
 
     try {
       const orderedImages = [...images].sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
-      const colors = colorsInput
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
-      const sizes = sizesInput
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
+      const colors = colorsInput.split(',').map((s) => s.trim()).filter(Boolean);
+      const sizes = sizesInput.split(',').map((s) => s.trim()).filter(Boolean);
 
-      const { error } = await supabase
+      // STEP 1: Update the main product data
+      const { error: productError } = await supabase
         .from('products')
         .update({
           name,
@@ -223,12 +226,42 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           status,
           image_urls: orderedImages.map((image) => image.url),
           image_url: orderedImages[0]?.url || null,
-          colors: colors.length > 0 ? colors : null,
-          sizes: sizes.length > 0 ? sizes : null,
         })
         .eq('id', productId);
 
-      if (error) throw error;
+      if (productError) throw productError;
+
+      // STEP 2: Wipe the slate clean (Delete old variants)
+      await supabase.from('product_variants').delete().eq('product_id', productId);
+
+      // STEP 3: Insert the new variants
+      const variantsToInsert: any[] = [];
+      if (colors.length > 0) {
+        colors.forEach(color => {
+          variantsToInsert.push({
+            product_id: productId,
+            variant_name: 'Color',
+            variant_value: color,
+            stock_quantity: 10
+          });
+        });
+      }
+
+      if (sizes.length > 0) {
+        sizes.forEach(size => {
+          variantsToInsert.push({
+            product_id: productId,
+            variant_name: 'Size',
+            variant_value: size,
+            stock_quantity: 10
+          });
+        });
+      }
+
+      if (variantsToInsert.length > 0) {
+        const { error: variantError } = await supabase.from('product_variants').insert(variantsToInsert);
+        if (variantError) console.error("Variants failed to update:", variantError);
+      }
 
       router.push('/dashboard');
       router.refresh();
@@ -373,7 +406,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                 />
               </div>
 
-              <div>
+              <div className="col-span-2">
                 <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">Status</label>
                 <select
                   value={status}
