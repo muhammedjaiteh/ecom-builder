@@ -73,7 +73,7 @@ export default function AddProductPage() {
       const lowerName = name.toLowerCase();
       let aiText = `Discover the excellence of ${name}. High-quality, authentic, and designed to meet your needs.`;
 
-if (category === 'Food & Culinary') {
+      if (category === 'Food & Culinary') {
         aiText = lowerName.includes('honey') || lowerName.includes('oil')
           ? `Experience the untouched purity of ${name}. 100% natural and locally sourced with no additives.`
           : `Experience the authentic taste of ${name}. Freshly prepared with the finest local ingredients.`;
@@ -161,6 +161,7 @@ if (category === 'Food & Culinary') {
     }
   };
 
+  // 🚀 UPGRADED: The Enterprise Variant Engine
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
     setLoading(true);
@@ -172,16 +173,12 @@ if (category === 'Food & Culinary') {
       if (!user) throw new Error('Not authenticated');
 
       const orderedImages = [...images].sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
-      const colors = colorsInput
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
-      const sizes = sizesInput
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
+      
+      const colors = colorsInput.split(',').map((s) => s.trim()).filter(Boolean);
+      const sizes = sizesInput.split(',').map((s) => s.trim()).filter(Boolean);
 
-      const { error } = await supabase.from('products').insert({
+      // STEP 1: Insert the main product and GET the new product ID back
+      const { data: newProduct, error: productError } = await supabase.from('products').insert({
         user_id: user.id,
         name,
         price: parseFloat(price),
@@ -190,11 +187,44 @@ if (category === 'Food & Culinary') {
         description,
         image_urls: orderedImages.map((image) => image.url),
         image_url: orderedImages[0]?.url || null,
-        colors: colors.length > 0 ? colors : null,
-        sizes: sizes.length > 0 ? sizes : null,
-      });
+        // We no longer save raw arrays here. We keep the database normalized!
+      }).select().single();
 
-      if (error) throw error;
+      if (productError) throw productError;
+
+      // STEP 2: Generate the Advanced Variants payload
+      const variantsToInsert: any[] = [];
+
+      if (colors.length > 0) {
+        colors.forEach(color => {
+          variantsToInsert.push({
+            product_id: newProduct.id,
+            variant_name: 'Color',
+            variant_value: color,
+            stock_quantity: 10 // Default stock for now
+          });
+        });
+      }
+
+      if (sizes.length > 0) {
+        sizes.forEach(size => {
+          variantsToInsert.push({
+            product_id: newProduct.id,
+            variant_name: 'Size',
+            variant_value: size,
+            stock_quantity: 10 // Default stock for now
+          });
+        });
+      }
+
+      // STEP 3: Bulk insert into the new product_variants table!
+      if (variantsToInsert.length > 0) {
+        const { error: variantError } = await supabase.from('product_variants').insert(variantsToInsert);
+        if (variantError) {
+          console.error("Variants failed to save, but product was created:", variantError);
+          // We don't throw an error here so the seller still gets redirected successfully
+        }
+      }
 
       router.push('/dashboard');
       router.refresh();
@@ -337,7 +367,7 @@ if (category === 'Food & Culinary') {
                 />
               </div>
 
-              <div>
+              <div className="col-span-2">
                 <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">Status</label>
                 <select
                   value={status}
