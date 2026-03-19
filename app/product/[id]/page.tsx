@@ -2,9 +2,8 @@
 
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { use, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Loader2, ShoppingBag, Plus, Minus } from 'lucide-react';
+import { ArrowLeft, Loader2, ShoppingBag, Plus, Minus, Check, ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
-// 🚀 1. Import the Global Memory Bank!
 import { useCart } from '../../../components/CartProvider'; 
 
 type ShopInfo = {
@@ -33,8 +32,9 @@ type Product = {
   product_variants?: ProductVariant[] | null;
 };
 
+// The Brand Colors for the checkout button
 const themeColors: Record<string, { bg: string; text: string; border: string }> = {
-  emerald: { bg: 'bg-emerald-600', text: 'text-emerald-600', border: 'border-emerald-600' },
+  emerald: { bg: 'bg-[#1a2e1a]', text: 'text-[#1a2e1a]', border: 'border-[#1a2e1a]' },
   midnight: { bg: 'bg-slate-900', text: 'text-slate-900', border: 'border-slate-900' },
   terracotta: { bg: 'bg-orange-700', text: 'text-orange-700', border: 'border-orange-700' },
   ocean: { bg: 'bg-blue-600', text: 'text-blue-600', border: 'border-blue-600' },
@@ -49,7 +49,7 @@ const themeColors: Record<string, { bg: string; text: string; border: string }> 
 
 export default function ProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: productId } = use(params);
-  const { addToCart } = useCart(); // 🚀 2. Connect to the Cart
+  const { addToCart } = useCart(); 
 
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
@@ -67,9 +67,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     async function fetchProduct() {
       const { data, error } = await supabase
         .from('products')
-        .select(
-          'id, name, price, description, image_url, image_urls, colors, sizes, shops(id, shop_name, shop_slug, whatsapp_number, theme_color), product_variants(variant_name, variant_value)'
-        )
+        .select('id, name, price, description, image_url, image_urls, colors, sizes, shops(id, shop_name, shop_slug, whatsapp_number, theme_color), product_variants(variant_name, variant_value)')
         .eq('id', productId)
         .single();
 
@@ -91,24 +89,19 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
           return [...dbSizes, ...legacySizes].filter(s => typeof s === 'string' && s.trim().length > 0);
         })();
 
-        setSelectedColor(availableColors.length > 0 ? availableColors[0] : null);
-        setSelectedSize(availableSizes.length > 0 ? availableSizes[0] : null);
+        if (availableColors.length > 0) setSelectedColor(availableColors[0]);
+        if (availableSizes.length > 0) setSelectedSize(availableSizes[0]);
       }
       setLoading(false);
     }
     fetchProduct();
   }, [productId, supabase]);
 
-  const resolvedShop = useMemo(() => {
-    const shopData = product?.shops;
-    return Array.isArray(shopData) ? shopData[0] : shopData;
-  }, [product?.shops]);
+  const resolvedShop = useMemo(() => Array.isArray(product?.shops) ? product?.shops[0] : product?.shops, [product?.shops]);
 
   const normalizedImageUrls = useMemo(() => {
     if (!product) return [];
-    const galleryUrls = Array.isArray(product.image_urls)
-      ? product.image_urls.filter((img): img is string => typeof img === 'string' && img.trim().length > 0)
-      : [];
+    const galleryUrls = Array.isArray(product.image_urls) ? product.image_urls.filter((img): img is string => typeof img === 'string' && img.trim().length > 0) : [];
     const singleImage = product.image_url && product.image_url.trim().length > 0 ? [product.image_url] : [];
     return [...galleryUrls, ...singleImage];
   }, [product]);
@@ -117,16 +110,14 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     if (!product) return [];
     const dbColors = product.product_variants?.filter(v => v.variant_name.toLowerCase() === 'color').map(v => v.variant_value) || [];
     const legacyColors = Array.isArray(product.colors) ? product.colors : [];
-    const combined = [...dbColors, ...legacyColors].filter((c): c is string => typeof c === 'string' && c.trim().length > 0);
-    return Array.from(new Set(combined)); 
+    return Array.from(new Set([...dbColors, ...legacyColors].filter((c): c is string => typeof c === 'string' && c.trim().length > 0))); 
   }, [product]);
 
   const normalizedSizes = useMemo(() => {
     if (!product) return [];
     const dbSizes = product.product_variants?.filter(v => v.variant_name.toLowerCase() === 'size').map(v => v.variant_value) || [];
     const legacySizes = Array.isArray(product.sizes) ? product.sizes : [];
-    const combined = [...dbSizes, ...legacySizes].filter((s): s is string => typeof s === 'string' && s.trim().length > 0);
-    return Array.from(new Set(combined)); 
+    return Array.from(new Set([...dbSizes, ...legacySizes].filter((s): s is string => typeof s === 'string' && s.trim().length > 0))); 
   }, [product]);
 
   const themeColor = resolvedShop?.theme_color;
@@ -138,21 +129,12 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     if (!node) return;
     const width = node.clientWidth || 1;
     const nextIndex = Math.round(node.scrollLeft / width);
-    if (nextIndex !== activeImageIndex) {
-      setActiveImageIndex(nextIndex);
-    }
+    if (nextIndex !== activeImageIndex) setActiveImageIndex(nextIndex);
   };
 
-  // 🚀 3. The New Add To Cart Logic
   const handleAddToBag = () => {
     if (!product || !resolvedShop) return;
-
-    const variationDetails = [
-      selectedColor ? `Color: ${selectedColor}` : null,
-      selectedSize ? `Size: ${selectedSize}` : null,
-    ].filter(Boolean).join(', ');
-
-    // Create a unique ID so a Size 9 doesn't overwrite a Size 10
+    const variationDetails = [selectedColor ? `Color: ${selectedColor}` : null, selectedSize ? `Size: ${selectedSize}` : null].filter(Boolean).join(', ');
     const cartItemId = `${product.id}-${selectedColor || 'none'}-${selectedSize || 'none'}`;
 
     addToCart({
@@ -169,170 +151,140 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     });
   };
 
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#F9F8F6] text-[#1a2e1a]">
-        <div className="flex items-center gap-2 text-sm font-semibold">
-          <Loader2 className="h-5 w-5 animate-spin" /> Loading product...
-        </div>
-      </div>
-    );
-  }
-
-  if (!product || !resolvedShop) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#F9F8F6] p-6">
-        <div className="text-center">
-          <ShoppingBag className="mx-auto mb-3 h-8 w-8 text-gray-400" />
-          <h1 className="mb-2 text-2xl font-bold text-[#1a2e1a]">Product Not Found</h1>
-          <Link href="/" className="text-sm font-semibold text-green-700 hover:underline">
-            Back to Marketplace
-          </Link>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <div className="flex min-h-screen items-center justify-center bg-[#F9F8F6] text-[#1a2e1a]"><Loader2 className="h-6 w-6 animate-spin" /></div>;
+  if (!product || !resolvedShop) return <div className="flex min-h-screen items-center justify-center bg-[#F9F8F6]"><p className="text-xl font-bold">Product Not Found</p></div>;
 
   return (
-    <div className="min-h-screen bg-[#F9F8F6] pb-28 text-[#1a2e1a]">
-      {/* HERO IMAGE CAROUSEL SECTION */}
-      <section className="relative h-[450px] w-full bg-gray-200">
+    <div className="min-h-screen bg-white pb-32 font-sans text-gray-900 selection:bg-gray-900 selection:text-white md:bg-[#F9F8F6]">
+      
+      {/* 🚀 1. EDITORIAL CAROUSEL SECTION */}
+      <section className="relative aspect-[4/5] w-full bg-gray-100 md:aspect-auto md:h-[600px] md:rounded-b-3xl md:overflow-hidden">
         {normalizedImageUrls.length > 0 ? (
-          <div
-            ref={carouselRef}
-            onScroll={handleCarouselScroll}
-            className="flex h-full w-full snap-x snap-mandatory overflow-x-auto scroll-smooth scrollbar-hide"
-            style={{ WebkitOverflowScrolling: 'touch' }}
-          >
+          <div ref={carouselRef} onScroll={handleCarouselScroll} className="hide-scrollbar flex h-full w-full snap-x snap-mandatory overflow-x-auto scroll-smooth">
             {normalizedImageUrls.map((imageUrl, index) => (
-              <img 
-                key={`${imageUrl}-${index}`} 
-                src={imageUrl} 
-                alt={`${product.name} image ${index + 1}`} 
-                className="min-w-full h-full flex-shrink-0 snap-center object-cover" 
-              />
+              <img key={`${imageUrl}-${index}`} src={imageUrl} alt={`${product.name} image ${index + 1}`} className="min-w-full h-full flex-shrink-0 snap-center object-cover" />
             ))}
           </div>
         ) : (
-          <div className="flex h-full w-full items-center justify-center">
-            <ShoppingBag className="h-14 w-14 text-gray-400" />
-          </div>
+          <div className="flex h-full w-full items-center justify-center text-gray-300"><ShoppingBag className="h-16 w-16" /></div>
         )}
 
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-black/10" />
-
-        <Link
-          href={`/shop/${resolvedShop.shop_slug || ''}`}
-          className="absolute left-4 top-4 inline-flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-xs font-bold uppercase tracking-wide text-[#1a2e1a] shadow backdrop-blur hover:bg-white"
-        >
-          <ArrowLeft size={16} /> Back
+        {/* Minimal Nav Gradient & Back Button */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/40 to-transparent" />
+        <Link href={`/shop/${resolvedShop.shop_slug || ''}`} className="absolute left-4 top-5 md:top-8 flex h-10 w-10 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-md transition hover:bg-white hover:text-gray-900">
+          <ChevronLeft size={24} />
         </Link>
 
+        {/* Image Indicators */}
         {normalizedImageUrls.length > 1 && (
-          <div className="pointer-events-none absolute bottom-4 left-1/2 z-10 -translate-x-1/2">
-            <div className="flex items-center gap-1.5 rounded-full bg-black/20 px-2 py-1 backdrop-blur-sm">
-              {normalizedImageUrls.map((_, index) => {
-                const isActive = index === currentImageIndex;
-                return (
-                  <span
-                    key={`dot-${index}`}
-                    className={`h-1.5 w-1.5 rounded-full transition ${isActive ? activeColor.bg : 'bg-white/60'}`}
-                  />
-                );
-              })}
+          <div className="pointer-events-none absolute bottom-6 left-1/2 z-10 -translate-x-1/2">
+            <div className="flex items-center gap-2 rounded-full bg-black/30 px-3 py-1.5 backdrop-blur-md">
+              {normalizedImageUrls.map((_, index) => (
+                <span key={`dot-${index}`} className={`h-1.5 rounded-full transition-all duration-300 ${index === currentImageIndex ? 'w-4 bg-white' : 'w-1.5 bg-white/50'}`} />
+              ))}
             </div>
           </div>
         )}
       </section>
 
-      <main className="mx-auto max-w-3xl space-y-6 px-4 py-6 md:px-6">
-        <header>
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-gray-500">{resolvedShop.shop_name}</p>
-          <h1 className="mt-2 text-3xl font-extrabold leading-tight md:text-4xl">{product.name}</h1>
-          <p className="mt-3 text-3xl font-black text-gray-900">D{product.price}</p>
+      {/* 🚀 2. PRODUCT DETAILS SECTION */}
+      <main className="mx-auto max-w-2xl px-5 py-8 md:px-8 md:py-12 md:bg-white md:-mt-10 md:relative md:z-10 md:rounded-3xl md:shadow-xl md:mb-12">
+        <header className="mb-6">
+          <Link href={`/shop/${resolvedShop.shop_slug}`} className="mb-3 inline-block text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 hover:text-gray-900 transition">
+            {resolvedShop.shop_name}
+          </Link>
+          <h1 className="text-3xl font-serif font-bold leading-tight text-gray-900 md:text-4xl">{product.name}</h1>
+          <p className="mt-4 text-2xl font-black text-gray-900">D{product.price.toLocaleString()}</p>
         </header>
 
-        {product.description && (
-          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">
-              {product.description}
-            </p>
-          </section>
-        )}
-
-        <section className="space-y-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        {/* 🚀 3. THE NEW NATIVE VARIANT PILLS */}
+        <div className="space-y-8 py-6 border-y border-gray-100">
+          
           {normalizedColors.length > 0 && (
             <div>
-              <label htmlFor="product-color" className="mb-2 block text-xs font-bold uppercase tracking-[0.15em] text-gray-500">
-                Select Color
-              </label>
-              <select
-                id="product-color"
-                value={selectedColor || ''}
-                onChange={(event) => setSelectedColor(event.target.value || null)}
-                className="w-full rounded-xl border border-gray-200 bg-transparent px-4 py-3 text-sm font-medium text-gray-700 outline-none transition focus:border-gray-400"
-              >
-                {normalizedColors.map((color) => (
-                  <option key={color} value={color}>
-                    {color}
-                  </option>
-                ))}
-              </select>
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-widest text-gray-900">Color</span>
+                <span className="text-[11px] font-medium text-gray-500">{selectedColor}</span>
+              </div>
+              <div className="flex flex-wrap gap-2.5">
+                {normalizedColors.map((color) => {
+                  const isSelected = selectedColor === color;
+                  return (
+                    <button
+                      key={color}
+                      onClick={() => setSelectedColor(color)}
+                      className={`relative overflow-hidden rounded-xl border px-5 py-3 text-xs font-bold transition-all duration-200 ${
+                        isSelected 
+                          ? `border-transparent ${activeColor.bg} text-white shadow-md ring-2 ring-${activeColor.bg}/20 ring-offset-1` 
+                          : 'border-gray-200 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50'
+                      }`}
+                    >
+                      {color}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
 
           {normalizedSizes.length > 0 && (
             <div>
-              <label htmlFor="product-size" className="mb-2 block text-xs font-bold uppercase tracking-[0.15em] text-gray-500">
-                Select Size/Length
-              </label>
-              <select
-                id="product-size"
-                value={selectedSize || ''}
-                onChange={(event) => setSelectedSize(event.target.value || null)}
-                className="w-full rounded-xl border border-gray-200 bg-transparent px-4 py-3 text-sm font-medium text-gray-700 outline-none transition focus:border-gray-400"
-              >
-                {normalizedSizes.map((size) => (
-                  <option key={size} value={size}>
-                    {size}
-                  </option>
-                ))}
-              </select>
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-widest text-gray-900">Size</span>
+                <span className="text-[11px] font-medium text-gray-500">{selectedSize}</span>
+              </div>
+              <div className="flex flex-wrap gap-2.5">
+                {normalizedSizes.map((size) => {
+                  const isSelected = selectedSize === size;
+                  return (
+                    <button
+                      key={size}
+                      onClick={() => setSelectedSize(size)}
+                      className={`relative flex min-w-[3rem] items-center justify-center rounded-xl border px-4 py-3 text-xs font-bold transition-all duration-200 ${
+                        isSelected 
+                          ? `border-transparent ${activeColor.bg} text-white shadow-md ring-2 ring-${activeColor.bg}/20 ring-offset-1` 
+                          : 'border-gray-200 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50'
+                      }`}
+                    >
+                      {size}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
 
+          {/* QUANTITY SELECTOR */}
           <div>
-            <p className="mb-2 text-xs font-bold uppercase tracking-[0.15em] text-gray-500">Quantity</p>
-            <div className="inline-flex items-center rounded-xl border border-gray-200 bg-gray-50 p-1">
-              <button
-                type="button"
-                onClick={() => setQuantity((current) => Math.max(1, current - 1))}
-                className="rounded-lg bg-white p-2 text-gray-700 shadow-sm transition hover:bg-gray-100"
-              >
-                <Minus size={16} />
-              </button>
-              <span className="min-w-12 px-4 text-center text-sm font-bold text-gray-900">{quantity}</span>
-              <button
-                type="button"
-                onClick={() => setQuantity((current) => current + 1)}
-                className="rounded-lg bg-white p-2 text-gray-700 shadow-sm transition hover:bg-gray-100"
-              >
-                <Plus size={16} />
-              </button>
+             <span className="mb-3 block text-[11px] font-bold uppercase tracking-widest text-gray-900">Quantity</span>
+             <div className="inline-flex items-center rounded-xl border border-gray-200 bg-white shadow-sm p-1">
+              <button onClick={() => setQuantity((c) => Math.max(1, c - 1))} className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition"><Minus size={16} /></button>
+              <span className="w-12 text-center text-sm font-bold text-gray-900">{quantity}</span>
+              <button onClick={() => setQuantity((c) => c + 1)} className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition"><Plus size={16} /></button>
             </div>
           </div>
-        </section>
+        </div>
+
+        {product.description && (
+          <div className="mt-8">
+            <h3 className="mb-3 text-[11px] font-bold uppercase tracking-widest text-gray-900">Description</h3>
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-600">
+              {product.description}
+            </p>
+          </div>
+        )}
       </main>
 
-      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-gray-200 bg-white/95 p-4 backdrop-blur">
-        <div className="mx-auto max-w-3xl">
+      {/* 🚀 4. THE GLASSMORPHISM STICKY CHECKOUT BAR */}
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-100/50 bg-white/80 p-4 pb-safe backdrop-blur-xl supports-[backdrop-filter]:bg-white/60">
+        <div className="mx-auto max-w-2xl">
           <button
             type="button"
             onClick={handleAddToBag}
-            className={`flex w-full items-center justify-center gap-2 rounded-xl py-4 text-sm font-bold uppercase tracking-wide text-white shadow-lg transition hover:opacity-95 ${activeColor.bg}`}
+            className={`flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-[13px] font-bold uppercase tracking-widest text-white shadow-[0_8px_30px_rgb(0,0,0,0.12)] transition-transform hover:scale-[1.01] active:scale-[0.98] ${activeColor.bg}`}
           >
             <ShoppingBag size={18} /> 
-            Add to Bag — D{product.price * quantity}
+            Add to Bag — D{(product.price * quantity).toLocaleString()}
           </button>
         </div>
       </div>
