@@ -4,7 +4,7 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Search, ShoppingBag, Sparkles, Store, TrendingUp, X } from 'lucide-react';
-import { useCart } from '../components/CartProvider'; // 🚀 Added Cart Hook
+import { useCart } from '../components/CartProvider';
 
 type Product = {
   id: string;
@@ -32,10 +32,11 @@ export default function GlobalHomepage() {
   const [shops, setShops] = useState<Shop[]>([]);
   const [loading, setLoading] = useState(true);
   
+  // Search States
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false); // 🚀 Controls the sliding mobile search
 
-  // 🚀 Connect to Global Cart
   const { cartCount, setIsCartOpen } = useCart();
   const supabase = createClientComponentClient();
 
@@ -81,35 +82,91 @@ export default function GlobalHomepage() {
   return (
     <div className="min-h-screen bg-[#F9F8F6] font-sans text-gray-900 selection:bg-gray-900 selection:text-white">
       
-      {/* 🚀 1. THE REDESIGNED NAVIGATION */}
-      <nav className="sticky top-0 z-50 flex items-center justify-between border-b border-gray-100 bg-white/95 px-4 py-3.5 backdrop-blur-md md:px-10">
-        <div className="text-xl font-black tracking-tighter text-[#1a2e1a] md:text-2xl">SANNDIKAA</div>
-        
-        <div className="flex items-center gap-5 md:gap-6">
-          <Link href="/login" className="hidden text-xs font-bold uppercase tracking-widest text-gray-400 transition hover:text-gray-900 md:block">
-            Seller Login
-          </Link>
-          <Link href="/register" className="hidden rounded-full bg-[#1a2e1a] px-5 py-2 text-[10px] font-bold uppercase tracking-widest text-white transition hover:bg-black md:block">
-            Open Boutique
-          </Link>
+      {/* 🚀 1. THE UBIQUITOUS STICKY HEADER */}
+      <nav className="sticky top-0 z-50 w-full border-b border-gray-100 bg-white/95 backdrop-blur-md">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 md:px-10">
           
-          {/* 🚀 THE NATIVE CART BUTTON */}
-          <button 
-            onClick={() => setIsCartOpen(true)} 
-            className="relative flex items-center justify-center text-gray-900 transition hover:opacity-70"
-          >
-            <ShoppingBag size={24} strokeWidth={1.5} />
-            {cartCount > 0 && (
-              <span className="absolute -right-1.5 -top-1.5 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow-sm ring-2 ring-white">
-                {cartCount}
-              </span>
-            )}
-          </button>
+          {/* Logo */}
+          <div className="flex-shrink-0 text-xl font-black tracking-tighter text-[#1a2e1a] md:text-2xl">
+            SANNDIKAA
+          </div>
+
+          {/* Desktop Search Bar (Hidden on Mobile) */}
+          <div className="hidden flex-1 px-8 md:block lg:px-16">
+            <div className="flex w-full max-w-2xl items-center overflow-hidden rounded-full bg-gray-100 px-4 py-2 transition-all focus-within:bg-white focus-within:ring-2 focus-within:ring-[#1a2e1a]">
+              <Search size={16} className="text-gray-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setIsSearching(e.target.value.length > 0); }}
+                placeholder="Search boutiques, products, categories..."
+                className="w-full bg-transparent px-3 text-sm font-medium text-gray-900 outline-none placeholder:text-gray-400"
+              />
+              {searchQuery && (
+                <button onClick={() => { setSearchQuery(''); setIsSearching(false); }} className="text-gray-400 hover:text-gray-900">
+                  <X size={16} />
+                </button>
+              )}
+            </div>
+          </div>
+          
+          {/* Right Action Icons */}
+          <div className="flex flex-shrink-0 items-center gap-3 md:gap-6">
+            <Link href="/login" className="hidden text-xs font-bold uppercase tracking-widest text-gray-400 transition hover:text-gray-900 md:block">
+              Seller Login
+            </Link>
+            <Link href="/register" className="hidden rounded-full bg-[#1a2e1a] px-5 py-2 text-[10px] font-bold uppercase tracking-widest text-white transition hover:bg-black md:block">
+              Open Boutique
+            </Link>
+
+            {/* Mobile Search Lens Icon */}
+            <button 
+              onClick={() => setIsMobileSearchOpen(!isMobileSearchOpen)} 
+              className="flex items-center justify-center p-2 text-gray-900 transition hover:opacity-70 md:hidden"
+            >
+              <Search size={22} strokeWidth={1.5} />
+            </button>
+            
+            {/* The Native Cart Button */}
+            <button 
+              onClick={() => setIsCartOpen(true)} 
+              className="relative flex items-center justify-center p-2 text-gray-900 transition hover:opacity-70"
+            >
+              <ShoppingBag size={22} strokeWidth={1.5} />
+              {cartCount > 0 && (
+                <span className="absolute right-0 top-0 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow-sm ring-2 ring-white">
+                  {cartCount}
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* 🚀 Sliding Mobile Search Bar */}
+        <div className={`overflow-hidden transition-all duration-300 ease-in-out md:hidden ${isMobileSearchOpen ? 'max-h-20 border-t border-gray-100 opacity-100' : 'max-h-0 opacity-0'}`}>
+          <div className="bg-gray-50 px-4 py-3">
+            <div className="flex w-full items-center overflow-hidden rounded-xl bg-white px-3 py-2.5 shadow-sm ring-1 ring-gray-200 focus-within:ring-[#1a2e1a]">
+              <Search size={16} className="text-gray-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setIsSearching(e.target.value.length > 0); }}
+                placeholder="Search products..."
+                className="w-full bg-transparent px-3 text-sm font-medium text-gray-900 outline-none placeholder:text-gray-400"
+                autoFocus={isMobileSearchOpen}
+              />
+              {searchQuery && (
+                <button onClick={() => { setSearchQuery(''); setIsSearching(false); }} className="text-gray-400 hover:text-gray-900">
+                  <X size={16} />
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </nav>
 
-      {/* 🚀 2. THE CONDENSED HERO BANNER & FLOATING SEARCH */}
-      <header className="relative flex flex-col items-center justify-center bg-[#1a2e1a] px-4 pt-12 pb-20 md:pt-16 md:pb-24">
+      {/* 🚀 2. THE EDITORIAL HERO (Search removed from here to keep it clean) */}
+      <header className="relative flex flex-col items-center justify-center bg-[#1a2e1a] px-4 py-16 md:py-24">
         <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1441984904996-e0b6ba687e04?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center opacity-20 mix-blend-overlay" />
         <div className="absolute inset-0 bg-gradient-to-b from-[#1a2e1a]/80 via-transparent to-[#1a2e1a]" />
         
@@ -119,33 +176,11 @@ export default function GlobalHomepage() {
             Gambia's Premier <br className="md:hidden"/> Shopping District.
           </h1>
         </div>
-
-        {/* FLOATING AIRBNB-STYLE SEARCH BAR */}
-        <div className="absolute -bottom-7 z-20 w-full max-w-2xl px-4">
-          <div className="flex w-full items-center overflow-hidden rounded-2xl bg-white p-1.5 shadow-xl ring-1 ring-black/5 transition-all focus-within:shadow-2xl focus-within:ring-gray-300">
-            <div className="pl-4 pr-2 text-gray-400"><Search size={20} /></div>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setIsSearching(e.target.value.length > 0); }}
-              placeholder="Search Boutiques & Products..."
-              className="w-full bg-transparent py-3.5 text-sm font-medium text-gray-900 outline-none placeholder:text-gray-400"
-            />
-            {searchQuery && (
-              <button onClick={() => { setSearchQuery(''); setIsSearching(false); }} className="px-4 text-gray-400 hover:text-gray-900 transition-colors">
-                <X size={18} />
-              </button>
-            )}
-          </div>
-        </div>
       </header>
-
-      {/* SPACER FOR FLOATING BAR */}
-      <div className="h-12 w-full bg-[#F9F8F6]"></div>
 
       {/* 3. CURATED WORLDS PILLS */}
       {!isSearching && (
-        <section className="bg-[#F9F8F6] px-4 pb-8 md:px-10">
+        <section className="bg-[#F9F8F6] px-4 py-6 md:px-10">
           <div className="hide-scrollbar flex w-full overflow-x-auto">
             <div className="flex gap-2.5 pb-2 md:gap-4">
               {WORLDS.map((world) => (
