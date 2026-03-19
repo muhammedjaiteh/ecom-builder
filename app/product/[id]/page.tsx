@@ -2,7 +2,7 @@
 
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { use, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Loader2, ShoppingBag, Plus, Minus, Check, ChevronLeft } from 'lucide-react';
+import { ArrowLeft, Loader2, ShoppingBag, Plus, Minus, ChevronLeft, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
 import { useCart } from '../../../components/CartProvider'; 
 
@@ -157,7 +157,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
   return (
     <div className="min-h-screen bg-white pb-32 font-sans text-gray-900 selection:bg-gray-900 selection:text-white md:bg-[#F9F8F6]">
       
-      {/* 🚀 1. EDITORIAL CAROUSEL SECTION */}
+      {/* 1. EDITORIAL CAROUSEL SECTION */}
       <section className="relative aspect-[4/5] w-full bg-gray-100 md:aspect-auto md:h-[600px] md:rounded-b-3xl md:overflow-hidden">
         {normalizedImageUrls.length > 0 ? (
           <div ref={carouselRef} onScroll={handleCarouselScroll} className="hide-scrollbar flex h-full w-full snap-x snap-mandatory overflow-x-auto scroll-smooth">
@@ -169,13 +169,11 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
           <div className="flex h-full w-full items-center justify-center text-gray-300"><ShoppingBag className="h-16 w-16" /></div>
         )}
 
-        {/* Minimal Nav Gradient & Back Button */}
         <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/40 to-transparent" />
         <Link href={`/shop/${resolvedShop.shop_slug || ''}`} className="absolute left-4 top-5 md:top-8 flex h-10 w-10 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-md transition hover:bg-white hover:text-gray-900">
           <ChevronLeft size={24} />
         </Link>
 
-        {/* Image Indicators */}
         {normalizedImageUrls.length > 1 && (
           <div className="pointer-events-none absolute bottom-6 left-1/2 z-10 -translate-x-1/2">
             <div className="flex items-center gap-2 rounded-full bg-black/30 px-3 py-1.5 backdrop-blur-md">
@@ -187,80 +185,70 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
         )}
       </section>
 
-      {/* 🚀 2. PRODUCT DETAILS SECTION */}
+      {/* 2. PRODUCT DETAILS SECTION */}
       <main className="mx-auto max-w-2xl px-5 py-8 md:px-8 md:py-12 md:bg-white md:-mt-10 md:relative md:z-10 md:rounded-3xl md:shadow-xl md:mb-12">
-        <header className="mb-6">
+        <header className="mb-8">
           <Link href={`/shop/${resolvedShop.shop_slug}`} className="mb-3 inline-block text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 hover:text-gray-900 transition">
             {resolvedShop.shop_name}
           </Link>
           <h1 className="text-3xl font-serif font-bold leading-tight text-gray-900 md:text-4xl">{product.name}</h1>
-          <p className="mt-4 text-2xl font-black text-gray-900">D{product.price.toLocaleString()}</p>
+          <p className="mt-3 text-2xl font-black text-gray-900">D{product.price.toLocaleString()}</p>
         </header>
 
-        {/* 🚀 3. THE NEW NATIVE VARIANT PILLS */}
-        <div className="space-y-8 py-6 border-y border-gray-100">
+        {/* 🚀 3. THE SLEEK DROPDOWN ENGINE */}
+        <div className="space-y-6 py-6 border-y border-gray-100">
           
           {normalizedColors.length > 0 && (
             <div>
-              <div className="mb-3 flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-widest text-gray-900">Color</span>
-                <span className="text-[11px] font-medium text-gray-500">{selectedColor}</span>
-              </div>
-              <div className="flex flex-wrap gap-2.5">
-                {normalizedColors.map((color) => {
-                  const isSelected = selectedColor === color;
-                  return (
-                    <button
-                      key={color}
-                      onClick={() => setSelectedColor(color)}
-                      className={`relative overflow-hidden rounded-xl border px-5 py-3 text-xs font-bold transition-all duration-200 ${
-                        isSelected 
-                          ? `border-transparent ${activeColor.bg} text-white shadow-md ring-2 ring-${activeColor.bg}/20 ring-offset-1` 
-                          : 'border-gray-200 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50'
-                      }`}
-                    >
-                      {color}
-                    </button>
-                  );
-                })}
+              <label className="mb-2.5 block text-[10px] font-bold uppercase tracking-widest text-gray-500">
+                Select Color
+              </label>
+              <div className="relative">
+                <select
+                  value={selectedColor || ''}
+                  onChange={(e) => setSelectedColor(e.target.value)}
+                  className="w-full appearance-none rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-sm font-bold text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900 shadow-sm"
+                >
+                  {normalizedColors.map((color) => (
+                    <option key={color} value={color}>{color}</option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute right-5 top-1/2 -translate-y-1/2 text-gray-400">
+                  <ChevronDown size={18} />
+                </div>
               </div>
             </div>
           )}
 
           {normalizedSizes.length > 0 && (
             <div>
-              <div className="mb-3 flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-widest text-gray-900">Size</span>
-                <span className="text-[11px] font-medium text-gray-500">{selectedSize}</span>
-              </div>
-              <div className="flex flex-wrap gap-2.5">
-                {normalizedSizes.map((size) => {
-                  const isSelected = selectedSize === size;
-                  return (
-                    <button
-                      key={size}
-                      onClick={() => setSelectedSize(size)}
-                      className={`relative flex min-w-[3rem] items-center justify-center rounded-xl border px-4 py-3 text-xs font-bold transition-all duration-200 ${
-                        isSelected 
-                          ? `border-transparent ${activeColor.bg} text-white shadow-md ring-2 ring-${activeColor.bg}/20 ring-offset-1` 
-                          : 'border-gray-200 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50'
-                      }`}
-                    >
-                      {size}
-                    </button>
-                  );
-                })}
+              <label className="mb-2.5 block text-[10px] font-bold uppercase tracking-widest text-gray-500">
+                Select Size
+              </label>
+              <div className="relative">
+                <select
+                  value={selectedSize || ''}
+                  onChange={(e) => setSelectedSize(e.target.value)}
+                  className="w-full appearance-none rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-sm font-bold text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900 shadow-sm"
+                >
+                  {normalizedSizes.map((size) => (
+                    <option key={size} value={size}>{size}</option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute right-5 top-1/2 -translate-y-1/2 text-gray-400">
+                  <ChevronDown size={18} />
+                </div>
               </div>
             </div>
           )}
 
           {/* QUANTITY SELECTOR */}
-          <div>
-             <span className="mb-3 block text-[11px] font-bold uppercase tracking-widest text-gray-900">Quantity</span>
+          <div className="pt-2">
+             <span className="mb-2.5 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Quantity</span>
              <div className="inline-flex items-center rounded-xl border border-gray-200 bg-white shadow-sm p-1">
-              <button onClick={() => setQuantity((c) => Math.max(1, c - 1))} className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition"><Minus size={16} /></button>
-              <span className="w-12 text-center text-sm font-bold text-gray-900">{quantity}</span>
-              <button onClick={() => setQuantity((c) => c + 1)} className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition"><Plus size={16} /></button>
+              <button onClick={() => setQuantity((c) => Math.max(1, c - 1))} className="flex h-11 w-11 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition"><Minus size={16} /></button>
+              <span className="w-14 text-center text-sm font-bold text-gray-900">{quantity}</span>
+              <button onClick={() => setQuantity((c) => c + 1)} className="flex h-11 w-11 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition"><Plus size={16} /></button>
             </div>
           </div>
         </div>
@@ -275,7 +263,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
         )}
       </main>
 
-      {/* 🚀 4. THE GLASSMORPHISM STICKY CHECKOUT BAR */}
+      {/* 4. THE GLASSMORPHISM STICKY CHECKOUT BAR */}
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-100/50 bg-white/80 p-4 pb-safe backdrop-blur-xl supports-[backdrop-filter]:bg-white/60">
         <div className="mx-auto max-w-2xl">
           <button
