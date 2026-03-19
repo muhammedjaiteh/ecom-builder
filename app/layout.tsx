@@ -1,4 +1,4 @@
-import { CartProvider } from "./context/CartContext";
+import { CartProvider } from "../components/CartProvider"; // 🚀 THE FIX IS HERE
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata = {
+export const metadata: Metadata = {
   title: 'Sanndikaa | The Gambian Marketplace',
   description: 'Buy and sell authentic Gambian products.',
 }
@@ -28,9 +28,10 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        {/* The Global Memory Bank is now Online */}
         <CartProvider>
-        {children}
-      </CartProvider>
+          {children}
+        </CartProvider>
       </body>
     </html>
   );
