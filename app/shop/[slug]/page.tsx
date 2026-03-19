@@ -280,46 +280,47 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
               </div>
             )}
 
-            {/* 🚀 LAYOUT 4: THE JOLLOF (True Asymmetric Staggered Gallery) */}
+            {/* 🚀 LAYOUT 4: THE JOLLOF (THE LUXURY FOOTWEAR/SNEAKERHEAD LAYOUT) */}
             {currentLayout === 'jollof' && (
-              <div className="flex items-start gap-4 md:gap-6">
-                
-                {/* Left Column */}
-                <div className="flex w-1/2 flex-col gap-4 md:gap-6">
-                  {displayedProducts.filter((_, i) => i % 2 === 0).map((product) => {
-                    const imgUrl = product.image_urls?.[0] || product.image_url;
-                    return (
-                      <Link href={`/product/${product.id}`} key={product.id} className="group flex flex-col">
-                        <div className="relative aspect-[3/4] overflow-hidden rounded-2xl bg-gray-50 border border-gray-100 shadow-sm">
-                          {imgUrl ? <img src={imgUrl} alt={product.name} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" /> : <div className="flex h-full items-center justify-center text-gray-300"><ShoppingBag size={24} /></div>}
-                        </div>
-                        <div className="mt-3 px-1">
-                          <h4 className="text-sm font-semibold text-gray-900 leading-tight group-hover:underline">{product.name}</h4>
-                          <p className={`mt-1 text-xs font-bold ${theme.text}`}>D{product.price.toLocaleString()}</p>
-                        </div>
-                      </Link>
-                    );
-                  })}
-                </div>
+              <div className="grid grid-cols-2 gap-4 md:gap-6">
+                {displayedProducts.map((product, index) => {
+                  const imgUrl = product.image_urls?.[0] || product.image_url;
+                  // Every 3rd product spans the full width to create a dynamic "Hype Drop" feel
+                  const isFeatured = index % 3 === 0;
 
-                {/* Right Column (Staggered perfectly downwards) */}
-                <div className="flex w-1/2 flex-col gap-4 md:gap-6 pt-12 md:pt-16">
-                  {displayedProducts.filter((_, i) => i % 2 !== 0).map((product) => {
-                    const imgUrl = product.image_urls?.[0] || product.image_url;
-                    return (
-                      <Link href={`/product/${product.id}`} key={product.id} className="group flex flex-col">
-                        <div className="relative aspect-square overflow-hidden rounded-2xl bg-gray-50 border border-gray-100 shadow-sm">
-                          {imgUrl ? <img src={imgUrl} alt={product.name} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" /> : <div className="flex h-full items-center justify-center text-gray-300"><ShoppingBag size={24} /></div>}
+                  return (
+                    <Link 
+                      href={`/product/${product.id}`} 
+                      key={product.id} 
+                      className={`group flex flex-col ${isFeatured ? 'col-span-2' : 'col-span-1'}`}
+                    >
+                      <div className={`relative overflow-hidden rounded-3xl bg-[#F4F4F4] border border-gray-100/50 flex items-center justify-center ${isFeatured ? 'aspect-[4/3] md:aspect-[21/9]' : 'aspect-square'}`}>
+                        {imgUrl ? (
+                          <img 
+                            src={imgUrl} 
+                            alt={product.name} 
+                            className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" 
+                          />
+                        ) : (
+                          <div className="flex h-full items-center justify-center text-gray-300">
+                            <ShoppingBag size={isFeatured ? 40 : 24} />
+                          </div>
+                        )}
+                      </div>
+                      <div className={`mt-4 flex flex-col justify-between px-1 ${isFeatured ? 'md:flex-row md:items-center' : ''}`}>
+                        <div>
+                          <h4 className={`font-bold text-gray-900 group-hover:underline leading-tight ${isFeatured ? 'text-lg md:text-xl' : 'text-sm'}`}>
+                            {product.name}
+                          </h4>
+                          {isFeatured && <p className="mt-1 text-xs font-semibold text-gray-500 uppercase tracking-widest">Footwear Edit</p>}
                         </div>
-                        <div className="mt-3 px-1">
-                          <h4 className="text-sm font-semibold text-gray-900 leading-tight group-hover:underline">{product.name}</h4>
-                          <p className={`mt-1 text-xs font-bold ${theme.text}`}>D{product.price.toLocaleString()}</p>
-                        </div>
-                      </Link>
-                    );
-                  })}
-                </div>
-
+                        <p className={`mt-2 font-black tracking-tighter ${theme.text} ${isFeatured ? 'text-xl md:text-2xl md:mt-0' : 'text-base'}`}>
+                          D{product.price.toLocaleString()}
+                        </p>
+                      </div>
+                    </Link>
+                  );
+                })}
               </div>
             )}
 
