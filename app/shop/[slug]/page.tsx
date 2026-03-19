@@ -23,6 +23,7 @@ type Shop = {
   logo_url: string | null;
   bio: string | null;
   theme_color: string | null;
+  store_layout: string | null; // 🚀 Added back the layout engine
   offers_delivery: boolean;
   offers_pickup: boolean;
   products: Product[];
@@ -60,7 +61,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
       const { data, error } = await supabase
         .from('shops')
         .select(`
-          id, shop_name, shop_slug, banner_url, logo_url, bio, theme_color, offers_delivery, offers_pickup,
+          id, shop_name, shop_slug, banner_url, logo_url, bio, theme_color, store_layout, offers_delivery, offers_pickup,
           products (id, name, price, image_url, image_urls, category)
         `)
         .eq('shop_slug', slug)
@@ -74,14 +75,12 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
     fetchShop();
   }, [slug, supabase]);
 
-  // Dynamically pull categories from the seller's actual products
   const categories = useMemo(() => {
     if (!shop?.products) return ['All'];
     const uniqueCategories = Array.from(new Set(shop.products.map(p => p.category).filter(Boolean)));
     return ['All', ...uniqueCategories];
   }, [shop]);
 
-  // Filter engine
   const displayedProducts = useMemo(() => {
     if (!shop?.products) return [];
     let filtered = shop.products;
@@ -112,11 +111,12 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
   if (!shop) return <div className="flex min-h-screen items-center justify-center bg-[#F9F8F6] text-gray-900"><div className="text-center"><Store className="mx-auto mb-4 h-12 w-12 text-gray-300" /><h1 className="text-2xl font-serif font-bold">Boutique Not Found</h1><Link href="/" className="mt-4 inline-block text-sm font-bold text-gray-500 hover:text-gray-900">Return to Directory</Link></div></div>;
 
   const theme = shop.theme_color ? themeColors[shop.theme_color] || themeColors.emerald : themeColors.emerald;
+  const currentLayout = shop.store_layout || 'bantaba'; // Default to premium floating cards
 
   return (
     <div className="min-h-screen bg-[#F9F8F6] font-sans text-gray-900 selection:bg-gray-900 selection:text-white">
       
-      {/* 🚀 GLOBAL NAVIGATION (So buyers can always access cart & go back) */}
+      {/* GLOBAL NAVIGATION */}
       <nav className="sticky top-0 z-50 flex items-center justify-between border-b border-gray-100 bg-white/95 px-4 py-3.5 backdrop-blur-md md:px-10">
         <Link href="/" className="flex items-center gap-2 text-gray-500 transition hover:text-gray-900">
           <ArrowLeft size={18} />
@@ -129,9 +129,8 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
         </button>
       </nav>
 
-      {/* 🚀 STORE HEADER & BRANDING */}
+      {/* STORE HEADER & BRANDING */}
       <header className="bg-white pb-6 shadow-sm">
-        {/* Banner */}
         <div className="relative h-32 w-full bg-gray-200 md:h-48 lg:h-64">
           {shop.banner_url ? (
             <img src={shop.banner_url} alt="Cover" className="h-full w-full object-cover" />
@@ -145,7 +144,6 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
 
         <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
           <div className="relative -mt-12 flex flex-col sm:-mt-16 sm:flex-row sm:items-end sm:gap-5">
-            {/* Logo */}
             <div className="relative h-24 w-24 flex-shrink-0 overflow-hidden rounded-full border-4 border-white bg-white shadow-md sm:h-32 sm:w-32">
               {shop.logo_url ? (
                 <img src={shop.logo_url} alt={shop.shop_name} className="h-full w-full object-cover" />
@@ -154,7 +152,6 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
               )}
             </div>
             
-            {/* Store Info */}
             <div className="mt-4 flex-1 pb-1 sm:mt-0">
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl font-black text-gray-900 md:text-3xl">{shop.shop_name}</h1>
@@ -179,12 +176,10 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
         </div>
       </header>
 
-      {/* 🚀 STORE NAVIGATION & FILTERING */}
+      {/* STORE NAVIGATION & FILTERING */}
       <div className="sticky top-[53px] z-40 border-b border-gray-100 bg-white/95 backdrop-blur-md shadow-sm">
         <div className="mx-auto max-w-5xl px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            
-            {/* Local Search */}
             <div className="flex w-full md:max-w-xs items-center overflow-hidden rounded-xl bg-gray-50 px-3 py-2 transition-all focus-within:bg-white focus-within:ring-2 focus-within:ring-gray-200">
               <Search size={14} className="text-gray-400" />
               <input
@@ -197,7 +192,6 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
               {searchQuery && <button onClick={() => setSearchQuery('')} className="text-gray-400 hover:text-gray-900"><X size={14} /></button>}
             </div>
 
-            {/* Dynamic Category Pills */}
             <div className="hide-scrollbar -mx-4 flex overflow-x-auto px-4 md:mx-0 md:px-0">
               <div className="flex gap-2">
                 {categories.map((category) => (
@@ -205,9 +199,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                     key={category}
                     onClick={() => setActiveCategory(category)}
                     className={`whitespace-nowrap rounded-lg px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest transition-all ${
-                      activeCategory === category 
-                        ? `${theme.bg} text-white shadow-sm` 
-                        : 'bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-900'
+                      activeCategory === category ? `${theme.bg} text-white shadow-sm` : 'bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-900'
                     }`}
                   >
                     {category}
@@ -215,12 +207,11 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                 ))}
               </div>
             </div>
-
           </div>
         </div>
       </div>
 
-      {/* 🚀 PRODUCT GRID */}
+      {/* 🚀 THE DYNAMIC LAYOUT ENGINE */}
       <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8 pb-24">
         {displayedProducts.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-gray-200 bg-white py-20 text-center">
@@ -229,25 +220,112 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
             <p className="mt-1 text-xs text-gray-500">Try adjusting your search or filters.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
-            {displayedProducts.map((product) => {
-              const imgUrl = product.image_urls?.[0] || product.image_url;
-              return (
-                <Link href={`/product/${product.id}`} key={product.id} className="group flex flex-col">
-                  <div className="relative aspect-[4/5] overflow-hidden rounded-2xl bg-gray-100 border border-gray-100">
-                    {imgUrl ? (
-                      <img src={imgUrl} alt={product.name} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-gray-300"><ShoppingBag size={24} /></div>
-                    )}
-                  </div>
-                  <div className="mt-3">
-                    <h4 className="truncate text-sm font-semibold text-gray-900 group-hover:underline">{product.name}</h4>
-                    <p className={`mt-0.5 text-xs font-bold ${theme.text}`}>D{product.price.toLocaleString()}</p>
-                  </div>
-                </Link>
-              );
-            })}
+          <div className="w-full">
+            
+            {/* LAYOUT 1: THE BANTABA (Airy, Premium Floating Cards - Great for Boutiques) */}
+            {currentLayout === 'bantaba' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-10">
+                {displayedProducts.map((product) => {
+                  const imgUrl = product.image_urls?.[0] || product.image_url;
+                  return (
+                    <Link href={`/product/${product.id}`} key={product.id} className="group flex flex-col rounded-[2rem] bg-white p-4 shadow-sm border border-gray-100 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+                      <div className="relative aspect-square overflow-hidden rounded-[1.5rem] bg-gray-50">
+                        {imgUrl ? <img src={imgUrl} alt={product.name} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" /> : <div className="flex h-full items-center justify-center text-gray-300"><ShoppingBag size={24} /></div>}
+                      </div>
+                      <div className="mt-5 text-center px-2">
+                        <h4 className="text-sm font-bold text-gray-900 truncate">{product.name}</h4>
+                        <p className={`mt-1.5 text-xs font-black uppercase tracking-widest ${theme.text}`}>D{product.price.toLocaleString()}</p>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* LAYOUT 2: THE SENEGAMBIA (Massive Editorial Lookbook - 1 per row) */}
+            {currentLayout === 'senegambia' && (
+              <div className="flex flex-col gap-16 max-w-2xl mx-auto">
+                {displayedProducts.map((product) => {
+                  const imgUrl = product.image_urls?.[0] || product.image_url;
+                  return (
+                    <Link href={`/product/${product.id}`} key={product.id} className="group flex flex-col">
+                      <div className="relative aspect-[3/4] overflow-hidden rounded-3xl bg-gray-100 shadow-md">
+                        {imgUrl ? <img src={imgUrl} alt={product.name} className="h-full w-full object-cover transition-transform duration-1000 group-hover:scale-105" /> : <div className="flex h-full items-center justify-center text-gray-300"><ShoppingBag size={32} /></div>}
+                      </div>
+                      <div className="mt-6 text-center">
+                        <h4 className="text-xl font-serif text-gray-900">{product.name}</h4>
+                        <p className={`mt-2 text-sm font-bold ${theme.text}`}>D{product.price.toLocaleString()}</p>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* LAYOUT 3: THE KAIRABA (Horizontal List View) */}
+            {currentLayout === 'kairaba' && (
+              <div className="flex flex-col gap-6 max-w-3xl mx-auto">
+                {displayedProducts.map((product) => {
+                  const imgUrl = product.image_urls?.[0] || product.image_url;
+                  return (
+                    <Link href={`/product/${product.id}`} key={product.id} className="group flex items-center gap-5 rounded-3xl bg-white p-4 shadow-sm border border-gray-100 hover:shadow-md transition">
+                      <div className="relative h-32 w-28 shrink-0 overflow-hidden rounded-2xl bg-gray-50">
+                        {imgUrl ? <img src={imgUrl} alt={product.name} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" /> : <div className="flex h-full items-center justify-center text-gray-300"><ShoppingBag size={20} /></div>}
+                      </div>
+                      <div className="flex-1 pr-4">
+                        <h4 className="text-lg font-bold text-gray-900 group-hover:underline line-clamp-2">{product.name}</h4>
+                        <p className={`mt-2 text-sm font-black ${theme.text}`}>D{product.price.toLocaleString()}</p>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* LAYOUT 4: THE JOLLOF (Asymmetric Masonry Gallery) */}
+            {currentLayout === 'jollof' && (
+              <div className="columns-2 md:columns-3 gap-4 space-y-4">
+                {displayedProducts.map((product, index) => {
+                  const imgUrl = product.image_urls?.[0] || product.image_url;
+                  // Fake masonry by alternating aspect ratios
+                  const aspectRatio = index % 2 === 0 ? 'aspect-[4/5]' : 'aspect-square';
+                  return (
+                    <div key={product.id} className="break-inside-avoid mb-4">
+                      <Link href={`/product/${product.id}`} className="group flex flex-col">
+                        <div className={`relative overflow-hidden rounded-2xl bg-gray-50 border border-gray-100 ${aspectRatio}`}>
+                          {imgUrl ? <img src={imgUrl} alt={product.name} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" /> : <div className="flex h-full items-center justify-center text-gray-300"><ShoppingBag size={24} /></div>}
+                        </div>
+                        <div className="mt-3 px-1">
+                          <h4 className="text-sm font-semibold text-gray-900 leading-tight group-hover:underline">{product.name}</h4>
+                          <p className={`mt-1 text-xs font-bold ${theme.text}`}>D{product.price.toLocaleString()}</p>
+                        </div>
+                      </Link>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* LAYOUT 5: THE SERREKUNDA (Dense 2-Column Catalog - The Default Fallback) */}
+            {currentLayout === 'serrekunda' && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
+                {displayedProducts.map((product) => {
+                  const imgUrl = product.image_urls?.[0] || product.image_url;
+                  return (
+                    <Link href={`/product/${product.id}`} key={product.id} className="group flex flex-col">
+                      <div className="relative aspect-[4/5] overflow-hidden rounded-xl bg-gray-50 border border-gray-100">
+                        {imgUrl ? <img src={imgUrl} alt={product.name} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" /> : <div className="flex h-full items-center justify-center text-gray-300"><ShoppingBag size={20} /></div>}
+                      </div>
+                      <div className="mt-2.5 px-1">
+                        <h4 className="truncate text-[11px] font-semibold text-gray-900 group-hover:underline">{product.name}</h4>
+                        <p className={`mt-0.5 text-[11px] font-bold ${theme.text}`}>D{product.price.toLocaleString()}</p>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+
           </div>
         )}
       </main>
