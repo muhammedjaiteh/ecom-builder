@@ -2,10 +2,11 @@
 
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { use, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, CheckCircle2, Loader2, MapPin, MessageCircle, ShoppingBag, Truck, User } from 'lucide-react';
+import { ArrowLeft, Loader2, ShoppingBag, Plus, Minus } from 'lucide-react';
 import Link from 'next/link';
+// 🚀 1. Import the Global Memory Bank!
+import { useCart } from '../../../components/CartProvider'; 
 
-// UPGRADE 1: Added 'id' to ShopInfo so we can link the order to the correct shop!
 type ShopInfo = {
   id: string;
   shop_name: string;
@@ -32,10 +33,6 @@ type Product = {
   product_variants?: ProductVariant[] | null;
 };
 
-type FulfillmentMethod = 'delivery' | 'pickup';
-
-const PAYMENT_OPTIONS = ['Cash on Delivery', 'Wave'] as const;
-
 const themeColors: Record<string, { bg: string; text: string; border: string }> = {
   emerald: { bg: 'bg-emerald-600', text: 'text-emerald-600', border: 'border-emerald-600' },
   midnight: { bg: 'bg-slate-900', text: 'text-slate-900', border: 'border-slate-900' },
@@ -50,33 +47,12 @@ const themeColors: Record<string, { bg: string; text: string; border: string }> 
   stone: { bg: 'bg-[#8B8C89]', text: 'text-[#6C6D6A]', border: 'border-[#8B8C89]' },
 };
 
-function sanitizePhoneNumber(rawNumber?: string | null) {
-  if (!rawNumber) return null;
-  let cleanNumber = rawNumber.replace(/\D/g, '');
-  if (!cleanNumber) return null;
-  if (cleanNumber.length === 7) cleanNumber = `220${cleanNumber}`;
-  return cleanNumber;
-}
-
-function generateWhatsAppLink(number: string | null | undefined, message: string) {
-  const cleanNumber = sanitizePhoneNumber(number);
-  if (!cleanNumber) return null;
-  return `https://wa.me/${cleanNumber}?text=${encodeURIComponent(message)}`;
-}
-
 export default function ProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: productId } = use(params);
+  const { addToCart } = useCart(); // 🚀 2. Connect to the Cart
 
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isProcessingOrder, setIsProcessingOrder] = useState(false); // NEW: Loading state for checkout
-
-  // Checkout Form States
-  const [customerName, setCustomerName] = useState('');
-  const [customerPhone, setCustomerPhone] = useState('');
-  const [fulfillmentMethod, setFulfillmentMethod] = useState<FulfillmentMethod>('delivery');
-  const [paymentMethod, setPaymentMethod] = useState<(typeof PAYMENT_OPTIONS)[number]>('Cash on Delivery');
-  const [deliveryAddress, setDeliveryAddress] = useState('');
   
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
@@ -167,98 +143,30 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     }
   };
 
-  // UPGRADE 2: The Enterprise Order Hijack
-  const handleOrderClick = async () => {
+  // 🚀 3. The New Add To Cart Logic
+  const handleAddToBag = () => {
     if (!product || !resolvedShop) return;
-
-    // Validation
-    if (!customerName.trim() || !customerPhone.trim()) {
-      alert('Please enter your Name and Phone Number so the seller can contact you.');
-      return;
-    }
-
-    if (fulfillmentMethod === 'delivery' && !deliveryAddress.trim()) {
-      alert('Please provide a delivery address to continue.');
-      return;
-    }
-
-    setIsProcessingOrder(true);
 
     const variationDetails = [
       selectedColor ? `Color: ${selectedColor}` : null,
       selectedSize ? `Size: ${selectedSize}` : null,
     ].filter(Boolean).join(', ');
 
-    const totalPrice = product.price * quantity;
-    const currentUrl = window.location.href;
-    const itemDescription = variationDetails ? `${quantity}x ${product.name} (${variationDetails})` : `${quantity}x ${product.name}`;
-    const fulfillmentString = fulfillmentMethod === 'delivery' ? `Delivery to: ${deliveryAddress.trim()}` : `Store Pickup`;
+    // Create a unique ID so a Size 9 doesn't overwrite a Size 10
+    const cartItemId = `${product.id}-${selectedColor || 'none'}-${selectedSize || 'none'}`;
 
-    try {
-      // Step 1: Save the Customer
-      const { data: customerData, error: customerError } = await supabase
-        .from('customers')
-        .insert({
-          name: customerName,
-          phone_number: customerPhone,
-          location: fulfillmentMethod === 'delivery' ? deliveryAddress : 'Pickup',
-        })
-        .select()
-        .single();
-
-      if (customerError) throw customerError;
-
-      // Step 2: Save the Order
-      const { data: orderData, error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          shop_id: resolvedShop.id,
-          customer_id: customerData.id,
-          total_amount: totalPrice,
-          fulfillment_method: fulfillmentMethod,
-          status: 'pending',
-        })
-        .select()
-        .single();
-
-      if (orderError) throw orderError;
-
-      // Step 3: Save the Order Item
-      const { error: itemError } = await supabase
-        .from('order_items')
-        .insert({
-          order_id: orderData.id,
-          product_id: product.id,
-          quantity: quantity,
-          price_at_time: product.price,
-          variant_details: variationDetails || 'None',
-        });
-
-      if (itemError) throw itemError;
-
-      // Step 4: Generate WhatsApp Message with Order Reference
-      const orderRef = orderData.id.split('-')[0].toUpperCase(); 
-      const message = `🥂 *New Sanndikaa Order!* (Ref: #${orderRef})\n\nHi ${resolvedShop.shop_name}! I would like to order:\n\n🛍️ *Item:* ${itemDescription}\n👤 *Customer:* ${customerName}\n📞 *Phone:* ${customerPhone}\n🏷️ *Total Price:* D${totalPrice}\n🚚 *Fulfillment:* ${fulfillmentString}\n💳 *Payment:* ${paymentMethod}\n🔗 *Product Link:* ${currentUrl}\n\nPlease let me know how to proceed!`;
-
-      const whatsappLink = generateWhatsAppLink(resolvedShop.whatsapp_number, message);
-      if (!whatsappLink) {
-        alert('This seller has not set up a valid WhatsApp number yet.');
-        setIsProcessingOrder(false);
-        return;
-      }
-
-      // Fire the WhatsApp Redirect!
-      window.location.href = whatsappLink;
-
-    } catch (error) {
-      console.error("Vault Error:", error);
-      // Fallback: If DB fails for any reason, still send them to WhatsApp so the seller gets the sale!
-      alert("Opening WhatsApp...");
-      const fallbackMessage = `🥂 *New Sanndikaa Order!*\n\nHi ${resolvedShop.shop_name}! I would like to order:\n\n🛍️ *Item:* ${itemDescription}\n👤 *Customer:* ${customerName}\n📞 *Phone:* ${customerPhone}\n🏷️ *Total Price:* D${totalPrice}\n🚚 *Fulfillment:* ${fulfillmentString}\n💳 *Payment:* ${paymentMethod}\n🔗 *Product Link:* ${currentUrl}\n\nPlease let me know how to proceed!`;
-      const fallbackLink = generateWhatsAppLink(resolvedShop.whatsapp_number, fallbackMessage);
-      if (fallbackLink) window.location.href = fallbackLink;
-      setIsProcessingOrder(false);
-    }
+    addToCart({
+      id: cartItemId,
+      productId: product.id,
+      name: product.name,
+      price: product.price,
+      quantity: quantity,
+      image_url: normalizedImageUrls[0] || '',
+      shop_id: resolvedShop.id,
+      shop_name: resolvedShop.shop_name,
+      shop_whatsapp: resolvedShop.whatsapp_number || '',
+      variant_details: variationDetails || 'None',
+    });
   };
 
   if (loading) {
@@ -342,34 +250,15 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-gray-500">{resolvedShop.shop_name}</p>
           <h1 className="mt-2 text-3xl font-extrabold leading-tight md:text-4xl">{product.name}</h1>
           <p className="mt-3 text-3xl font-black text-gray-900">D{product.price}</p>
-
-          <div className="mt-5">
-            <p className="mb-2 text-xs font-bold uppercase tracking-[0.15em] text-gray-500">Quantity</p>
-            <div className="inline-flex items-center rounded-xl border border-gray-200 bg-white">
-              <button
-                type="button"
-                onClick={() => setQuantity((current) => Math.max(1, current - 1))}
-                className="px-4 py-2 text-lg font-semibold text-gray-700 transition hover:bg-gray-100"
-              >
-                -
-              </button>
-              <span className="min-w-10 px-4 text-center text-sm font-semibold text-gray-800">{quantity}</span>
-              <button
-                type="button"
-                onClick={() => setQuantity((current) => current + 1)}
-                className="px-4 py-2 text-lg font-semibold text-gray-700 transition hover:bg-gray-100"
-              >
-                +
-              </button>
-            </div>
-          </div>
         </header>
 
-        <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">
-            {product.description || 'No description provided for this product.'}
-          </p>
-        </section>
+        {product.description && (
+          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">
+              {product.description}
+            </p>
+          </section>
+        )}
 
         <section className="space-y-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           {normalizedColors.length > 0 && (
@@ -411,110 +300,25 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
               </select>
             </div>
           )}
-        </section>
-
-        {/* UPGRADE 3: Customer Details & Checkout Form */}
-        <section className="space-y-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div>
-            <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <User size={20} className={activeColor.text} /> Customer Details
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="mb-2 block text-xs font-bold uppercase tracking-[0.15em] text-gray-500">
-                  Your Full Name
-                </label>
-                <input
-                  type="text"
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder="e.g. Lamin Jallow"
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 outline-none transition focus:border-[#1a2e1a] focus:bg-white"
-                />
-              </div>
-              <div>
-                <label className="mb-2 block text-xs font-bold uppercase tracking-[0.15em] text-gray-500">
-                  Phone / WhatsApp Number
-                </label>
-                <input
-                  type="tel"
-                  value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
-                  placeholder="e.g. 7000000"
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 outline-none transition focus:border-[#1a2e1a] focus:bg-white"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-4 border-t border-gray-100">
-            <p className="mb-2 text-xs font-bold uppercase tracking-[0.15em] text-gray-500">Fulfillment</p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setFulfillmentMethod('delivery')}
-                className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold transition ${
-                  fulfillmentMethod === 'delivery'
-                    ? `border-2 ${activeColor.border} ${activeColor.text} bg-white`
-                    : 'border-gray-200 bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {fulfillmentMethod === 'delivery' && <CheckCircle2 size={16} className={activeColor.text} />} <Truck size={16} /> Delivery
-              </button>
-              <button
-                type="button"
-                onClick={() => setFulfillmentMethod('pickup')}
-                className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold transition ${
-                  fulfillmentMethod === 'pickup'
-                    ? `border-2 ${activeColor.border} ${activeColor.text} bg-white`
-                    : 'border-gray-200 bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {fulfillmentMethod === 'pickup' && <CheckCircle2 size={16} className={activeColor.text} />} <MapPin size={16} /> Pickup
-              </button>
-            </div>
-          </div>
-
-          {fulfillmentMethod === 'delivery' && (
-            <div>
-              <label
-                htmlFor="delivery-address"
-                className="mb-2 block text-xs font-bold uppercase tracking-[0.15em] text-gray-500"
-              >
-                Delivery Address
-              </label>
-              <textarea
-                id="delivery-address"
-                rows={3}
-                value={deliveryAddress}
-                onChange={(event) => setDeliveryAddress(event.target.value)}
-                placeholder="e.g. Kairaba Avenue, near Atlas petrol station"
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 outline-none transition focus:border-[#1a2e1a] focus:bg-white"
-              />
-            </div>
-          )}
 
           <div>
-            <p className="mb-2 text-xs font-bold uppercase tracking-[0.15em] text-gray-500">Payment Method</p>
-            <div className="grid grid-cols-2 gap-2">
-              {PAYMENT_OPTIONS.map((option) => {
-                const selected = paymentMethod === option;
-                return (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => setPaymentMethod(option)}
-                    className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold transition ${
-                      selected
-                        ? `border-2 ${activeColor.border} ${activeColor.text} bg-white`
-                        : 'border-gray-200 bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    {selected && <CheckCircle2 size={16} className={activeColor.text} />}
-                    {option}
-                  </button>
-                );
-              })}
+            <p className="mb-2 text-xs font-bold uppercase tracking-[0.15em] text-gray-500">Quantity</p>
+            <div className="inline-flex items-center rounded-xl border border-gray-200 bg-gray-50 p-1">
+              <button
+                type="button"
+                onClick={() => setQuantity((current) => Math.max(1, current - 1))}
+                className="rounded-lg bg-white p-2 text-gray-700 shadow-sm transition hover:bg-gray-100"
+              >
+                <Minus size={16} />
+              </button>
+              <span className="min-w-12 px-4 text-center text-sm font-bold text-gray-900">{quantity}</span>
+              <button
+                type="button"
+                onClick={() => setQuantity((current) => current + 1)}
+                className="rounded-lg bg-white p-2 text-gray-700 shadow-sm transition hover:bg-gray-100"
+              >
+                <Plus size={16} />
+              </button>
             </div>
           </div>
         </section>
@@ -524,12 +328,11 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
         <div className="mx-auto max-w-3xl">
           <button
             type="button"
-            onClick={handleOrderClick}
-            disabled={isProcessingOrder}
-            className={`flex w-full items-center justify-center gap-2 rounded-xl py-4 text-sm font-bold uppercase tracking-wide text-white shadow-lg transition hover:opacity-95 disabled:opacity-70 ${activeColor.bg}`}
+            onClick={handleAddToBag}
+            className={`flex w-full items-center justify-center gap-2 rounded-xl py-4 text-sm font-bold uppercase tracking-wide text-white shadow-lg transition hover:opacity-95 ${activeColor.bg}`}
           >
-            {isProcessingOrder ? <Loader2 size={18} className="animate-spin" /> : <MessageCircle size={18} />} 
-            {isProcessingOrder ? 'Processing Order...' : 'Order via WhatsApp'}
+            <ShoppingBag size={18} /> 
+            Add to Bag — D{product.price * quantity}
           </button>
         </div>
       </div>
