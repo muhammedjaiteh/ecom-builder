@@ -1,4 +1,5 @@
-import { CartProvider } from "../components/CartProvider"; // 🚀 THE FIX IS HERE
+import { CartProvider } from "../components/CartProvider";
+import Cart from "../components/Cart"; // 🚀 Added the Cart UI
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -28,9 +29,9 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {/* The Global Memory Bank is now Online */}
         <CartProvider>
           {children}
+          <Cart /> {/* 🚀 The Cart is now active everywhere! */}
         </CartProvider>
       </body>
     </html>
