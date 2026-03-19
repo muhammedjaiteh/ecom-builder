@@ -22,7 +22,9 @@ import {
   Clock,
   CheckCircle2,
   Phone,
-  User
+  User,
+  Users,
+  MessageCircle
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -48,7 +50,6 @@ type Shop = {
   pickup_instructions: string | null;
 };
 
-// UPGRADE 1: The New Enterprise Order Types
 type OrderItem = {
   quantity: number;
   variant_details: string;
@@ -65,11 +66,33 @@ type Order = {
   order_items: OrderItem[];
 };
 
+// UPGRADE 1: The CRM Customer Type
+type CustomerCRM = {
+  phone: string;
+  name: string;
+  location: string;
+  totalSpent: number;
+  orderCount: number;
+  lastOrderDate: string;
+};
+
+function sanitizePhoneNumber(rawNumber?: string | null) {
+  if (!rawNumber) return null;
+  let cleanNumber = rawNumber.replace(/\D/g, '');
+  if (!cleanNumber) return null;
+  if (cleanNumber.length === 7) cleanNumber = `220${cleanNumber}`;
+  return cleanNumber;
+}
+
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
   const [shop, setShop] = useState<Shop | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+  
+  // UPGRADE 2: CRM State
+  const [customersCRM, setCustomersCRM] = useState<CustomerCRM[]>([]);
+
   const [userId, setUserId] = useState<string | null>(null);
   
   const [uploadingBanner, setUploadingBanner] = useState(false);
@@ -84,7 +107,6 @@ export default function Dashboard() {
   const [pickupInstructions, setPickupInstructions] = useState('');
   const [savingDesign, setSavingDesign] = useState(false);
 
-  // Live Analytics State
   const [totalOrders, setTotalOrders] = useState(0);
   const [totalRevenue, setTotalRevenue] = useState(0);
   const [topProduct, setTopProduct] = useState('None');
@@ -127,7 +149,6 @@ export default function Dashboard() {
 
       await fetchShop(user.id);
 
-      // Fetch Products
       const { data: productData } = await supabase
         .from('products')
         .select('id, image_url, name, price, category')
@@ -136,8 +157,7 @@ export default function Dashboard() {
 
       setProducts((productData as Product[]) || []);
 
-      // UPGRADE 2: Fetch the Real Orders from the Vault!
-      const { data: ordersData, error: ordersError } = await supabase
+      const { data: ordersData } = await supabase
         .from('orders')
         .select(`
           id, total_amount, status, fulfillment_method, created_at,
@@ -152,11 +172,9 @@ export default function Dashboard() {
         setOrders(fetchedOrders);
         setTotalOrders(fetchedOrders.length);
         
-        // Calculate Total GMV (Gross Merchandise Value)
         const revenue = fetchedOrders.reduce((acc, order) => acc + Number(order.total_amount), 0);
         setTotalRevenue(revenue);
 
-        // Find the Top Product
         if (fetchedOrders.length > 0) {
           const counts: Record<string, number> = {};
           fetchedOrders.forEach((order) => {
@@ -168,6 +186,32 @@ export default function Dashboard() {
           const top = Object.keys(counts).reduce((a, b) => (counts[a] > counts[b] ? a : b), 'None');
           setTopProduct(top);
         }
+
+        // UPGRADE 3: The CRM Intelligence Engine (Grouping Customers)
+        const crmMap = new Map<string, CustomerCRM>();
+        fetchedOrders.forEach((order) => {
+          const phone = order.customers.phone_number;
+          if (!crmMap.has(phone)) {
+            crmMap.set(phone, {
+              phone: phone,
+              name: order.customers.name,
+              location: order.customers.location,
+              totalSpent: 0,
+              orderCount: 0,
+              lastOrderDate: order.created_at,
+            });
+          }
+          const c = crmMap.get(phone)!;
+          c.totalSpent += Number(order.total_amount);
+          c.orderCount += 1;
+          if (new Date(order.created_at) > new Date(c.lastOrderDate)) {
+            c.lastOrderDate = order.created_at; // Update to most recent order date
+          }
+        });
+        
+        // Sort by total spent (Best customers at the top)
+        const sortedCRM = Array.from(crmMap.values()).sort((a, b) => b.totalSpent - a.totalSpent);
+        setCustomersCRM(sortedCRM);
       }
 
       setLoading(false);
@@ -176,19 +220,11 @@ export default function Dashboard() {
     loadDashboard();
   }, [router, supabase]);
 
-  // UPGRADE 3: The Order Status Switch
   const handleUpdateOrderStatus = async (orderId: string, newStatus: string) => {
-    // Optimistic UI update (makes it feel instant)
     setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o)));
-
-    const { error } = await supabase
-      .from('orders')
-      .update({ status: newStatus })
-      .eq('id', orderId);
-
+    const { error } = await supabase.from('orders').update({ status: newStatus }).eq('id', orderId);
     if (error) {
       alert("Failed to update order status.");
-      // Revert on failure
       setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: o.status === 'completed' ? 'pending' : 'completed' } : o)));
     }
   };
@@ -352,7 +388,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* UPGRADE 4: The Order Management UI */}
+      {/* --- ORDER MANAGEMENT --- */}
       <div className="mb-12 overflow-hidden rounded-3xl border border-[#E6E4DC] bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/50 p-6">
           <div className="flex items-center gap-2">
@@ -379,7 +415,6 @@ export default function Dashboard() {
                 <div key={order.id} className={`p-4 transition-colors hover:bg-gray-50 md:p-6 ${isPending ? 'bg-orange-50/30' : ''}`}>
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     
-                    {/* Customer Info */}
                     <div>
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">#{orderRef}</span>
@@ -398,7 +433,6 @@ export default function Dashboard() {
                       </p>
                     </div>
 
-                    {/* Order Items */}
                     <div className="flex-1 md:px-8 border-l-2 border-transparent md:border-gray-100">
                       {order.order_items.map((item, idx) => (
                         <div key={idx} className="flex items-center gap-3 mb-2 last:mb-0">
@@ -415,7 +449,6 @@ export default function Dashboard() {
                       ))}
                     </div>
 
-                    {/* Action & Total */}
                     <div className="flex flex-row md:flex-col items-center md:items-end justify-between md:justify-center gap-3 pt-4 md:pt-0 border-t border-gray-100 md:border-t-0">
                       <div className="text-xl font-black text-gray-900">D{order.total_amount}</div>
                       
@@ -444,7 +477,77 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Existing Store Appearance Section */}
+      {/* UPGRADE 4: THE CUSTOMER DIRECTORY (CRM) */}
+      <div className="mb-12 overflow-hidden rounded-3xl border border-[#E6E4DC] bg-white shadow-sm">
+        <div className="flex flex-col gap-2 border-b border-gray-100 bg-gray-50/50 p-6 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <Users size={18} className="text-[#2C3E2C]" />
+              <h3 className="font-bold text-[#2C3E2C]">Customer Directory</h3>
+            </div>
+            <p className="mt-1 text-xs text-gray-500">Your database of past buyers. Retarget them for your next drop.</p>
+          </div>
+          <span className="inline-flex items-center justify-center rounded-md bg-[#2C3E2C] px-3 py-1.5 text-xs font-bold text-white shadow-sm md:w-auto">
+            {customersCRM.length} Total Customers
+          </span>
+        </div>
+
+        {customersCRM.length === 0 ? (
+          <div className="p-12 text-center">
+            <Users size={48} className="mx-auto mb-4 text-gray-200" />
+            <p className="mb-4 text-gray-400">Your customer list is empty. Start generating sales to build your database!</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {customersCRM.map((customer, idx) => {
+              const initials = customer.name.substring(0, 2).toUpperCase();
+              
+              // Pre-fill a WhatsApp template for retargeting
+              const whatsappLink = `https://wa.me/${sanitizePhoneNumber(customer.phone)}?text=${encodeURIComponent(
+                `Hi ${customer.name}! It's ${shop?.shop_name || 'Sanndikaa'}! We have some new items dropping soon and wanted to give our best customers early access. Let me know if you're looking for anything specific!`
+              )}`;
+
+              return (
+                <div key={idx} className="group flex flex-col justify-between p-4 transition-colors hover:bg-gray-50 md:flex-row md:items-center md:p-6">
+                  
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-[#1a2e1a] text-sm font-bold text-white shadow-inner">
+                      {initials}
+                    </div>
+                    <div>
+                      <h4 className="text-base font-bold text-[#2C3E2C]">{customer.name}</h4>
+                      <p className="text-sm text-gray-500 flex items-center gap-1.5 mt-0.5">
+                        <Phone size={12} /> {customer.phone}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-4 md:mt-0 md:border-t-0 md:pt-0 md:gap-8">
+                    <div className="text-left md:text-right">
+                      <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Total Spent</p>
+                      <p className="text-lg font-black text-gray-900">D{customer.totalSpent.toLocaleString()}</p>
+                      <p className="text-[10px] font-bold text-gray-500 uppercase">{customer.orderCount} Order{customer.orderCount > 1 ? 's' : ''}</p>
+                    </div>
+
+                    <a 
+                      href={whatsappLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-2.5 text-xs font-bold uppercase tracking-widest text-green-700 transition hover:bg-green-100 hover:text-green-800 shadow-sm"
+                    >
+                      <MessageCircle size={16} /> 
+                      <span className="hidden sm:inline">Retarget</span>
+                    </a>
+                  </div>
+
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* --- STORE APPEARANCE --- */}
       <div className="mb-12 overflow-hidden rounded-3xl border border-[#E6E4DC] bg-white shadow-sm">
         <div className="flex items-center gap-2 border-b border-gray-100 bg-gray-50/50 p-6">
           <ImageIcon size={18} className="text-[#2C3E2C]" />
