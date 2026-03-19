@@ -23,13 +23,12 @@ type Shop = {
   logo_url: string | null;
   bio: string | null;
   theme_color: string | null;
-  store_layout: string | null; // 🚀 Added back the layout engine
+  store_layout: string | null; 
   offers_delivery: boolean;
   offers_pickup: boolean;
   products: Product[];
 };
 
-// Brand Colors
 const themeColors: Record<string, { bg: string; text: string; lightBg: string }> = {
   emerald: { bg: 'bg-[#1a2e1a]', text: 'text-[#1a2e1a]', lightBg: 'bg-[#1a2e1a]/10' },
   midnight: { bg: 'bg-slate-900', text: 'text-slate-900', lightBg: 'bg-slate-900/10' },
@@ -52,7 +51,6 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
   const [shop, setShop] = useState<Shop | null>(null);
   const [loading, setLoading] = useState(true);
   
-  // Local Filtering States
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
 
@@ -111,7 +109,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
   if (!shop) return <div className="flex min-h-screen items-center justify-center bg-[#F9F8F6] text-gray-900"><div className="text-center"><Store className="mx-auto mb-4 h-12 w-12 text-gray-300" /><h1 className="text-2xl font-serif font-bold">Boutique Not Found</h1><Link href="/" className="mt-4 inline-block text-sm font-bold text-gray-500 hover:text-gray-900">Return to Directory</Link></div></div>;
 
   const theme = shop.theme_color ? themeColors[shop.theme_color] || themeColors.emerald : themeColors.emerald;
-  const currentLayout = shop.store_layout || 'bantaba'; // Default to premium floating cards
+  const currentLayout = shop.store_layout || 'bantaba'; 
 
   return (
     <div className="min-h-screen bg-[#F9F8F6] font-sans text-gray-900 selection:bg-gray-900 selection:text-white">
@@ -211,7 +209,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
         </div>
       </div>
 
-      {/* 🚀 THE DYNAMIC LAYOUT ENGINE */}
+      {/* THE DYNAMIC LAYOUT ENGINE */}
       <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8 pb-24">
         {displayedProducts.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-gray-200 bg-white py-20 text-center">
@@ -222,7 +220,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
         ) : (
           <div className="w-full">
             
-            {/* LAYOUT 1: THE BANTABA (Airy, Premium Floating Cards - Great for Boutiques) */}
+            {/* LAYOUT 1: THE BANTABA (Airy, Premium Floating Cards) */}
             {currentLayout === 'bantaba' && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-10">
                 {displayedProducts.map((product) => {
@@ -242,7 +240,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
               </div>
             )}
 
-            {/* LAYOUT 2: THE SENEGAMBIA (Massive Editorial Lookbook - 1 per row) */}
+            {/* LAYOUT 2: THE SENEGAMBIA (Massive Editorial Lookbook) */}
             {currentLayout === 'senegambia' && (
               <div className="flex flex-col gap-16 max-w-2xl mx-auto">
                 {displayedProducts.map((product) => {
@@ -282,17 +280,17 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
               </div>
             )}
 
-            {/* LAYOUT 4: THE JOLLOF (Asymmetric Masonry Gallery) */}
+            {/* 🚀 LAYOUT 4: THE JOLLOF (True Asymmetric Staggered Gallery) */}
             {currentLayout === 'jollof' && (
-              <div className="columns-2 md:columns-3 gap-4 space-y-4">
-                {displayedProducts.map((product, index) => {
-                  const imgUrl = product.image_urls?.[0] || product.image_url;
-                  // Fake masonry by alternating aspect ratios
-                  const aspectRatio = index % 2 === 0 ? 'aspect-[4/5]' : 'aspect-square';
-                  return (
-                    <div key={product.id} className="break-inside-avoid mb-4">
-                      <Link href={`/product/${product.id}`} className="group flex flex-col">
-                        <div className={`relative overflow-hidden rounded-2xl bg-gray-50 border border-gray-100 ${aspectRatio}`}>
+              <div className="flex items-start gap-4 md:gap-6">
+                
+                {/* Left Column */}
+                <div className="flex w-1/2 flex-col gap-4 md:gap-6">
+                  {displayedProducts.filter((_, i) => i % 2 === 0).map((product) => {
+                    const imgUrl = product.image_urls?.[0] || product.image_url;
+                    return (
+                      <Link href={`/product/${product.id}`} key={product.id} className="group flex flex-col">
+                        <div className="relative aspect-[3/4] overflow-hidden rounded-2xl bg-gray-50 border border-gray-100 shadow-sm">
                           {imgUrl ? <img src={imgUrl} alt={product.name} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" /> : <div className="flex h-full items-center justify-center text-gray-300"><ShoppingBag size={24} /></div>}
                         </div>
                         <div className="mt-3 px-1">
@@ -300,20 +298,39 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                           <p className={`mt-1 text-xs font-bold ${theme.text}`}>D{product.price.toLocaleString()}</p>
                         </div>
                       </Link>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
+
+                {/* Right Column (Staggered perfectly downwards) */}
+                <div className="flex w-1/2 flex-col gap-4 md:gap-6 pt-12 md:pt-16">
+                  {displayedProducts.filter((_, i) => i % 2 !== 0).map((product) => {
+                    const imgUrl = product.image_urls?.[0] || product.image_url;
+                    return (
+                      <Link href={`/product/${product.id}`} key={product.id} className="group flex flex-col">
+                        <div className="relative aspect-square overflow-hidden rounded-2xl bg-gray-50 border border-gray-100 shadow-sm">
+                          {imgUrl ? <img src={imgUrl} alt={product.name} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" /> : <div className="flex h-full items-center justify-center text-gray-300"><ShoppingBag size={24} /></div>}
+                        </div>
+                        <div className="mt-3 px-1">
+                          <h4 className="text-sm font-semibold text-gray-900 leading-tight group-hover:underline">{product.name}</h4>
+                          <p className={`mt-1 text-xs font-bold ${theme.text}`}>D{product.price.toLocaleString()}</p>
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+
               </div>
             )}
 
-            {/* LAYOUT 5: THE SERREKUNDA (Dense 2-Column Catalog - The Default Fallback) */}
+            {/* LAYOUT 5: THE SERREKUNDA (Dense 2-Column Catalog) */}
             {currentLayout === 'serrekunda' && (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
                 {displayedProducts.map((product) => {
                   const imgUrl = product.image_urls?.[0] || product.image_url;
                   return (
                     <Link href={`/product/${product.id}`} key={product.id} className="group flex flex-col">
-                      <div className="relative aspect-[4/5] overflow-hidden rounded-xl bg-gray-50 border border-gray-100">
+                      <div className="relative aspect-[4/5] overflow-hidden rounded-xl bg-gray-50 border border-gray-100 shadow-sm">
                         {imgUrl ? <img src={imgUrl} alt={product.name} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" /> : <div className="flex h-full items-center justify-center text-gray-300"><ShoppingBag size={20} /></div>}
                       </div>
                       <div className="mt-2.5 px-1">
