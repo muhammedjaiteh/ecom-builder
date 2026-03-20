@@ -3,153 +3,167 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { Loader2, Store, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
+import { ArrowLeft, Loader2, ArrowRight } from 'lucide-react';
 
-const BRAND_COLOR = '#1a2e1a';
-const DEFAULT_THEME_COLOR = 'terracotta';
-
-export default function Register() {
+export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [shopName, setShopName] = useState('');
-  const [whatsapp, setWhatsapp] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+  
   const router = useRouter();
   const supabase = createClientComponentClient();
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError(null);
 
-    try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-      });
+    if (password !== confirmPassword) {
+      setError('Passwords do not match. Please try again.');
+      setLoading(false);
+      return;
+    }
 
-      if (error) throw error;
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters long.');
+      setLoading(false);
+      return;
+    }
 
-      if (data.user) {
-        const { error: shopError } = await supabase.from('shops').insert({
-          id: data.user.id,
-          shop_name: shopName,
-          shop_slug: shopName.toLowerCase().replace(/ /g, '-') + '-' + Math.floor(Math.random() * 1000),
-          whatsapp_number: whatsapp,
-          theme_color: DEFAULT_THEME_COLOR,
-        });
+    const { error: signUpError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${location.origin}/auth/callback`,
+      },
+    });
 
-        if (shopError) {
-          console.error('Shop creation failed:', shopError);
-        }
-      }
-
-      alert('Registration successful! Please login to your dashboard.');
-      router.push('/login');
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Something went wrong';
-      alert('Error: ' + message);
-    } finally {
+    if (signUpError) {
+      setError(signUpError.message);
+      setLoading(false);
+    } else {
+      setSuccess(true);
       setLoading(false);
     }
   };
 
   return (
-    <div
-      className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden"
-      style={{ backgroundColor: BRAND_COLOR, transition: 'background-color 0.5s ease' }}
-    >
-      <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden relative z-10">
-        <div className="bg-[#F9F8F6] p-8 text-center border-b border-gray-100">
-          <div
-            className="inline-flex items-center justify-center w-12 h-12 rounded-full text-white mb-4 shadow-lg"
-            style={{ backgroundColor: BRAND_COLOR }}
-          >
-            <Store size={20} />
-          </div>
-          <h1 className="text-2xl font-black tracking-tighter text-[#1a2e1a] mb-1">
-            SANNDI<span style={{ color: BRAND_COLOR }}>KAA</span>
+    <div className="flex min-h-screen bg-white font-sans text-gray-900 selection:bg-gray-900 selection:text-white">
+      
+      {/* 🚀 LEFT SIDE: THE EDITORIAL RETAIL IMAGE */}
+      <div className="relative hidden w-full lg:block lg:w-1/2">
+        {/* Stunning boutique interior image */}
+        <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1567401893414-76b7b1e5a7a5?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#1a2e1a]/90 via-[#1a2e1a]/40 to-transparent" />
+        
+        <div className="absolute bottom-16 left-16 right-16">
+          <p className="mb-4 text-xs font-bold uppercase tracking-[0.3em] text-emerald-400">Partner Program</p>
+          <h1 className="text-4xl font-serif leading-tight text-white xl:text-5xl">
+            Claim your space <br /> in the District.
           </h1>
-          <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Partner Registration</p>
+          <p className="mt-4 max-w-md text-sm leading-relaxed text-gray-300">
+            Join Gambia's premier digital marketplace. Build your flagship store, upload your inventory, and reach thousands of premium buyers.
+          </p>
         </div>
+      </div>
 
-        <div className="p-8 pt-6">
-          <form onSubmit={handleRegister} className="space-y-4">
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-1.5">
-                Shop Name
-              </label>
-              <input
-                type="text"
-                value={shopName}
-                onChange={(e) => setShopName(e.target.value)}
-                className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:bg-white transition-all outline-none font-medium text-[#1a2e1a] text-sm"
-                placeholder="e.g. Bintu's Fashion"
-                required
-              />
+      {/* 🚀 RIGHT SIDE: THE MINIMALIST FORM */}
+      <div className="flex w-full flex-col justify-center px-6 py-12 lg:w-1/2 lg:px-20 xl:px-32">
+        
+        <Link href="/" className="group mb-10 flex w-fit items-center gap-2 text-xs font-bold uppercase tracking-widest text-gray-400 transition hover:text-gray-900">
+          <ArrowLeft size={16} className="transition-transform group-hover:-translate-x-1" /> Back to Directory
+        </Link>
+
+        <div className="w-full max-w-md">
+          <h2 className="text-3xl font-black tracking-tight text-gray-900">Open a Boutique</h2>
+          <p className="mt-2 text-sm text-gray-500">Apply to become a verified seller on Sanndikaa.</p>
+
+          {success ? (
+            <div className="mt-10 animate-in fade-in rounded-2xl border border-green-200 bg-green-50 p-6 text-center shadow-sm">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-green-600">
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-green-900">Application Received</h3>
+              <p className="mt-2 text-sm text-green-700">
+                Please check your email to verify your account and access your new dashboard.
+              </p>
+              <button 
+                onClick={() => router.push('/login')}
+                className="mt-6 w-full rounded-xl bg-green-700 py-3.5 text-xs font-bold uppercase tracking-widest text-white transition hover:bg-green-800"
+              >
+                Go to Login
+              </button>
             </div>
+          ) : (
+            <form onSubmit={handleRegister} className="mt-10 space-y-6">
+              
+              {error && (
+                <div className="rounded-xl border border-red-100 bg-red-50 p-4 text-xs font-bold text-red-600">
+                  {error}
+                </div>
+              )}
 
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-1.5">
-                WhatsApp Number
-              </label>
-              <input
-                type="tel"
-                value={whatsapp}
-                onChange={(e) => setWhatsapp(e.target.value)}
-                className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:bg-white transition-all outline-none font-medium text-[#1a2e1a] text-sm"
-                placeholder="e.g. 2207123456"
-                required
-              />
-            </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Email Address</label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="founder@brand.com"
+                    required
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
+                  />
+                </div>
 
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-1.5">
-                Email Address
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:bg-white transition-all outline-none font-medium text-[#1a2e1a] text-sm"
-                placeholder="seller@example.com"
-                required
-              />
-            </div>
+                <div>
+                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Create Password</label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Min. 6 characters"
+                    required
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
+                  />
+                </div>
 
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-1.5">
-                Create Password
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:bg-white transition-all outline-none font-medium text-[#1a2e1a] text-sm"
-                placeholder="••••••••"
-                required
-                minLength={6}
-              />
-            </div>
+                <div>
+                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Confirm Password</label>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Repeat password"
+                    required
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
+                  />
+                </div>
+              </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full text-white py-3.5 mt-2 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-500"
-              style={{ backgroundColor: BRAND_COLOR }}
-            >
-              {loading ? <Loader2 className="animate-spin" /> : <>Launch My Shop <ArrowRight size={18} /></>}
-            </button>
-          </form>
+              <button
+                type="submit"
+                disabled={loading}
+                className="group flex w-full items-center justify-center gap-2 rounded-xl bg-[#1a2e1a] py-4 text-xs font-bold uppercase tracking-widest text-white shadow-md transition-all hover:bg-black disabled:opacity-70"
+              >
+                {loading ? <Loader2 size={16} className="animate-spin" /> : 'Submit Application'}
+                {!loading && <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />}
+              </button>
+            </form>
+          )}
 
-          <div className="mt-6 text-center">
-            <p className="text-xs text-gray-400">
-              Already have a shop?{' '}
-              <Link href="/login" className="font-bold hover:underline" style={{ color: BRAND_COLOR }}>
-                Login here
-              </Link>
-            </p>
-          </div>
+          <p className="mt-10 text-center text-xs font-medium text-gray-500">
+            Already have a boutique?{' '}
+            <Link href="/login" className="font-bold text-[#1a2e1a] hover:underline">
+              Sign in here
+            </Link>
+          </p>
         </div>
       </div>
     </div>
