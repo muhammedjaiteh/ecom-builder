@@ -1,445 +1,314 @@
 'use client';
 
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Loader2, Plus, Save, Sparkles, Star, Trash2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ArrowLeft, Loader2, Upload, X, Image as ImageIcon, Plus, Package } from 'lucide-react';
 import Link from 'next/link';
 
-const CATEGORY_OPTIONS = ['Food & Culinary', 'Drinks', 'Beauty & Wellness', 'Fashion', 'Sneakers', 'Home & Artisan', 'Tech Accessories', 'General'] as const;
-const MAX_IMAGES = 5;
-
-type ThemeColor = 'emerald' | 'midnight' | 'terracotta' | 'ocean' | 'rose';
-
-const themeButtonClasses: Record<ThemeColor, string> = {
-  emerald: 'bg-emerald-600 hover:bg-emerald-700',
-  midnight: 'bg-slate-900 hover:bg-slate-950',
-  terracotta: 'bg-orange-700 hover:bg-orange-800',
-  ocean: 'bg-blue-600 hover:bg-blue-700',
-  rose: 'bg-rose-500 hover:bg-rose-600',
-};
+const CATEGORIES = ['Fashion', 'Sneakers', 'Beauty & Wellness', 'Home & Artisan', 'Tech Accessories', 'Food & Culinary'];
 
 export default function AddProductPage() {
-  const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [generating, setGenerating] = useState(false);
+  const router = useRouter();
+  const supabase = createClientComponentClient();
 
+  const [userId, setUserId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  // Form States
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
-  const [category, setCategory] = useState<(typeof CATEGORY_OPTIONS)[number]>('General');
-  const [status, setStatus] = useState('Active');
   const [description, setDescription] = useState('');
-  const [images, setImages] = useState<{ url: string; isDefault: boolean }[]>([]);
-  const [colorsInput, setColorsInput] = useState('');
-  const [sizesInput, setSizesInput] = useState('');
-  const [themeColor, setThemeColor] = useState<ThemeColor>('emerald');
+  const [category, setCategory] = useState(CATEGORIES[0]);
+  
+  // Media States
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
 
-  const inputRef = useRef<HTMLInputElement>(null);
-  const supabase = createClientComponentClient();
-  const router = useRouter();
+  // Variants States
+  const [colors, setColors] = useState<string[]>([]);
+  const [colorInput, setColorInput] = useState('');
+  const [sizes, setSizes] = useState<string[]>([]);
+  const [sizeInput, setSizeInput] = useState('');
 
   useEffect(() => {
-    async function fetchThemeColor() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) return;
-
-      const { data } = await supabase
-        .from('shops')
-        .select('theme_color')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      const nextTheme = data?.theme_color;
-      if (nextTheme && nextTheme in themeButtonClasses) {
-        setThemeColor(nextTheme as ThemeColor);
-      }
+    async function checkAuth() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) router.push('/login');
+      else setUserId(user.id);
     }
+    checkAuth();
+  }, [router, supabase]);
 
-    void fetchThemeColor();
-  }, [supabase]);
-
-  const generateMagicDescription = () => {
-    if (!name.trim()) {
-      alert('Please enter a product name first!');
-      return;
+  // Handle Images
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const filesArray = Array.from(e.target.files);
+      setImageFiles((prev) => [...prev, ...filesArray]);
+      
+      const previewsArray = filesArray.map((file) => URL.createObjectURL(file));
+      setImagePreviews((prev) => [...prev, ...previewsArray]);
     }
-
-    setGenerating(true);
-
-    setTimeout(() => {
-      const lowerName = name.toLowerCase();
-      let aiText = `Discover the excellence of ${name}. High-quality, authentic, and designed to meet your needs.`;
-
-      if (category === 'Food & Culinary') {
-        aiText = lowerName.includes('honey') || lowerName.includes('oil')
-          ? `Experience the untouched purity of ${name}. 100% natural and locally sourced with no additives.`
-          : `Experience the authentic taste of ${name}. Freshly prepared with the finest local ingredients.`;
-      }
-
-      if (category === 'Fashion' || category === 'Sneakers') {
-        aiText = `Upgrade your wardrobe with ${name}. Crafted for comfort, style, and long-lasting quality.`;
-      }
-
-      if (category === 'Beauty & Wellness') {
-        aiText = `Enhance your self-care routine with ${name}. Gentle, premium quality, and suitable for daily use.`;
-      }
-
-      if (category === 'Tech Accessories') {
-        aiText = `Upgrade your tech with ${name}. Reliable performance, durable build, and sleek everyday usability.`;
-      }
-      setDescription(aiText);
-      setGenerating(false);
-    }, 1200);
-  };
-
-  const setAsPrimary = (index: number) => {
-    setImages((prev) => prev.map((image, imageIndex) => ({ ...image, isDefault: imageIndex === index })));
   };
 
   const removeImage = (index: number) => {
-    setImages((prev) => {
-      const next = prev.filter((_, imageIndex) => imageIndex !== index);
-
-      if (next.length > 0 && !next.some((image) => image.isDefault)) {
-        next[0] = { ...next[0], isDefault: true };
-      }
-
-      return next;
-    });
+    setImageFiles((prev) => prev.filter((_, i) => i !== index));
+    setImagePreviews((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleUpload = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    if (images.length >= MAX_IMAGES) {
-      alert('You can upload up to 5 images only.');
+  // Handle Variants
+  const addColor = () => {
+    if (colorInput.trim() && !colors.includes(colorInput.trim())) {
+      setColors([...colors, colorInput.trim()]);
+      setColorInput('');
+    }
+  };
+
+  const removeColor = (colorToRemove: string) => {
+    setColors(colors.filter(c => c !== colorToRemove));
+  };
+
+  const addSize = () => {
+    if (sizeInput.trim() && !sizes.includes(sizeInput.trim())) {
+      setSizes([...sizes, sizeInput.trim()]);
+      setSizeInput('');
+    }
+  };
+
+  const removeSize = (sizeToRemove: string) => {
+    setSizes(sizes.filter(s => s !== sizeToRemove));
+  };
+
+  // Submit Flow
+  const handlePublish = async () => {
+    if (!name || !price || imageFiles.length === 0) {
+      alert('Please provide a name, price, and at least one image.');
       return;
     }
+    if (!userId) return;
 
-    setUploading(true);
-
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) throw new Error('Not authenticated');
-
-      const remainingSlots = MAX_IMAGES - images.length;
-      const filesToUpload = Array.from(files).slice(0, remainingSlots);
-      const uploaded: { url: string; isDefault: boolean }[] = [];
-
-      for (const file of filesToUpload) {
-        const fileExt = file.name.split('.').pop();
-        const filePath = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
-
-        const { error: uploadError } = await supabase.storage.from('product-images').upload(filePath, file);
-        if (uploadError) throw uploadError;
-
-        const {
-          data: { publicUrl },
-        } = supabase.storage.from('product-images').getPublicUrl(filePath);
-
-        uploaded.push({ url: publicUrl, isDefault: false });
-      }
-
-      setImages((prev) => {
-        const next = [...prev, ...uploaded];
-        if (next.length > 0 && !next.some((image) => image.isDefault)) {
-          next[0] = { ...next[0], isDefault: true };
-        }
-        return next;
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      alert(`Image upload failed: ${message}`);
-    } finally {
-      setUploading(false);
-      if (inputRef.current) inputRef.current.value = '';
-    }
-  };
-
-  // 🚀 UPGRADED: The Enterprise Variant Engine
-  const handleSave = async (event: React.FormEvent) => {
-    event.preventDefault();
     setLoading(true);
 
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      // 1. Upload Images to Supabase Storage
+      const imageUrls: string[] = [];
+      for (const file of imageFiles) {
+        const fileExt = file.name.split('.').pop();
+        const filePath = `${userId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+        
+        const { error: uploadError } = await supabase.storage.from('products').upload(filePath, file);
+        if (uploadError) throw uploadError;
 
-      const orderedImages = [...images].sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
-      
-      const colors = colorsInput.split(',').map((s) => s.trim()).filter(Boolean);
-      const sizes = sizesInput.split(',').map((s) => s.trim()).filter(Boolean);
+        const { data: { publicUrl } } = supabase.storage.from('products').getPublicUrl(filePath);
+        imageUrls.push(publicUrl);
+      }
 
-      // STEP 1: Insert the main product and GET the new product ID back
-      const { data: newProduct, error: productError } = await supabase.from('products').insert({
-        user_id: user.id,
-        name,
+      // 2. Insert Product to Database
+      const { error: insertError } = await supabase.from('products').insert({
+        user_id: userId,
+        name: name.trim(),
         price: parseFloat(price),
-        category,
-        status,
-        description,
-        image_urls: orderedImages.map((image) => image.url),
-        image_url: orderedImages[0]?.url || null,
-        // We no longer save raw arrays here. We keep the database normalized!
-      }).select().single();
+        description: description.trim(),
+        category: category,
+        image_url: imageUrls[0], // Primary image
+        image_urls: imageUrls,   // Gallery
+        colors: colors,
+        sizes: sizes
+      });
 
-      if (productError) throw productError;
+      if (insertError) throw insertError;
 
-      // STEP 2: Generate the Advanced Variants payload
-      const variantsToInsert: any[] = [];
-
-      if (colors.length > 0) {
-        colors.forEach(color => {
-          variantsToInsert.push({
-            product_id: newProduct.id,
-            variant_name: 'Color',
-            variant_value: color,
-            stock_quantity: 10 // Default stock for now
-          });
-        });
-      }
-
-      if (sizes.length > 0) {
-        sizes.forEach(size => {
-          variantsToInsert.push({
-            product_id: newProduct.id,
-            variant_name: 'Size',
-            variant_value: size,
-            stock_quantity: 10 // Default stock for now
-          });
-        });
-      }
-
-      // STEP 3: Bulk insert into the new product_variants table!
-      if (variantsToInsert.length > 0) {
-        const { error: variantError } = await supabase.from('product_variants').insert(variantsToInsert);
-        if (variantError) {
-          console.error("Variants failed to save, but product was created:", variantError);
-          // We don't throw an error here so the seller still gets redirected successfully
-        }
-      }
-
+      // 3. Success -> Send back to dashboard
       router.push('/dashboard');
-      router.refresh();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      alert(`Error: ${message}`);
-    } finally {
+      
+    } catch (error: any) {
+      console.error('Upload Error:', error);
+      alert(error.message || 'Failed to publish product.');
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#F9F8F6] p-6 font-sans text-[#2C3E2C] flex justify-center">
-      <div className="w-full max-w-2xl">
-        <Link href="/dashboard" className="mb-8 flex items-center text-gray-500 transition-colors hover:text-green-700">
-          <ArrowLeft size={20} className="mr-2" /> Cancel
-        </Link>
+    <div className="min-h-screen bg-[#F9F8F6] font-sans text-gray-900 selection:bg-gray-900 selection:text-white pb-24">
+      
+      {/* 🚀 HEADER */}
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-100 px-4 py-4 md:px-10">
+        <div className="max-w-4xl mx-auto flex items-center justify-between">
+          <Link href="/dashboard" className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-gray-400 transition hover:text-gray-900">
+            <ArrowLeft size={16} /> Cancel
+          </Link>
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={handlePublish}
+              disabled={loading}
+              className="flex items-center gap-2 rounded-full bg-[#1a2e1a] px-6 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white shadow-md transition hover:bg-black disabled:opacity-70"
+            >
+              {loading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={14} />}
+              {loading ? 'Publishing...' : 'Publish Product'}
+            </button>
+          </div>
+        </div>
+      </header>
 
-        <div className="rounded-3xl border border-[#E6E4DC] bg-white p-8 shadow-sm">
-          <h1 className="mb-6 text-3xl font-serif font-bold">Add New Product</h1>
-
-          <form onSubmit={handleSave} className="space-y-6">
-            <div>
-              <div className="mb-2 flex items-center justify-between">
-                <label className="block text-xs font-bold uppercase tracking-widest text-gray-500">Product Gallery (up to 5)</label>
-                <span className="text-xs text-gray-400">{images.length}/{MAX_IMAGES}</span>
-              </div>
-
-              <input
-                ref={inputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={(event) => void handleUpload(event.target.files)}
-              />
-
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
-                {Array.from({ length: MAX_IMAGES }).map((_, index) => {
-                  const image = images[index];
-
-                  if (image) {
-                    return (
-                      <div
-                        key={`${image.url}-${index}`}
-                        className="group relative overflow-hidden rounded-2xl border border-[#E6E4DC] bg-white shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md"
-                      >
-                        <img src={image.url} alt={`Product ${index + 1}`} className="h-28 w-full object-cover" />
-
-                        <button
-                          type="button"
-                          onClick={() => removeImage(index)}
-                          className="absolute right-2 top-2 rounded-full bg-black/60 p-1.5 text-white transition hover:bg-red-600"
-                          aria-label="Delete image"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setAsPrimary(index)}
-                          className={`flex w-full items-center justify-center gap-1 px-2 py-2 text-[11px] font-semibold transition ${
-                            image.isDefault
-                              ? 'bg-emerald-50 text-emerald-700'
-                              : 'bg-white text-gray-600 hover:bg-gray-50'
-                          }`}
-                        >
-                          <Star size={12} className={image.isDefault ? 'fill-current' : ''} />
-                          {image.isDefault ? 'Primary' : 'Set Primary'}
-                        </button>
-                      </div>
-                    );
-                  }
-
-                  return (
-                    <button
-                      key={`empty-${index}`}
-                      type="button"
-                      onClick={() => inputRef.current?.click()}
-                      disabled={uploading}
-                      className="flex h-36 items-center justify-center rounded-2xl border-2 border-dashed border-[#D7D4CA] bg-[#F9F8F6] text-gray-400 transition-all duration-300 hover:border-[#2C3E2C] hover:text-[#2C3E2C] disabled:cursor-not-allowed disabled:opacity-60"
+      {/* 🚀 MAIN EDITOR */}
+      <main className="max-w-4xl mx-auto px-4 py-8 md:px-10">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
+          
+          {/* LEFT COLUMN: Main Info */}
+          <div className="md:col-span-2 space-y-6 md:space-y-8">
+            
+            {/* General Info Card */}
+            <div className="rounded-[2rem] bg-white p-6 md:p-8 shadow-sm border border-gray-100">
+              <h2 className="text-lg font-serif font-bold text-gray-900 mb-6 flex items-center gap-2"><Package size={18} className="text-gray-400" /> Basic Details</h2>
+              
+              <div className="space-y-5">
+                <div>
+                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Product Name</label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g. Nike Air Force 1 '07"
+                    className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
+                  />
+                </div>
+                
+                <div className="grid grid-cols-2 gap-5">
+                  <div>
+                    <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Price (GMD)</label>
+                    <div className="relative">
+                      <span className="absolute left-5 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-400">D</span>
+                      <input
+                        type="number"
+                        value={price}
+                        onChange={(e) => setPrice(e.target.value)}
+                        placeholder="0.00"
+                        className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 pl-10 pr-5 py-4 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Category</label>
+                    <select
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                      className="w-full appearance-none rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
                     >
-                      {uploading ? <Loader2 className="animate-spin" size={20} /> : <Plus size={24} />}
-                    </button>
-                  );
-                })}
-              </div>
+                      {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                    </select>
+                  </div>
+                </div>
 
-              {images.length > 0 && (
-                <div className="mt-3 flex gap-2 overflow-x-auto">
-                  {images.map((image, index) => (
-                    <img
-                      key={`preview-${image.url}-${index}`}
-                      src={image.url}
-                      alt={`Preview ${index + 1}`}
-                      className="h-12 w-12 rounded-lg object-cover"
-                    />
+                <div>
+                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Description</label>
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={5}
+                    placeholder="Describe the product, material, and fit..."
+                    className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Media Upload Card */}
+            <div className="rounded-[2rem] bg-white p-6 md:p-8 shadow-sm border border-gray-100">
+              <h2 className="text-lg font-serif font-bold text-gray-900 mb-6 flex items-center gap-2"><ImageIcon size={18} className="text-gray-400" /> Media Gallery</h2>
+              
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {imagePreviews.map((src, idx) => (
+                  <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden bg-gray-50 border border-gray-200 group">
+                    <img src={src} alt={`preview ${idx}`} className="w-full h-full object-cover" />
+                    <button 
+                      onClick={() => removeImage(idx)}
+                      className="absolute top-2 right-2 h-7 w-7 flex items-center justify-center rounded-full bg-white/90 text-red-500 opacity-0 group-hover:opacity-100 transition shadow-sm"
+                    >
+                      <X size={14} />
+                    </button>
+                    {idx === 0 && <span className="absolute bottom-2 left-2 rounded-md bg-black/60 px-2 py-1 text-[8px] font-bold uppercase tracking-widest text-white backdrop-blur-sm">Primary</span>}
+                  </div>
+                ))}
+
+                <label className="relative aspect-square rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50/50 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 hover:border-gray-300 transition group">
+                  <div className="h-10 w-10 rounded-full bg-white flex items-center justify-center shadow-sm text-gray-400 group-hover:text-gray-900 group-hover:scale-105 transition">
+                    <Plus size={20} />
+                  </div>
+                  <span className="mt-3 text-[10px] font-bold uppercase tracking-widest text-gray-400 group-hover:text-gray-600">Add Image</span>
+                  <input type="file" multiple accept="image/*" className="hidden" onChange={handleImageChange} />
+                </label>
+              </div>
+              <p className="mt-4 text-xs text-gray-500">First image will be used as the primary thumbnail. We recommend square (1:1) or vertical (4:5) ratios.</p>
+            </div>
+          </div>
+
+          {/* RIGHT COLUMN: Variants & Settings */}
+          <div className="space-y-6 md:space-y-8">
+            
+            {/* Variants Card */}
+            <div className="rounded-[2rem] bg-white p-6 shadow-sm border border-gray-100">
+              <h2 className="text-lg font-serif font-bold text-gray-900 mb-6">Variants</h2>
+              
+              {/* Colors Engine */}
+              <div className="mb-6">
+                <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Available Colors</label>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {colors.map(color => (
+                    <span key={color} className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 pl-3 pr-1.5 py-1 text-xs font-bold text-gray-700">
+                      {color}
+                      <button onClick={() => removeColor(color)} className="rounded-full p-1 hover:bg-gray-200 text-gray-400 hover:text-red-500 transition"><X size={12} /></button>
+                    </span>
                   ))}
                 </div>
-              )}
-            </div>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    value={colorInput} 
+                    onChange={(e) => setColorInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addColor())}
+                    placeholder="e.g. Midnight Black" 
+                    className="flex-1 rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-2.5 text-xs font-medium outline-none focus:border-gray-900 focus:bg-white transition"
+                  />
+                  <button type="button" onClick={addColor} className="rounded-xl bg-gray-100 px-4 py-2.5 text-xs font-bold text-gray-600 transition hover:bg-gray-200">Add</button>
+                </div>
+              </div>
 
-            <div>
-              <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">Product Name</label>
-              <input
-                type="text"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                className="w-full rounded-xl bg-[#F9F8F6] p-4 text-lg font-serif focus:ring-2 focus:ring-[#2C3E2C]"
-                placeholder="e.g. Royal Baobab Juice"
-                required
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">Category</label>
-                <select
-                  value={category}
-                  onChange={(event) => setCategory(event.target.value as (typeof CATEGORY_OPTIONS)[number])}
-                  className="w-full rounded-xl bg-[#F9F8F6] p-4 font-bold text-gray-700 focus:ring-2 focus:ring-[#2C3E2C]"
-                >
-                  {CATEGORY_OPTIONS.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
+              {/* Sizes Engine */}
+              <div className="pt-6 border-t border-gray-50">
+                <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Available Sizes</label>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {sizes.map(size => (
+                    <span key={size} className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 pl-3 pr-1.5 py-1 text-xs font-bold text-gray-700">
+                      {size}
+                      <button onClick={() => removeSize(size)} className="rounded-full p-1 hover:bg-gray-200 text-gray-400 hover:text-red-500 transition"><X size={12} /></button>
+                    </span>
                   ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">Price (D)</label>
-                <input
-                  type="number"
-                  value={price}
-                  onChange={(event) => setPrice(event.target.value)}
-                  className="w-full rounded-xl bg-[#F9F8F6] p-4 text-lg font-bold text-green-700 focus:ring-2 focus:ring-[#2C3E2C]"
-                  placeholder="0.00"
-                  required
-                />
-              </div>
-
-              <div className="col-span-2">
-                <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">Status</label>
-                <select
-                  value={status}
-                  onChange={(event) => setStatus(event.target.value)}
-                  className="w-full rounded-xl bg-[#F9F8F6] p-4 font-bold text-gray-700 focus:ring-2 focus:ring-[#2C3E2C]"
-                >
-                  <option value="Active">Active (Visible to buyers)</option>
-                  <option value="Draft">Draft / Sold Out (Hidden from buyers)</option>
-                </select>
+                </div>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    value={sizeInput} 
+                    onChange={(e) => setSizeInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addSize())}
+                    placeholder="e.g. XL, 42, OS" 
+                    className="flex-1 rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-2.5 text-xs font-medium outline-none focus:border-gray-900 focus:bg-white transition"
+                  />
+                  <button type="button" onClick={addSize} className="rounded-xl bg-gray-100 px-4 py-2.5 text-xs font-bold text-gray-600 transition hover:bg-gray-200">Add</button>
+                </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div>
-                <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">Colors (comma separated)</label>
-                <input
-                  type="text"
-                  value={colorsInput}
-                  onChange={(event) => setColorsInput(event.target.value)}
-                  className="w-full rounded-xl bg-[#F9F8F6] p-4 text-sm text-gray-700 focus:ring-2 focus:ring-[#2C3E2C]"
-                  placeholder="Red, Blue, Green"
-                />
-                <p className="mt-1 text-xs text-gray-400">Example: Red, Blue, Green</p>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">Sizes/Lengths (comma separated)</label>
-                <input
-                  type="text"
-                  value={sizesInput}
-                  onChange={(event) => setSizesInput(event.target.value)}
-                  className="w-full rounded-xl bg-[#F9F8F6] p-4 text-sm text-gray-700 focus:ring-2 focus:ring-[#2C3E2C]"
-                  placeholder="2 Metres, 5 Metres"
-                />
-                <p className="mt-1 text-xs text-gray-400">Example: 2 Metres, 5 Metres</p>
-              </div>
+            {/* Help Card */}
+            <div className="rounded-[2rem] bg-blue-50/50 p-6 border border-blue-100/50">
+              <h3 className="text-sm font-bold text-blue-900 mb-2">Seller Pro Tip</h3>
+              <p className="text-xs text-blue-700 leading-relaxed">
+                Products with 3+ clear images and detailed descriptions sell 40% faster on the District. Make sure your primary image has good lighting!
+              </p>
             </div>
 
-            <div>
-              <div className="mb-2 flex items-center justify-between">
-                <label className="block text-xs font-bold uppercase tracking-widest text-gray-500">Description</label>
-                <button
-                  type="button"
-                  onClick={generateMagicDescription}
-                  disabled={generating || !name.trim()}
-                  className="flex items-center gap-2 rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-white shadow-md transition-transform hover:scale-105 disabled:opacity-60"
-                >
-                  {generating ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                  {generating ? 'Writing...' : 'AI Magic Write'}
-                </button>
-              </div>
-
-              <textarea
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                rows={4}
-                className="w-full rounded-xl bg-[#F9F8F6] p-4 text-gray-600 focus:ring-2 focus:ring-[#2C3E2C]"
-                placeholder="Describe your product..."
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading || uploading}
-              className={`flex w-full items-center justify-center gap-2 rounded-xl py-4 text-lg font-bold text-white shadow-xl transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70 ${themeButtonClasses[themeColor]}`}
-            >
-              {loading ? <Loader2 className="animate-spin" /> : <Save size={20} />}
-              {loading ? 'Publishing Product...' : 'Publish Product'}
-            </button>
-          </form>
+          </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
