@@ -7,9 +7,13 @@ import Link from 'next/link';
 import { ArrowLeft, Loader2, ArrowRight } from 'lucide-react';
 
 export default function RegisterPage() {
+  // 🚀 Added back the required business fields
+  const [shopName, setShopName] = useState('');
+  const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -39,6 +43,11 @@ export default function RegisterPage() {
       password,
       options: {
         emailRedirectTo: `${location.origin}/auth/callback`,
+        // 🚀 Sending the shop name and phone to Supabase metadata
+        data: {
+          shop_name: shopName,
+          phone_number: phone,
+        }
       },
     });
 
@@ -54,9 +63,8 @@ export default function RegisterPage() {
   return (
     <div className="flex min-h-screen bg-white font-sans text-gray-900 selection:bg-gray-900 selection:text-white">
       
-      {/* 🚀 LEFT SIDE: THE EDITORIAL RETAIL IMAGE */}
+      {/* LEFT SIDE: THE EDITORIAL RETAIL IMAGE */}
       <div className="relative hidden w-full lg:block lg:w-1/2">
-        {/* Stunning boutique interior image */}
         <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1567401893414-76b7b1e5a7a5?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center" />
         <div className="absolute inset-0 bg-gradient-to-t from-[#1a2e1a]/90 via-[#1a2e1a]/40 to-transparent" />
         
@@ -71,10 +79,10 @@ export default function RegisterPage() {
         </div>
       </div>
 
-      {/* 🚀 RIGHT SIDE: THE MINIMALIST FORM */}
+      {/* RIGHT SIDE: THE MINIMALIST FORM */}
       <div className="flex w-full flex-col justify-center px-6 py-12 lg:w-1/2 lg:px-20 xl:px-32">
         
-        <Link href="/" className="group mb-10 flex w-fit items-center gap-2 text-xs font-bold uppercase tracking-widest text-gray-400 transition hover:text-gray-900">
+        <Link href="/" className="group mb-8 flex w-fit items-center gap-2 text-xs font-bold uppercase tracking-widest text-gray-400 transition hover:text-gray-900">
           <ArrowLeft size={16} className="transition-transform group-hover:-translate-x-1" /> Back to Directory
         </Link>
 
@@ -101,7 +109,7 @@ export default function RegisterPage() {
               </button>
             </div>
           ) : (
-            <form onSubmit={handleRegister} className="mt-10 space-y-6">
+            <form onSubmit={handleRegister} className="mt-8 space-y-5">
               
               {error && (
                 <div className="rounded-xl border border-red-100 bg-red-50 p-4 text-xs font-bold text-red-600">
@@ -109,28 +117,55 @@ export default function RegisterPage() {
                 </div>
               )}
 
-              <div className="space-y-4">
+              {/* 🚀 ADDED BACK: Shop Name & Phone Number */}
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Email Address</label>
+                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Boutique Name</label>
                   <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="founder@brand.com"
+                    type="text"
+                    value={shopName}
+                    onChange={(e) => setShopName(e.target.value)}
+                    placeholder="e.g. Delight Cosmetics"
                     required
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Create Password</label>
+                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Phone / WhatsApp</label>
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="e.g. 7000000"
+                    required
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Email Address</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="founder@brand.com"
+                  required
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Password</label>
                   <input
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Min. 6 characters"
                     required
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
                   />
                 </div>
 
@@ -142,7 +177,7 @@ export default function RegisterPage() {
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Repeat password"
                     required
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
                   />
                 </div>
               </div>
@@ -150,7 +185,7 @@ export default function RegisterPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="group flex w-full items-center justify-center gap-2 rounded-xl bg-[#1a2e1a] py-4 text-xs font-bold uppercase tracking-widest text-white shadow-md transition-all hover:bg-black disabled:opacity-70"
+                className="group mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-[#1a2e1a] py-4 text-xs font-bold uppercase tracking-widest text-white shadow-md transition-all hover:bg-black disabled:opacity-70"
               >
                 {loading ? <Loader2 size={16} className="animate-spin" /> : 'Submit Application'}
                 {!loading && <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />}
@@ -158,7 +193,7 @@ export default function RegisterPage() {
             </form>
           )}
 
-          <p className="mt-10 text-center text-xs font-medium text-gray-500">
+          <p className="mt-8 text-center text-xs font-medium text-gray-500">
             Already have a boutique?{' '}
             <Link href="/login" className="font-bold text-[#1a2e1a] hover:underline">
               Sign in here
