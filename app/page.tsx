@@ -3,7 +3,7 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
-import { ArrowRight, Search, ShoppingBag, Sparkles, Store, TrendingUp, X, Crown } from 'lucide-react';
+import { ArrowRight, Search, ShoppingBag, Sparkles, Store, TrendingUp, X, Crown, Menu } from 'lucide-react';
 import { useCart } from '../components/CartProvider';
 
 type Product = {
@@ -22,7 +22,7 @@ type Shop = {
   shop_slug: string;
   logo_url: string | null;
   theme_color: string | null;
-  subscription_tier: string; // 🚀 INJECTED SUBSCRIPTION TIER
+  subscription_tier: string;
   products: Product[]; 
 };
 
@@ -36,22 +36,22 @@ export default function GlobalHomepage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+  
+  // 🚀 NEW: Mobile Menu State
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const { cartCount, setIsCartOpen } = useCart();
   const supabase = createClientComponentClient();
 
   useEffect(() => {
     async function fetchCuratedMall() {
-      // 🚀 Added subscription_tier to the database fetch
       const { data, error } = await supabase
         .from('shops')
         .select(`id, shop_name, shop_slug, logo_url, theme_color, subscription_tier, products (id, name, price, image_url, image_urls, category)`);
       
       if (!error && data) {
-        // Filter out shops with no products
         const activeShops = (data as unknown as Shop[]).filter((shop) => shop.products && shop.products.length > 0);
         
-        // 🚀 THE VIP SORTING ENGINE: Flagship > Pro > Standard
         const sortedShops = activeShops.sort((a, b) => {
           const tierRank = { flagship: 3, pro: 2, standard: 1 };
           const rankA = tierRank[a.subscription_tier as keyof typeof tierRank] || 1;
@@ -125,7 +125,8 @@ export default function GlobalHomepage() {
           </div>
           
           {/* Right Action Icons */}
-          <div className="flex flex-shrink-0 items-center gap-3 md:gap-6">
+          <div className="flex flex-shrink-0 items-center gap-2 md:gap-6">
+            {/* Desktop Only Buttons */}
             <Link href="/login" className="hidden text-xs font-bold uppercase tracking-widest text-gray-400 transition hover:text-gray-900 md:block">
               Seller Login
             </Link>
@@ -135,7 +136,10 @@ export default function GlobalHomepage() {
 
             {/* Mobile Search Lens Icon */}
             <button 
-              onClick={() => setIsMobileSearchOpen(!isMobileSearchOpen)} 
+              onClick={() => {
+                setIsMobileSearchOpen(!isMobileSearchOpen);
+                setIsMobileMenuOpen(false); // Close menu if search is opened
+              }} 
               className="flex items-center justify-center p-2 text-gray-900 transition hover:opacity-70 md:hidden"
             >
               <Search size={22} strokeWidth={1.5} />
@@ -153,12 +157,23 @@ export default function GlobalHomepage() {
                 </span>
               )}
             </button>
+
+            {/* 🚀 Mobile Hamburger Menu Icon */}
+            <button 
+              onClick={() => {
+                setIsMobileMenuOpen(!isMobileMenuOpen);
+                setIsMobileSearchOpen(false); // Close search if menu is opened
+              }} 
+              className="flex items-center justify-center p-2 text-gray-900 transition hover:opacity-70 md:hidden"
+            >
+              {isMobileMenuOpen ? <X size={24} strokeWidth={1.5} /> : <Menu size={24} strokeWidth={1.5} />}
+            </button>
           </div>
         </div>
 
         {/* 🚀 Sliding Mobile Search Bar */}
-        <div className={`overflow-hidden transition-all duration-300 ease-in-out md:hidden ${isMobileSearchOpen ? 'max-h-20 border-t border-gray-100 opacity-100' : 'max-h-0 opacity-0'}`}>
-          <div className="bg-gray-50 px-4 py-3">
+        <div className={`overflow-hidden transition-all duration-300 ease-in-out md:hidden ${isMobileSearchOpen ? 'max-h-20 border-t border-gray-100 opacity-100 bg-gray-50' : 'max-h-0 opacity-0 bg-gray-50'}`}>
+          <div className="px-4 py-3">
             <div className="flex w-full items-center overflow-hidden rounded-xl bg-white px-3 py-2.5 shadow-sm ring-1 ring-gray-200 focus-within:ring-[#1a2e1a]">
               <Search size={16} className="text-gray-400" />
               <input
@@ -174,6 +189,26 @@ export default function GlobalHomepage() {
                 </button>
               )}
             </div>
+          </div>
+        </div>
+
+        {/* 🚀 Sliding Mobile Navigation Menu (Seller Hub) */}
+        <div className={`overflow-hidden transition-all duration-300 ease-in-out md:hidden ${isMobileMenuOpen ? 'max-h-48 border-t border-gray-100 opacity-100 bg-white shadow-lg' : 'max-h-0 opacity-0 bg-white'}`}>
+          <div className="flex flex-col space-y-4 px-6 py-6">
+            <Link 
+              href="/login" 
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-gray-500 hover:text-gray-900"
+            >
+              Seller Login <ArrowRight size={14} />
+            </Link>
+            <Link 
+              href="/dashboard" 
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="w-full text-center rounded-full bg-[#1a2e1a] px-5 py-3.5 text-xs font-bold uppercase tracking-widest text-white transition hover:bg-black shadow-md"
+            >
+              Open a Boutique
+            </Link>
           </div>
         </div>
       </nav>
@@ -290,7 +325,6 @@ export default function GlobalHomepage() {
               <div className={displayedShops.length === 1 ? 'grid grid-cols-1 max-w-2xl mx-auto' : 'grid grid-cols-1 md:grid-cols-2 gap-12 lg:gap-16'}>
                 {displayedShops.map((shop) => {
                   
-                  // 🚀 LOGIC: Determine what badges to show based on subscription tier
                   const isFlagship = shop.subscription_tier === 'flagship';
                   const isPro = shop.subscription_tier === 'pro';
 
@@ -304,7 +338,6 @@ export default function GlobalHomepage() {
                           <div>
                             <h3 className="text-base font-bold text-gray-900">{shop.shop_name}</h3>
                             
-                            {/* 🚀 THE VIP BADGES */}
                             {isFlagship ? (
                               <p className="text-[10px] font-bold uppercase tracking-widest text-yellow-600 flex items-center gap-1 mt-0.5"><Crown size={10} /> Spotlight Boutique</p>
                             ) : isPro ? (
