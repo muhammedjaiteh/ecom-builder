@@ -7,6 +7,30 @@ import { ArrowLeft, CheckCircle2, Sparkles, Bot, Zap, ArrowRight, ShieldCheck } 
 export default function PricingPage() {
   const [isAnnual, setIsAnnual] = useState(false);
 
+  // 🚀 YOUR SANNDIKAA ADMIN WHATSAPP NUMBER (Replace with your real number)
+  // Format: Country code + phone number (No spaces, no '+' sign. e.g., "2201234567")
+  const ADMIN_WHATSAPP_NUMBER = "447599711110468"; // Replace with your actual WhatsApp number
+
+  // 🚀 The WhatsApp Concierge Logic
+  const handleUpgradeClick = (tierName: string, priceMonthly: number, priceAnnual: number) => {
+    // If they click Standard, just send them back to the dashboard
+    if (tierName === 'Standard') {
+      window.location.href = '/dashboard';
+      return;
+    }
+
+    // Determine the price and billing cycle for the message
+    const price = isAnnual ? priceAnnual : priceMonthly;
+    const period = isAnnual ? 'year' : 'month';
+
+    // Craft the perfectly formatted WhatsApp message
+    const message = `Hello Sanndikaa VIP Concierge! 🦅\n\nI want to upgrade my boutique to the *${tierName}* plan for D${price}/${period}.\n\nPlease let me know how to proceed with my payment via Mobile Money!`;
+    
+    // Open WhatsApp in a new tab
+    const encodedMessage = encodeURIComponent(message);
+    window.open(`https://wa.me/${ADMIN_WHATSAPP_NUMBER}?text=${encodedMessage}`, '_blank');
+  };
+
   // Pricing Data Strategy
   const tiers = [
     {
@@ -29,8 +53,8 @@ export default function PricingPage() {
     {
       name: 'District PRO',
       tagline: 'Sell smarter with AI copy and premium layouts.',
-      priceMonthly: 950,
-      priceAnnual: 9000, // Saves ~D2400
+      priceMonthly: 750,
+      priceAnnual: 9000, 
       badge: 'Most Popular',
       buttonText: 'Upgrade to PRO',
       buttonVariant: 'primary',
@@ -50,8 +74,8 @@ export default function PricingPage() {
     {
       name: 'District FLAGSHIP',
       tagline: 'Run your business on autopilot with a 24/7 AI Sales Agent.',
-      priceMonthly: 2500,
-      priceAnnual: 24000, // Saves D6000
+      priceMonthly: 2000,
+      priceAnnual: 24000, 
       badge: 'VIP Only',
       buttonText: 'Claim Flagship',
       buttonVariant: 'dark',
@@ -79,7 +103,7 @@ export default function PricingPage() {
             <ArrowLeft size={16} /> Back to Dashboard
           </Link>
           <div className="text-xl font-black tracking-tighter text-[#1a2e1a]">SANNDIKAA</div>
-          <div className="w-24 hidden md:block" /> {/* Spacer for balance */}
+          <div className="w-24 hidden md:block" />
         </div>
       </nav>
 
@@ -94,7 +118,6 @@ export default function PricingPage() {
             Upgrade your architecture. Automate your sales. Dominate the marketplace.
           </p>
 
-          {/* The Revenue Hack Toggle */}
           <div className="inline-flex items-center rounded-full bg-white p-1 border border-gray-200 shadow-sm">
             <button 
               onClick={() => setIsAnnual(false)} 
@@ -149,7 +172,7 @@ export default function PricingPage() {
                 {/* Price */}
                 <div className="mb-8 flex items-baseline gap-2">
                   <span className={`text-5xl font-serif font-medium ${isFlagship ? 'text-white' : 'text-gray-900'}`}>
-                    D{isAnnual ? (tier.priceAnnual / 12).toFixed(0) : tier.priceMonthly}
+                    D{isAnnual && tier.priceAnnual > 0 ? (tier.priceAnnual / 12).toFixed(0) : tier.priceMonthly}
                   </span>
                   <span className={`text-xs font-bold uppercase tracking-widest ${isFlagship ? 'text-gray-400' : 'text-gray-400'}`}>
                     / month
@@ -161,8 +184,10 @@ export default function PricingPage() {
                   </p>
                 )}
 
-                {/* CTA Button */}
-                <button className={`w-full group flex items-center justify-center gap-2 rounded-2xl py-4 text-xs font-bold uppercase tracking-widest transition-all duration-300 mb-10 ${
+                {/* 🚀 CTA BUTTON - WIRED UP TO WHATSAPP */}
+                <button 
+                  onClick={() => handleUpgradeClick(tier.name, tier.priceMonthly, tier.priceAnnual)}
+                  className={`w-full group flex items-center justify-center gap-2 rounded-2xl py-4 text-xs font-bold uppercase tracking-widest transition-all duration-300 mb-10 ${
                   tier.buttonVariant === 'primary' 
                     ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-md' 
                     : tier.buttonVariant === 'dark'
