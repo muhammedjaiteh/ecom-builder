@@ -6,26 +6,32 @@ import Link from 'next/link';
 import { ArrowLeft, Loader2, MapPin, Search, ShoppingBag, Store, Truck, X, Verified, Share } from 'lucide-react';
 import { useCart } from '../../../components/CartProvider';
 
+// 🚀 FIXED: Master Product Type combining all needed fields
 type Product = {
   id: string;
   name: string;
+  description: string | null;
   price: number;
   image_url: string | null;
   image_urls: string[] | null;
-  category: string;
+  category: string | null;
 };
 
+// 🚀 FIXED: Master Shop Type
 type Shop = {
   id: string;
-  shop_name: string;
-  shop_slug: string;
+  shop_name: string | null;
+  shop_slug: string | null;
   banner_url: string | null;
   logo_url: string | null;
   bio: string | null;
+  store_layout: string | null;
   theme_color: string | null;
-  store_layout: string | null; 
-  offers_delivery: boolean;
-  offers_pickup: boolean;
+  offers_delivery: boolean | null;
+  offers_pickup: boolean | null;
+  pickup_instructions: string | null;
+  subscription_tier: string; 
+  ai_credits: number;        
   products: Product[];
 };
 
@@ -56,11 +62,12 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
 
   useEffect(() => {
     async function fetchShop() {
+      // 🚀 FIXED: Added the new tier and credit columns to the fetch query
       const { data, error } = await supabase
         .from('shops')
         .select(`
-          id, shop_name, shop_slug, banner_url, logo_url, bio, theme_color, store_layout, offers_delivery, offers_pickup,
-          products (id, name, price, image_url, image_urls, category)
+          id, shop_name, shop_slug, banner_url, logo_url, bio, theme_color, store_layout, offers_delivery, offers_pickup, pickup_instructions, subscription_tier, ai_credits,
+          products (id, name, description, price, image_url, image_urls, category)
         `)
         .eq('shop_slug', slug)
         .single();
@@ -75,7 +82,8 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
 
   const categories = useMemo(() => {
     if (!shop?.products) return ['All'];
-    const uniqueCategories = Array.from(new Set(shop.products.map(p => p.category).filter(Boolean)));
+    // 🚀 Added "as string[]" to tell TypeScript we already filtered out the nulls!
+    const uniqueCategories = Array.from(new Set(shop.products.map(p => p.category).filter(Boolean) as string[]));
     return ['All', ...uniqueCategories];
   }, [shop]);
 
@@ -97,7 +105,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
     const url = window.location.href;
     if (navigator.share) {
       try {
-        await navigator.share({ title: shop?.shop_name, text: `Check out ${shop?.shop_name} on Sanndikaa!`, url });
+        await navigator.share({ title: shop?.shop_name || 'Boutique', text: `Check out ${shop?.shop_name} on Sanndikaa!`, url });
       } catch (err) { console.log('Share canceled', err); }
     } else {
       navigator.clipboard.writeText(url);
@@ -144,7 +152,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
           <div className="relative -mt-12 flex flex-col sm:-mt-16 sm:flex-row sm:items-end sm:gap-5">
             <div className="relative h-24 w-24 flex-shrink-0 overflow-hidden rounded-full border-4 border-white bg-white shadow-md sm:h-32 sm:w-32">
               {shop.logo_url ? (
-                <img src={shop.logo_url} alt={shop.shop_name} className="h-full w-full object-cover" />
+                <img src={shop.logo_url} alt={shop.shop_name || 'Logo'} className="h-full w-full object-cover" />
               ) : (
                 <div className="flex h-full items-center justify-center bg-gray-50 text-gray-300"><Store size={32} /></div>
               )}
@@ -280,7 +288,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
               </div>
             )}
 
-            {/* 🚀 LAYOUT 4: THE JOLLOF (THE LUXURY FOOTWEAR/SNEAKERHEAD LAYOUT) */}
+            {/* LAYOUT 4: THE JOLLOF (THE LUXURY FOOTWEAR/SNEAKERHEAD LAYOUT) */}
             {currentLayout === 'jollof' && (
               <div className="grid grid-cols-2 gap-4 md:gap-6">
                 {displayedProducts.map((product, index) => {
