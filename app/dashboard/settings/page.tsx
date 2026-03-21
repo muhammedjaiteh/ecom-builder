@@ -55,11 +55,7 @@ export default function SettingsPage() {
       if (!user) return router.push('/login');
       setUserId(user.id);
 
-      const { data: shop } = await supabase
-        .from('shops')
-        .select('*')
-        .eq('id', user.id)
-        .single();
+      const { data: shop } = await supabase.from('shops').select('*').eq('id', user.id).maybeSingle();
 
       if (shop) {
         setShopName(shop.shop_name || '');
