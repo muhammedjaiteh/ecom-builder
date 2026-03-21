@@ -9,7 +9,7 @@ export default function PricingPage() {
 
   // 🚀 YOUR SANNDIKAA ADMIN WHATSAPP NUMBER (Replace with your real number)
   // Format: Country code + phone number (No spaces, no '+' sign. e.g., "2201234567")
-  const ADMIN_WHATSAPP_NUMBER = "447599711110468"; // Replace with your actual WhatsApp number
+  const ADMIN_WHATSAPP_NUMBER = "447599710468"; // Replace with your actual WhatsApp number
 
   // 🚀 The WhatsApp Concierge Logic
   const handleUpgradeClick = (tierName: string, priceMonthly: number, priceAnnual: number) => {
