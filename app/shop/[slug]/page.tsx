@@ -62,7 +62,6 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
 
   useEffect(() => {
     async function fetchShop() {
-      // 🚀 FIXED: Added the new tier and credit columns to the fetch query
       const { data, error } = await supabase
         .from('shops')
         .select(`
@@ -82,7 +81,6 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
 
   const categories = useMemo(() => {
     if (!shop?.products) return ['All'];
-    // 🚀 Added "as string[]" to tell TypeScript we already filtered out the nulls!
     const uniqueCategories = Array.from(new Set(shop.products.map(p => p.category).filter(Boolean) as string[]));
     return ['All', ...uniqueCategories];
   }, [shop]);
@@ -122,26 +120,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
   return (
     <div className="min-h-screen bg-[#F9F8F6] font-sans text-gray-900 selection:bg-gray-900 selection:text-white">
       
-      {/* GLOBAL NAVIGATION */}
-      <nav className="sticky top-0 z-50 flex items-center justify-between border-b border-gray-100 bg-white/95 px-4 py-3.5 backdrop-blur-md md:px-10">
-        <Link href="/" className="flex items-center gap-2 text-gray-500 transition hover:text-gray-900">
-          <ArrowLeft size={18} />
-          <span className="hidden text-xs font-bold uppercase tracking-widest md:block">Directory</span>
-        </Link>
-        <Link href="/" className="flex items-center justify-center transition-transform hover:opacity-80 active:scale-95">
-  <img 
-    src="/logo.png" 
-    alt="Sanndikaa Logo" 
-    className="h-10 md:h-12 w-auto object-contain scale-[1.3] md:scale-[1.5]" 
-  />
-</Link>
-        <button onClick={() => setIsCartOpen(true)} className="relative flex items-center justify-center text-gray-900 transition hover:opacity-70">
-          <ShoppingBag size={22} strokeWidth={1.5} />
-          {cartCount > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow-sm ring-2 ring-white">{cartCount}</span>}
-        </button>
-      </nav>
-
-      {/* 🚀 THE PERFECTED SHOP HEADER (Exact Homepage Size) */}
+      {/* 🚀 SINGLE PERFECTED LUXURY SHOP HEADER */}
       <nav className="sticky top-0 z-50 w-full border-b border-gray-100 bg-white/95 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 md:h-20 md:px-10">
           
@@ -149,6 +128,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
           <div className="flex flex-1 items-center justify-start">
             <Link href="/" className="flex items-center justify-center p-2 text-gray-900 transition hover:opacity-70 -ml-2">
               <ArrowLeft size={26} strokeWidth={1.25} />
+              <span className="hidden text-xs font-bold uppercase tracking-widest md:block ml-2 text-gray-500">Directory</span>
             </Link>
           </div>
 
@@ -181,8 +161,8 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
         </div>
       </nav>
 
-      {/* STORE NAVIGATION & FILTERING */}
-      <div className="sticky top-[53px] z-40 border-b border-gray-100 bg-white/95 backdrop-blur-md shadow-sm">
+      {/* STORE NAVIGATION & FILTERING (Fixed sticky offset to sit exactly below the new header) */}
+      <div className="sticky top-16 md:top-20 z-40 border-b border-gray-100 bg-white/95 backdrop-blur-md shadow-sm">
         <div className="mx-auto max-w-5xl px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex w-full md:max-w-xs items-center overflow-hidden rounded-xl bg-gray-50 px-3 py-2 transition-all focus-within:bg-white focus-within:ring-2 focus-within:ring-gray-200">
