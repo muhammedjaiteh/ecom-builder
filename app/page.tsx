@@ -35,9 +35,9 @@ export default function GlobalHomepage() {
   
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
-  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   
-  // 🚀 NEW: Mobile Menu State
+  // 🚀 Updated states for the new luxury layout
+  const [isSearchOpen, setIsSearchOpen] = useState(false); 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const { cartCount, setIsCartOpen } = useCart();
@@ -96,63 +96,58 @@ export default function GlobalHomepage() {
   return (
     <div className="min-h-screen bg-[#F9F8F6] font-sans text-gray-900 selection:bg-gray-900 selection:text-white">
       
-      {/* 🚀 1. THE UBIQUITOUS STICKY HEADER */}
+      {/* 🚀 1. THE LUXURY CENTERED HEADER */}
       <nav className="sticky top-0 z-50 w-full border-b border-gray-100 bg-white/95 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 md:px-10">
           
-          {/* Logo */}
-          <Link href="/" className="flex-shrink-0 transition-transform hover:scale-105 active:scale-95">
-            <img 
-              src="/logo.png" 
-              alt="Sanndikaa Logo" 
-              className="h-8 md:h-10 w-auto object-contain" 
-            />
-          </Link>
-
-          {/* Desktop Search Bar (Hidden on Mobile) */}
-          <div className="hidden flex-1 px-8 md:block lg:px-16">
-            <div className="flex w-full max-w-2xl items-center overflow-hidden rounded-full bg-gray-100 px-4 py-2 transition-all focus-within:bg-white focus-within:ring-2 focus-within:ring-[#1a2e1a]">
-              <Search size={16} className="text-gray-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value); setIsSearching(e.target.value.length > 0); }}
-                placeholder="Search boutiques, products, categories..."
-                className="w-full bg-transparent px-3 text-sm font-medium text-gray-900 outline-none placeholder:text-gray-400"
-              />
-              {searchQuery && (
-                <button onClick={() => { setSearchQuery(''); setIsSearching(false); }} className="text-gray-400 hover:text-gray-900">
-                  <X size={16} />
-                </button>
-              )}
-            </div>
-          </div>
-          
-          {/* Right Action Icons */}
-          <div className="flex flex-shrink-0 items-center gap-2 md:gap-6">
-            {/* Desktop Only Buttons */}
-            <Link href="/login" className="hidden text-xs font-bold uppercase tracking-widest text-gray-400 transition hover:text-gray-900 md:block">
-              Seller Login
-            </Link>
-            <Link href="/dashboard" className="hidden rounded-full bg-[#1a2e1a] px-5 py-2 text-[10px] font-bold uppercase tracking-widest text-white transition hover:bg-black md:block">
-              Open Boutique
-            </Link>
-
-            {/* Mobile Search Lens Icon */}
+          {/* LEFT: Menu & Desktop Links */}
+          <div className="flex flex-1 items-center justify-start gap-4">
             <button 
               onClick={() => {
-                setIsMobileSearchOpen(!isMobileSearchOpen);
-                setIsMobileMenuOpen(false); // Close menu if search is opened
+                setIsMobileMenuOpen(!isMobileMenuOpen);
+                setIsSearchOpen(false); 
               }} 
-              className="flex items-center justify-center p-2 text-gray-900 transition hover:opacity-70 md:hidden"
+              className="flex items-center justify-center p-2 text-gray-900 transition hover:opacity-70 md:hidden -ml-2"
+            >
+              {isMobileMenuOpen ? <X size={24} strokeWidth={1.5} /> : <Menu size={24} strokeWidth={1.5} />}
+            </button>
+            <div className="hidden items-center gap-6 md:flex">
+              <Link href="/login" className="text-xs font-bold uppercase tracking-widest text-gray-400 transition hover:text-gray-900">
+                Seller Login
+              </Link>
+              <Link href="/dashboard" className="rounded-full bg-[#1a2e1a] px-5 py-2 text-[10px] font-bold uppercase tracking-widest text-white transition hover:bg-black">
+                Open Boutique
+              </Link>
+            </div>
+          </div>
+
+          {/* CENTER: The Scaled Sanndikaa Logo */}
+          <div className="flex items-center justify-center">
+            <Link href="/" className="flex-shrink-0 transition-transform hover:scale-105 active:scale-95">
+              <img 
+                src="/logo.png" 
+                alt="Sanndikaa Logo" 
+                // Using scale-125 and scale-150 to bypass Canva's invisible padding
+                className="h-10 w-auto object-contain scale-[1.3] md:h-12 md:scale-[1.5] origin-center" 
+              />
+            </Link>
+          </div>
+          
+          {/* RIGHT: Search & Cart */}
+          <div className="flex flex-1 items-center justify-end gap-2 md:gap-4">
+            <button 
+              onClick={() => {
+                setIsSearchOpen(!isSearchOpen);
+                setIsMobileMenuOpen(false);
+              }} 
+              className="flex items-center justify-center p-2 text-gray-900 transition hover:opacity-70 -mr-1 md:mr-0"
             >
               <Search size={22} strokeWidth={1.5} />
             </button>
             
-            {/* The Native Cart Button */}
             <button 
               onClick={() => setIsCartOpen(true)} 
-              className="relative flex items-center justify-center p-2 text-gray-900 transition hover:opacity-70"
+              className="relative flex items-center justify-center p-2 text-gray-900 transition hover:opacity-70 -mr-2 md:mr-0"
             >
               <ShoppingBag size={22} strokeWidth={1.5} />
               {cartCount > 0 && (
@@ -161,71 +156,58 @@ export default function GlobalHomepage() {
                 </span>
               )}
             </button>
-
-            {/* 🚀 Mobile Hamburger Menu Icon */}
-            <button 
-              onClick={() => {
-                setIsMobileMenuOpen(!isMobileMenuOpen);
-                setIsMobileSearchOpen(false); // Close search if menu is opened
-              }} 
-              className="flex items-center justify-center p-2 text-gray-900 transition hover:opacity-70 md:hidden"
-            >
-              {isMobileMenuOpen ? <X size={24} strokeWidth={1.5} /> : <Menu size={24} strokeWidth={1.5} />}
-            </button>
           </div>
         </div>
 
-        {/* 🚀 Sliding Mobile Search Bar */}
-        <div className={`overflow-hidden transition-all duration-300 ease-in-out md:hidden ${isMobileSearchOpen ? 'max-h-20 border-t border-gray-100 opacity-100 bg-gray-50' : 'max-h-0 opacity-0 bg-gray-50'}`}>
-          <div className="px-4 py-3">
-            <div className="flex w-full items-center overflow-hidden rounded-xl bg-white px-3 py-2.5 shadow-sm ring-1 ring-gray-200 focus-within:ring-[#1a2e1a]">
-              <Search size={16} className="text-gray-400" />
+        {/* 🚀 Universal Sliding Search Bar (Desktop & Mobile) */}
+        <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isSearchOpen ? 'max-h-24 border-t border-gray-100 opacity-100 bg-gray-50' : 'max-h-0 opacity-0 bg-gray-50'}`}>
+          <div className="mx-auto max-w-3xl px-4 py-4 md:px-10">
+            <div className="flex w-full items-center overflow-hidden rounded-full bg-white px-4 py-3 shadow-sm ring-1 ring-gray-200 focus-within:ring-2 focus-within:ring-[#1a2e1a]">
+              <Search size={18} className="text-gray-400" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => { setSearchQuery(e.target.value); setIsSearching(e.target.value.length > 0); }}
-                placeholder="Search products..."
+                placeholder="Search boutiques, products, categories..."
                 className="w-full bg-transparent px-3 text-sm font-medium text-gray-900 outline-none placeholder:text-gray-400"
+                autoFocus={isSearchOpen}
               />
               {searchQuery && (
                 <button onClick={() => { setSearchQuery(''); setIsSearching(false); }} className="text-gray-400 hover:text-gray-900">
-                  <X size={16} />
+                  <X size={18} />
                 </button>
               )}
             </div>
           </div>
         </div>
 
-        {/* 🚀 Sliding Mobile Navigation Menu (Seller Hub) */}
+        {/* Sliding Mobile Navigation Menu */}
         <div className={`overflow-hidden transition-all duration-300 ease-in-out md:hidden ${isMobileMenuOpen ? 'max-h-48 border-t border-gray-100 opacity-100 bg-white shadow-lg' : 'max-h-0 opacity-0 bg-white'}`}>
           <div className="flex flex-col space-y-4 px-6 py-6">
-            <Link 
-              href="/login" 
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-gray-500 hover:text-gray-900"
-            >
+            <Link href="/login" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-gray-500 hover:text-gray-900">
               Seller Login <ArrowRight size={14} />
             </Link>
-            <Link 
-              href="/dashboard" 
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="w-full text-center rounded-full bg-[#1a2e1a] px-5 py-3.5 text-xs font-bold uppercase tracking-widest text-white transition hover:bg-black shadow-md"
-            >
+            <Link href="/dashboard" onClick={() => setIsMobileMenuOpen(false)} className="w-full text-center rounded-full bg-[#1a2e1a] px-5 py-3.5 text-xs font-bold uppercase tracking-widest text-white shadow-md transition hover:bg-black">
               Open a Boutique
             </Link>
           </div>
         </div>
       </nav>
 
-      {/* 🚀 2. THE EDITORIAL HERO */}
-      <header className="relative flex flex-col items-center justify-center bg-[#1a2e1a] px-4 py-16 md:py-24">
-        <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1441984904996-e0b6ba687e04?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center opacity-20 mix-blend-overlay" />
-        <div className="absolute inset-0 bg-gradient-to-b from-[#1a2e1a]/80 via-transparent to-[#1a2e1a]" />
+      {/* 🚀 2. THE REFINED CINEMATIC HERO */}
+      <header className="relative flex flex-col items-center justify-center bg-[#0a120a] px-4 py-12 md:py-20 overflow-hidden">
+        <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1441984904996-e0b6ba687e04?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center opacity-30 mix-blend-luminosity" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#1a2e1a] via-[#1a2e1a]/80 to-transparent" />
         
-        <div className="relative z-10 flex flex-col items-center text-center">
-          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.3em] text-emerald-400">The Discovery Edit</p>
-          <h1 className="max-w-3xl text-3xl font-serif leading-tight text-white md:text-5xl">
-            Gambia's Premier <br className="md:hidden"/> Shopping District.
+        <div className="relative z-10 flex flex-col items-center text-center w-full max-w-4xl mx-auto">
+          {/* Glowing Pill Badge */}
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 backdrop-blur-md">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span className="text-[9px] font-bold uppercase tracking-[0.3em] text-emerald-300">The Discovery Edit</span>
+          </div>
+          
+          <h1 className="text-4xl font-serif tracking-tight text-white md:text-5xl lg:text-6xl">
+            Gambia's Premier <br className="hidden sm:block"/> Shopping District.
           </h1>
         </div>
       </header>
