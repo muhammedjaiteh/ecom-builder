@@ -128,7 +128,13 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
           <ArrowLeft size={18} />
           <span className="hidden text-xs font-bold uppercase tracking-widest md:block">Directory</span>
         </Link>
-        <div className="text-lg font-black tracking-tighter text-[#1a2e1a] md:text-xl">SANNDIKAA</div>
+        <Link href="/" className="flex items-center justify-center transition-transform hover:opacity-80 active:scale-95">
+  <img 
+    src="/logo.png" 
+    alt="Sanndikaa Logo" 
+    className="h-7 md:h-8 w-auto object-contain" 
+  />
+</Link>
         <button onClick={() => setIsCartOpen(true)} className="relative flex items-center justify-center text-gray-900 transition hover:opacity-70">
           <ShoppingBag size={22} strokeWidth={1.5} />
           {cartCount > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow-sm ring-2 ring-white">{cartCount}</span>}
