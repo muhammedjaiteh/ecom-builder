@@ -127,8 +127,8 @@ export default function GlobalHomepage() {
               <img 
                 src="/logo.png" 
                 alt="Sanndikaa Logo" 
-                // Using scale-125 and scale-150 to bypass Canva's invisible padding
-                className="h-10 w-auto object-contain scale-[1.3] md:h-12 md:scale-[1.5] origin-center" 
+                /* We drastically increased the base height and used a heavy scale multiplier to fight the Canva padding */
+                className="h-16 w-auto object-contain scale-[1.8] md:h-20 md:scale-[2.2] origin-center" 
               />
             </Link>
           </div>
@@ -194,7 +194,7 @@ export default function GlobalHomepage() {
         </div>
       </nav>
 
-      {/* 🚀 2. THE REFINED CINEMATIC HERO */}
+      {/* 🚀 2. THE PAN-AFRICAN CINEMATIC HERO */}
       <header className="relative flex flex-col items-center justify-center bg-[#0a120a] px-4 py-12 md:py-20 overflow-hidden">
         <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1441984904996-e0b6ba687e04?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center opacity-30 mix-blend-luminosity" />
         <div className="absolute inset-0 bg-gradient-to-t from-[#1a2e1a] via-[#1a2e1a]/80 to-transparent" />
@@ -203,11 +203,11 @@ export default function GlobalHomepage() {
           {/* Glowing Pill Badge */}
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 backdrop-blur-md">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span className="text-[9px] font-bold uppercase tracking-[0.3em] text-emerald-300">The Discovery Edit</span>
+            <span className="text-[9px] font-bold uppercase tracking-[0.3em] text-emerald-300">Sanndikaa: The Gathering Place</span>
           </div>
           
           <h1 className="text-4xl font-serif tracking-tight text-white md:text-5xl lg:text-6xl">
-            Gambia's Premier <br className="hidden sm:block"/> Shopping District.
+            The Spirit of the African Market. <br className="hidden sm:block"/> Elevated for the World.
           </h1>
         </div>
       </header>
