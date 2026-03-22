@@ -141,52 +141,44 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
         </button>
       </nav>
 
-      {/* STORE HEADER & BRANDING */}
-      <header className="bg-white pb-6 shadow-sm">
-        <div className="relative h-32 w-full bg-gray-200 md:h-48 lg:h-64">
-          {shop.banner_url ? (
-            <img src={shop.banner_url} alt="Cover" className="h-full w-full object-cover" />
-          ) : (
-            <div className={`h-full w-full ${theme.bg} opacity-20`} />
-          )}
-          <button onClick={handleShare} className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/80 text-gray-900 shadow-sm backdrop-blur transition hover:bg-white hover:scale-105">
-            <Share size={14} />
-          </button>
-        </div>
+      {/* 🚀 THE PERFECTED LUXURY SHOP HEADER */}
+      <nav className="sticky top-0 z-50 w-full border-b border-gray-100 bg-white/95 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 md:h-20 md:px-10">
+          
+          {/* LEFT: Back Button (Uses flex-1 to push the logo to the exact center) */}
+          <div className="flex flex-1 items-center justify-start gap-4">
+            <Link href="/" className="flex items-center justify-center p-2 text-gray-900 transition hover:opacity-70 -ml-2">
+              <ArrowLeft size={26} strokeWidth={1.25} />
+            </Link>
+          </div>
 
-        <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
-          <div className="relative -mt-12 flex flex-col sm:-mt-16 sm:flex-row sm:items-end sm:gap-5">
-            <div className="relative h-24 w-24 flex-shrink-0 overflow-hidden rounded-full border-4 border-white bg-white shadow-md sm:h-32 sm:w-32">
-              {shop.logo_url ? (
-                <img src={shop.logo_url} alt={shop.shop_name || 'Logo'} className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full items-center justify-center bg-gray-50 text-gray-300"><Store size={32} /></div>
+          {/* CENTER: The Logo (Exact same scaling & size as the homepage) */}
+          <div className="flex items-center justify-center h-full">
+            <Link href="/" className="flex items-center justify-center transition-transform hover:opacity-80 active:scale-95">
+              <img 
+                src="/logo.png" 
+                alt="Sanndikaa Logo" 
+                className="h-10 md:h-12 w-auto object-contain scale-[1.3] md:scale-[1.5]" 
+              />
+            </Link>
+          </div>
+          
+          {/* RIGHT: Cart (Uses flex-1 to balance the left side perfectly) */}
+          <div className="flex flex-1 items-center justify-end gap-3 md:gap-5">
+            <button 
+              onClick={() => setIsCartOpen(true)} 
+              className="relative flex items-center justify-center p-2 text-gray-900 transition hover:opacity-70 -mr-2 md:mr-0"
+            >
+              <ShoppingBag size={22} strokeWidth={1.25} />
+              {cartCount > 0 && (
+                <span className="absolute right-1 top-1 flex h-[16px] w-[16px] items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white shadow-sm ring-2 ring-white">
+                  {cartCount}
+                </span>
               )}
-            </div>
-            
-            <div className="mt-4 flex-1 pb-1 sm:mt-0">
-              <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-black text-gray-900 md:text-3xl">{shop.shop_name}</h1>
-                <Verified size={18} className="text-blue-500" fill="currentColor" stroke="white" />
-              </div>
-              {shop.bio && <p className="mt-2 max-w-xl text-sm leading-relaxed text-gray-600">{shop.bio}</p>}
-              
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                {shop.offers_delivery && (
-                  <span className="inline-flex items-center gap-1 rounded-md bg-green-50 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-green-700 border border-green-100">
-                    <Truck size={12} /> Delivery
-                  </span>
-                )}
-                {shop.offers_pickup && (
-                  <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-blue-700 border border-blue-100">
-                    <MapPin size={12} /> Pickup
-                  </span>
-                )}
-              </div>
-            </div>
+            </button>
           </div>
         </div>
-      </header>
+      </nav>
 
       {/* STORE NAVIGATION & FILTERING */}
       <div className="sticky top-[53px] z-40 border-b border-gray-100 bg-white/95 backdrop-blur-md shadow-sm">
