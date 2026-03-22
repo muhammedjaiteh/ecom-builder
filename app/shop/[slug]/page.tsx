@@ -141,18 +141,18 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
         </button>
       </nav>
 
-      {/* 🚀 THE PERFECTED LUXURY SHOP HEADER */}
+      {/* 🚀 THE PERFECTED SHOP HEADER (Exact Homepage Size) */}
       <nav className="sticky top-0 z-50 w-full border-b border-gray-100 bg-white/95 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 md:h-20 md:px-10">
           
-          {/* LEFT: Back Button (Uses flex-1 to push the logo to the exact center) */}
-          <div className="flex flex-1 items-center justify-start gap-4">
+          {/* LEFT: Back Button */}
+          <div className="flex flex-1 items-center justify-start">
             <Link href="/" className="flex items-center justify-center p-2 text-gray-900 transition hover:opacity-70 -ml-2">
               <ArrowLeft size={26} strokeWidth={1.25} />
             </Link>
           </div>
 
-          {/* CENTER: The Logo (Exact same scaling & size as the homepage) */}
+          {/* CENTER: The Logo (Exact size and scale as the homepage) */}
           <div className="flex items-center justify-center h-full">
             <Link href="/" className="flex items-center justify-center transition-transform hover:opacity-80 active:scale-95">
               <img 
@@ -163,8 +163,8 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
             </Link>
           </div>
           
-          {/* RIGHT: Cart (Uses flex-1 to balance the left side perfectly) */}
-          <div className="flex flex-1 items-center justify-end gap-3 md:gap-5">
+          {/* RIGHT: Cart */}
+          <div className="flex flex-1 items-center justify-end">
             <button 
               onClick={() => setIsCartOpen(true)} 
               className="relative flex items-center justify-center p-2 text-gray-900 transition hover:opacity-70 -mr-2 md:mr-0"
@@ -177,6 +177,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
               )}
             </button>
           </div>
+          
         </div>
       </nav>
 
