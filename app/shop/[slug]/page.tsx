@@ -132,14 +132,14 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
             </Link>
           </div>
 
-          {/* CENTER: The Logo (Width-Based Sizing for Readability) */}
-          <div className="flex items-center justify-center h-full overflow-visible">
+          {/* CENTER: The Logo (Refined Premium Sizing) */}
+          <div className="flex items-center justify-center h-full">
             <Link href="/" className="flex items-center justify-center transition-transform hover:opacity-80 active:scale-95">
               <img 
                 src="/logo.png" 
                 alt="Sanndikaa Logo" 
-                /* Changed to w-32 (mobile) and w-44 (desktop) to force it to spread out, plus aggressive scaling */
-                className="w-32 md:w-44 h-auto object-contain scale-[1.6] md:scale-[2.0] origin-center" 
+                /* Dialed back to premium luxury proportions: w-24 (mobile) and w-32 (desktop) with a gentle scale */
+                className="w-24 md:w-32 h-auto object-contain scale-110 md:scale-125 origin-center" 
               />
             </Link>
           </div>
