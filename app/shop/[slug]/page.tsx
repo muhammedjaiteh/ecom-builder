@@ -132,13 +132,14 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
             </Link>
           </div>
 
-          {/* CENTER: The Logo (Exact size and scale as the homepage) */}
-          <div className="flex items-center justify-center h-full">
+          {/* CENTER: The Logo (Width-Based Sizing for Readability) */}
+          <div className="flex items-center justify-center h-full overflow-visible">
             <Link href="/" className="flex items-center justify-center transition-transform hover:opacity-80 active:scale-95">
               <img 
                 src="/logo.png" 
                 alt="Sanndikaa Logo" 
-                className="h-10 md:h-12 w-auto object-contain scale-[1.3] md:scale-[1.5]" 
+                /* Changed to w-32 (mobile) and w-44 (desktop) to force it to spread out, plus aggressive scaling */
+                className="w-32 md:w-44 h-auto object-contain scale-[1.6] md:scale-[2.0] origin-center" 
               />
             </Link>
           </div>
