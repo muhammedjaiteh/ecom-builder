@@ -101,9 +101,13 @@ export default function GlobalHomepage() {
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 md:px-10">
           
           {/* Logo */}
-          <div className="flex-shrink-0 text-xl font-black tracking-tighter text-[#1a2e1a] md:text-2xl">
-            SANNDIKAA
-          </div>
+          <Link href="/" className="flex-shrink-0 transition-transform hover:scale-105 active:scale-95">
+            <img 
+              src="/logo.png" 
+              alt="Sanndikaa Logo" 
+              className="h-8 md:h-10 w-auto object-contain" 
+            />
+          </Link>
 
           {/* Desktop Search Bar (Hidden on Mobile) */}
           <div className="hidden flex-1 px-8 md:block lg:px-16">
