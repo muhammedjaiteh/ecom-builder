@@ -132,7 +132,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
   <img 
     src="/logo.png" 
     alt="Sanndikaa Logo" 
-    className="h-7 md:h-8 w-auto object-contain" 
+    className="h-10 md:h-12 w-auto object-contain scale-[1.3] md:scale-[1.5]" 
   />
 </Link>
         <button onClick={() => setIsCartOpen(true)} className="relative flex items-center justify-center text-gray-900 transition hover:opacity-70">
