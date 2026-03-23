@@ -3,7 +3,7 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Loader2, Upload, X, Image as ImageIcon, Plus, Package, Sparkles } from 'lucide-react';
+import { ArrowLeft, Loader2, Upload, X, Image as ImageIcon, Plus, Package, Sparkles, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
 
 const CATEGORIES = ['Fashion', 'Sneakers', 'Beauty & Wellness', 'Home & Artisan', 'Tech Accessories', 'Food & Culinary'];
@@ -14,6 +14,7 @@ export default function AddProductPage() {
 
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false); // 🚀 Added success state for the VIP experience
   
   // 🚀 AI Subscription States
   const [subscriptionTier, setSubscriptionTier] = useState('standard');
@@ -84,7 +85,7 @@ export default function AddProductPage() {
 
     if (subscriptionTier === 'standard' && aiCredits <= 0) {
       alert("You are out of AI Credits! Please upgrade to District PRO to unlock unlimited AI writing.");
-      router.push('/pricing');
+      router.push('/dashboard/settings');
       return;
     }
 
@@ -116,30 +117,54 @@ export default function AddProductPage() {
     }
   };
 
-  // Submit Flow
+  // 🚀 THE BULLETPROOF UPLOAD ENGINE
   const handlePublish = async () => {
     if (!name || !price || imageFiles.length === 0) return alert('Please provide a name, price, and at least one image.');
     if (!userId) return;
     setLoading(true);
 
     try {
+      // 1. Get the actual shop_id linked to this user
+      const { data: shop } = await supabase.from('shops').select('id').eq('id', userId).single();
+      if (!shop) throw new Error("Shop not found. Please contact support.");
+
+      // 2. Upload all images to the 'products' bucket
       const imageUrls: string[] = [];
       for (const file of imageFiles) {
-        const filePath = `${userId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${file.name.split('.').pop()}`;
+        const fileExt = file.name.split('.').pop();
+        const filePath = `${shop.id}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+        
         const { error: uploadError } = await supabase.storage.from('products').upload(filePath, file);
         if (uploadError) throw uploadError;
-        imageUrls.push(supabase.storage.from('products').getPublicUrl(filePath).data.publicUrl);
+        
+        const { data: { publicUrl } } = supabase.storage.from('products').getPublicUrl(filePath);
+        imageUrls.push(publicUrl);
       }
 
+      // 3. Save to Database
       const { error: insertError } = await supabase.from('products').insert({
-        user_id: userId, name: name.trim(), price: parseFloat(price), description: description.trim(),
-        category: category, image_url: imageUrls[0], image_urls: imageUrls, colors: colors, sizes: sizes
+        shop_id: shop.id, 
+        name: name.trim(), 
+        price: parseFloat(price), 
+        description: description.trim(),
+        category: category, 
+        image_url: imageUrls[0], 
+        image_urls: imageUrls, 
+        colors: colors.length > 0 ? colors : null, 
+        sizes: sizes.length > 0 ? sizes : null
       });
 
       if (insertError) throw insertError;
-      router.push('/dashboard');
+      
+      // 4. Trigger VIP Success Screen
+      setSuccess(true);
+      setTimeout(() => {
+        router.push('/dashboard');
+      }, 2000);
+
     } catch (error: any) {
-      alert(error.message || 'Failed to publish product.');
+      console.error(error);
+      alert(error.message || 'Failed to publish product. Please check your connection.');
       setLoading(false);
     }
   };
@@ -153,130 +178,143 @@ export default function AddProductPage() {
           <Link href="/dashboard" className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-gray-400 transition hover:text-gray-900">
             <ArrowLeft size={16} /> Cancel
           </Link>
-          <button onClick={handlePublish} disabled={loading} className="flex items-center gap-2 rounded-full bg-[#1a2e1a] px-6 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white shadow-md transition hover:bg-black disabled:opacity-70">
-            {loading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={14} />}
-            {loading ? 'Publishing...' : 'Publish Product'}
-          </button>
+          {!success && (
+            <button onClick={handlePublish} disabled={loading} className="flex items-center gap-2 rounded-full bg-[#1a2e1a] px-6 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white shadow-md transition hover:bg-black disabled:opacity-70">
+              {loading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={14} />}
+              {loading ? 'Publishing...' : 'Publish Product'}
+            </button>
+          )}
         </div>
       </header>
 
       {/* MAIN EDITOR */}
       <main className="max-w-4xl mx-auto px-4 py-8 md:px-10">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
-          
-          {/* LEFT COLUMN: Main Info */}
-          <div className="md:col-span-2 space-y-6 md:space-y-8">
-            <div className="rounded-[2rem] bg-white p-6 md:p-8 shadow-sm border border-gray-100">
-              <h2 className="text-lg font-serif font-bold text-gray-900 mb-6 flex items-center gap-2"><Package size={18} className="text-gray-400" /> Basic Details</h2>
-              
-              <div className="space-y-5">
-                <div>
-                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Product Name</label>
-                  <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Midnight Leather Boots" className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900" />
-                </div>
+        
+        {success ? (
+          <div className="mt-10 rounded-[2rem] border border-emerald-200 bg-emerald-50 p-16 text-center shadow-sm animate-in zoom-in duration-300">
+            <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+              <CheckCircle2 size={40} />
+            </div>
+            <h2 className="text-3xl font-serif font-bold text-emerald-900">Masterpiece Added</h2>
+            <p className="mt-3 text-emerald-700 font-medium">Your product is now live in the District. Returning to command center...</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 animate-in fade-in duration-500">
+            
+            {/* LEFT COLUMN: Main Info */}
+            <div className="md:col-span-2 space-y-6 md:space-y-8">
+              <div className="rounded-[2rem] bg-white p-6 md:p-8 shadow-sm border border-gray-100">
+                <h2 className="text-lg font-serif font-bold text-gray-900 mb-6 flex items-center gap-2"><Package size={18} className="text-gray-400" /> Basic Details</h2>
                 
-                <div className="grid grid-cols-2 gap-5">
+                <div className="space-y-5">
                   <div>
-                    <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Price (GMD)</label>
-                    <div className="relative">
-                      <span className="absolute left-5 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-400">D</span>
-                      <input type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0.00" className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 pl-10 pr-5 py-4 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Category</label>
-                    <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full appearance-none rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900">
-                      {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                {/* 🚀 AI DESCRIPTION BOX */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-500">Description</label>
-                    
-                    <div className="flex items-center gap-3">
-                      {subscriptionTier === 'standard' && (
-                        <span className="text-[9px] font-bold uppercase tracking-widest text-gray-400">
-                          {aiCredits} Credits Left
-                        </span>
-                      )}
-                      <button
-                        type="button"
-                        onClick={handleGenerateDescription}
-                        disabled={isGenerating || !name}
-                        className="group relative flex items-center gap-1.5 rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-white shadow-md transition hover:opacity-90 disabled:opacity-50"
-                      >
-                        {isGenerating ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                        {isGenerating ? 'Writing...' : 'Write with AI'}
-                      </button>
-                    </div>
+                    <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Product Name</label>
+                    <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Midnight Leather Boots" className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900" />
                   </div>
                   
-                  <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={6} placeholder="Describe the product, material, and fit..." className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-sm font-medium text-gray-900 outline-none transition-all focus:border-purple-500 focus:bg-white focus:ring-1 focus:ring-purple-500" />
-                </div>
-              </div>
-            </div>
-
-            {/* Media Upload Card */}
-            <div className="rounded-[2rem] bg-white p-6 md:p-8 shadow-sm border border-gray-100">
-              <h2 className="text-lg font-serif font-bold text-gray-900 mb-6 flex items-center gap-2"><ImageIcon size={18} className="text-gray-400" /> Media Gallery</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                {imagePreviews.map((src, idx) => (
-                  <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden bg-gray-50 border border-gray-200 group">
-                    <img src={src} className="w-full h-full object-cover" />
-                    <button onClick={() => removeImage(idx)} className="absolute top-2 right-2 h-7 w-7 flex items-center justify-center rounded-full bg-white/90 text-red-500 opacity-0 group-hover:opacity-100 transition shadow-sm"><X size={14} /></button>
+                  <div className="grid grid-cols-2 gap-5">
+                    <div>
+                      <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Price (GMD)</label>
+                      <div className="relative">
+                        <span className="absolute left-5 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-400">D</span>
+                        <input type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0.00" className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 pl-10 pr-5 py-4 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Category</label>
+                      <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full appearance-none rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900">
+                        {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                      </select>
+                    </div>
                   </div>
-                ))}
-                <label className="relative aspect-square rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50/50 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 hover:border-gray-300 transition group">
-                  <div className="h-10 w-10 rounded-full bg-white flex items-center justify-center shadow-sm text-gray-400 group-hover:text-gray-900 transition"><Plus size={20} /></div>
-                  <span className="mt-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">Add Image</span>
-                  <input type="file" multiple accept="image/*" className="hidden" onChange={handleImageChange} />
-                </label>
+
+                  {/* 🚀 AI DESCRIPTION BOX */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-500">Description</label>
+                      
+                      <div className="flex items-center gap-3">
+                        {subscriptionTier === 'standard' && (
+                          <span className="text-[9px] font-bold uppercase tracking-widest text-gray-400">
+                            {aiCredits} Credits Left
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={handleGenerateDescription}
+                          disabled={isGenerating || !name}
+                          className="group relative flex items-center gap-1.5 rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-white shadow-md transition hover:opacity-90 disabled:opacity-50"
+                        >
+                          {isGenerating ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                          {isGenerating ? 'Writing...' : 'Write with AI'}
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={6} placeholder="Describe the product, material, and fit..." className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-sm font-medium text-gray-900 outline-none transition-all focus:border-purple-500 focus:bg-white focus:ring-1 focus:ring-purple-500" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Media Upload Card */}
+              <div className="rounded-[2rem] bg-white p-6 md:p-8 shadow-sm border border-gray-100">
+                <h2 className="text-lg font-serif font-bold text-gray-900 mb-6 flex items-center gap-2"><ImageIcon size={18} className="text-gray-400" /> Media Gallery</h2>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  {imagePreviews.map((src, idx) => (
+                    <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden bg-gray-50 border border-gray-200 group">
+                      <img src={src} className="w-full h-full object-cover" />
+                      <button onClick={() => removeImage(idx)} className="absolute top-2 right-2 h-7 w-7 flex items-center justify-center rounded-full bg-white/90 text-red-500 opacity-0 group-hover:opacity-100 transition shadow-sm"><X size={14} /></button>
+                    </div>
+                  ))}
+                  <label className="relative aspect-square rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50/50 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 hover:border-gray-300 transition group">
+                    <div className="h-10 w-10 rounded-full bg-white flex items-center justify-center shadow-sm text-gray-400 group-hover:text-gray-900 transition"><Plus size={20} /></div>
+                    <span className="mt-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">Add Image</span>
+                    <input type="file" multiple accept="image/*" className="hidden" onChange={handleImageChange} />
+                  </label>
+                </div>
               </div>
             </div>
+
+            {/* RIGHT COLUMN: Variants */}
+            <div className="space-y-6 md:space-y-8">
+              <div className="rounded-[2rem] bg-white p-6 shadow-sm border border-gray-100">
+                <h2 className="text-lg font-serif font-bold text-gray-900 mb-6">Variants</h2>
+                <div className="mb-6">
+                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Available Colors</label>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {colors.map(color => <span key={color} className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 pl-3 pr-1.5 py-1 text-xs font-bold text-gray-700">{color}<button onClick={() => removeColor(color)} className="rounded-full p-1 hover:bg-gray-200 text-gray-400 hover:text-red-500"><X size={12} /></button></span>)}
+                  </div>
+                  <div className="flex gap-2">
+                    <input type="text" value={colorInput} onChange={(e) => setColorInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addColor())} placeholder="e.g. Midnight Black" className="flex-1 rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-2.5 text-xs font-medium outline-none focus:border-gray-900 focus:bg-white" />
+                    <button type="button" onClick={addColor} className="rounded-xl bg-gray-100 px-4 py-2.5 text-xs font-bold text-gray-600 hover:bg-gray-200">Add</button>
+                  </div>
+                </div>
+
+                <div className="pt-6 border-t border-gray-50">
+                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Available Sizes</label>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {sizes.map(size => <span key={size} className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 pl-3 pr-1.5 py-1 text-xs font-bold text-gray-700">{size}<button onClick={() => removeSize(size)} className="rounded-full p-1 hover:bg-gray-200 text-gray-400 hover:text-red-500"><X size={12} /></button></span>)}
+                  </div>
+                  <div className="flex gap-2">
+                    <input type="text" value={sizeInput} onChange={(e) => setSizeInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addSize())} placeholder="e.g. XL, 42" className="flex-1 rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-2.5 text-xs font-medium outline-none focus:border-gray-900 focus:bg-white" />
+                    <button type="button" onClick={addSize} className="rounded-xl bg-gray-100 px-4 py-2.5 text-xs font-bold text-gray-600 hover:bg-gray-200">Add</button>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="rounded-[2rem] bg-gradient-to-br from-purple-50 to-indigo-50 p-6 border border-purple-100 shadow-sm">
+                <h3 className="text-sm font-bold text-purple-900 mb-2 flex items-center gap-2"><Sparkles size={16} /> District PRO</h3>
+                <p className="text-xs text-purple-700 leading-relaxed mb-4">
+                  You currently have <b>{aiCredits} free AI credits</b> remaining. Upgrade to District PRO for unlimited AI copywriting and image enhancement.
+                </p>
+                <Link href="/dashboard/settings" className="inline-block rounded-full bg-purple-600 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-white shadow-md hover:bg-purple-700 transition hover:-translate-y-0.5">
+                  Upgrade Now
+                </Link>
+              </div>
+            </div>
+
           </div>
-
-          {/* RIGHT COLUMN: Variants */}
-          <div className="space-y-6 md:space-y-8">
-            <div className="rounded-[2rem] bg-white p-6 shadow-sm border border-gray-100">
-              <h2 className="text-lg font-serif font-bold text-gray-900 mb-6">Variants</h2>
-              <div className="mb-6">
-                <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Available Colors</label>
-                <div className="flex flex-wrap gap-2 mb-3">
-                  {colors.map(color => <span key={color} className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 pl-3 pr-1.5 py-1 text-xs font-bold text-gray-700">{color}<button onClick={() => removeColor(color)} className="rounded-full p-1 hover:bg-gray-200 text-gray-400 hover:text-red-500"><X size={12} /></button></span>)}
-                </div>
-                <div className="flex gap-2">
-                  <input type="text" value={colorInput} onChange={(e) => setColorInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addColor())} placeholder="e.g. Midnight Black" className="flex-1 rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-2.5 text-xs font-medium outline-none focus:border-gray-900 focus:bg-white" />
-                  <button type="button" onClick={addColor} className="rounded-xl bg-gray-100 px-4 py-2.5 text-xs font-bold text-gray-600 hover:bg-gray-200">Add</button>
-                </div>
-              </div>
-
-              <div className="pt-6 border-t border-gray-50">
-                <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Available Sizes</label>
-                <div className="flex flex-wrap gap-2 mb-3">
-                  {sizes.map(size => <span key={size} className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 pl-3 pr-1.5 py-1 text-xs font-bold text-gray-700">{size}<button onClick={() => removeSize(size)} className="rounded-full p-1 hover:bg-gray-200 text-gray-400 hover:text-red-500"><X size={12} /></button></span>)}
-                </div>
-                <div className="flex gap-2">
-                  <input type="text" value={sizeInput} onChange={(e) => setSizeInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addSize())} placeholder="e.g. XL, 42" className="flex-1 rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-2.5 text-xs font-medium outline-none focus:border-gray-900 focus:bg-white" />
-                  <button type="button" onClick={addSize} className="rounded-xl bg-gray-100 px-4 py-2.5 text-xs font-bold text-gray-600 hover:bg-gray-200">Add</button>
-                </div>
-              </div>
-            </div>
-            
-            <div className="rounded-[2rem] bg-gradient-to-br from-purple-50 to-indigo-50 p-6 border border-purple-100">
-              <h3 className="text-sm font-bold text-purple-900 mb-2 flex items-center gap-2"><Sparkles size={16} /> District PRO</h3>
-              <p className="text-xs text-purple-700 leading-relaxed mb-4">
-                You currently have <b>{aiCredits} free AI credits</b> remaining. Upgrade to District PRO for unlimited AI copywriting and image enhancement.
-              </p>
-              <Link href="/pricing" className="inline-block rounded-full bg-purple-600 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-white hover:bg-purple-700 transition">
-                Upgrade Now
-              </Link>
-            </div>
-          </div>
-
-        </div>
+        )}
       </main>
     </div>
   );
