@@ -3,7 +3,7 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Crown, Star, CheckCircle2, BadgeCheck, Loader2, Sparkles, CreditCard } from 'lucide-react';
+import { ArrowLeft, Crown, Star, CheckCircle2, BadgeCheck, Loader2, CreditCard } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 type Shop = {
@@ -39,6 +39,9 @@ export default function SettingsPaywall() {
 
   if (loading) return <div className="flex min-h-screen items-center justify-center bg-[#F9F8F6]"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>;
 
+  const isPro = shop?.subscription_tier === 'pro';
+  const isFlagship = shop?.subscription_tier === 'flagship';
+
   return (
     <div className="min-h-screen bg-[#F9F8F6] font-sans text-gray-900 selection:bg-gray-900 selection:text-white pb-24">
       
@@ -50,7 +53,7 @@ export default function SettingsPaywall() {
           </Link>
           <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-100">
             <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Current Plan:</span>
-            <span className={`text-[10px] font-black uppercase tracking-widest ${shop?.subscription_tier === 'flagship' ? 'text-yellow-600' : shop?.subscription_tier === 'pro' ? 'text-blue-600' : 'text-gray-900'}`}>
+            <span className={`text-[10px] font-black uppercase tracking-widest ${isFlagship ? 'text-yellow-600' : isPro ? 'text-blue-600' : 'text-gray-900'}`}>
               {shop?.subscription_tier || 'Starter'}
             </span>
           </div>
@@ -71,8 +74,8 @@ export default function SettingsPaywall() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
           
           {/* PRO TIER */}
-          <div className={`relative flex flex-col rounded-[2rem] bg-white p-8 shadow-sm transition-all border-2 ${shop?.subscription_tier === 'pro' ? 'border-blue-500 ring-4 ring-blue-500/10' : 'border-gray-100 hover:border-blue-200'}`}>
-            {shop?.subscription_tier === 'pro' && (
+          <div className={`relative flex flex-col rounded-[2rem] bg-white p-8 shadow-sm transition-all border-2 ${isPro ? 'border-blue-500 ring-4 ring-blue-500/10' : 'border-gray-100 hover:border-blue-200'}`}>
+            {isPro && (
               <div className="absolute -top-3.5 left-0 right-0 mx-auto w-fit rounded-full bg-blue-500 px-4 py-1 text-[10px] font-bold uppercase tracking-widest text-white flex items-center gap-1 shadow-sm">
                 <CheckCircle2 size={12} /> Active Plan
               </div>
@@ -97,18 +100,19 @@ export default function SettingsPaywall() {
               <li className="flex items-start gap-3"><CheckCircle2 size={18} className="text-blue-500 shrink-0 mt-0.5" /> 50 AI-Powered Image Edits per month</li>
             </ul>
 
+            {/* 🚀 THE FIX: Logic that handles Flagship users looking at the Pro card */}
             <button 
               onClick={() => handleUpgradeClick('pro')}
-              disabled={shop?.subscription_tier === 'pro'}
+              disabled={isPro || isFlagship}
               className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 py-4 text-xs font-bold uppercase tracking-widest text-white shadow-md transition hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600"
             >
-              {shop?.subscription_tier === 'pro' ? 'Current Plan' : <><CreditCard size={16} /> Upgrade to Pro</>}
+              {isFlagship ? 'Included in Advanced' : isPro ? 'Current Plan' : <><CreditCard size={16} /> Upgrade to Pro</>}
             </button>
           </div>
 
           {/* ADVANCED FLAGSHIP TIER */}
-          <div className={`relative flex flex-col rounded-[2rem] bg-[#1a1a1a] p-8 shadow-xl transition-all border-2 ${shop?.subscription_tier === 'flagship' ? 'border-yellow-400 ring-4 ring-yellow-400/20' : 'border-[#2a2a2a] hover:border-yellow-500/50'}`}>
-            {shop?.subscription_tier === 'flagship' && (
+          <div className={`relative flex flex-col rounded-[2rem] bg-[#1a1a1a] p-8 shadow-xl transition-all border-2 ${isFlagship ? 'border-yellow-400 ring-4 ring-yellow-400/20' : 'border-[#2a2a2a] hover:border-yellow-500/50'}`}>
+            {isFlagship && (
               <div className="absolute -top-3.5 left-0 right-0 mx-auto w-fit rounded-full bg-yellow-500 px-4 py-1 text-[10px] font-bold uppercase tracking-widest text-gray-900 flex items-center gap-1 shadow-sm">
                 <CheckCircle2 size={12} /> Active Plan
               </div>
@@ -135,10 +139,10 @@ export default function SettingsPaywall() {
 
             <button 
               onClick={() => handleUpgradeClick('flagship')}
-              disabled={shop?.subscription_tier === 'flagship'}
+              disabled={isFlagship}
               className="w-full flex items-center justify-center gap-2 rounded-xl bg-yellow-500 py-4 text-xs font-bold uppercase tracking-widest text-gray-900 shadow-lg transition hover:bg-yellow-400 disabled:opacity-50 disabled:hover:bg-yellow-500"
             >
-              {shop?.subscription_tier === 'flagship' ? 'Current Plan' : <><Crown size={16} /> Claim Your Empire</>}
+              {isFlagship ? 'Current Plan' : <><Crown size={16} /> Claim Your Empire</>}
             </button>
           </div>
 
