@@ -1,251 +1,103 @@
 'use client';
 
-import { useState } from 'react';
+import { Check, Star, Crown, Zap } from 'lucide-react';
 import Link from 'next/link';
-import { ArrowLeft, CheckCircle2, Sparkles, Bot, Zap, ArrowRight, ShieldCheck } from 'lucide-react';
 
-export default function PricingPage() {
-  const [isAnnual, setIsAnnual] = useState(false);
-
-  // 🚀 YOUR SANNDIKAA ADMIN WHATSAPP NUMBER (Replace with your real number)
-  // Format: Country code + phone number (No spaces, no '+' sign. e.g., "2201234567")
-  const ADMIN_WHATSAPP_NUMBER = "447599710468"; // Replace with your actual WhatsApp number
-
-  // 🚀 The WhatsApp Concierge Logic
-  const handleUpgradeClick = (tierName: string, priceMonthly: number, priceAnnual: number) => {
-    // If they click Standard, just send them back to the dashboard
-    if (tierName === 'Standard') {
-      window.location.href = '/dashboard';
-      return;
-    }
-
-    // Determine the price and billing cycle for the message
-    const price = isAnnual ? priceAnnual : priceMonthly;
-    const period = isAnnual ? 'year' : 'month';
-
-    // Craft the perfectly formatted WhatsApp message
-    const message = `Hello Sanndikaa VIP Concierge! 🦅\n\nI want to upgrade my boutique to the *${tierName}* plan for D${price}/${period}.\n\nPlease let me know how to proceed with my payment via Mobile Money!`;
-    
-    // Open WhatsApp in a new tab
-    const encodedMessage = encodeURIComponent(message);
-    window.open(`https://wa.me/${ADMIN_WHATSAPP_NUMBER}?text=${encodedMessage}`, '_blank');
-  };
-
-  // Pricing Data Strategy
-  const tiers = [
-    {
-      name: 'Standard',
-      tagline: 'Launch your digital storefront in 60 seconds.',
-      priceMonthly: 0,
-      priceAnnual: 0,
-      buttonText: 'Current Plan',
-      buttonVariant: 'outline',
-      features: [
-        'Up to 20 Products',
-        'The Serrekunda Layout (2-Column)',
-        'Standard WhatsApp Checkout',
-        'Manual Product Uploads',
-      ],
-      aiFeatures: [
-        '3 Free AI Writer Credits (Trial)'
-      ]
-    },
-    {
-      name: 'District PRO',
-      tagline: 'Sell smarter with AI copy and premium layouts.',
-      priceMonthly: 750,
-      priceAnnual: 9000, 
-      badge: 'Most Popular',
-      buttonText: 'Upgrade to PRO',
-      buttonVariant: 'primary',
-      features: [
-        'Everything in Standard, plus:',
-        'Unlimited Products',
-        'Unlock Layouts: Bantaba & Kairaba',
-        'Custom Domain Support',
-      ],
-      aiFeatures: [
-        'Unlimited AI Product Descriptions',
-        'AI Image Enhancer (Studio Quality)',
-        'AI Social Media Caption Generator',
-        'AI Smart CRM (WhatsApp Retargeting)'
-      ]
-    },
-    {
-      name: 'District FLAGSHIP',
-      tagline: 'Run your business on autopilot with a 24/7 AI Sales Agent.',
-      priceMonthly: 2000,
-      priceAnnual: 24000, 
-      badge: 'VIP Only',
-      buttonText: 'Claim Flagship',
-      buttonVariant: 'dark',
-      features: [
-        'Everything in PRO, plus:',
-        'Verified Seller Blue Tick',
-        'Unlock Layouts: Jollof & Senegambia',
-        'District Spotlight (Global Homepage Priority)',
-      ],
-      aiFeatures: [
-        'Autonomous WhatsApp Sales Bot 🤖',
-        'AI Trend & Competitor Intelligence',
-        'Advanced Revenue Analytics'
-      ]
-    }
-  ];
-
+export default function PricingTable() {
   return (
-    <div className="min-h-screen bg-[#F9F8F6] font-sans text-gray-900 selection:bg-gray-900 selection:text-white pb-24">
-      
-      {/* 🚀 HEADER & NAVIGATION */}
-      <nav className="sticky top-0 z-50 border-b border-gray-100 bg-white/95 backdrop-blur-md px-4 py-4 md:px-10">
-        <div className="mx-auto max-w-7xl flex items-center justify-between">
-          <Link href="/dashboard" className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-gray-500 transition hover:text-gray-900">
-            <ArrowLeft size={16} /> Back to Dashboard
-          </Link>
-          <div className="text-xl font-black tracking-tighter text-[#1a2e1a]">SANNDIKAA</div>
-          <div className="w-24 hidden md:block" />
-        </div>
-      </nav>
-
-      <main className="mx-auto max-w-7xl px-4 py-12 md:py-20 md:px-10">
+    <div className="bg-[#F9F8F6] py-24 sm:py-32">
+      <div className="mx-auto max-w-7xl px-6 lg:px-8">
         
-        {/* 🚀 PAGE TITLE & TOGGLE */}
-        <div className="text-center max-w-2xl mx-auto mb-16 animate-in slide-in-from-bottom-4 duration-500">
-          <h1 className="text-4xl md:text-5xl font-serif font-bold text-gray-900 mb-4">
-            Scale your boutique with <span className="text-emerald-600">District AI</span>.
-          </h1>
-          <p className="text-gray-500 text-sm md:text-base leading-relaxed mb-8">
-            Upgrade your architecture. Automate your sales. Dominate the marketplace.
+        <div className="mx-auto max-w-4xl text-center">
+          <h2 className="text-base font-semibold leading-7 text-emerald-600 uppercase tracking-widest">Pricing & Plans</h2>
+          <p className="mt-2 text-4xl font-serif font-bold tracking-tight text-gray-900 sm:text-5xl">
+            Choose the perfect tier for your boutique.
           </p>
-
-          <div className="inline-flex items-center rounded-full bg-white p-1 border border-gray-200 shadow-sm">
-            <button 
-              onClick={() => setIsAnnual(false)} 
-              className={`rounded-full px-6 py-2.5 text-xs font-bold uppercase tracking-widest transition-all duration-300 ${!isAnnual ? 'bg-gray-900 text-white shadow-md' : 'text-gray-500 hover:text-gray-900'}`}
-            >
-              Pay Monthly
-            </button>
-            <button 
-              onClick={() => setIsAnnual(true)} 
-              className={`rounded-full px-6 py-2.5 text-xs font-bold uppercase tracking-widest transition-all duration-300 flex items-center gap-2 ${isAnnual ? 'bg-[#1a2e1a] text-white shadow-md' : 'text-gray-500 hover:text-gray-900'}`}
-            >
-              Pay Annually <span className={`${isAnnual ? 'bg-emerald-500 text-white' : 'bg-green-100 text-green-700'} rounded-full px-2 py-0.5 text-[9px]`}>Save 20%</span>
-            </button>
-          </div>
+          <p className="mx-auto mt-6 max-w-2xl text-center text-lg leading-8 text-gray-600">
+            Whether you are a street vendor upgrading to digital, or an established empire, Sanndikaa provides the exact tools you need to dominate the Gambian market.
+          </p>
         </div>
 
-        {/* 🚀 PRICING CARDS */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
-          {tiers.map((tier, index) => {
-            const isPro = tier.name === 'District PRO';
-            const isFlagship = tier.name === 'District FLAGSHIP';
-            
-            return (
-              <div 
-                key={tier.name} 
-                className={`relative rounded-[2.5rem] p-8 transition-all duration-500 animate-in slide-in-from-bottom-8 ${
-                  isFlagship 
-                    ? 'bg-[#1a2e1a] text-white shadow-2xl md:-mt-4' 
-                    : isPro 
-                      ? 'bg-white border-2 border-emerald-500 shadow-xl relative z-10' 
-                      : 'bg-white border border-gray-100 shadow-sm mt-4'
-                }`}
-                style={{ animationDelay: `${index * 150}ms`, animationFillMode: 'both' }}
-              >
-                {/* Badges */}
-                {tier.badge && (
-                  <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                    <span className={`rounded-full px-4 py-1.5 text-[10px] font-black uppercase tracking-widest shadow-md ${
-                      isFlagship ? 'bg-gradient-to-r from-yellow-400 to-yellow-600 text-gray-900' : 'bg-emerald-500 text-white'
-                    }`}>
-                      {tier.badge}
-                    </span>
-                  </div>
-                )}
-
-                {/* Header */}
-                <div className="mb-8">
-                  <h3 className={`text-xl font-black tracking-tight mb-2 ${isFlagship ? 'text-white' : 'text-gray-900'}`}>{tier.name}</h3>
-                  <p className={`text-xs leading-relaxed ${isFlagship ? 'text-gray-300' : 'text-gray-500'}`}>{tier.tagline}</p>
-                </div>
-
-                {/* Price */}
-                <div className="mb-8 flex items-baseline gap-2">
-                  <span className={`text-5xl font-serif font-medium ${isFlagship ? 'text-white' : 'text-gray-900'}`}>
-                    D{isAnnual && tier.priceAnnual > 0 ? (tier.priceAnnual / 12).toFixed(0) : tier.priceMonthly}
-                  </span>
-                  <span className={`text-xs font-bold uppercase tracking-widest ${isFlagship ? 'text-gray-400' : 'text-gray-400'}`}>
-                    / month
-                  </span>
-                </div>
-                {isAnnual && tier.priceAnnual > 0 && (
-                  <p className={`-mt-6 mb-8 text-xs font-bold ${isFlagship ? 'text-emerald-400' : 'text-emerald-600'}`}>
-                    Billed D{tier.priceAnnual.toLocaleString()} annually
-                  </p>
-                )}
-
-                {/* 🚀 CTA BUTTON - WIRED UP TO WHATSAPP */}
-                <button 
-                  onClick={() => handleUpgradeClick(tier.name, tier.priceMonthly, tier.priceAnnual)}
-                  className={`w-full group flex items-center justify-center gap-2 rounded-2xl py-4 text-xs font-bold uppercase tracking-widest transition-all duration-300 mb-10 ${
-                  tier.buttonVariant === 'primary' 
-                    ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-md' 
-                    : tier.buttonVariant === 'dark'
-                      ? 'bg-white text-[#1a2e1a] hover:bg-gray-100 shadow-md'
-                      : 'bg-gray-50 text-gray-900 hover:bg-gray-100 border border-gray-200'
-                }`}>
-                  {tier.buttonText}
-                  {tier.buttonVariant !== 'outline' && <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />}
-                </button>
-
-                {/* Core Features */}
-                <div className="space-y-6">
-                  <div>
-                    <p className={`mb-4 text-[10px] font-bold uppercase tracking-widest ${isFlagship ? 'text-gray-400' : 'text-gray-400'}`}>Platform Features</p>
-                    <ul className="space-y-3">
-                      {tier.features.map((feature, i) => (
-                        <li key={i} className={`flex items-start gap-3 text-sm ${isFlagship ? 'text-gray-200' : 'text-gray-600'}`}>
-                          <CheckCircle2 size={18} className={`shrink-0 ${isFlagship ? 'text-emerald-400' : 'text-emerald-500'}`} />
-                          <span className={feature.includes('Everything in') ? 'font-bold' : ''}>{feature}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <div className={`pt-6 border-t ${isFlagship ? 'border-gray-700' : 'border-gray-100'}`}>
-                    <p className={`mb-4 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 ${isFlagship ? 'text-yellow-400' : 'text-purple-600'}`}>
-                      <Sparkles size={14} /> District AI Suite
-                    </p>
-                    <ul className="space-y-3">
-                      {tier.aiFeatures.map((feature, i) => (
-                        <li key={i} className={`flex items-start gap-3 text-sm font-medium ${isFlagship ? 'text-white' : 'text-gray-900'}`}>
-                          {feature.includes('Bot') ? (
-                            <Bot size={18} className="shrink-0 text-yellow-400" />
-                          ) : feature.includes('Trial') ? (
-                            <Zap size={18} className="shrink-0 text-gray-400" />
-                          ) : (
-                            <Sparkles size={18} className={`shrink-0 ${isFlagship ? 'text-emerald-400' : 'text-purple-500'}`} />
-                          )}
-                          <span>{feature}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-
+        <div className="isolate mx-auto mt-16 grid max-w-md grid-cols-1 gap-y-8 sm:mt-20 lg:mx-0 lg:max-w-none lg:grid-cols-3 lg:gap-x-8 xl:gap-x-12">
+          
+          {/* TIER 1: STARTER */}
+          <div className="rounded-3xl p-8 ring-1 ring-gray-200 bg-white shadow-sm flex flex-col justify-between transition hover:shadow-md">
+            <div>
+              <div className="flex items-center justify-between gap-x-4">
+                <h3 className="text-lg font-bold leading-8 text-gray-900 uppercase tracking-widest">Starter</h3>
               </div>
-            );
-          })}
-        </div>
+              <p className="mt-4 text-sm leading-6 text-gray-600">The gateway to digital commerce. Perfect for new sellers.</p>
+              <p className="mt-6 flex items-baseline gap-x-1">
+                <span className="text-4xl font-black tracking-tight text-gray-900">D399</span>
+                <span className="text-sm font-semibold leading-6 text-gray-600">/month</span>
+              </p>
+              <ul role="list" className="mt-8 space-y-3 text-sm leading-6 text-gray-600">
+                <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> Up to 10 Products</li>
+                <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> Sanndikaa Subdomain</li>
+                <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> Basic WhatsApp Link</li>
+                <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> 3 AI Photo Edits/mo</li>
+              </ul>
+            </div>
+            <Link href="/register?plan=starter" className="mt-8 block rounded-full px-3 py-3 text-center text-xs font-bold uppercase tracking-widest text-emerald-700 ring-1 ring-inset ring-emerald-200 hover:ring-emerald-300 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600">
+              Start Selling
+            </Link>
+          </div>
 
-        {/* Trust Banner */}
-        <div className="mt-20 flex flex-col items-center justify-center text-center">
-          <ShieldCheck size={32} className="text-gray-300 mb-4" />
-          <h4 className="text-lg font-bold text-gray-900">Secure & Transparent</h4>
-          <p className="text-sm text-gray-500 mt-2 max-w-md">You can upgrade, downgrade, or cancel your subscription at any time. Your boutique data is always safe.</p>
-        </div>
+          {/* TIER 2: PRO (THE HIGHLIGHT) */}
+          <div className="rounded-3xl p-8 ring-2 ring-emerald-600 bg-white shadow-xl flex flex-col justify-between relative transform lg:-translate-y-4">
+            <div className="absolute -top-4 left-0 right-0 mx-auto w-fit rounded-full bg-emerald-600 px-4 py-1 text-[10px] font-bold uppercase tracking-widest text-white flex items-center gap-1">
+              <Star size={12} /> Most Popular
+            </div>
+            <div>
+              <div className="flex items-center justify-between gap-x-4">
+                <h3 className="text-lg font-bold leading-8 text-emerald-600 uppercase tracking-widest">Pro</h3>
+              </div>
+              <p className="mt-4 text-sm leading-6 text-gray-600">The growth engine. For serious businesses ready to scale.</p>
+              <p className="mt-6 flex items-baseline gap-x-1">
+                <span className="text-4xl font-black tracking-tight text-gray-900">D1,500</span>
+                <span className="text-sm font-semibold leading-6 text-gray-600">/month</span>
+              </p>
+              <ul role="list" className="mt-8 space-y-3 text-sm leading-6 text-gray-600">
+                <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> <strong>Unlimited Products</strong></li>
+                <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> "Verified Seller" Badge</li>
+                <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> Auto WhatsApp Catalog</li>
+                <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> 50 AI Photo Edits/mo</li>
+                <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> 10 AI Ad Copy Scripts/mo</li>
+              </ul>
+            </div>
+            <Link href="/register?plan=pro" className="mt-8 block rounded-full bg-emerald-600 px-3 py-3 text-center text-xs font-bold uppercase tracking-widest text-white shadow-sm hover:bg-emerald-500 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600">
+              Upgrade to Pro
+            </Link>
+          </div>
 
-      </main>
+          {/* TIER 3: ADVANCED (THE LUXURY ANCHOR) */}
+          <div className="rounded-3xl p-8 ring-1 ring-gray-900 bg-[#1A1A1A] shadow-2xl flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between gap-x-4">
+                <h3 className="text-lg font-bold leading-8 text-white uppercase tracking-widest flex items-center gap-2">
+                  Advanced <Crown size={16} className="text-yellow-500" />
+                </h3>
+              </div>
+              <p className="mt-4 text-sm leading-6 text-gray-400">The full business OS. Absolute dominance and extreme visibility.</p>
+              <p className="mt-6 flex items-baseline gap-x-1">
+                <span className="text-4xl font-black tracking-tight text-white">D2,500</span>
+                <span className="text-sm font-semibold leading-6 text-gray-400">/month</span>
+              </p>
+              <ul role="list" className="mt-8 space-y-3 text-sm leading-6 text-gray-300">
+                <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-yellow-500" /> <strong>Custom Domain (.com)</strong></li>
+                <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-yellow-500" /> Top-of-Search Priority</li>
+                <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-yellow-500" /> Escrow Safe-Trade Included</li>
+                <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-yellow-500" /> <strong>Unlimited</strong> AI Photo Edits</li>
+                <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-yellow-500" /> <strong>Unlimited</strong> AI Ad Copies</li>
+              </ul>
+            </div>
+            <Link href="/register?plan=advanced" className="mt-8 block rounded-full bg-white px-3 py-3 text-center text-xs font-bold uppercase tracking-widest text-gray-900 hover:bg-gray-100 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+              Claim Your Empire
+            </Link>
+          </div>
+
+        </div>
+      </div>
     </div>
   );
 }
