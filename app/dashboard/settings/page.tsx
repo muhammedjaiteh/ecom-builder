@@ -60,55 +60,79 @@ export default function SettingsPaywall() {
         </div>
       </header>
 
-      {/* 2. THE UPGRADE PITCH */}
+      {/* 2. DYNAMIC HEADER TEXT BASED ON TIER */}
       <main className="max-w-6xl mx-auto px-4 py-12 md:px-10">
         <div className="text-center max-w-2xl mx-auto mb-16">
-          <h1 className="text-3xl md:text-4xl font-serif font-bold text-gray-900">Unlock Your Empire</h1>
-          <p className="mt-4 text-sm text-gray-500 leading-relaxed">
-            You are currently on the <strong className="text-gray-900 capitalize">{shop?.subscription_tier || 'starter'}</strong> plan. 
-            Upgrade today to unlock priority search placement, the WhatsApp Commerce Engine, and the Verified Status badge.
-          </p>
+          {isFlagship ? (
+            <>
+              <h1 className="text-3xl md:text-4xl font-serif font-bold text-gray-900 flex items-center justify-center gap-3">
+                <Crown className="text-yellow-500" size={32} /> Absolute Dominance
+              </h1>
+              <p className="mt-4 text-sm text-gray-500 leading-relaxed">
+                You are on the highest tier: <strong className="text-gray-900">Advanced Flagship</strong>. 
+                Your boutique currently enjoys Priority #1 Search Placement, the Gold Crown badge, and unlimited AI capabilities.
+              </p>
+            </>
+          ) : isPro ? (
+            <>
+              <h1 className="text-3xl md:text-4xl font-serif font-bold text-gray-900">Expand Your Empire</h1>
+              <p className="mt-4 text-sm text-gray-500 leading-relaxed">
+                You are currently on the <strong className="text-blue-600">Pro</strong> plan. 
+                Upgrade to Advanced today to unlock global Priority #1 Search Placement, your own custom domain, and the Flagship Gold Crown.
+              </p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-3xl md:text-4xl font-serif font-bold text-gray-900">Unlock Your Empire</h1>
+              <p className="mt-4 text-sm text-gray-500 leading-relaxed">
+                You are currently on the <strong className="text-gray-900 capitalize">Starter</strong> plan. 
+                Upgrade today to unlock priority search placement, the WhatsApp Commerce Engine, and the Verified Status badge.
+              </p>
+            </>
+          )}
         </div>
 
-        {/* 3. THE PAYWALL GRID */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+        {/* 3. DYNAMIC PAYWALL GRID */}
+        {/* If Flagship, it centers a single card. Otherwise, it shows the 2-column comparison */}
+        <div className={`grid grid-cols-1 gap-8 mx-auto ${isFlagship ? 'max-w-md' : 'md:grid-cols-2 max-w-4xl'}`}>
           
-          {/* PRO TIER */}
-          <div className={`relative flex flex-col rounded-[2rem] bg-white p-8 shadow-sm transition-all border-2 ${isPro ? 'border-blue-500 ring-4 ring-blue-500/10' : 'border-gray-100 hover:border-blue-200'}`}>
-            {isPro && (
-              <div className="absolute -top-3.5 left-0 right-0 mx-auto w-fit rounded-full bg-blue-500 px-4 py-1 text-[10px] font-bold uppercase tracking-widest text-white flex items-center gap-1 shadow-sm">
-                <CheckCircle2 size={12} /> Active Plan
+          {/* PRO TIER (Hidden entirely if the user is already on Flagship) */}
+          {!isFlagship && (
+            <div className={`relative flex flex-col rounded-[2rem] bg-white p-8 shadow-sm transition-all border-2 ${isPro ? 'border-blue-500 ring-4 ring-blue-500/10' : 'border-gray-100 hover:border-blue-200'}`}>
+              {isPro && (
+                <div className="absolute -top-3.5 left-0 right-0 mx-auto w-fit rounded-full bg-blue-500 px-4 py-1 text-[10px] font-bold uppercase tracking-widest text-white flex items-center gap-1 shadow-sm">
+                  <CheckCircle2 size={12} /> Active Plan
+                </div>
+              )}
+              
+              <div className="flex items-center gap-2 mb-2">
+                <BadgeCheck size={24} className="text-blue-500" fill="currentColor" />
+                <h2 className="text-2xl font-black uppercase tracking-widest text-gray-900">Pro</h2>
               </div>
-            )}
-            
-            <div className="flex items-center gap-2 mb-2">
-              <BadgeCheck size={24} className="text-blue-500" fill="currentColor" />
-              <h2 className="text-2xl font-black uppercase tracking-widest text-gray-900">Pro</h2>
-            </div>
-            <p className="text-sm font-semibold text-gray-500">The verified growth engine.</p>
-            
-            <div className="my-6 flex items-baseline gap-x-1">
-              <span className="text-4xl font-black tracking-tight text-gray-900">D1,500</span>
-              <span className="text-sm font-bold text-gray-400">/month</span>
-            </div>
+              <p className="text-sm font-semibold text-gray-500">The verified growth engine.</p>
+              
+              <div className="my-6 flex items-baseline gap-x-1">
+                <span className="text-4xl font-black tracking-tight text-gray-900">D1,500</span>
+                <span className="text-sm font-bold text-gray-400">/month</span>
+              </div>
 
-            <ul className="mb-8 space-y-4 text-sm text-gray-600 flex-1">
-              <li className="flex items-start gap-3"><CheckCircle2 size={18} className="text-blue-500 shrink-0 mt-0.5" /> <strong className="text-gray-900">Verified Blue Checkmark</strong> on your profile</li>
-              <li className="flex items-start gap-3"><CheckCircle2 size={18} className="text-blue-500 shrink-0 mt-0.5" /> Unlimited product listings & inventory</li>
-              <li className="flex items-start gap-3"><CheckCircle2 size={18} className="text-blue-500 shrink-0 mt-0.5" /> All 5 Premium Boutique Layouts</li>
-              <li className="flex items-start gap-3"><CheckCircle2 size={18} className="text-blue-500 shrink-0 mt-0.5" /> Automated WhatsApp Commerce Engine</li>
-              <li className="flex items-start gap-3"><CheckCircle2 size={18} className="text-blue-500 shrink-0 mt-0.5" /> 50 AI-Powered Image Edits per month</li>
-            </ul>
+              <ul className="mb-8 space-y-4 text-sm text-gray-600 flex-1">
+                <li className="flex items-start gap-3"><CheckCircle2 size={18} className="text-blue-500 shrink-0 mt-0.5" /> <strong className="text-gray-900">Verified Blue Checkmark</strong> on your profile</li>
+                <li className="flex items-start gap-3"><CheckCircle2 size={18} className="text-blue-500 shrink-0 mt-0.5" /> Unlimited product listings & inventory</li>
+                <li className="flex items-start gap-3"><CheckCircle2 size={18} className="text-blue-500 shrink-0 mt-0.5" /> All 5 Premium Boutique Layouts</li>
+                <li className="flex items-start gap-3"><CheckCircle2 size={18} className="text-blue-500 shrink-0 mt-0.5" /> Automated WhatsApp Commerce Engine</li>
+                <li className="flex items-start gap-3"><CheckCircle2 size={18} className="text-blue-500 shrink-0 mt-0.5" /> 50 AI-Powered Image Edits per month</li>
+              </ul>
 
-            {/* 🚀 THE FIX: Logic that handles Flagship users looking at the Pro card */}
-            <button 
-              onClick={() => handleUpgradeClick('pro')}
-              disabled={isPro || isFlagship}
-              className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 py-4 text-xs font-bold uppercase tracking-widest text-white shadow-md transition hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600"
-            >
-              {isFlagship ? 'Included in Advanced' : isPro ? 'Current Plan' : <><CreditCard size={16} /> Upgrade to Pro</>}
-            </button>
-          </div>
+              <button 
+                onClick={() => handleUpgradeClick('pro')}
+                disabled={isPro}
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 py-4 text-xs font-bold uppercase tracking-widest text-white shadow-md transition hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600"
+              >
+                {isPro ? 'Current Plan' : <><CreditCard size={16} /> Upgrade to Pro</>}
+              </button>
+            </div>
+          )}
 
           {/* ADVANCED FLAGSHIP TIER */}
           <div className={`relative flex flex-col rounded-[2rem] bg-[#1a1a1a] p-8 shadow-xl transition-all border-2 ${isFlagship ? 'border-yellow-400 ring-4 ring-yellow-400/20' : 'border-[#2a2a2a] hover:border-yellow-500/50'}`}>
@@ -142,7 +166,7 @@ export default function SettingsPaywall() {
               disabled={isFlagship}
               className="w-full flex items-center justify-center gap-2 rounded-xl bg-yellow-500 py-4 text-xs font-bold uppercase tracking-widest text-gray-900 shadow-lg transition hover:bg-yellow-400 disabled:opacity-50 disabled:hover:bg-yellow-500"
             >
-              {isFlagship ? 'Current Plan' : <><Crown size={16} /> Claim Your Empire</>}
+              {isFlagship ? 'You Own The District' : <><Crown size={16} /> Claim Your Empire</>}
             </button>
           </div>
 
