@@ -1,5 +1,4 @@
 'use client';
-
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -10,6 +9,7 @@ import {
   LayoutDashboard, Settings, Loader2
 } from 'lucide-react';
 import Link from 'next/link';
+import WhatsAppEngine from '../../components/WhatsAppEngine';
 
 type Product = { id: string; image_url: string | null; name: string; price: number; category: string; };
 type Shop = { 
@@ -47,7 +47,6 @@ export default function Dashboard() {
   const [customersCRM, setCustomersCRM] = useState<CustomerCRM[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   
-  // 🚀 Cleaned up the active tabs!
   const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'customers' | 'inventory'>('overview');
 
   const [totalOrders, setTotalOrders] = useState(0);
@@ -135,7 +134,6 @@ export default function Dashboard() {
               <Eye size={14} /> View Shop
             </Link>
 
-            {/* 🚀 THE NEW SETTINGS BUTTON ROUTING TO THE PAYWALL! */}
             <Link href="/dashboard/settings" className="flex shrink-0 items-center gap-1.5 rounded-full bg-gray-50 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:bg-gray-100">
               <Settings size={14} /> Settings
             </Link>
@@ -196,6 +194,15 @@ export default function Dashboard() {
                 <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2 flex items-center gap-1.5"><TrendingUp size={14} className="text-orange-500" /> Best Seller</p>
                 <div className="text-xl font-bold text-gray-900 truncate">{topProduct}</div>
               </div>
+            </div>
+
+            {/* 🚀 THE WHATSAPP ENGINE IS NOW HERE 🚀 */}
+            <div className="mb-8">
+              <WhatsAppEngine 
+                shopName={shop?.shop_name || 'My Boutique'} 
+                shopSlug={shop?.shop_slug || ''} 
+                products={products} 
+              />
             </div>
 
             <h3 className="text-sm font-bold uppercase tracking-widest text-gray-900 mb-4">Recent Activity</h3>
