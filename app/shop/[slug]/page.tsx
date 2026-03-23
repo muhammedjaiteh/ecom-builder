@@ -3,7 +3,7 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { use, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, MapPin, Search, ShoppingBag, Store, Truck, X, Verified, Share } from 'lucide-react';
+import { ArrowLeft, Loader2, MapPin, Search, ShoppingBag, Store, Truck, X, Share, Crown, BadgeCheck } from 'lucide-react';
 import { useCart } from '../../../components/CartProvider';
 
 // 🚀 FIXED: Master Product Type combining all needed fields
@@ -116,40 +116,31 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
 
   const theme = shop.theme_color ? themeColors[shop.theme_color] || themeColors.emerald : themeColors.emerald;
   const currentLayout = shop.store_layout || 'bantaba'; 
+  const isFlagship = shop.subscription_tier === 'flagship';
+  const isPro = shop.subscription_tier === 'pro';
 
   return (
     <div className="min-h-screen bg-[#F9F8F6] font-sans text-gray-900 selection:bg-gray-900 selection:text-white">
       
-      {/* 🚀 SINGLE PERFECTED LUXURY SHOP HEADER */}
+      {/* GLOBAL HEADER */}
       <nav className="sticky top-0 z-50 w-full border-b border-gray-100 bg-white/95 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 md:h-20 md:px-10">
           
-          {/* LEFT: Back Button */}
           <div className="flex flex-1 items-center justify-start">
-            <Link href="/" className="flex items-center justify-center p-2 text-gray-900 transition hover:opacity-70 -ml-2">
-              <ArrowLeft size={26} strokeWidth={1.25} />
-              <span className="hidden text-xs font-bold uppercase tracking-widest md:block ml-2 text-gray-500">Directory</span>
+            <Link href="/" className="group flex items-center justify-center p-2 text-gray-900 transition -ml-2">
+              <ArrowLeft size={26} strokeWidth={1.25} className="transition-transform group-hover:-translate-x-1" />
+              <span className="hidden text-xs font-bold uppercase tracking-widest md:block ml-2 text-gray-500 group-hover:text-gray-900 transition">Directory</span>
             </Link>
           </div>
 
-          {/* CENTER: The Logo (Refined Premium Sizing) */}
           <div className="flex items-center justify-center h-full">
             <Link href="/" className="flex items-center justify-center transition-transform hover:opacity-80 active:scale-95">
-              <img 
-                src="/logo.png" 
-                alt="Sanndikaa Logo" 
-                /* Dialed back to premium luxury proportions: w-24 (mobile) and w-32 (desktop) with a gentle scale */
-                className="w-24 md:w-32 h-auto object-contain scale-110 md:scale-125 origin-center" 
-              />
+              <img src="/logo.png" alt="Sanndikaa Logo" className="w-24 md:w-32 h-auto object-contain scale-110 md:scale-125 origin-center" />
             </Link>
           </div>
           
-          {/* RIGHT: Cart */}
           <div className="flex flex-1 items-center justify-end">
-            <button 
-              onClick={() => setIsCartOpen(true)} 
-              className="relative flex items-center justify-center p-2 text-gray-900 transition hover:opacity-70 -mr-2 md:mr-0"
-            >
+            <button onClick={() => setIsCartOpen(true)} className="relative flex items-center justify-center p-2 text-gray-900 transition hover:opacity-70 -mr-2 md:mr-0">
               <ShoppingBag size={22} strokeWidth={1.25} />
               {cartCount > 0 && (
                 <span className="absolute right-1 top-1 flex h-[16px] w-[16px] items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white shadow-sm ring-2 ring-white">
@@ -158,11 +149,84 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
               )}
             </button>
           </div>
-          
         </div>
       </nav>
 
-      {/* STORE NAVIGATION & FILTERING (Fixed sticky offset to sit exactly below the new header) */}
+      {/* 🚀 THE NEW SHOP PROFILE HERO WITH BADGES */}
+      <div className="relative bg-white border-b border-gray-100 pb-6 md:pb-8">
+        {/* Banner Area */}
+        <div className="h-32 md:h-56 w-full overflow-hidden relative bg-gray-100">
+          {shop.banner_url ? (
+            <img src={shop.banner_url} alt={`${shop.shop_name} Banner`} className="w-full h-full object-cover" />
+          ) : (
+            <div className={`w-full h-full ${theme.lightBg}`} />
+          )}
+        </div>
+        
+        <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 relative">
+          <div className="flex flex-col md:flex-row md:items-end gap-4 md:gap-6 -mt-12 md:-mt-16">
+            
+            {/* Logo Avatar */}
+            <div className={`h-24 w-24 md:h-32 md:w-32 rounded-full border-4 border-white bg-white overflow-hidden shadow-md shrink-0 relative z-10 ${isFlagship ? 'ring-2 ring-yellow-400 ring-offset-2' : isPro ? 'ring-2 ring-blue-400 ring-offset-2' : ''}`}>
+               {shop.logo_url ? (
+                 <img src={shop.logo_url} alt={shop.shop_name || 'Logo'} className="w-full h-full object-cover" />
+               ) : (
+                 <div className={`w-full h-full flex items-center justify-center ${theme.lightBg} ${theme.text}`}>
+                   <Store size={32} />
+                 </div>
+               )}
+            </div>
+            
+            {/* Shop Info & Trust Badges */}
+            <div className="flex-1 pb-1">
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl md:text-3xl font-serif font-bold text-gray-900">
+                  {shop.shop_name}
+                </h1>
+                {/* 👑 THE STATUS BADGES */}
+                {isFlagship && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <Crown size={22} className="text-yellow-500" fill="currentColor" />
+                    <span className="hidden md:inline text-[10px] font-bold uppercase tracking-widest text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full">Flagship</span>
+                  </div>
+                )}
+                {isPro && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <BadgeCheck size={22} className="text-blue-500" fill="currentColor" />
+                    <span className="hidden md:inline text-[10px] font-bold uppercase tracking-widest text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">Verified</span>
+                  </div>
+                )}
+              </div>
+              
+              {shop.bio && <p className="mt-2 text-sm text-gray-600 max-w-2xl leading-relaxed">{shop.bio}</p>}
+              
+              {/* Delivery / Pickup Tags */}
+              <div className="flex flex-wrap items-center gap-2 mt-4">
+                 {shop.offers_delivery && (
+                   <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-full ring-1 ring-emerald-100">
+                     <Truck size={12} /> Delivery
+                   </span>
+                 )}
+                 {shop.offers_pickup && (
+                   <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-full ring-1 ring-indigo-100">
+                     <MapPin size={12} /> Pickup
+                   </span>
+                 )}
+              </div>
+            </div>
+
+            {/* Share Button */}
+            <div className="md:pb-3 mt-4 md:mt-0">
+              <button onClick={handleShare} className="flex items-center justify-center w-full md:w-auto gap-2 rounded-full border border-gray-200 bg-white px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-gray-700 shadow-sm transition hover:bg-gray-50 hover:border-gray-300">
+                <Share size={14} /> Share Shop
+              </button>
+            </div>
+            
+          </div>
+        </div>
+      </div>
+
+      {/* STORE NAVIGATION & FILTERING */}
       <div className="sticky top-16 md:top-20 z-40 border-b border-gray-100 bg-white/95 backdrop-blur-md shadow-sm">
         <div className="mx-auto max-w-5xl px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -273,7 +337,6 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
               <div className="grid grid-cols-2 gap-4 md:gap-6">
                 {displayedProducts.map((product, index) => {
                   const imgUrl = product.image_urls?.[0] || product.image_url;
-                  // Every 3rd product spans the full width to create a dynamic "Hype Drop" feel
                   const isFeatured = index % 3 === 0;
 
                   return (
