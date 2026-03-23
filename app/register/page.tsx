@@ -7,7 +7,6 @@ import Link from 'next/link';
 import { ArrowLeft, Loader2, ArrowRight } from 'lucide-react';
 
 export default function RegisterPage() {
-  // 🚀 Added back the required business fields
   const [shopName, setShopName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -16,7 +15,6 @@ export default function RegisterPage() {
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
   
   const router = useRouter();
   const supabase = createClientComponentClient();
@@ -43,7 +41,6 @@ export default function RegisterPage() {
       password,
       options: {
         emailRedirectTo: `${location.origin}/auth/callback`,
-        // 🚀 Sending the shop name and phone to Supabase metadata
         data: {
           shop_name: shopName,
           phone_number: phone,
@@ -55,8 +52,8 @@ export default function RegisterPage() {
       setError(signUpError.message);
       setLoading(false);
     } else {
-      setSuccess(true);
-      setLoading(false);
+      // 🚀 THE INTERCEPT: Send them straight to the Upsell Page instead of saying "Check Email"
+      router.push('/onboarding/concierge');
     }
   };
 
@@ -90,108 +87,87 @@ export default function RegisterPage() {
           <h2 className="text-3xl font-black tracking-tight text-gray-900">Open a Boutique</h2>
           <p className="mt-2 text-sm text-gray-500">Apply to become a verified seller on Sanndikaa.</p>
 
-          {success ? (
-            <div className="mt-10 animate-in fade-in rounded-2xl border border-green-200 bg-green-50 p-6 text-center shadow-sm">
-              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-green-600">
-                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
+          <form onSubmit={handleRegister} className="mt-8 space-y-5">
+            
+            {error && (
+              <div className="rounded-xl border border-red-100 bg-red-50 p-4 text-xs font-bold text-red-600">
+                {error}
               </div>
-              <h3 className="text-lg font-bold text-green-900">Application Received</h3>
-              <p className="mt-2 text-sm text-green-700">
-                Please check your email to verify your account and access your new dashboard.
-              </p>
-              <button 
-                onClick={() => router.push('/login')}
-                className="mt-6 w-full rounded-xl bg-green-700 py-3.5 text-xs font-bold uppercase tracking-widest text-white transition hover:bg-green-800"
-              >
-                Go to Login
-              </button>
-            </div>
-          ) : (
-            <form onSubmit={handleRegister} className="mt-8 space-y-5">
-              
-              {error && (
-                <div className="rounded-xl border border-red-100 bg-red-50 p-4 text-xs font-bold text-red-600">
-                  {error}
-                </div>
-              )}
+            )}
 
-              {/* 🚀 ADDED BACK: Shop Name & Phone Number */}
-              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                <div>
-                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Boutique Name</label>
-                  <input
-                    type="text"
-                    value={shopName}
-                    onChange={(e) => setShopName(e.target.value)}
-                    placeholder="e.g. Delight Cosmetics"
-                    required
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Phone / WhatsApp</label>
-                  <input
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="e.g. 7000000"
-                    required
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
-                  />
-                </div>
-              </div>
-
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
               <div>
-                <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Email Address</label>
+                <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Boutique Name</label>
                 <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="founder@brand.com"
+                  type="text"
+                  value={shopName}
+                  onChange={(e) => setShopName(e.target.value)}
+                  placeholder="e.g. Delight Cosmetics"
                   required
                   className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
                 />
               </div>
 
-              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                <div>
-                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Password</label>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Min. 6 characters"
-                    required
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
-                  />
-                </div>
+              <div>
+                <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Phone / WhatsApp</label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="e.g. 7000000"
+                  required
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
+                />
+              </div>
+            </div>
 
-                <div>
-                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Confirm Password</label>
-                  <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Repeat password"
-                    required
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
-                  />
-                </div>
+            <div>
+              <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Email Address</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="founder@brand.com"
+                required
+                className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Password</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Min. 6 characters"
+                  required
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
+                />
               </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="group mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-[#1a2e1a] py-4 text-xs font-bold uppercase tracking-widest text-white shadow-md transition-all hover:bg-black disabled:opacity-70"
-              >
-                {loading ? <Loader2 size={16} className="animate-spin" /> : 'Submit Application'}
-                {!loading && <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />}
-              </button>
-            </form>
-          )}
+              <div>
+                <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Confirm Password</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Repeat password"
+                  required
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="group mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-[#1a2e1a] py-4 text-xs font-bold uppercase tracking-widest text-white shadow-md transition-all hover:bg-black disabled:opacity-70"
+            >
+              {loading ? <Loader2 size={16} className="animate-spin" /> : 'Create Account'}
+              {!loading && <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />}
+            </button>
+          </form>
 
           <p className="mt-8 text-center text-xs font-medium text-gray-500">
             Already have a boutique?{' '}
