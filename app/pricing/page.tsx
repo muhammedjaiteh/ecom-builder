@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, Star, Crown, Zap } from 'lucide-react';
+import { Check, Star, Crown, Plus } from 'lucide-react';
 import Link from 'next/link';
 
 export default function PricingTable() {
@@ -31,12 +31,17 @@ export default function PricingTable() {
                 <span className="text-4xl font-black tracking-tight text-gray-900">D399</span>
                 <span className="text-sm font-semibold leading-6 text-gray-600">/month</span>
               </p>
-              <ul role="list" className="mt-8 space-y-3 text-sm leading-6 text-gray-600">
-                <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> Up to 10 Products</li>
-                <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> Sanndikaa Subdomain</li>
-                <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> Basic WhatsApp Link</li>
-                <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> 3 AI Photo Edits/mo</li>
-              </ul>
+              
+              <div className="mt-8">
+                <h4 className="text-xs font-bold uppercase tracking-widest text-gray-900 mb-4">Core Features:</h4>
+                <ul role="list" className="space-y-3 text-sm leading-6 text-gray-600">
+                  <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> Up to 10 Products</li>
+                  <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> Standard Store Layout</li>
+                  <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> Sanndikaa Subdomain</li>
+                  <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> Basic WhatsApp Link</li>
+                  <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> 3 AI Photo Edits/mo</li>
+                </ul>
+              </div>
             </div>
             <Link href="/register?plan=starter" className="mt-8 block rounded-full px-3 py-3 text-center text-xs font-bold uppercase tracking-widest text-emerald-700 ring-1 ring-inset ring-emerald-200 hover:ring-emerald-300 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600">
               Start Selling
@@ -57,13 +62,22 @@ export default function PricingTable() {
                 <span className="text-4xl font-black tracking-tight text-gray-900">D1,500</span>
                 <span className="text-sm font-semibold leading-6 text-gray-600">/month</span>
               </p>
-              <ul role="list" className="mt-8 space-y-3 text-sm leading-6 text-gray-600">
-                <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> <strong>Unlimited Products</strong></li>
-                <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> "Verified Seller" Badge</li>
-                <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> Auto WhatsApp Catalog</li>
-                <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> 50 AI Photo Edits/mo</li>
-                <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> 10 AI Ad Copy Scripts/mo</li>
-              </ul>
+
+              <div className="mt-8">
+                <div className="flex items-center gap-2 mb-4 text-xs font-bold uppercase tracking-widest text-emerald-600 bg-emerald-50 px-3 py-2 rounded-lg">
+                  <Plus size={14} /> Everything in Starter
+                </div>
+                <ul role="list" className="space-y-3 text-sm leading-6 text-gray-600">
+                  <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> <strong>Unlimited Products</strong></li>
+                  <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> 4 Premium Store Layouts</li>
+                  <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> Custom Brand Colors</li>
+                  <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> Delivery & Pickup Setup</li>
+                  <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> "Verified Seller" Badge</li>
+                  <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> Auto WhatsApp Catalog</li>
+                  <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> 50 AI Photo Edits/mo</li>
+                  <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-emerald-600" /> 10 AI Ad Copy Scripts/mo</li>
+                </ul>
+              </div>
             </div>
             <Link href="/register?plan=pro" className="mt-8 block rounded-full bg-emerald-600 px-3 py-3 text-center text-xs font-bold uppercase tracking-widest text-white shadow-sm hover:bg-emerald-500 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600">
               Upgrade to Pro
@@ -83,13 +97,20 @@ export default function PricingTable() {
                 <span className="text-4xl font-black tracking-tight text-white">D2,500</span>
                 <span className="text-sm font-semibold leading-6 text-gray-400">/month</span>
               </p>
-              <ul role="list" className="mt-8 space-y-3 text-sm leading-6 text-gray-300">
-                <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-yellow-500" /> <strong>Custom Domain (.com)</strong></li>
-                <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-yellow-500" /> Top-of-Search Priority</li>
-                <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-yellow-500" /> Escrow Safe-Trade Included</li>
-                <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-yellow-500" /> <strong>Unlimited</strong> AI Photo Edits</li>
-                <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-yellow-500" /> <strong>Unlimited</strong> AI Ad Copies</li>
-              </ul>
+
+              <div className="mt-8">
+                <div className="flex items-center gap-2 mb-4 text-xs font-bold uppercase tracking-widest text-yellow-500 bg-yellow-500/10 px-3 py-2 rounded-lg border border-yellow-500/20">
+                  <Plus size={14} /> Everything in Pro
+                </div>
+                <ul role="list" className="space-y-3 text-sm leading-6 text-gray-300">
+                  <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-yellow-500" /> <strong>Custom Domain (.com)</strong></li>
+                  <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-yellow-500" /> Top-of-Search Priority</li>
+                  <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-yellow-500" /> Advanced Analytics Dashboard</li>
+                  <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-yellow-500" /> Escrow Safe-Trade Included</li>
+                  <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-yellow-500" /> <strong>Unlimited</strong> AI Photo Edits</li>
+                  <li className="flex gap-x-3"><Check className="h-6 w-5 flex-none text-yellow-500" /> <strong>Unlimited</strong> AI Ad Copies</li>
+                </ul>
+              </div>
             </div>
             <Link href="/register?plan=advanced" className="mt-8 block rounded-full bg-white px-3 py-3 text-center text-xs font-bold uppercase tracking-widest text-gray-900 hover:bg-gray-100 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
               Claim Your Empire
