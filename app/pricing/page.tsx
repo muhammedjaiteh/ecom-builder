@@ -141,14 +141,14 @@ export default function PricingPage() {
 
           </div>
 
-          {/* 🚀 THE "DONE-FOR-YOU" UPSELL SECTION */}
+         {/* 🚀 THE "DONE-FOR-YOU" UPSELL SECTION */}
           <div className="mx-auto mt-20 max-w-4xl rounded-[2rem] bg-gradient-to-r from-emerald-900 to-[#1a2e1a] p-8 md:p-10 shadow-xl overflow-hidden relative">
             <div className="absolute top-0 right-0 -mr-8 -mt-8 h-32 w-32 rounded-full bg-emerald-500/20 blur-2xl" />
             <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-3">
                   <Sparkles size={18} className="text-yellow-400" />
-                  <span className="text-xs font-bold uppercase tracking-widest text-yellow-400">Highly Recommended</span>
+                  <span className="text-xs font-bold uppercase tracking-widest text-yellow-400">Available to All Sellers</span>
                 </div>
                 <h3 className="text-2xl font-serif font-bold text-white mb-2">Sanndikaa Concierge</h3>
                 <p className="text-emerald-100 text-sm leading-relaxed max-w-lg">
@@ -157,19 +157,19 @@ export default function PricingPage() {
                 <div className="mt-6 flex items-center gap-6">
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-300">One-Time Setup Fee</p>
-                    <p className="text-2xl font-black text-white">D1,000</p>
+                    <p className="text-2xl font-black text-white">D500</p>
                   </div>
                   <ul className="hidden sm:block border-l border-emerald-700 pl-6 space-y-1 text-xs text-emerald-200">
-                    <li>✓ Store fully built</li>
-                    <li>✓ First 20 items uploaded</li>
-                    <li>✓ Professional bio written</li>
+                    <li>✓ Available for Starter, Pro & Advanced</li>
+                    <li>✓ Store fully built & branded</li>
+                    <li>✓ Products uploaded & optimized</li>
                   </ul>
                 </div>
               </div>
               <div className="shrink-0">
-                <Link href="/concierge" className="group flex items-center justify-center gap-2 rounded-full bg-yellow-400 px-6 py-4 text-xs font-bold uppercase tracking-widest text-emerald-900 shadow-md transition hover:bg-yellow-300">
-                  Hire Our Team <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
-                </Link>
+                <button className="group flex items-center justify-center gap-2 rounded-full bg-yellow-400 px-6 py-4 text-xs font-bold uppercase tracking-widest text-emerald-900 shadow-md transition hover:bg-yellow-300">
+                  Select After Signup <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
+                </button>
               </div>
             </div>
           </div>
