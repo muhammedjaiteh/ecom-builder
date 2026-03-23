@@ -3,7 +3,7 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
-import { ArrowRight, Search, ShoppingBag, Sparkles, Store, TrendingUp, X, Crown, Menu } from 'lucide-react';
+import { ArrowRight, Search, ShoppingBag, Sparkles, Store, TrendingUp, X, Crown, Menu, BadgeCheck } from 'lucide-react';
 import { useCart } from '../components/CartProvider';
 
 type Product = {
@@ -13,7 +13,7 @@ type Product = {
   image_url: string | null;
   image_urls: string[] | null;
   category: string | null; 
-  shop?: { shop_name: string; shop_slug: string };
+  shop?: { shop_name: string; shop_slug: string; subscription_tier?: string };
 };
 
 type Shop = {
@@ -36,7 +36,6 @@ export default function GlobalHomepage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   
-  // 🚀 Updated states for the new luxury layout
   const [isSearchOpen, setIsSearchOpen] = useState(false); 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -52,6 +51,7 @@ export default function GlobalHomepage() {
       if (!error && data) {
         const activeShops = (data as unknown as Shop[]).filter((shop) => shop.products && shop.products.length > 0);
         
+        // 🚀 THE HOMEPAGE ALGORITHM: Forces Flagship > Pro > Standard
         const sortedShops = activeShops.sort((a, b) => {
           const tierRank = { flagship: 3, pro: 2, standard: 1 };
           const rankA = tierRank[a.subscription_tier as keyof typeof tierRank] || 1;
@@ -75,18 +75,27 @@ export default function GlobalHomepage() {
     }).filter(shop => shop.products.length > 0); 
   }, [shops, activeWorld]);
 
+  // 🚀 THE SEARCH ALGORITHM: Forces Premium sellers to the top of all searches!
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
     const query = searchQuery.toLowerCase();
     const allProducts: Product[] = [];
+    
     shops.forEach(shop => {
       shop.products.forEach(product => {
         if (product.name.toLowerCase().includes(query) || (product.category && product.category.toLowerCase().includes(query)) || shop.shop_name.toLowerCase().includes(query)) {
-          allProducts.push({ ...product, shop: { shop_name: shop.shop_name, shop_slug: shop.shop_slug } });
+          allProducts.push({ ...product, shop: { shop_name: shop.shop_name, shop_slug: shop.shop_slug, subscription_tier: shop.subscription_tier } });
         }
       });
     });
-    return allProducts;
+
+    // Sort the products so Flagship items appear first, then Pro, then Standard
+    return allProducts.sort((a, b) => {
+      const tierRank = { flagship: 3, pro: 2, standard: 1 };
+      const rankA = tierRank[a.shop?.subscription_tier as keyof typeof tierRank] || 1;
+      const rankB = tierRank[b.shop?.subscription_tier as keyof typeof tierRank] || 1;
+      return rankB - rankA;
+    });
   }, [shops, searchQuery]);
 
   const spotlightProduct = shops.flatMap((shop) => shop.products.map(p => ({ ...p, shop }))).find((p) => p.image_url || (p.image_urls && p.image_urls.length > 0));
@@ -127,7 +136,6 @@ export default function GlobalHomepage() {
               <img 
                 src="/logo.png" 
                 alt="Sanndikaa Logo" 
-                /* We drastically increased the base height and used a heavy scale multiplier to fight the Canva padding */
                 className="h-16 w-auto object-contain scale-[1.8] md:h-20 md:scale-[2.2] origin-center" 
               />
             </Link>
@@ -159,7 +167,7 @@ export default function GlobalHomepage() {
           </div>
         </div>
 
-        {/* 🚀 Universal Sliding Search Bar (Desktop & Mobile) */}
+        {/* Universal Sliding Search Bar */}
         <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isSearchOpen ? 'max-h-24 border-t border-gray-100 opacity-100 bg-gray-50' : 'max-h-0 opacity-0 bg-gray-50'}`}>
           <div className="mx-auto max-w-3xl px-4 py-4 md:px-10">
             <div className="flex w-full items-center overflow-hidden rounded-full bg-white px-4 py-3 shadow-sm ring-1 ring-gray-200 focus-within:ring-2 focus-within:ring-[#1a2e1a]">
@@ -252,11 +260,18 @@ export default function GlobalHomepage() {
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
                 {searchResults.map((product) => {
                   const imgUrl = product.image_urls?.[0] || product.image_url;
+                  const isFlagship = product.shop?.subscription_tier === 'flagship';
+                  const isPro = product.shop?.subscription_tier === 'pro';
+
                   return (
                     <Link href={`/product/${product.id}`} key={product.id} className="group flex flex-col">
-                      <div className="relative aspect-[4/5] overflow-hidden rounded-2xl bg-gray-100 border border-gray-100">
+                      <div className={`relative aspect-[4/5] overflow-hidden rounded-2xl bg-gray-100 border ${isFlagship ? 'border-yellow-300 shadow-sm shadow-yellow-500/20' : isPro ? 'border-blue-200' : 'border-gray-100'}`}>
                         {imgUrl ? <img src={imgUrl} alt={product.name} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" /> : <div className="flex h-full items-center justify-center text-gray-300"><ShoppingBag size={24} /></div>}
-                        <div className="absolute top-2 left-2 rounded-md bg-white/90 backdrop-blur px-2.5 py-1 text-[9px] font-bold uppercase tracking-widest text-gray-900 shadow-sm">
+                        
+                        {/* THE TRUST BADGES DIRECTLY ON SEARCH RESULTS */}
+                        <div className="absolute top-2 left-2 flex items-center gap-1 rounded-md bg-white/95 backdrop-blur px-2.5 py-1 text-[9px] font-bold uppercase tracking-widest text-gray-900 shadow-sm">
+                          {isFlagship && <Crown size={10} className="text-yellow-500" />}
+                          {isPro && <BadgeCheck size={10} className="text-blue-500" />}
                           {product.shop?.shop_name}
                         </div>
                       </div>
@@ -280,17 +295,20 @@ export default function GlobalHomepage() {
             </div>
 
             {spotlightProduct && activeWorld === 'All' && (
-              <div className="mb-14 overflow-hidden rounded-[2rem] bg-[#1a2e1a] shadow-xl">
+              <div className="mb-14 overflow-hidden rounded-[2rem] bg-[#1a2e1a] shadow-xl ring-1 ring-yellow-500/30">
                 <div className="grid grid-cols-1 md:grid-cols-2 items-center">
                   <div className="aspect-[4/3] md:aspect-auto md:h-[450px] w-full overflow-hidden bg-gray-900">
                     <img src={spotlightProduct.image_urls?.[0] || spotlightProduct.image_url!} alt={spotlightProduct.name} className="h-full w-full object-cover opacity-90 transition duration-700 hover:opacity-100 hover:scale-105" />
                   </div>
-                  <div className="flex flex-col justify-center p-8 md:p-14 text-center md:text-left">
-                    <p className="mb-3 flex items-center justify-center md:justify-start gap-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-400">
-                      <TrendingUp size={14} /> District Spotlight
+                  <div className="flex flex-col justify-center p-8 md:p-14 text-center md:text-left relative">
+                    <Crown className="absolute top-8 right-8 h-20 w-20 text-yellow-500/10" />
+                    <p className="mb-3 flex items-center justify-center md:justify-start gap-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-yellow-400">
+                      <TrendingUp size={14} /> Spotlight Boutique
                     </p>
                     <h2 className="text-3xl font-serif text-white md:text-4xl leading-tight">{spotlightProduct.name}</h2>
-                    <p className="mt-3 text-xs font-medium text-gray-400 uppercase tracking-widest">Curated by {spotlightProduct.shop.shop_name}</p>
+                    <p className="mt-3 text-xs font-medium text-gray-400 uppercase tracking-widest flex items-center justify-center md:justify-start gap-1">
+                      Curated by {spotlightProduct.shop.shop_name} <BadgeCheck size={12} className="text-blue-400" />
+                    </p>
                     <div className="mt-8">
                       <Link href={`/product/${spotlightProduct.id}`} className="inline-flex items-center gap-2 rounded-full bg-white px-7 py-3.5 text-xs font-bold uppercase tracking-widest text-[#1a2e1a] shadow-md transition hover:bg-gray-200">
                         View Details
@@ -315,26 +333,30 @@ export default function GlobalHomepage() {
                   const isPro = shop.subscription_tier === 'pro';
 
                   return (
-                    <div key={shop.id} className={`flex flex-col rounded-[2rem] bg-white p-5 shadow-sm border transition-all hover:shadow-lg ${isFlagship ? 'border-yellow-200' : isPro ? 'border-emerald-100' : 'border-gray-100'}`}>
+                    <div key={shop.id} className={`group flex flex-col rounded-[2rem] bg-white p-5 shadow-sm border transition-all duration-300 hover:shadow-xl hover:-translate-y-1 ${isFlagship ? 'border-yellow-300 shadow-yellow-500/10 ring-1 ring-yellow-500/20' : isPro ? 'border-blue-200 shadow-blue-500/5' : 'border-gray-100'}`}>
                       <div className="mb-5 flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <div className="h-12 w-12 overflow-hidden rounded-full border border-gray-100 bg-gray-50">
+                          <div className={`h-12 w-12 overflow-hidden rounded-full border bg-gray-50 ${isFlagship ? 'border-yellow-400' : isPro ? 'border-blue-400' : 'border-gray-100'}`}>
                             {shop.logo_url ? <img src={shop.logo_url} alt={shop.shop_name} className="h-full w-full object-cover rounded-full" /> : <div className="flex h-full items-center justify-center text-gray-300"><Store size={18} /></div>}
                           </div>
                           <div>
-                            <h3 className="text-base font-bold text-gray-900">{shop.shop_name}</h3>
+                            <h3 className="text-base font-bold text-gray-900 flex items-center gap-1.5">
+                              {shop.shop_name} 
+                              {isFlagship && <Crown size={14} className="text-yellow-500" />}
+                              {isPro && <BadgeCheck size={14} className="text-blue-500" />}
+                            </h3>
                             
                             {isFlagship ? (
-                              <p className="text-[10px] font-bold uppercase tracking-widest text-yellow-600 flex items-center gap-1 mt-0.5"><Crown size={10} /> Spotlight Boutique</p>
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-yellow-600 mt-0.5">District Spotlight</p>
                             ) : isPro ? (
-                              <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 flex items-center gap-1 mt-0.5"><Sparkles size={10} /> Verified Seller</p>
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-blue-600 mt-0.5">Verified Seller</p>
                             ) : (
                               <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mt-0.5">Independent Seller</p>
                             )}
                           </div>
                         </div>
-                        <Link href={`/shop/${shop.shop_slug}`} className="group flex items-center gap-1.5 rounded-full bg-gray-50 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-gray-900 transition hover:bg-gray-100">
-                          Visit <ArrowRight size={12} className="transition-transform group-hover:translate-x-1" />
+                        <Link href={`/shop/${shop.shop_slug}`} className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition ${isFlagship ? 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100' : isPro ? 'bg-blue-50 text-blue-700 hover:bg-blue-100' : 'bg-gray-50 text-gray-900 hover:bg-gray-100'}`}>
+                          Visit <ArrowRight size={12} />
                         </Link>
                       </div>
 
@@ -342,9 +364,9 @@ export default function GlobalHomepage() {
                         {shop.products.slice(0, 3).map((product) => {
                           const imgUrl = product.image_urls?.[0] || product.image_url;
                           return (
-                            <Link href={`/product/${product.id}`} key={product.id} className="group flex flex-col gap-2">
-                              <div className="relative aspect-[4/5] overflow-hidden rounded-xl bg-gray-50 border border-gray-100">
-                                {imgUrl ? <img src={imgUrl} alt={product.name} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" /> : <div className="flex h-full items-center justify-center text-gray-200"><ShoppingBag size={20} /></div>}
+                            <Link href={`/product/${product.id}`} key={product.id} className="group/item flex flex-col gap-2">
+                              <div className={`relative aspect-[4/5] overflow-hidden rounded-xl bg-gray-50 border ${isFlagship ? 'border-yellow-100' : isPro ? 'border-blue-50' : 'border-gray-100'}`}>
+                                {imgUrl ? <img src={imgUrl} alt={product.name} className="h-full w-full object-cover transition-transform duration-700 group-hover/item:scale-105" /> : <div className="flex h-full items-center justify-center text-gray-200"><ShoppingBag size={20} /></div>}
                               </div>
                               <div>
                                 <p className="truncate text-[11px] font-semibold text-gray-900">{product.name}</p>
