@@ -3,25 +3,27 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Loader2, Save, Store, Image as ImageIcon, Camera, Palette, LayoutTemplate, Truck, MapPin, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Loader2, Save, Store, Image as ImageIcon, Camera, Palette, LayoutTemplate, Truck, MapPin, CheckCircle2, Lock } from 'lucide-react';
 import Link from 'next/link';
 
+// 🚀 Premium Locks for Themes
 const THEMES = [
-  { id: 'emerald', name: 'Emerald', hex: 'bg-[#1a2e1a]' },
-  { id: 'midnight', name: 'Midnight', hex: 'bg-slate-900' },
-  { id: 'terracotta', name: 'Terracotta', hex: 'bg-orange-700' },
-  { id: 'ocean', name: 'Ocean', hex: 'bg-blue-600' },
-  { id: 'rose', name: 'Rose', hex: 'bg-rose-500' },
-  { id: 'champagne', name: 'Champagne', hex: 'bg-[#D7C0AE]' },
-  { id: 'onyx', name: 'Onyx', hex: 'bg-[#1A1A1A]' },
+  { id: 'emerald', name: 'Emerald', hex: 'bg-[#1a2e1a]', isPremium: false },
+  { id: 'midnight', name: 'Midnight', hex: 'bg-slate-900', isPremium: false },
+  { id: 'terracotta', name: 'Terracotta', hex: 'bg-orange-700', isPremium: true },
+  { id: 'ocean', name: 'Ocean', hex: 'bg-blue-600', isPremium: true },
+  { id: 'rose', name: 'Rose', hex: 'bg-rose-500', isPremium: true },
+  { id: 'champagne', name: 'Champagne', hex: 'bg-[#D7C0AE]', isPremium: true },
+  { id: 'onyx', name: 'Onyx', hex: 'bg-[#1A1A1A]', isPremium: true },
 ];
 
+// 🚀 Premium Locks for Layouts
 const LAYOUTS = [
-  { id: 'bantaba', name: 'The Bantaba', desc: 'Airy, premium floating cards' },
-  { id: 'senegambia', name: 'The Senegambia', desc: 'Massive editorial lookbook' },
-  { id: 'kairaba', name: 'The Kairaba', desc: 'Horizontal list view' },
-  { id: 'jollof', name: 'The Jollof', desc: 'Dynamic sneakerhead hype drops' },
-  { id: 'serrekunda', name: 'The Serrekunda', desc: 'Dense, fast catalog grid' },
+  { id: 'bantaba', name: 'The Bantaba', desc: 'Airy, premium floating cards', isPremium: false },
+  { id: 'senegambia', name: 'The Senegambia', desc: 'Massive editorial lookbook', isPremium: true },
+  { id: 'kairaba', name: 'The Kairaba', desc: 'Horizontal list view', isPremium: true },
+  { id: 'jollof', name: 'The Jollof', desc: 'Dynamic sneakerhead hype drops', isPremium: true },
+  { id: 'serrekunda', name: 'The Serrekunda', desc: 'Dense, fast catalog grid', isPremium: true },
 ];
 
 export default function CustomizeShopPage() {
@@ -30,6 +32,7 @@ export default function CustomizeShopPage() {
 
   const [userId, setUserId] = useState<string | null>(null);
   const [shopId, setShopId] = useState<string | null>(null);
+  const [subscriptionTier, setSubscriptionTier] = useState('starter'); 
   
   // States
   const [bio, setBio] = useState('');
@@ -58,6 +61,7 @@ export default function CustomizeShopPage() {
       const { data: shop } = await supabase.from('shops').select('*').eq('id', user.id).single();
       if (shop) {
         setShopId(shop.id);
+        setSubscriptionTier(shop.subscription_tier || 'starter');
         setBio(shop.bio || '');
         setThemeColor(shop.theme_color || 'emerald');
         setStoreLayout(shop.store_layout || 'bantaba');
@@ -80,15 +84,20 @@ export default function CustomizeShopPage() {
       const fileExt = file.name.split('.').pop();
       const filePath = `${shopId}/${type}_${Date.now()}.${fileExt}`;
       
-      const { error: uploadError } = await supabase.storage.from('brand').upload(filePath, file);
-      if (uploadError) throw uploadError;
+      // 🚀 FIXED: Now uploading to 'brands' (with an s)
+      const { error: uploadError } = await supabase.storage.from('brands').upload(filePath, file);
+      if (uploadError) {
+        console.error("Upload Error:", uploadError);
+        throw new Error("Could not upload image to the server.");
+      }
 
-      const { data: { publicUrl } } = supabase.storage.from('brand').getPublicUrl(filePath);
+      // 🚀 FIXED: Now fetching URL from 'brands'
+      const { data: { publicUrl } } = supabase.storage.from('brands').getPublicUrl(filePath);
       
       if (type === 'logo') setLogoUrl(publicUrl);
       if (type === 'banner') setBannerUrl(publicUrl);
-    } catch (error) {
-      alert(`Failed to upload ${type}. Please try again.`);
+    } catch (error: any) {
+      alert(error.message || `Failed to upload ${type}. Please try again.`);
     } finally {
       setUploadingImage(null);
     }
@@ -118,6 +127,13 @@ export default function CustomizeShopPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const hasPremiumAccess = subscriptionTier === 'pro' || subscriptionTier === 'flagship';
+
+  const handlePremiumClick = (itemName: string) => {
+    alert(`The ${itemName} design is locked. Upgrade to District PRO or ADVANCED to unlock premium branding features!`);
+    router.push('/dashboard/settings');
   };
 
   if (loading) return <div className="flex min-h-screen items-center justify-center bg-[#F9F8F6]"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>;
@@ -241,20 +257,24 @@ export default function CustomizeShopPage() {
             <div className="rounded-[2rem] bg-white p-6 shadow-sm border border-gray-100">
               <h2 className="text-lg font-serif font-bold text-gray-900 mb-6 flex items-center gap-2"><Palette size={18} className="text-gray-400" /> Brand Color</h2>
               <div className="grid grid-cols-4 gap-3">
-                {THEMES.map((theme) => (
-                  <button 
-                    key={theme.id} 
-                    onClick={() => setThemeColor(theme.id)}
-                    className="flex flex-col items-center gap-2 group"
-                  >
-                    <div className={`h-10 w-10 rounded-full ${theme.hex} flex items-center justify-center transition-transform ${themeColor === theme.id ? 'ring-2 ring-gray-900 ring-offset-2 scale-110' : 'hover:scale-110 shadow-sm border border-gray-200'}`}>
-                      {themeColor === theme.id && <CheckCircle2 size={16} className="text-white opacity-90" />}
-                    </div>
-                    <span className={`text-[9px] font-bold uppercase tracking-widest ${themeColor === theme.id ? 'text-gray-900' : 'text-gray-400 group-hover:text-gray-600'}`}>
-                      {theme.name}
-                    </span>
-                  </button>
-                ))}
+                {THEMES.map((theme) => {
+                  const isLocked = theme.isPremium && !hasPremiumAccess;
+                  return (
+                    <button 
+                      key={theme.id} 
+                      onClick={() => isLocked ? handlePremiumClick(theme.name) : setThemeColor(theme.id)}
+                      className={`flex flex-col items-center gap-2 group relative ${isLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    >
+                      {isLocked && <div className="absolute -top-1 -right-1 z-10 bg-gray-900 text-white rounded-full p-0.5"><Lock size={10} /></div>}
+                      <div className={`h-10 w-10 rounded-full ${theme.hex} flex items-center justify-center transition-transform ${themeColor === theme.id ? 'ring-2 ring-gray-900 ring-offset-2 scale-110' : 'hover:scale-110 shadow-sm border border-gray-200'}`}>
+                        {themeColor === theme.id && <CheckCircle2 size={16} className="text-white opacity-90" />}
+                      </div>
+                      <span className={`text-[9px] font-bold uppercase tracking-widest ${themeColor === theme.id ? 'text-gray-900' : 'text-gray-400 group-hover:text-gray-600'}`}>
+                        {theme.name}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -262,19 +282,36 @@ export default function CustomizeShopPage() {
             <div className="rounded-[2rem] bg-white p-6 shadow-sm border border-gray-100">
               <h2 className="text-lg font-serif font-bold text-gray-900 mb-6 flex items-center gap-2"><LayoutTemplate size={18} className="text-gray-400" /> Boutique Layout</h2>
               <div className="space-y-3">
-                {LAYOUTS.map((layout) => (
-                  <button 
-                    key={layout.id} 
-                    onClick={() => setStoreLayout(layout.id)}
-                    className={`w-full flex items-center justify-between p-4 rounded-xl border text-left transition-all ${storeLayout === layout.id ? 'border-gray-900 bg-gray-900 text-white shadow-md' : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'}`}
-                  >
-                    <div>
-                      <h4 className={`text-sm font-bold ${storeLayout === layout.id ? 'text-white' : 'text-gray-900'}`}>{layout.name}</h4>
-                      <p className={`text-[10px] uppercase tracking-widest mt-1 ${storeLayout === layout.id ? 'text-gray-300' : 'text-gray-500'}`}>{layout.desc}</p>
-                    </div>
-                    {storeLayout === layout.id && <CheckCircle2 size={18} className="text-white" />}
-                  </button>
-                ))}
+                {LAYOUTS.map((layout) => {
+                  const isLocked = layout.isPremium && !hasPremiumAccess;
+                  return (
+                    <button 
+                      key={layout.id} 
+                      onClick={() => isLocked ? handlePremiumClick(layout.name) : setStoreLayout(layout.id)}
+                      className={`w-full flex items-center justify-between p-4 rounded-xl border text-left transition-all ${
+                        storeLayout === layout.id 
+                          ? 'border-gray-900 bg-gray-900 text-white shadow-md' 
+                          : isLocked 
+                            ? 'border-gray-100 bg-gray-50/50 opacity-60 cursor-not-allowed' 
+                            : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div>
+                        <h4 className={`text-sm font-bold flex items-center gap-2 ${storeLayout === layout.id ? 'text-white' : 'text-gray-900'}`}>
+                          {layout.name} 
+                        </h4>
+                        <p className={`text-[10px] uppercase tracking-widest mt-1 ${storeLayout === layout.id ? 'text-gray-300' : 'text-gray-500'}`}>{layout.desc}</p>
+                      </div>
+                      
+                      {/* Show Checkmark if active, otherwise show Lock if locked */}
+                      {storeLayout === layout.id ? (
+                        <CheckCircle2 size={18} className="text-white" />
+                      ) : isLocked ? (
+                        <Lock size={16} className="text-gray-400" />
+                      ) : null}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
