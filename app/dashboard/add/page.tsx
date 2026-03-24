@@ -143,7 +143,7 @@ export default function AddProductPage() {
 
       // 3. Save to Database
       const { error: insertError } = await supabase.from('products').insert({
-        shop_id: shop.id, 
+        user_id: userId, 
         name: name.trim(), 
         price: parseFloat(price), 
         description: description.trim(),
