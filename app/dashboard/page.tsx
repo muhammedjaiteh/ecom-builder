@@ -6,7 +6,7 @@ import {
   Package, DollarSign, TrendingUp, Plus, Edit, Trash2, ExternalLink, 
   BarChart3, Eye, Store, Truck, LogOut, 
   ShoppingCart, Clock, CheckCircle2, Phone, User, Users, MessageCircle, 
-  LayoutDashboard, Settings, Loader2
+  LayoutDashboard, Settings, Loader2, Palette
 } from 'lucide-react';
 import Link from 'next/link';
 import WhatsAppEngine from '../../components/WhatsAppEngine';
@@ -132,6 +132,11 @@ export default function Dashboard() {
           <div className="flex items-center gap-2 md:gap-3 overflow-x-auto hide-scrollbar pb-1 md:pb-0">
             <Link href={`/shop/${shop?.shop_slug}`} target="_blank" className="flex shrink-0 items-center gap-1.5 rounded-full bg-gray-50 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:bg-gray-100">
               <Eye size={14} /> View Shop
+            </Link>
+
+            {/* 🚀 ADDED THE CUSTOMIZE BUTTON RIGHT HERE */}
+            <Link href="/dashboard/customize" className="flex shrink-0 items-center gap-1.5 rounded-full bg-gray-50 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:bg-gray-100">
+              <Palette size={14} /> Customize
             </Link>
 
             <Link href="/dashboard/settings" className="flex shrink-0 items-center gap-1.5 rounded-full bg-gray-50 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:bg-gray-100">
