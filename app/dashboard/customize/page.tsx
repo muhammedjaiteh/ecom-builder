@@ -84,15 +84,16 @@ export default function CustomizeShopPage() {
       const fileExt = file.name.split('.').pop();
       const filePath = `${shopId}/${type}_${Date.now()}.${fileExt}`;
       
-      // 🚀 FIXED: Now uploading to 'brands' (with an s)
-      const { error: uploadError } = await supabase.storage.from('brands').upload(filePath, file);
+      // 🚀 FIXED: Pointing exactly to 'brand' (No 's')
+      const { error: uploadError } = await supabase.storage.from('brand').upload(filePath, file);
+      
       if (uploadError) {
-        console.error("Upload Error:", uploadError);
-        throw new Error("Could not upload image to the server.");
+        console.error("Upload Error Details:", uploadError);
+        throw new Error(uploadError.message || "Could not upload image to the server.");
       }
 
-      // 🚀 FIXED: Now fetching URL from 'brands'
-      const { data: { publicUrl } } = supabase.storage.from('brands').getPublicUrl(filePath);
+      // 🚀 FIXED: Pointing exactly to 'brand' (No 's')
+      const { data: { publicUrl } } = supabase.storage.from('brand').getPublicUrl(filePath);
       
       if (type === 'logo') setLogoUrl(publicUrl);
       if (type === 'banner') setBannerUrl(publicUrl);
