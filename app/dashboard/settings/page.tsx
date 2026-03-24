@@ -32,9 +32,16 @@ export default function SettingsPaywall() {
     loadShop();
   }, [router, supabase]);
 
+  // 🚀 THE MONEY PIPE ENGINE
   const handleUpgradeClick = (tier: string) => {
-    // 🚀 We will wire this to Stripe or Mobile Money later!
-    alert(`Initiating upgrade to ${tier.toUpperCase()} tier...`);
+    const adminNumber = '447599710468'; // Chief's Admin Number
+    const tierName = tier === 'flagship' ? 'ADVANCED FLAGSHIP (D2,500)' : 'PRO (D1,500)';
+    const shopName = shop?.shop_name || 'my boutique';
+    
+    const message = `👑 *Sanndikaa Upgrade Request*\n\nHello Admin! I am the owner of *${shopName}*. \n\nI would like to upgrade my store to the *${tierName}* tier to unlock premium features.\n\nHow can I send the payment to activate this?`;
+    
+    const whatsappUrl = `https://wa.me/${adminNumber}?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
   };
 
   if (loading) return <div className="flex min-h-screen items-center justify-center bg-[#F9F8F6]"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>;
@@ -93,10 +100,9 @@ export default function SettingsPaywall() {
         </div>
 
         {/* 3. DYNAMIC PAYWALL GRID */}
-        {/* If Flagship, it centers a single card. Otherwise, it shows the 2-column comparison */}
         <div className={`grid grid-cols-1 gap-8 mx-auto ${isFlagship ? 'max-w-md' : 'md:grid-cols-2 max-w-4xl'}`}>
           
-          {/* PRO TIER (Hidden entirely if the user is already on Flagship) */}
+          {/* PRO TIER */}
           {!isFlagship && (
             <div className={`relative flex flex-col rounded-[2rem] bg-white p-8 shadow-sm transition-all border-2 ${isPro ? 'border-blue-500 ring-4 ring-blue-500/10' : 'border-gray-100 hover:border-blue-200'}`}>
               {isPro && (
