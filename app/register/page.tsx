@@ -58,7 +58,8 @@ function RegisterForm() {
       return;
     }
 
-    const { error: signUpError } = await supabase.auth.signUp({
+    // 1. Create the Auth user
+    const { data: authData, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -66,7 +67,6 @@ function RegisterForm() {
         data: {
           shop_name: shopName,
           phone_number: phone,
-          // 🛑 ZERO-TRUST LOCK: They are NOT a starter. They are unpaid.
           subscription_tier: 'pending', 
         }
       },
@@ -76,6 +76,13 @@ function RegisterForm() {
       setError(signUpError.message);
       setLoading(false);
     } else {
+      // 🚀 THE BRUTE-FORCE LOCK: We manually force the shops table to 'pending' right now, overriding any Supabase defaults.
+      if (authData.user) {
+        await supabase.from('shops').update({ 
+          subscription_tier: 'pending' 
+        }).eq('id', authData.user.id);
+      }
+
       router.replace(`/onboarding/concierge?plan=${plan || 'starter'}`);
     }
   };
