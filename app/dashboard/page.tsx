@@ -1,10 +1,11 @@
 'use client';
+
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Package, DollarSign, TrendingUp, Plus, Edit, Trash2, ExternalLink, 
-  BarChart3, Eye, Store, Truck, LogOut, 
+  BarChart3, Eye, Store, Truck, LogOut, Lock,
   ShoppingCart, Clock, CheckCircle2, Phone, User, Users, MessageCircle, 
   LayoutDashboard, Settings, Loader2, Palette
 } from 'lucide-react';
@@ -118,6 +119,45 @@ export default function Dashboard() {
 
   if (loading) return <div className="min-h-screen bg-[#F9F8F6] flex justify-center items-center"><Loader2 className="animate-spin text-gray-400" /></div>;
 
+  // 🛑 THE VAULT DOOR: Zero-Trust Security Check
+  if (shop?.subscription_tier === 'pending' || shop?.subscription_tier === 'suspended') {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-[#F9F8F6] px-4 text-center selection:bg-gray-900 selection:text-white">
+        <div className="w-full max-w-md rounded-[2rem] bg-white p-10 shadow-2xl border border-red-100">
+          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-red-50 text-red-500">
+            <Lock size={32} />
+          </div>
+          <h1 className="mb-2 text-2xl font-black tracking-tight text-gray-900">Account Locked</h1>
+          <p className="mb-8 text-sm leading-relaxed text-gray-500">
+            Your boutique is currently <strong className="text-gray-900 uppercase">Pending Activation</strong>. 
+            To unlock your Command Center and start selling, please complete your subscription payment via WhatsApp.
+          </p>
+          
+          <div className="space-y-3">
+            <a 
+              href="https://wa.me/447599710468?text=Hello%20Admin!%20I%20need%20to%20pay%20for%20my%20Sanndikaa%20subscription%20to%20unlock%20my%20dashboard." 
+              target="_blank"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1a2e1a] py-4 text-xs font-bold uppercase tracking-widest text-white shadow-md transition hover:bg-black"
+            >
+              Contact Admin to Pay
+            </a>
+            
+            <button 
+              onClick={handleLogout} 
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gray-50 py-4 text-xs font-bold uppercase tracking-widest text-gray-500 transition hover:bg-gray-100 hover:text-gray-900"
+            >
+              Sign Out
+            </button>
+          </div>
+          
+          <p className="mt-8 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+            Already paid? Please wait a few minutes for the Admin to verify your transaction.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#F9F8F6] font-sans text-gray-900 selection:bg-gray-900 selection:text-white pb-24">
       
@@ -134,7 +174,6 @@ export default function Dashboard() {
               <Eye size={14} /> View Shop
             </Link>
 
-            {/* 🚀 ADDED THE CUSTOMIZE BUTTON RIGHT HERE */}
             <Link href="/dashboard/customize" className="flex shrink-0 items-center gap-1.5 rounded-full bg-gray-50 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:bg-gray-100">
               <Palette size={14} /> Customize
             </Link>
@@ -201,7 +240,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* 🚀 THE WHATSAPP ENGINE IS NOW HERE 🚀 */}
             <div className="mb-8">
               <WhatsAppEngine 
                 shopName={shop?.shop_name || 'My Boutique'} 
