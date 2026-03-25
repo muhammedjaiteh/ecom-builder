@@ -124,7 +124,8 @@ export default function GlobalHomepage() {
               <Link href="/login" className="text-xs font-bold uppercase tracking-widest text-gray-400 transition hover:text-gray-900">
                 Seller Login
               </Link>
-              <Link href="/dashboard" className="rounded-full bg-[#1a2e1a] px-5 py-2 text-[10px] font-bold uppercase tracking-widest text-white transition hover:bg-black">
+              {/* 🚀 FIXED: Pointing to /pricing */}
+              <Link href="/pricing" className="rounded-full bg-[#1a2e1a] px-5 py-2 text-[10px] font-bold uppercase tracking-widest text-white transition hover:bg-black">
                 Open Boutique
               </Link>
             </div>
@@ -195,7 +196,8 @@ export default function GlobalHomepage() {
             <Link href="/login" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-gray-500 hover:text-gray-900">
               Seller Login <ArrowRight size={14} />
             </Link>
-            <Link href="/dashboard" onClick={() => setIsMobileMenuOpen(false)} className="w-full text-center rounded-full bg-[#1a2e1a] px-5 py-3.5 text-xs font-bold uppercase tracking-widest text-white shadow-md transition hover:bg-black">
+            {/* 🚀 FIXED: Pointing to /pricing */}
+            <Link href="/pricing" onClick={() => setIsMobileMenuOpen(false)} className="w-full text-center rounded-full bg-[#1a2e1a] px-5 py-3.5 text-xs font-bold uppercase tracking-widest text-white shadow-md transition hover:bg-black">
               Open a Boutique
             </Link>
           </div>
