@@ -2,7 +2,7 @@
 
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useState, Suspense } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Loader2, ArrowRight } from 'lucide-react';
 
@@ -14,14 +14,37 @@ function RegisterForm() {
   const [confirmPassword, setConfirmPassword] = useState('');
   
   const [loading, setLoading] = useState(false);
+  const [pageChecking, setPageChecking] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClientComponentClient();
 
-  // 🚀 THE INTERCEPTOR: Grab the plan from the URL (defaults to starter if none)
-  const selectedPlan = searchParams.get('plan') || 'starter';
+  const plan = searchParams.get('plan');
+
+  // 🚀 THE BOUNCER: Checks if they are logged in OR if they bypassed Pricing
+  useEffect(() => {
+    async function enforceFunnel() {
+      // 1. If they are already logged in, send them straight to the Dashboard
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        router.push('/dashboard');
+        return;
+      }
+
+      // 2. If they are NOT logged in, but they didn't pick a plan, send them to Pricing
+      if (!plan) {
+        router.push('/pricing');
+        return;
+      }
+
+      // If they pass both checks, let them see the registration form
+      setPageChecking(false);
+    }
+    
+    enforceFunnel();
+  }, [plan, router, supabase]);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,7 +71,7 @@ function RegisterForm() {
         data: {
           shop_name: shopName,
           phone_number: phone,
-          subscription_tier: selectedPlan, // 🚀 Saving their chosen plan to the database!
+          subscription_tier: plan || 'starter', // Save their plan!
         }
       },
     });
@@ -62,8 +85,15 @@ function RegisterForm() {
     }
   };
 
+  if (pageChecking) {
+    return <div className="flex h-64 items-center justify-center"><Loader2 className="animate-spin text-gray-400" /></div>;
+  }
+
   return (
     <div className="w-full max-w-md">
+      <div className="mb-6 inline-block rounded-full bg-gray-100 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-gray-600">
+        Selected Plan: <span className="text-emerald-600">{plan}</span>
+      </div>
       <h2 className="text-3xl font-black tracking-tight text-gray-900">Open a Boutique</h2>
       <p className="mt-2 text-sm text-gray-500">Apply to become a verified seller on Sanndikaa.</p>
 
@@ -181,11 +211,10 @@ export default function RegisterPage() {
 
       {/* RIGHT SIDE: THE MINIMALIST FORM */}
       <div className="flex w-full flex-col justify-center px-6 py-12 lg:w-1/2 lg:px-20 xl:px-32">
-        <Link href="/" className="group mb-8 flex w-fit items-center gap-2 text-xs font-bold uppercase tracking-widest text-gray-400 transition hover:text-gray-900">
-          <ArrowLeft size={16} className="transition-transform group-hover:-translate-x-1" /> Back to Directory
+        <Link href="/pricing" className="group mb-8 flex w-fit items-center gap-2 text-xs font-bold uppercase tracking-widest text-gray-400 transition hover:text-gray-900">
+          <ArrowLeft size={16} className="transition-transform group-hover:-translate-x-1" /> Back to Pricing
         </Link>
 
-        {/* 🚀 Next.js requires useSearchParams to be wrapped in a Suspense boundary to prevent rendering bugs */}
         <Suspense fallback={<div className="flex justify-center py-10"><Loader2 className="animate-spin text-gray-400" /></div>}>
           <RegisterForm />
         </Suspense>
