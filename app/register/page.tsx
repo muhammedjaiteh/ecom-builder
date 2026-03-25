@@ -1,12 +1,12 @@
 'use client';
 
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useState, Suspense } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Loader2, ArrowRight } from 'lucide-react';
 
-export default function RegisterPage() {
+function RegisterForm() {
   const [shopName, setShopName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -17,7 +17,11 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClientComponentClient();
+
+  // 🚀 THE INTERCEPTOR: Grab the plan from the URL (defaults to starter if none)
+  const selectedPlan = searchParams.get('plan') || 'starter';
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,6 +48,7 @@ export default function RegisterPage() {
         data: {
           shop_name: shopName,
           phone_number: phone,
+          subscription_tier: selectedPlan, // 🚀 Saving their chosen plan to the database!
         }
       },
     });
@@ -52,11 +57,109 @@ export default function RegisterPage() {
       setError(signUpError.message);
       setLoading(false);
     } else {
-      // 🚀 THE INTERCEPT: Send them straight to the Upsell Page instead of saying "Check Email"
+      // 🚀 THE FUNNEL: Send them straight to the DFY Upsell Page
       router.push('/onboarding/concierge');
     }
   };
 
+  return (
+    <div className="w-full max-w-md">
+      <h2 className="text-3xl font-black tracking-tight text-gray-900">Open a Boutique</h2>
+      <p className="mt-2 text-sm text-gray-500">Apply to become a verified seller on Sanndikaa.</p>
+
+      <form onSubmit={handleRegister} className="mt-8 space-y-5">
+        
+        {error && (
+          <div className="rounded-xl border border-red-100 bg-red-50 p-4 text-xs font-bold text-red-600">
+            {error}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+          <div>
+            <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Boutique Name</label>
+            <input
+              type="text"
+              value={shopName}
+              onChange={(e) => setShopName(e.target.value)}
+              placeholder="e.g. Delight Cosmetics"
+              required
+              className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Phone / WhatsApp</label>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="e.g. 7000000"
+              required
+              className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Email Address</label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="founder@brand.com"
+            required
+            className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+          <div>
+            <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Min. 6 characters"
+              required
+              className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Confirm Password</label>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Repeat password"
+              required
+              className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
+            />
+          </div>
+        </div>
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="group mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-[#1a2e1a] py-4 text-xs font-bold uppercase tracking-widest text-white shadow-md transition-all hover:bg-black disabled:opacity-70"
+        >
+          {loading ? <Loader2 size={16} className="animate-spin" /> : 'Create Account'}
+          {!loading && <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />}
+        </button>
+      </form>
+
+      <p className="mt-8 text-center text-xs font-medium text-gray-500">
+        Already have a boutique?{' '}
+        <Link href="/login" className="font-bold text-[#1a2e1a] hover:underline">
+          Sign in here
+        </Link>
+      </p>
+    </div>
+  );
+}
+
+export default function RegisterPage() {
   return (
     <div className="flex min-h-screen bg-white font-sans text-gray-900 selection:bg-gray-900 selection:text-white">
       
@@ -78,104 +181,14 @@ export default function RegisterPage() {
 
       {/* RIGHT SIDE: THE MINIMALIST FORM */}
       <div className="flex w-full flex-col justify-center px-6 py-12 lg:w-1/2 lg:px-20 xl:px-32">
-        
         <Link href="/" className="group mb-8 flex w-fit items-center gap-2 text-xs font-bold uppercase tracking-widest text-gray-400 transition hover:text-gray-900">
           <ArrowLeft size={16} className="transition-transform group-hover:-translate-x-1" /> Back to Directory
         </Link>
 
-        <div className="w-full max-w-md">
-          <h2 className="text-3xl font-black tracking-tight text-gray-900">Open a Boutique</h2>
-          <p className="mt-2 text-sm text-gray-500">Apply to become a verified seller on Sanndikaa.</p>
-
-          <form onSubmit={handleRegister} className="mt-8 space-y-5">
-            
-            {error && (
-              <div className="rounded-xl border border-red-100 bg-red-50 p-4 text-xs font-bold text-red-600">
-                {error}
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-              <div>
-                <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Boutique Name</label>
-                <input
-                  type="text"
-                  value={shopName}
-                  onChange={(e) => setShopName(e.target.value)}
-                  placeholder="e.g. Delight Cosmetics"
-                  required
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Phone / WhatsApp</label>
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="e.g. 7000000"
-                  required
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Email Address</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="founder@brand.com"
-                required
-                className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-              <div>
-                <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Password</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Min. 6 characters"
-                  required
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Confirm Password</label>
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Repeat password"
-                  required
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="group mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-[#1a2e1a] py-4 text-xs font-bold uppercase tracking-widest text-white shadow-md transition-all hover:bg-black disabled:opacity-70"
-            >
-              {loading ? <Loader2 size={16} className="animate-spin" /> : 'Create Account'}
-              {!loading && <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />}
-            </button>
-          </form>
-
-          <p className="mt-8 text-center text-xs font-medium text-gray-500">
-            Already have a boutique?{' '}
-            <Link href="/login" className="font-bold text-[#1a2e1a] hover:underline">
-              Sign in here
-            </Link>
-          </p>
-        </div>
+        {/* 🚀 Next.js requires useSearchParams to be wrapped in a Suspense boundary to prevent rendering bugs */}
+        <Suspense fallback={<div className="flex justify-center py-10"><Loader2 className="animate-spin text-gray-400" /></div>}>
+          <RegisterForm />
+        </Suspense>
       </div>
     </div>
   );
