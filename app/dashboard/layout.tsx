@@ -8,6 +8,8 @@ import { Lock, Loader2 } from 'lucide-react';
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [paymentLink, setPaymentLink] = useState('https://wa.me/447599710468');
+  
   const supabase = createClientComponentClient();
   const router = useRouter();
   const pathname = usePathname();
@@ -21,23 +23,47 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         return;
       }
 
-      // Fetch their exact subscription tier from the database
-      const { data } = await supabase.from('shops').select('subscription_tier').eq('id', user.id).single();
+      // Fetch their exact subscription tier and shop name
+      const { data } = await supabase.from('shops').select('shop_name, subscription_tier').eq('id', user.id).single();
       
       if (data) {
         setStatus(data.subscription_tier);
+
+        // 🧠 THE MAGIC: Read their memory and generate the personalized professional invoice
+        if (data.subscription_tier === 'pending' || data.subscription_tier === 'suspended') {
+          const savedPlan = localStorage.getItem('sanndikaa_plan') || 'starter';
+          const savedConcierge = localStorage.getItem('sanndikaa_concierge') || 'no';
+
+          let planPrice = 399;
+          let planName = 'Starter';
+          if (savedPlan === 'pro') { planPrice = 1500; planName = 'Pro'; }
+          if (savedPlan === 'advanced' || savedPlan === 'flagship') { planPrice = 2500; planName = 'Advanced'; }
+
+          let total = planPrice;
+          let conciergeText = '';
+          if (savedConcierge === 'yes') {
+             total += 500;
+             conciergeText = `\nI also added the *Done-For-You Setup* (D500).`;
+          }
+
+          const shopNameStr = data.shop_name || 'my boutique';
+          
+          // The Ultimate Professional Invoice Message
+          const msg = `✨ *Sanndikaa Store Activation*\n\nHello Admin! I need to complete my payment to unlock the dashboard for *${shopNameStr}*.\n\nI selected the *${planName} Plan* (D${planPrice}).${conciergeText}\n\n*Total Due: D${total}*\n\nHow do I send my payment?`;
+          
+          setPaymentLink(`https://wa.me/447599710468?text=${encodeURIComponent(msg)}`);
+        }
       }
       setLoading(false);
     }
     checkGlobalAccess();
   }, [router, supabase, pathname]);
 
-  // 1. Show loader while checking security
   if (loading) {
     return <div className="flex min-h-screen items-center justify-center bg-[#F9F8F6]"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>;
   }
 
-  // 2. THE GLOBAL VAULT DOOR: If they are pending, they cannot see the children (dashboard pages)
+  // 🛑 THE GLOBAL VAULT DOOR
   if (status === 'pending' || status === 'suspended' || status === null) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-[#F9F8F6] px-4 text-center selection:bg-gray-900 selection:text-white">
@@ -53,7 +79,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           
           <div className="space-y-3">
             <a 
-              href="https://wa.me/447599710468?text=Hello%20Admin!%20I%20need%20to%20pay%20for%20my%20Sanndikaa%20subscription%20to%20unlock%20my%20dashboard." 
+              href={paymentLink} 
               target="_blank"
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1a2e1a] py-4 text-xs font-bold uppercase tracking-widest text-white shadow-md transition hover:bg-black"
             >
@@ -72,6 +98,5 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
 
-  // 3. If they are 'starter', 'pro', or 'flagship', let them into the dashboard
   return <>{children}</>;
 }

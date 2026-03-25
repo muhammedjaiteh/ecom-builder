@@ -30,12 +30,10 @@ function RegisterForm() {
         router.replace('/dashboard');
         return;
       }
-
       if (!plan) {
         router.replace('/pricing');
         return;
       }
-
       setPageChecking(false);
     }
     enforceFunnel();
@@ -51,14 +49,12 @@ function RegisterForm() {
       setLoading(false);
       return;
     }
-
     if (password.length < 6) {
       setError('Password must be at least 6 characters long.');
       setLoading(false);
       return;
     }
 
-    // 1. Create the Auth user
     const { data: authData, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
@@ -76,20 +72,20 @@ function RegisterForm() {
       setError(signUpError.message);
       setLoading(false);
     } else {
-      // 🚀 THE BRUTE-FORCE LOCK: We manually force the shops table to 'pending' right now, overriding any Supabase defaults.
       if (authData.user) {
         await supabase.from('shops').update({ 
           subscription_tier: 'pending' 
         }).eq('id', authData.user.id);
       }
 
+      // 🧠 BROWSER MEMORY: Save their chosen plan so the locked dashboard remembers!
+      localStorage.setItem('sanndikaa_plan', plan || 'starter');
+
       router.replace(`/onboarding/concierge?plan=${plan || 'starter'}`);
     }
   };
 
-  if (pageChecking) {
-    return <div className="flex h-64 items-center justify-center"><Loader2 className="animate-spin text-gray-400" /></div>;
-  }
+  if (pageChecking) return <div className="flex h-64 items-center justify-center"><Loader2 className="animate-spin text-gray-400" /></div>;
 
   return (
     <div className="w-full max-w-md">
@@ -100,39 +96,31 @@ function RegisterForm() {
       <p className="mt-2 text-sm text-gray-500">Apply to become a verified seller on Sanndikaa.</p>
 
       <form onSubmit={handleRegister} className="mt-8 space-y-5">
-        {error && (
-          <div className="rounded-xl border border-red-100 bg-red-50 p-4 text-xs font-bold text-red-600">
-            {error}
-          </div>
-        )}
-
+        {error && <div className="rounded-xl border border-red-100 bg-red-50 p-4 text-xs font-bold text-red-600">{error}</div>}
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
           <div>
             <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Boutique Name</label>
-            <input type="text" value={shopName} onChange={(e) => setShopName(e.target.value)} required className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900" />
+            <input type="text" value={shopName} onChange={(e) => setShopName(e.target.value)} required className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900" />
           </div>
           <div>
             <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Phone / WhatsApp</label>
-            <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900" />
+            <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900" />
           </div>
         </div>
-
         <div>
           <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Email Address</label>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900" />
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900" />
         </div>
-
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
           <div>
             <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Password</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Min. 6 chars" required className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900" />
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Min. 6 chars" required className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900" />
           </div>
           <div>
             <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Confirm Password</label>
-            <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Repeat password" required className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900" />
+            <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Repeat password" required className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3.5 text-sm font-medium text-gray-900 outline-none focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900" />
           </div>
         </div>
-
         <button type="submit" disabled={loading} className="group mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-[#1a2e1a] py-4 text-xs font-bold uppercase tracking-widest text-white shadow-md transition-all hover:bg-black disabled:opacity-70">
           {loading ? <Loader2 size={16} className="animate-spin" /> : 'Create Account'}
           {!loading && <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />}
@@ -155,10 +143,8 @@ export default function RegisterPage() {
         <div className="absolute bottom-16 left-16 right-16">
           <p className="mb-4 text-xs font-bold uppercase tracking-[0.3em] text-emerald-400">Partner Program</p>
           <h1 className="text-4xl font-serif leading-tight text-white xl:text-5xl">Claim your space <br /> in the District.</h1>
-          <p className="mt-4 max-w-md text-sm leading-relaxed text-gray-300">Join Gambia's premier digital marketplace. Build your flagship store, upload your inventory, and reach thousands of premium buyers.</p>
         </div>
       </div>
-
       <div className="flex w-full flex-col justify-center px-6 py-12 lg:w-1/2 lg:px-20 xl:px-32">
         <Link href="/pricing" className="group mb-8 flex w-fit items-center gap-2 text-xs font-bold uppercase tracking-widest text-gray-400 transition hover:text-gray-900">
           <ArrowLeft size={16} className="transition-transform group-hover:-translate-x-1" /> Back to Pricing
