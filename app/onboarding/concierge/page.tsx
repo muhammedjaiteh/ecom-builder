@@ -1,11 +1,50 @@
 'use client';
 
-import { CheckCircle2, Sparkles, ArrowRight, Clock, Image as ImageIcon, PenTool } from 'lucide-react';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { CheckCircle2, Sparkles, Clock, Image as ImageIcon, PenTool, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 
 export default function ConciergeIntercept() {
+  const [shopName, setShopName] = useState<string>('my boutique');
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const supabase = createClientComponentClient();
+
+  useEffect(() => {
+    async function loadShop() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.push('/login');
+        return;
+      }
+      
+      const { data } = await supabase.from('shops').select('shop_name').eq('id', user.id).single();
+      if (data && data.shop_name) {
+        setShopName(data.shop_name);
+      }
+      setLoading(false);
+    }
+    loadShop();
+  }, [router, supabase]);
+
+  // 🚀 THE UPSLELL WIRE: Sending the D500 lead straight to your phone
+  const handleConciergeAccept = () => {
+    const adminNumber = '447599710468'; // Chief's Admin Number
+    const message = `✨ *Sanndikaa Concierge Request*\n\nHello Admin! I just created my store, *${shopName}*.\n\nI would like to pay the D500 one-time fee to have your expert team build and optimize my luxury boutique for me.\n\nHow do I send the payment and my product photos?`;
+    
+    const whatsappUrl = `https://wa.me/${adminNumber}?text=${encodeURIComponent(message)}`;
+    
+    // Open WhatsApp in a new tab, then seamlessly redirect their main tab to the dashboard
+    window.open(whatsappUrl, '_blank');
+    router.push('/dashboard');
+  };
+
+  if (loading) return <div className="min-h-screen bg-[#F9F8F6] flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>;
+
   return (
-    <div className="min-h-screen bg-[#F9F8F6] flex items-center justify-center p-4 selection:bg-gray-900 selection:text-white">
+    <div className="min-h-screen bg-[#F9F8F6] flex items-center justify-center p-4 selection:bg-gray-900 selection:text-white pb-24">
       <div className="max-w-2xl w-full bg-white rounded-[2rem] shadow-2xl overflow-hidden border border-gray-100">
         
         {/* Progress Bar & Header */}
@@ -74,8 +113,12 @@ export default function ConciergeIntercept() {
 
           {/* Action Buttons (The Psychology) */}
           <div className="mt-10 flex flex-col items-center gap-4">
+            
             {/* The Big Yes */}
-            <button className="w-full flex items-center justify-center gap-2 rounded-full bg-yellow-400 px-8 py-4 text-sm font-bold uppercase tracking-widest text-emerald-900 shadow-xl transition hover:bg-yellow-300 hover:-translate-y-1">
+            <button 
+              onClick={handleConciergeAccept}
+              className="w-full flex items-center justify-center gap-2 rounded-full bg-yellow-400 px-8 py-4 text-sm font-bold uppercase tracking-widest text-emerald-900 shadow-xl transition hover:bg-yellow-300 hover:-translate-y-1"
+            >
               <CheckCircle2 size={20} /> Yes, Build My Store For Me (D500)
             </button>
             
@@ -83,8 +126,10 @@ export default function ConciergeIntercept() {
             <Link href="/dashboard" className="text-[11px] font-bold uppercase tracking-widest text-gray-400 underline-offset-4 hover:text-gray-900 hover:underline transition">
               No thanks, I will build it myself
             </Link>
+
           </div>
         </div>
+
       </div>
     </div>
   );
