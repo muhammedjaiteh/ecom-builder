@@ -3,12 +3,13 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle2, Sparkles, Clock, Image as ImageIcon, PenTool, Loader2 } from 'lucide-react';
-import Link from 'next/link';
+import { CheckCircle2, Sparkles, Clock, Image as ImageIcon, PenTool, Loader2, ArrowRight, CreditCard } from 'lucide-react';
 
 export default function ConciergeIntercept() {
   const [shopName, setShopName] = useState<string>('my boutique');
+  const [shopTier, setShopTier] = useState<string>('starter');
   const [loading, setLoading] = useState(true);
+  
   const router = useRouter();
   const supabase = createClientComponentClient();
 
@@ -20,24 +21,41 @@ export default function ConciergeIntercept() {
         return;
       }
       
-      const { data } = await supabase.from('shops').select('shop_name').eq('id', user.id).single();
-      if (data && data.shop_name) {
-        setShopName(data.shop_name);
+      const { data } = await supabase.from('shops').select('shop_name, subscription_tier').eq('id', user.id).single();
+      if (data) {
+        setShopName(data.shop_name || 'my boutique');
+        setShopTier(data.subscription_tier || 'starter');
       }
       setLoading(false);
     }
     loadShop();
   }, [router, supabase]);
 
-  // 🚀 THE UPSLELL WIRE: Sending the D500 lead straight to your phone
-  const handleConciergeAccept = () => {
-    const adminNumber = '447599710468'; // Chief's Admin Number
-    const message = `✨ *Sanndikaa Concierge Request*\n\nHello Admin! I just created my store, *${shopName}*.\n\nI would like to pay the D500 one-time fee to have your expert team build and optimize my luxury boutique for me.\n\nHow do I send the payment and my product photos?`;
-    
-    const whatsappUrl = `https://wa.me/${adminNumber}?text=${encodeURIComponent(message)}`;
-    
-    // Open WhatsApp in a new tab, then seamlessly redirect their main tab to the dashboard
-    window.open(whatsappUrl, '_blank');
+  // 🧮 Pricing Engine
+  const getPlanPrice = (tier: string) => {
+    if (tier === 'pro') return 1500;
+    if (tier === 'advanced' || tier === 'flagship') return 2500;
+    return 399; // Starter default
+  };
+
+  const planName = shopTier.charAt(0).toUpperCase() + shopTier.slice(1);
+  const planPrice = getPlanPrice(shopTier);
+  const conciergePrice = 500;
+  const totalWithConcierge = planPrice + conciergePrice;
+
+  const adminNumber = '447599710468'; // Chief's Admin Number
+
+  // 🚀 WhatsApp Checkout: Subscription + Concierge
+  const handleFullCheckout = () => {
+    const message = `✨ *Sanndikaa Store Activation & Setup*\n\nHello Admin! I just registered my store, *${shopName}*.\n\nI am on the *${planName} Plan* (D${planPrice}) AND I want the *Done-For-You Concierge Setup* (D${conciergePrice}).\n\n*Total Due: D${totalWithConcierge}*\n\nHow do I send my payment and product photos?`;
+    window.open(`https://wa.me/${adminNumber}?text=${encodeURIComponent(message)}`, '_blank');
+    router.push('/dashboard');
+  };
+
+  // 🚀 WhatsApp Checkout: Subscription Only (DIY)
+  const handleBaseCheckout = () => {
+    const message = `✨ *Sanndikaa Store Activation*\n\nHello Admin! I just registered my store, *${shopName}*.\n\nI will build the store myself. I am ready to pay my first month for the *${planName} Plan*.\n\n*Total Due: D${planPrice}*\n\nHow do I send my payment?`;
+    window.open(`https://wa.me/${adminNumber}?text=${encodeURIComponent(message)}`, '_blank');
     router.push('/dashboard');
   };
 
@@ -52,80 +70,65 @@ export default function ConciergeIntercept() {
           <div className="flex items-center justify-center gap-2 mb-2">
             <div className="h-2 w-12 rounded-full bg-emerald-500"></div>
             <div className="h-2 w-12 rounded-full bg-emerald-500"></div>
-            <div className="h-2 w-12 rounded-full bg-emerald-200"></div>
+            <div className="h-2 w-12 rounded-full bg-emerald-500"></div>
           </div>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600">Step 2 of 3: Store Setup</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600">Step 3 of 3: Activation</p>
           <h1 className="mt-4 text-2xl font-serif font-bold text-gray-900 md:text-3xl">
-            Your account is active! 🎉
+            Activate Your Boutique 🎉
           </h1>
           <p className="mt-2 text-sm text-gray-500">
-            You can go to your dashboard now and spend the next few hours building your store... <br className="hidden md:block" />
-            <strong className="text-gray-900">OR, you can skip the hard work.</strong>
+            You selected the <strong className="text-gray-900">{planName} Plan (D{planPrice}/mo)</strong>. <br className="hidden md:block" />
+            Before you enter the dashboard, how would you like to set up your store?
           </p>
         </div>
 
         {/* The Pitch */}
         <div className="p-6 md:p-10">
-          <div className="rounded-2xl bg-gradient-to-br from-emerald-900 to-[#1a2e1a] p-8 text-white relative overflow-hidden shadow-lg">
+          <div className="rounded-2xl bg-gradient-to-br from-emerald-900 to-[#1a2e1a] p-8 text-white relative overflow-hidden shadow-lg border border-emerald-800">
             <div className="absolute top-0 right-0 -mr-8 -mt-8 h-32 w-32 rounded-full bg-emerald-500/20 blur-2xl" />
             
-            <div className="relative z-10 flex items-center gap-2 mb-4">
-              <Sparkles size={20} className="text-yellow-400" />
-              <h2 className="text-xl font-bold font-serif">Sanndikaa Concierge</h2>
-            </div>
-            
-            <p className="text-sm text-emerald-100 leading-relaxed mb-6">
-              For a one-time fee of <strong className="text-white text-lg">D500</strong>, our expert team will build your entire luxury boutique for you in 48 hours. Just send us your raw photos on WhatsApp, and we handle the rest.
-            </p>
-
-            <div className="space-y-4">
-              <div className="flex items-start gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10">
-                  <ImageIcon size={16} className="text-emerald-300" />
+            <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Sparkles size={20} className="text-yellow-400" />
+                  <h2 className="text-xl font-bold font-serif">Sanndikaa Concierge</h2>
                 </div>
-                <div>
-                  <h4 className="text-sm font-bold text-white">Professional Image Editing</h4>
-                  <p className="text-xs text-emerald-200 mt-0.5">We remove messy backgrounds and make your products look expensive.</p>
-                </div>
+                <p className="text-sm text-emerald-100 leading-relaxed max-w-sm">
+                  Skip the hard work. For a one-time fee of <strong className="text-white">D500</strong>, our expert team will edit your photos, write your descriptions, and build your entire luxury store in 48 hours.
+                </p>
               </div>
-              
-              <div className="flex items-start gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10">
-                  <PenTool size={16} className="text-emerald-300" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-white">Luxury Copywriting</h4>
-                  <p className="text-xs text-emerald-200 mt-0.5">We write compelling titles and descriptions that make customers want to buy.</p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10">
-                  <Clock size={16} className="text-emerald-300" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-white">Ready in 48 Hours</h4>
-                  <p className="text-xs text-emerald-200 mt-0.5">Your store will be fully loaded with up to 20 products and ready to launch.</p>
-                </div>
+              <div className="shrink-0 text-left md:text-right border-t border-emerald-800/50 md:border-t-0 md:border-l md:pl-6 pt-4 md:pt-0">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-400">Total with Concierge</p>
+                <p className="text-3xl font-black text-white">D{totalWithConcierge}</p>
+                <p className="text-xs text-emerald-200 mt-1">Plan + One-Time Setup</p>
               </div>
             </div>
           </div>
 
-          {/* Action Buttons (The Psychology) */}
+          {/* Action Buttons (The Checkout Psychology) */}
           <div className="mt-10 flex flex-col items-center gap-4">
             
-            {/* The Big Yes */}
+            {/* The Big Yes (Plan + Concierge) */}
             <button 
-              onClick={handleConciergeAccept}
-              className="w-full flex items-center justify-center gap-2 rounded-full bg-yellow-400 px-8 py-4 text-sm font-bold uppercase tracking-widest text-emerald-900 shadow-xl transition hover:bg-yellow-300 hover:-translate-y-1"
+              onClick={handleFullCheckout}
+              className="w-full flex items-center justify-center gap-2 rounded-xl bg-yellow-400 px-8 py-4 text-sm font-bold uppercase tracking-widest text-emerald-900 shadow-xl transition hover:bg-yellow-300 hover:-translate-y-1"
             >
-              <CheckCircle2 size={20} /> Yes, Build My Store For Me (D500)
+              <CheckCircle2 size={18} /> Activate & Build My Store (D{totalWithConcierge})
             </button>
             
-            {/* The Small No */}
-            <Link href="/dashboard" className="text-[11px] font-bold uppercase tracking-widest text-gray-400 underline-offset-4 hover:text-gray-900 hover:underline transition">
-              No thanks, I will build it myself
-            </Link>
+            <div className="w-full flex items-center gap-4 my-2">
+              <div className="flex-1 border-t border-gray-100"></div>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">OR</span>
+              <div className="flex-1 border-t border-gray-100"></div>
+            </div>
+
+            {/* The DIY Checkout (Plan Only) */}
+            <button 
+              onClick={handleBaseCheckout}
+              className="w-full flex items-center justify-center gap-2 rounded-xl bg-white border border-gray-200 px-8 py-4 text-xs font-bold uppercase tracking-widest text-gray-700 shadow-sm transition hover:bg-gray-50 hover:border-gray-300"
+            >
+              <CreditCard size={16} className="text-gray-400" /> I will build it myself. Activate {planName} Plan (D{planPrice})
+            </button>
 
           </div>
         </div>
