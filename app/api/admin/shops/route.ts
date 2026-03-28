@@ -1,4 +1,4 @@
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
@@ -6,7 +6,29 @@ const ADMIN_EMAIL = 'muhammedjaiteh419@gmail.com';
 
 export async function GET() {
   try {
-    const supabase = createRouteHandlerClient({ cookies: cookies });
+    // Await cookies in Next.js 15
+    const cookieStore = await cookies();
+    
+    // Create Supabase client with cookie adapter for Next.js 15
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        auth: {
+          storage: {
+            getItem: (key: string) => {
+              return cookieStore.get(key)?.value ?? null;
+            },
+            setItem: (key: string, value: string) => {
+              // Not needed for GET requests
+            },
+            removeItem: (key: string) => {
+              // Not needed for GET requests
+            },
+          },
+        },
+      }
+    );
     
     // Verify admin authentication
     const { data: { user } } = await supabase.auth.getUser();
