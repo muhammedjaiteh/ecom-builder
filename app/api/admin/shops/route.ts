@@ -2,7 +2,7 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
-const ADMIN_EMAIL = 'Muhammedjaiteh419@Gmail.com';
+const ADMIN_EMAIL = 'muhammedjaiteh419@gmail.com';
 
 export async function GET() {
   try {
@@ -11,7 +11,7 @@ export async function GET() {
     // Verify admin authentication
     const { data: { user } } = await supabase.auth.getUser();
     
-    if (!user || user.email !== ADMIN_EMAIL) {
+    if (!user || user.email?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 

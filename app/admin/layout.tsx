@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Shield, Loader2 } from 'lucide-react';
 
-const ADMIN_EMAIL = 'Muhammedjaiteh419@Gmail.com';
+const ADMIN_EMAIL = 'muhammedjaiteh419@gmail.com';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
@@ -24,8 +24,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         return;
       }
 
-      // Check if user email matches admin email
-      if (user.email === ADMIN_EMAIL) {
+      // Check if user email matches admin email (case-insensitive)
+      if (user.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
         setIsAdmin(true);
         setLoading(false);
       } else {
