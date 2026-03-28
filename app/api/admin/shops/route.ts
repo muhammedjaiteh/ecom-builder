@@ -6,7 +6,7 @@ const ADMIN_EMAIL = 'muhammedjaiteh419@gmail.com';
 
 export async function GET() {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = createRouteHandlerClient({ cookies: cookies });
     
     // Verify admin authentication
     const { data: { user } } = await supabase.auth.getUser();
