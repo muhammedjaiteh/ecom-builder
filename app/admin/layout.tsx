@@ -18,18 +18,31 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     async function checkAdminAccess() {
       const { data: { user } } = await supabase.auth.getUser();
       
+      // Debug log to see what email we're receiving
+      console.log('ADMIN ATTEMPT:', user?.email);
+      console.log('Expected admin email:', ADMIN_EMAIL);
+      
       // No user logged in
       if (!user) {
+        console.log('No user found, redirecting to login');
         router.push('/login');
         return;
       }
 
-      // Check if user email matches admin email (case-insensitive)
-      if (user.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+      // Bulletproof email check: lowercase and trim whitespace
+      const userEmail = user.email?.toLowerCase().trim() || '';
+      const adminEmail = ADMIN_EMAIL.toLowerCase().trim();
+      
+      console.log('Comparing:', { userEmail, adminEmail, match: userEmail === adminEmail });
+
+      // Check if user email matches admin email
+      if (userEmail === adminEmail) {
+        console.log('Admin access granted!');
         setIsAdmin(true);
         setLoading(false);
       } else {
         // Not admin - redirect to home
+        console.log('Not admin, redirecting to home');
         router.push('/');
       }
     }
