@@ -2,7 +2,7 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
-const ADMIN_EMAIL = 'admin@sanndikaa.com';
+const ADMIN_EMAIL = 'Muhammedjaiteh419@Gmail.com';
 
 export async function POST(request: Request) {
   try {

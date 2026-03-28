@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Shield, Loader2 } from 'lucide-react';
 
-const ADMIN_EMAIL = 'admin@sanndikaa.com';
+const ADMIN_EMAIL = 'Muhammedjaiteh419@Gmail.com';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
