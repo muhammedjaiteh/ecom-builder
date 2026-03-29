@@ -9,8 +9,8 @@ export async function GET() {
     // Await cookies in Next.js 15
     const cookieStore = await cookies();
     
-    // Create Supabase client with cookie adapter for Next.js 15
-    const supabase = createClient(
+    // Create regular Supabase client for auth verification
+    const supabaseAuth = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
@@ -31,14 +31,26 @@ export async function GET() {
     );
     
     // Verify admin authentication
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await supabaseAuth.auth.getUser();
     
     if (!user || user.email?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    // Fetch all shops - email should be stored in the shops table
-    const { data: shops, error } = await supabase
+    // Create service role client for bypassing RLS (God Mode)
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false
+        }
+      }
+    );
+
+    // Fetch all shops with service role key - bypasses RLS
+    const { data: shops, error } = await supabaseAdmin
       .from('shops')
       .select('*')
       .order('created_at', { ascending: false });
