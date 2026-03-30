@@ -1,8 +1,18 @@
 'use client';
 
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useEffect, useState } from 'react';
-import { CheckCircle2, XCircle, Clock, Crown, Zap, Rocket, Users, TrendingUp, DollarSign, Loader2, RefreshCw } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, Crown, Rocket, Users, TrendingUp, DollarSign, Loader2, RefreshCw, type LucideIcon } from 'lucide-react';
+
+
+interface ApiShop {
+  id: string;
+  seller_id: string;
+  name: string;
+  status: string;
+  subscription_tier: string;
+  created_at: string;
+  owner_email?: string | null;
+}
 
 interface Shop {
   id: string;
@@ -13,68 +23,89 @@ interface Shop {
   email?: string;
   phone_number?: string;
   subscription_expires_at?: string;
-  owner_email?: string;
+  owner_email?: string | null;
+  seller_id?: string;
+  status?: string;
 }
+
 
 export default function AdminDashboard() {
   const [shops, setShops] = useState<Shop[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
   
-  const supabase = createClientComponentClient();
-
   const fetchShops = async () => {
     setLoading(true);
-    
+
     try {
-      // Fetch shops from our secure API endpoint
-      const response = await fetch('/api/admin/shops');
-      
-      if (response.ok) {
-        const { shops: shopsData } = await response.json();
-        setShops(shopsData as Shop[]);
-      } else {
-        console.error('Failed to fetch shops');
+      const response = await fetch('/api/admin/shops', {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to fetch shops');
       }
+
+      setShops(
+        ((data.shops || []) as ApiShop[]).map((shop) => ({
+          id: shop.id,
+          shop_name: shop.name,
+          shop_slug: shop.seller_id,
+          subscription_tier: shop.subscription_tier,
+          created_at: shop.created_at,
+          owner_email: shop.owner_email,
+          seller_id: shop.seller_id,
+          status: shop.status,
+        }))
+      );
     } catch (error) {
       console.error('Error fetching shops:', error);
+      setShops([]);
+    } finally {
+      setLoading(false);
     }
-    
-    setLoading(false);
   };
 
   useEffect(() => {
     fetchShops();
   }, []);
 
-  const handleUpdateTier = async (shopId: string, newTier: string) => {
+  const adminControl = async (shopId: string, payload: { status: string; subscription_tier: string }) => {
     setUpdating(shopId);
-    
+
     try {
-      const response = await fetch('/api/admin/update-tier', {
-        method: 'POST',
+      const response = await fetch('/api/admin/shops', {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shopId, newTier }),
+        body: JSON.stringify({ id: shopId, ...payload }),
       });
 
-      if (response.ok) {
-        // Update local state
-        setShops(shops.map(shop => 
-          shop.id === shopId ? { ...shop, subscription_tier: newTier } : shop
-        ));
-      } else {
-        alert('Failed to update tier');
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to update shop');
       }
+
+      setShops((prev) =>
+        prev.map((shop) =>
+          shop.id === shopId
+            ? { ...shop, status: payload.status, subscription_tier: payload.subscription_tier }
+            : shop
+        )
+      );
     } catch (error) {
-      console.error('Error updating tier:', error);
-      alert('Error updating tier');
+      console.error('Error updating shop:', error);
+      alert('Failed to update shop');
+    } finally {
+      setUpdating(null);
     }
-    
-    setUpdating(null);
   };
 
   const getStatusBadge = (tier: string) => {
-    const badges: Record<string, { icon: any; color: string; bg: string; label: string }> = {
+    const badges: Record<string, { icon: LucideIcon; color: string; bg: string; label: string }> = {
       pending: { icon: Clock, color: 'text-yellow-700', bg: 'bg-yellow-100 border-yellow-200', label: 'Pending' },
       starter: { icon: CheckCircle2, color: 'text-green-700', bg: 'bg-green-100 border-green-200', label: 'Starter' },
       pro: { icon: Crown, color: 'text-purple-700', bg: 'bg-purple-100 border-purple-200', label: 'Pro' },
@@ -220,21 +251,21 @@ export default function AdminDashboard() {
                     {shop.subscription_tier === 'pending' ? (
                       <div className="flex justify-end gap-2">
                         <button
-                          onClick={() => handleUpdateTier(shop.id, 'starter')}
+                          onClick={() => adminControl(shop.id, { status: 'active', subscription_tier: 'starter' })}
                           disabled={updating === shop.id}
                           className="rounded-lg border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-bold text-green-700 transition hover:bg-green-100 disabled:opacity-50"
                         >
                           {updating === shop.id ? <Loader2 size={12} className="animate-spin" /> : 'Starter'}
                         </button>
                         <button
-                          onClick={() => handleUpdateTier(shop.id, 'pro')}
+                          onClick={() => adminControl(shop.id, { status: 'active', subscription_tier: 'pro' })}
                           disabled={updating === shop.id}
                           className="rounded-lg border border-purple-200 bg-purple-50 px-3 py-1.5 text-xs font-bold text-purple-700 transition hover:bg-purple-100 disabled:opacity-50"
                         >
                           {updating === shop.id ? <Loader2 size={12} className="animate-spin" /> : 'Pro'}
                         </button>
                         <button
-                          onClick={() => handleUpdateTier(shop.id, 'advanced')}
+                          onClick={() => adminControl(shop.id, { status: 'active', subscription_tier: 'advanced' })}
                           disabled={updating === shop.id}
                           className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-100 disabled:opacity-50"
                         >
@@ -244,14 +275,14 @@ export default function AdminDashboard() {
                     ) : (
                       <div className="flex justify-end gap-2">
                         <button
-                          onClick={() => handleUpdateTier(shop.id, 'suspended')}
+                          onClick={() => adminControl(shop.id, { status: 'suspended', subscription_tier: shop.subscription_tier })}
                           disabled={updating === shop.id}
                           className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-bold text-red-700 transition hover:bg-red-100 disabled:opacity-50"
                         >
                           {updating === shop.id ? <Loader2 size={12} className="animate-spin" /> : 'Suspend'}
                         </button>
                         <button
-                          onClick={() => handleUpdateTier(shop.id, 'pending')}
+                          onClick={() => adminControl(shop.id, { status: 'pending', subscription_tier: 'pending' })}
                           disabled={updating === shop.id}
                           className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-bold text-gray-700 transition hover:bg-gray-100 disabled:opacity-50"
                         >
