@@ -5,55 +5,122 @@ import { NextResponse } from 'next/server';
 
 const ADMIN_EMAIL = 'muhammedjaiteh419@gmail.com';
 
+type ShopRow = {
+  id: string;
+  seller_id: string;
+  name: string;
+  description: string | null;
+  status: string;
+  subscription_tier: string;
+  created_at: string;
+};
+
+function getServiceSupabase() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error('Missing Supabase service role environment variables');
+  }
+
+  return createClient(supabaseUrl, serviceRoleKey);
+}
+
 export async function GET() {
   try {
-    // 1. Await cookies (Next.js 15 requirement)
-    const cookieStore = await cookies();
+    const supabaseAdmin = getServiceSupabase();
 
-    // 2. Safely verify user without hardcoding project IDs
-    const supabaseAuth = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll();
-          },
-        },
-      }
-    );
+    const [{ data: shops, error: shopsError }, { data: usersData, error: usersError }] = await Promise.all([
+      supabaseAdmin
+        .from('shops')
+        .select('id, seller_id, name, description, status, subscription_tier, created_at')
+        .order('created_at', { ascending: false }),
+      supabaseAdmin.auth.admin.listUsers(),
+    ]);
 
-    const { data: { user } } = await supabaseAuth.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (shopsError) {
+      return NextResponse.json({ error: shopsError.message }, { status: 500 });
     }
 
-    if (user.email?.toLowerCase().trim() !== ADMIN_EMAIL) {
+    if (usersError) {
+      return NextResponse.json({ error: usersError.message }, { status: 500 });
+    }
+
+    const usersById = new Map((usersData?.users || []).map((user) => [user.id, user.email ?? null]));
+
+    const combinedShops = (shops || []).map((shop: ShopRow) => ({
+      ...shop,
+      owner_email: usersById.get(shop.seller_id) ?? null,
+    }));
+
+    return NextResponse.json({ shops: combinedShops }, { status: 200 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Internal server error';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const cookieStore = await cookies();
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !anonKey) {
+      return NextResponse.json({ error: 'Missing Supabase auth environment variables' }, { status: 500 });
+    }
+
+    const supabaseAuth = createServerClient(supabaseUrl, anonKey, {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll() {
+          // No-op in route handlers for this endpoint.
+        },
+      },
+    });
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabaseAuth.auth.getUser();
+
+    if (userError || !user || user.email?.toLowerCase().trim() !== ADMIN_EMAIL) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // 3. Use God Mode to fetch the sellers
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    const body = await request.json();
+    const { id, status, subscription_tier } = body as {
+      id?: string;
+      status?: string;
+      subscription_tier?: string;
+    };
+
+    if (!id || !status || !subscription_tier) {
+      return NextResponse.json(
+        { error: 'id, status, and subscription_tier are required' },
+        { status: 400 }
+      );
+    }
+
+    const supabaseAdmin = getServiceSupabase();
 
     const { data, error } = await supabaseAdmin
       .from('shops')
-      .select('*')
-      .order('created_at', { ascending: false });
+      .update({ status, subscription_tier })
+      .eq('id', id)
+      .select('id, seller_id, name, description, status, subscription_tier, created_at')
+      .single();
 
     if (error) {
-      console.error('Database Error:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // 4. Return the data perfectly wrapped for the frontend
-    return NextResponse.json({ shops: data || [] });
-
+    return NextResponse.json({ shop: data }, { status: 200 });
   } catch (error) {
-    console.error('API Error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Internal server error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
