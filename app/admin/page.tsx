@@ -11,19 +11,19 @@ interface ApiShop {
   status?: string | null;
   subscription_tier?: string | null;
   created_at: string;
-  owner_email?: string | null;
+  owner_email?: string;
 }
 
 interface Shop {
   id: string;
-  shop_name: string;
-  shop_slug: string;
+  name: string;
+  description?: string;
   subscription_tier: string;
   created_at: string;
   email?: string;
   phone_number?: string;
   subscription_expires_at?: string;
-  owner_email?: string | null;
+  owner_email?: string;
   seller_id?: string;
   status?: string;
 }
@@ -36,8 +36,8 @@ interface Notice {
 function mapApiShopToUi(shop: ApiShop): Shop {
   return {
     id: shop.id,
-    shop_name: shop.name,
-    shop_slug: shop.seller_id,
+    name: shop.name,
+    description: shop.description || undefined,
     subscription_tier: (shop.subscription_tier || 'pending').toLowerCase(),
     created_at: shop.created_at,
     owner_email: shop.owner_email,
@@ -269,12 +269,12 @@ export default function AdminDashboard() {
                   <tr key={shop.id} className="transition hover:bg-gray-50">
                     <td className="px-6 py-4">
                       <div>
-                        <p className="font-bold text-gray-900">{shop.shop_name}</p>
-                        <p className="text-xs text-gray-500">/{shop.shop_slug}</p>
+                        <p className="font-bold text-gray-900">{shop.name || 'Unnamed Shop'}</p>
+                        <p className="text-xs text-gray-500">{shop.description || 'No description provided'}</p>
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <p className="text-sm text-gray-700">{shop.owner_email || shop.email || 'N/A'}</p>
+                      <p className="text-sm text-gray-700">{shop.owner_email || 'No email found'}</p>
                       <p className="text-xs text-gray-500">{shop.phone_number || 'N/A'}</p>
                     </td>
                     <td className="px-6 py-4">
