@@ -3,7 +3,7 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
-import { ArrowRight, Search, ShoppingBag, Sparkles, Store, TrendingUp, X, Crown, Menu, BadgeCheck } from 'lucide-react';
+import { ArrowRight, Search, ShoppingBag, Sparkles, Store, TrendingUp, X, Crown, Menu, BadgeCheck, Rocket } from 'lucide-react';
 import { useCart } from '../components/CartProvider';
 
 type Product = {
@@ -46,7 +46,8 @@ export default function GlobalHomepage() {
     async function fetchCuratedMall() {
       const { data, error } = await supabase
         .from('shops')
-        .select(`id, shop_name, shop_slug, logo_url, theme_color, subscription_tier, products (id, name, price, image_url, image_urls, category)`);
+        .select(`id, shop_name, shop_slug, logo_url, theme_color, subscription_tier, products (id, name, price, image_url, image_urls, category)`)
+        .eq('status', 'active');
       
       if (!error && data) {
         const activeShops = (data as unknown as Shop[]).filter((shop) => shop.products && shop.products.length > 0);
@@ -333,9 +334,11 @@ export default function GlobalHomepage() {
                   
                   const isFlagship = shop.subscription_tier === 'flagship';
                   const isPro = shop.subscription_tier === 'pro';
+                  const isAdvanced = shop.subscription_tier === 'advanced';
+                  const isStarter = shop.subscription_tier === 'starter';
 
                   return (
-                    <div key={shop.id} className={`group flex flex-col rounded-[2rem] bg-white p-5 shadow-sm border transition-all duration-300 hover:shadow-xl hover:-translate-y-1 ${isFlagship ? 'border-yellow-300 shadow-yellow-500/10 ring-1 ring-yellow-500/20' : isPro ? 'border-blue-200 shadow-blue-500/5' : 'border-gray-100'}`}>
+                    <div key={shop.id} className={`group flex flex-col rounded-[2rem] bg-white p-5 shadow-sm border transition-all duration-300 hover:shadow-xl hover:-translate-y-1 ${isFlagship ? 'border-yellow-300 shadow-yellow-500/10 ring-1 ring-yellow-500/20' : isPro ? 'border-purple-200 shadow-purple-500/5' : isAdvanced ? 'border-blue-200 shadow-blue-500/5' : isStarter ? 'border-green-200 shadow-green-500/5' : 'border-gray-100'}`}>
                       <div className="mb-5 flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div className={`h-12 w-12 overflow-hidden rounded-full border bg-gray-50 ${isFlagship ? 'border-yellow-400' : isPro ? 'border-blue-400' : 'border-gray-100'}`}>
@@ -345,19 +348,25 @@ export default function GlobalHomepage() {
                             <h3 className="text-base font-bold text-gray-900 flex items-center gap-1.5">
                               {shop.shop_name} 
                               {isFlagship && <Crown size={14} className="text-yellow-500" />}
-                              {isPro && <BadgeCheck size={14} className="text-blue-500" />}
+                              {isPro && <Crown size={14} className="text-purple-600" />}
+                              {isAdvanced && <Rocket size={14} className="text-blue-600" />}
+                              {isStarter && <BadgeCheck size={14} className="text-green-600" />}
                             </h3>
                             
                             {isFlagship ? (
                               <p className="text-[10px] font-bold uppercase tracking-widest text-yellow-600 mt-0.5">District Spotlight</p>
                             ) : isPro ? (
-                              <p className="text-[10px] font-bold uppercase tracking-widest text-blue-600 mt-0.5">Verified Seller</p>
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-purple-600 mt-0.5">Pro Seller</p>
+                            ) : isAdvanced ? (
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-blue-600 mt-0.5">Advanced Seller</p>
+                            ) : isStarter ? (
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-green-600 mt-0.5">Starter</p>
                             ) : (
                               <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mt-0.5">Independent Seller</p>
                             )}
                           </div>
                         </div>
-                        <Link href={`/shop/${shop.shop_slug}`} className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition ${isFlagship ? 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100' : isPro ? 'bg-blue-50 text-blue-700 hover:bg-blue-100' : 'bg-gray-50 text-gray-900 hover:bg-gray-100'}`}>
+                        <Link href={`/shop/${shop.shop_slug}`} className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition ${isFlagship ? 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100' : isPro ? 'bg-purple-50 text-purple-700 hover:bg-purple-100' : isAdvanced ? 'bg-blue-50 text-blue-700 hover:bg-blue-100' : isStarter ? 'bg-green-50 text-green-700 hover:bg-green-100' : 'bg-gray-50 text-gray-900 hover:bg-gray-100'}`}>
                           Visit <ArrowRight size={12} />
                         </Link>
                       </div>
@@ -367,7 +376,7 @@ export default function GlobalHomepage() {
                           const imgUrl = product.image_urls?.[0] || product.image_url;
                           return (
                             <Link href={`/product/${product.id}`} key={product.id} className="group/item flex flex-col gap-2">
-                              <div className={`relative aspect-[4/5] overflow-hidden rounded-xl bg-gray-50 border ${isFlagship ? 'border-yellow-100' : isPro ? 'border-blue-50' : 'border-gray-100'}`}>
+                              <div className={`relative aspect-[4/5] overflow-hidden rounded-xl bg-gray-50 border ${isFlagship ? 'border-yellow-100' : isPro ? 'border-purple-100' : isAdvanced ? 'border-blue-100' : isStarter ? 'border-green-100' : 'border-gray-100'}`}>
                                 {imgUrl ? <img src={imgUrl} alt={product.name} className="h-full w-full object-cover transition-transform duration-700 group-hover/item:scale-105" /> : <div className="flex h-full items-center justify-center text-gray-200"><ShoppingBag size={20} /></div>}
                               </div>
                               <div>
