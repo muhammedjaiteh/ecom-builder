@@ -1,6 +1,6 @@
 'use client';
 
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createBrowserClient } from '@supabase/ssr';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Crown, Star, CheckCircle2, BadgeCheck, Loader2, CreditCard } from 'lucide-react';
@@ -15,7 +15,10 @@ type Shop = {
 export default function SettingsPaywall() {
   const [shop, setShop] = useState<Shop | null>(null);
   const [loading, setLoading] = useState(true);
-  const supabase = createClientComponentClient();
+  const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
   const router = useRouter();
 
   useEffect(() => {

@@ -1,6 +1,6 @@
 'use client';
 
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createBrowserClient } from '@supabase/ssr';
 import { use, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Loader2, ShoppingBag, Plus, Minus, ChevronLeft, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
@@ -61,7 +61,10 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const carouselRef = useRef<HTMLDivElement | null>(null);
 
-  const supabase = createClientComponentClient();
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
   useEffect(() => {
     async function fetchProduct() {

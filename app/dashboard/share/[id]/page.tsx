@@ -1,6 +1,6 @@
 'use client';
 
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createBrowserClient } from '@supabase/ssr';
 import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { toPng } from 'html-to-image';
@@ -67,7 +67,10 @@ export default function PremiumAdStudio() {
   const [showPrice, setShowPrice] = useState(true);
 
   const params = useParams();
-  const supabase = createClientComponentClient();
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
   const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

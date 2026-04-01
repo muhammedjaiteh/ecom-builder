@@ -1,6 +1,6 @@
 'use client';
 
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createBrowserClient } from '@supabase/ssr';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, Lock } from 'lucide-react';
@@ -9,7 +9,10 @@ export default function UpdatePassword() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const supabase = createClientComponentClient();
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
