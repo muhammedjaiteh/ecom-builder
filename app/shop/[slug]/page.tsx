@@ -1,6 +1,6 @@
 'use client';
 
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createBrowserClient } from '@supabase/ssr';
 import { use, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Loader2, MapPin, Search, ShoppingBag, Store, Truck, X, Share, Crown, BadgeCheck } from 'lucide-react';
@@ -52,7 +52,10 @@ const themeColors: Record<string, { bg: string; text: string; lightBg: string }>
 export default function ShopPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const { cartCount, setIsCartOpen } = useCart();
-  const supabase = createClientComponentClient();
+  const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
   const [shop, setShop] = useState<Shop | null>(null);
   const [loading, setLoading] = useState(true);

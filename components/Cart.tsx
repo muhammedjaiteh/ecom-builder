@@ -3,7 +3,7 @@
 import { useCart } from './CartProvider';
 import { X, ShoppingBag, Plus, Minus, Trash2, Store, ArrowRight, Loader2, User, Phone, Truck, MapPin, CheckCircle2 } from 'lucide-react';
 import { useState } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createBrowserClient } from '@supabase/ssr';
 
 function sanitizePhoneNumber(rawNumber?: string | null) {
   if (!rawNumber) return null;
@@ -22,7 +22,10 @@ function generateWhatsAppLink(number: string | null | undefined, message: string
 
 export default function Cart() {
   const { items, isCartOpen, setIsCartOpen, updateQuantity, removeFromCart } = useCart();
-  const supabase = createClientComponentClient();
+  const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
   const [activeCheckoutShop, setActiveCheckoutShop] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState('');
