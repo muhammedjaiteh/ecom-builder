@@ -3,7 +3,7 @@
 import { createBrowserClient } from '@supabase/ssr';
 import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
-import { ArrowRight, Search, ShoppingBag, Sparkles, Store, TrendingUp, X, Crown, Menu, BadgeCheck, Rocket } from 'lucide-react';
+import { ArrowRight, Search, ShoppingBag, Sparkles, Store, TrendingUp, X, Crown, Menu, BadgeCheck } from 'lucide-react';
 import { useCart } from '../components/CartProvider';
 
 type Product = {
@@ -268,11 +268,11 @@ export default function GlobalHomepage() {
                         {imgUrl ? <img src={imgUrl} alt={product.name} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" /> : <div className="flex h-full items-center justify-center text-gray-300"><ShoppingBag size={24} /></div>}
                         
                         {(isAdvanced || isPro) && (
-                          <div className="absolute top-2 left-2 flex items-center gap-1 rounded-md bg-white/95 backdrop-blur px-2 py-1 shadow-sm">
-                            {isAdvanced && <Rocket size={12} className="text-yellow-500" />}
-                            {isPro && <Crown size={12} className="text-purple-500" />}
-                          </div>
-                        )}
+  <div className="absolute top-2 left-2 flex items-center gap-1 rounded-md bg-white/95 backdrop-blur px-2.5 py-1.5 shadow-sm">
+    {isAdvanced && <BadgeCheck size={14} className="text-yellow-500" />}
+    {isPro && <BadgeCheck size={14} className="text-purple-500" />}
+  </div>
+)}
                       </div>
                       <div className="mt-3">
                         <h4 className="truncate text-sm font-semibold text-gray-900 group-hover:underline">{product.name}</h4>
@@ -340,12 +340,12 @@ export default function GlobalHomepage() {
                             {shop.logo_url ? <img src={shop.logo_url} alt={shop.shop_name} className="h-full w-full object-cover rounded-full" /> : <div className="flex h-full items-center justify-center text-gray-300"><Store size={18} /></div>}
                           </div>
                           <div>
-                            <h3 className="text-base font-bold text-gray-900 flex items-center gap-1.5">
-                              {shop.shop_name} 
-                              {isAdvanced && <Rocket size={16} className="text-yellow-500" />}
-                              {isPro && <Crown size={16} className="text-purple-500" />}
-                            </h3>
-                          </div>
+  <h3 className="text-base font-bold text-gray-900 flex items-center gap-1.5">
+    {shop.shop_name} 
+    {isAdvanced && <BadgeCheck size={16} className="text-yellow-500" />}
+    {isPro && <BadgeCheck size={16} className="text-purple-500" />}
+  </h3>
+</div>
                         </div>
                         <Link href={`/shop/${shop.shop_slug}`} className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition ${isAdvanced ? 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100' : isPro ? 'bg-purple-50 text-purple-700 hover:bg-purple-100' : 'bg-gray-50 text-gray-900 hover:bg-gray-100'}`}>
                           Visit <ArrowRight size={12} />
