@@ -3,10 +3,10 @@
 import { createBrowserClient } from '@supabase/ssr';
 import { use, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, MapPin, Search, ShoppingBag, Store, Truck, X, Share, Crown, BadgeCheck } from 'lucide-react';
+// 🚨 VERCEL PROTECTION: Removed unused icons so the build doesn't crash
+import { ArrowLeft, Loader2, MapPin, Search, ShoppingBag, Store, Truck, X, Share, BadgeCheck } from 'lucide-react';
 import { useCart } from '../../../components/CartProvider';
 
-// 🚀 FIXED: Master Product Type combining all needed fields
 type Product = {
   id: string;
   name: string;
@@ -17,7 +17,6 @@ type Product = {
   category: string | null;
 };
 
-// 🚀 FIXED: Master Shop Type
 type Shop = {
   id: string;
   shop_name: string | null;
@@ -53,9 +52,9 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
   const { slug } = use(params);
   const { cartCount, setIsCartOpen } = useCart();
   const supabase = createBrowserClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
   const [shop, setShop] = useState<Shop | null>(null);
   const [loading, setLoading] = useState(true);
@@ -119,8 +118,11 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
 
   const theme = shop.theme_color ? themeColors[shop.theme_color] || themeColors.emerald : themeColors.emerald;
   const currentLayout = shop.store_layout || 'bantaba'; 
-  const isFlagship = shop.subscription_tier === 'flagship';
-  const isPro = shop.subscription_tier === 'pro';
+  
+  // 🚀 BULLETPROOF SYNC: Matches Admin Vault and Marketplace exact logic
+  const tier = (shop.subscription_tier || 'starter').toLowerCase().trim();
+  const isAdvanced = tier === 'advanced';
+  const isPro = tier === 'pro';
 
   return (
     <div className="min-h-screen bg-[#F9F8F6] font-sans text-gray-900 selection:bg-gray-900 selection:text-white">
@@ -155,7 +157,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
         </div>
       </nav>
 
-      {/* 🚀 THE NEW SHOP PROFILE HERO WITH BADGES */}
+      {/* 🚀 THE NEW SHOP PROFILE HERO WITH TEXTLESS BADGES */}
       <div className="relative bg-white border-b border-gray-100 pb-6 md:pb-8">
         {/* Banner Area */}
         <div className="h-32 md:h-56 w-full overflow-hidden relative bg-gray-100">
@@ -169,8 +171,8 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
         <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 relative">
           <div className="flex flex-col md:flex-row md:items-end gap-4 md:gap-6 -mt-12 md:-mt-16">
             
-            {/* Logo Avatar */}
-            <div className={`h-24 w-24 md:h-32 md:w-32 rounded-full border-4 border-white bg-white overflow-hidden shadow-md shrink-0 relative z-10 ${isFlagship ? 'ring-2 ring-yellow-400 ring-offset-2' : isPro ? 'ring-2 ring-blue-400 ring-offset-2' : ''}`}>
+            {/* Logo Avatar - Premium Halos matching the tiers */}
+            <div className={`h-24 w-24 md:h-32 md:w-32 rounded-full border-4 border-white bg-white overflow-hidden shadow-md shrink-0 relative z-10 ${isAdvanced ? 'ring-2 ring-yellow-400 ring-offset-2' : isPro ? 'ring-2 ring-purple-400 ring-offset-2' : ''}`}>
                {shop.logo_url ? (
                  <img src={shop.logo_url} alt={shop.shop_name || 'Logo'} className="w-full h-full object-cover" />
                ) : (
@@ -186,19 +188,9 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                 <h1 className="text-2xl md:text-3xl font-serif font-bold text-gray-900">
                   {shop.shop_name}
                 </h1>
-                {/* 👑 THE STATUS BADGES */}
-                {isFlagship && (
-                  <div className="flex items-center gap-1 mt-1">
-                    <Crown size={22} className="text-yellow-500" fill="currentColor" />
-                    <span className="hidden md:inline text-[10px] font-bold uppercase tracking-widest text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full">Flagship</span>
-                  </div>
-                )}
-                {isPro && (
-                  <div className="flex items-center gap-1 mt-1">
-                    <BadgeCheck size={22} className="text-blue-500" fill="currentColor" />
-                    <span className="hidden md:inline text-[10px] font-bold uppercase tracking-widest text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">Verified</span>
-                  </div>
-                )}
+                {/* 👑 THE PREMIUM TEXTLESS VERIFIED BADGES */}
+                {isAdvanced && <BadgeCheck size={26} className="text-yellow-500" />}
+                {isPro && <BadgeCheck size={26} className="text-purple-500" />}
               </div>
               
               {shop.bio && <p className="mt-2 text-sm text-gray-600 max-w-2xl leading-relaxed">{shop.bio}</p>}
