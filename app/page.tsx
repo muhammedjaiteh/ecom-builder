@@ -3,7 +3,7 @@
 import { createBrowserClient } from '@supabase/ssr';
 import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
-import { ArrowRight, Search, ShoppingBag, Sparkles, Store, TrendingUp, X, Crown, Menu, BadgeCheck } from 'lucide-react';
+import { ArrowRight, Search, ShoppingBag, Sparkles, Store, TrendingUp, X, Crown, Menu, BadgeCheck, Rocket } from 'lucide-react';
 import { useCart } from '../components/CartProvider';
 
 type Product = {
@@ -41,6 +41,8 @@ export default function GlobalHomepage() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const { cartCount, setIsCartOpen } = useCart();
+
+  // 🚀 FIXED: Initialize Supabase client using process.env
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -48,7 +50,7 @@ export default function GlobalHomepage() {
 
   useEffect(() => {
     async function fetchCuratedMall() {
-      // 🚨 THE VAULT LOCK: Makes suspended shops invisible. Live and direct.
+      // 🚨 THE VAULT LOCK: .eq('status', 'active') makes suspended shops invisible. Live and direct.
       const { data, error } = await supabase
         .from('shops')
         .select(`id, shop_name, shop_slug, logo_url, theme_color, subscription_tier, status, products (id, name, price, image_url, image_urls, category)`)
@@ -57,7 +59,7 @@ export default function GlobalHomepage() {
       if (!error && data) {
         const activeShops = (data as unknown as Shop[]).filter((shop) => shop.products && shop.products.length > 0);
         
-        // 🚀 THE ALGORITHM: Advanced (Flagship) > Pro > Starter. .trim() fixes ghost spaces.
+        // 🚀 THE ALGORITHM: Perfectly matches the Vault. Advanced (Flagship) > Pro > Starter. .trim() fixes database ghost spaces!
         const sortedShops = activeShops.sort((a, b) => {
           const tierRank = { advanced: 3, pro: 2, starter: 1 };
           const rankA = tierRank[a.subscription_tier?.toLowerCase().trim() as keyof typeof tierRank] || 1;
@@ -102,7 +104,7 @@ export default function GlobalHomepage() {
     });
   }, [shops, searchQuery]);
 
-  // 🚀 OPTIMIZED SPOTLIGHT LOGIC: Forces a new JS bundle to clear production cache
+  // 🚀 CACHE-BUSTING OPTIMIZATION: Refactored spotlight logic to force Vercel to clear production cache
   const spotlightProduct = useMemo(() => {
     // Since shops are already sorted by tier, the first shop with a product image is our target.
     const topShop = shops[0];
@@ -267,8 +269,8 @@ export default function GlobalHomepage() {
                         
                         {(isAdvanced || isPro) && (
                           <div className="absolute top-2 left-2 flex items-center gap-1 rounded-md bg-white/95 backdrop-blur px-2 py-1 shadow-sm">
-                            {isAdvanced && <BadgeCheck size={12} className="text-yellow-500" />}
-                            {isPro && <BadgeCheck size={12} className="text-purple-500" />}
+                            {isAdvanced && <Rocket size={12} className="text-yellow-500" />}
+                            {isPro && <Crown size={12} className="text-purple-500" />}
                           </div>
                         )}
                       </div>
@@ -340,8 +342,8 @@ export default function GlobalHomepage() {
                           <div>
                             <h3 className="text-base font-bold text-gray-900 flex items-center gap-1.5">
                               {shop.shop_name} 
-                              {isAdvanced && <BadgeCheck size={16} className="text-yellow-500" />}
-                              {isPro && <BadgeCheck size={16} className="text-purple-500" />}
+                              {isAdvanced && <Rocket size={16} className="text-yellow-500" />}
+                              {isPro && <Crown size={16} className="text-purple-500" />}
                             </h3>
                           </div>
                         </div>
