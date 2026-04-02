@@ -101,7 +101,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     fetchProduct();
   }, [productId, supabase]);
 
-  const resolvedShop = useMemo(() => Array.isArray(product?.shops) ? product?.shops[0] : product?.shops, [product?.shops]);
+  const resolvedShop = useMemo(() => (Array.isArray(product?.shops) ? product?.shops[0] : product?.shops) as ShopInfo | null, [product?.shops]);
 
   const normalizedImageUrls = useMemo(() => {
     if (!product) return [];
