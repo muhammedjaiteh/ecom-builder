@@ -5,6 +5,7 @@ import { use, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Loader2, ShoppingBag, Plus, Minus, ChevronLeft, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
 import { useCart } from '../../../components/CartProvider'; 
+import TrustUrgencyBlock from '../../../components/TrustUrgencyBlock'; 
 
 type ShopInfo = {
   id: string;
@@ -246,7 +247,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
           )}
 
           {/* QUANTITY SELECTOR */}
-          <div className="pt-2">
+        <div className="pt-2">
              <span className="mb-2.5 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Quantity</span>
              <div className="inline-flex items-center rounded-xl border border-gray-200 bg-white shadow-sm p-1">
               <button onClick={() => setQuantity((c) => Math.max(1, c - 1))} className="flex h-11 w-11 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition"><Minus size={16} /></button>
@@ -256,7 +257,12 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
           </div>
         </div>
 
-        {product.description && (
+        {/* 🚀 INJECTED TRUST & URGENCY BLOCK */}
+        <div className="mt-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+          <TrustUrgencyBlock />
+        </div>
+
+        {product.description && ( 
           <div className="mt-8">
             <h3 className="mb-3 text-[11px] font-bold uppercase tracking-widest text-gray-900">Description</h3>
             <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-600">
