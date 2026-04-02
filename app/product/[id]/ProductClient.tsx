@@ -1,6 +1,6 @@
 'use client';
 
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createBrowserClient } from '@supabase/ssr';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Phone, ArrowLeft, ShoppingBag, X, Smartphone, Banknote, Copy, Check, ShieldCheck, CreditCard } from 'lucide-react';
@@ -16,7 +16,10 @@ export default function ProductClient() {
   const [copied, setCopied] = useState(false);
   
   const params = useParams();
-  const supabase = createClientComponentClient();
+  const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
   const DEFAULT_PHONE = "2207470187"; 
 
   useEffect(() => {
