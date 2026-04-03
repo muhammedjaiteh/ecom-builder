@@ -1,6 +1,6 @@
 'use client';
 
-import { useCart } from './CartProvider';
+import { useCart, CartItem } from './CartProvider';
 import { X, ShoppingBag, Plus, Minus, Trash2, Store, ArrowRight, Loader2, User, Phone, Truck, MapPin, CheckCircle2 } from 'lucide-react';
 import { useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
@@ -21,11 +21,11 @@ function generateWhatsAppLink(number: string | null | undefined, message: string
 }
 
 export default function Cart() {
-  const { items, isCartOpen, setIsCartOpen, updateQuantity, removeFromCart } = useCart();
+  const { cartItems, isCartOpen, setIsCartOpen, updateQuantity, removeFromCart } = useCart();
   const supabase = createBrowserClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
   const [activeCheckoutShop, setActiveCheckoutShop] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState('');
@@ -34,16 +34,18 @@ export default function Cart() {
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const itemsByShop = items.reduce((acc, item) => {
+  // 🛡️ SAFETY LOCK: Ensure we only reduce if items exists, otherwise use an empty array
+  const itemsByShop = (cartItems || []).reduce((acc, item: CartItem) => {
     if (!acc[item.shop_id]) {
       acc[item.shop_id] = { shopName: item.shop_name, shopWhatsapp: item.shop_whatsapp, items: [], total: 0 };
     }
     acc[item.shop_id].items.push(item);
     acc[item.shop_id].total += (item.price * item.quantity);
     return acc;
-  }, {} as Record<string, { shopName: string, shopWhatsapp: string, items: typeof items, total: number }>);
+  }, {} as Record<string, { shopName: string, shopWhatsapp: string, items: CartItem[], total: number }>);
 
-  const handleProcessCheckout = async (shopId: string, shopData: typeof itemsByShop[string]) => {
+  // 🛡️ RESTORED FUNCTION DECLARATION WITH STRICT TYPES
+  const handleProcessCheckout = async (shopId: string, shopData: { shopName: string, shopWhatsapp: string, items: CartItem[], total: number }) => {
     if (!customerName.trim() || !customerPhone.trim()) return alert('Please enter your Name and Phone/WhatsApp Number.');
     if (fulfillmentMethod === 'delivery' && !deliveryAddress.trim()) return alert('Please provide a delivery address.');
 
@@ -142,7 +144,7 @@ export default function Cart() {
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-6 hide-scrollbar bg-gray-50/50">
-          {items.length === 0 ? (
+          {cartItems.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center text-center opacity-70">
               <ShoppingBag size={56} strokeWidth={1} className="mb-4 text-gray-300" />
               <p className="text-sm font-medium text-gray-500">Your bag is empty.</p>
