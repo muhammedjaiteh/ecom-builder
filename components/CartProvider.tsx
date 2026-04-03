@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { X, Minus, Plus, ShoppingBag, Trash2 } from 'lucide-react';
+import { createBrowserClient } from '@supabase/ssr';
 
 export type CartItem = {
   id: string;
@@ -73,20 +74,55 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const cartTotal = cartItems.reduce((total, item) => total + item.price * item.quantity, 0);
   const cartCount = cartItems.reduce((count, item) => count + item.quantity, 0);
 
-  // 🚀 THE MONEY MAKER: Cart-to-WhatsApp Bridge
-  const handleCheckout = () => {
+  // 🚀 THE MONEY MAKER: Cart-to-WhatsApp Bridge + Silent DB Save
+  const handleCheckout = async () => {
     if (cartItems.length === 0) return;
 
-    // For MVP, we route the order to the first shop in the cart
     const targetShopName = cartItems[0].shop_name || 'Boutique';
     const targetShopPhone = cartItems[0].shop_whatsapp;
+    const targetShopId = cartItems[0].shop_id;
 
     if (!targetShopPhone) {
       alert("This seller hasn't linked their WhatsApp number yet.");
       return;
     }
 
-    // Format the items list cleanly
+    // 1. SILENTLY SAVE TO SUPABASE (The Ghost Order Catcher)
+    const supabase = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+
+    try {
+      // Create the main order
+      const { data: orderData, error: orderError } = await supabase
+        .from('orders')
+        .insert({
+          shop_id: targetShopId,
+          total_amount: cartTotal,
+          status: 'pending'
+        })
+        .select()
+        .single();
+
+      if (orderData && !orderError) {
+        // Create the individual items
+        const orderItemsToInsert = cartItems.map(item => ({
+          order_id: orderData.id,
+          product_id: item.productId,
+          product_name: item.name,
+          quantity: item.quantity,
+          price: item.price,
+          variant_details: item.variant_details
+        }));
+        await supabase.from('order_items').insert(orderItemsToInsert);
+      }
+    } catch (err) {
+      console.error("Non-fatal error saving silent order", err);
+      // We DO NOT block the user here. Even if DB fails, we want them to send the WhatsApp message so the seller still gets paid.
+    }
+
+    // 2. LAUNCH WHATSAPP (The Buyer Experience)
     const itemsList = cartItems
       .map((item, index) => {
         const variantText = item.variant_details && item.variant_details !== 'None' ? ` (${item.variant_details})` : '';
@@ -94,16 +130,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
       })
       .join("\n\n");
 
-    // Construct the structured conversational order message
     const message = `Hello ${targetShopName},\n\nI would like to place an order via Sanndikaa:\n\n${itemsList}\n\n-------------------------\nTotal: D${cartTotal.toLocaleString()}\n-------------------------\n\nMy Details:\nName: [Type your name]\nLocation: [Type your location]\n\nPreferred Payment Method:\n[Cash on Delivery / Mobile Money]\n\nPlease confirm availability. Thank you.`;
 
-    // Encode message for URL
     const encodedMessage = encodeURIComponent(message);
-    
-    // Clean phone number (remove spaces, +, etc.)
     const formattedPhone = targetShopPhone.replace(/\D/g, "");
-
-    // Launch WhatsApp
+    
     window.open(`https://wa.me/${formattedPhone}?text=${encodedMessage}`, "_blank");
   };
 
