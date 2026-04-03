@@ -9,9 +9,29 @@ export const revalidate = 0;
 
 const ADMIN_EMAIL = 'muhammedjaiteh419@gmail.com';
 
-// --- GET: Fetch Shops and Mapped Emails ---
+// --- GET: Fetch Shops and Mapped Emails (SECURED) ---
 export async function GET() {
   try {
+    // 1. Secure Authentication Check (Lock out non-admins)
+    const cookieStore = await cookies();
+    const supabaseAuth = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() { return cookieStore.getAll(); }
+        }
+      }
+    );
+
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
+    
+    if (authError || !user || user.email?.toLowerCase().trim() !== ADMIN_EMAIL) {
+      console.error("🚨 GET AUTH ERROR:", authError || "User is not admin");
+      return NextResponse.json({ error: 'Unauthorized access' }, { status: 403 });
+    }
+
+    // 2. God Mode Data Fetch (Only runs if Admin is verified)
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
