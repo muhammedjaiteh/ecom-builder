@@ -13,6 +13,7 @@ const ADMIN_EMAIL = 'muhammedjaiteh419@gmail.com';
 export async function GET() {
   try {
     // 1. Secure Authentication Check (Lock out non-admins)
+    // 🚨 Next.js 15 standard: cookies() is now ASYNCHRONOUS
     const cookieStore = await cookies();
     const supabaseAuth = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -64,12 +65,13 @@ export async function GET() {
   }
 }
 
-// --- PATCH: Total Control Updates ---
+// --- PATCH: Total Control Updates (SECURED) ---
 export async function PATCH(request: Request) {
   try {
     console.log("🚨 ADMIN UPDATE REQUEST INITIATED");
 
-    // 1. Secure Authentication Check (Next.js 15 standard)
+    // 1. Secure Authentication Check (Lock out non-admins)
+    // 🚨 Next.js 15 standard: cookies() is now ASYNCHRONOUS
     const cookieStore = await cookies();
     const supabaseAuth = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -84,7 +86,7 @@ export async function PATCH(request: Request) {
     const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
     
     if (authError || !user || user.email?.toLowerCase().trim() !== ADMIN_EMAIL) {
-      console.error("🚨 AUTH ERROR:", authError || "User is not admin");
+      console.error("🚨 PATCH AUTH ERROR:", authError || "User is not admin");
       return NextResponse.json({ error: 'Unauthorized access' }, { status: 403 });
     }
 
@@ -118,7 +120,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ success: true, shop: data[0] });
 
   } catch (e: any) {
-    console.error("🚨 FATAL CRASH:", e);
+    console.error("🚨 PATCH FATAL CRASH:", e);
     return NextResponse.json({ error: e.message || 'Server crashed' }, { status: 500 });
   }
 }
