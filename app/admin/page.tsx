@@ -2,8 +2,6 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, XCircle, Clock, Crown, Rocket, Users, TrendingUp, DollarSign, Loader2, RefreshCw, type LucideIcon } from 'lucide-react';
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
 
 interface ApiShop {
   id: string;
