@@ -133,7 +133,7 @@ export default function CustomizeShopPage() {
     }
   };
 
-  const hasPremiumAccess = subscriptionTier === 'pro' || subscriptionTier === 'flagship';
+  const hasPremiumAccess = subscriptionTier === 'pro' || subscriptionTier === 'advanced' || subscriptionTier === 'flagship';
 
   const handlePremiumClick = (itemName: string) => {
     alert(`The ${itemName} design is locked. Upgrade to District PRO or ADVANCED to unlock premium branding features!`);
