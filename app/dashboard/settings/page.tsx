@@ -6,9 +6,6 @@ import Link from 'next/link';
 import { ArrowLeft, Crown, Star, CheckCircle2, BadgeCheck, Loader2, CreditCard } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
-// 🛡️ SHATTER THE CACHE: Ensure the dashboard always reads the live database value
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
 
 type Shop = {
   id: string;
