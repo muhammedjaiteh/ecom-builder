@@ -6,6 +6,10 @@ import Link from 'next/link';
 import { ArrowLeft, Crown, Star, CheckCircle2, BadgeCheck, Loader2, CreditCard } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
+// 🛡️ SHATTER THE CACHE: Ensure the dashboard always reads the live database value
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 type Shop = {
   id: string;
   shop_name: string;
@@ -16,9 +20,9 @@ export default function SettingsPaywall() {
   const [shop, setShop] = useState<Shop | null>(null);
   const [loading, setLoading] = useState(true);
   const supabase = createBrowserClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
   const router = useRouter();
 
   useEffect(() => {
@@ -38,7 +42,7 @@ export default function SettingsPaywall() {
   // 🚀 THE MONEY PIPE ENGINE
   const handleUpgradeClick = (tier: string) => {
     const adminNumber = '447599710468'; // Chief's Admin Number
-    const tierName = tier === 'flagship' ? 'ADVANCED FLAGSHIP (D2,500)' : 'PRO (D1,500)';
+    const tierName = tier === 'advanced' ? 'ADVANCED FLAGSHIP (D2,500)' : 'PRO (D1,500)';
     const shopName = shop?.shop_name || 'my boutique';
     
     const message = `👑 *Sanndikaa Upgrade Request*\n\nHello Admin! I am the owner of *${shopName}*. \n\nI would like to upgrade my store to the *${tierName}* tier to unlock premium features.\n\nHow can I send the payment to activate this?`;
@@ -50,7 +54,8 @@ export default function SettingsPaywall() {
   if (loading) return <div className="flex min-h-screen items-center justify-center bg-[#F9F8F6]"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>;
 
   const isPro = shop?.subscription_tier === 'pro';
-  const isFlagship = shop?.subscription_tier === 'flagship';
+  // 🛡️ THE FIX: Check for 'advanced' to perfectly match the Admin Vault vocabulary
+  const isAdvanced = shop?.subscription_tier === 'advanced' || shop?.subscription_tier === 'flagship';
 
   return (
     <div className="min-h-screen bg-[#F9F8F6] font-sans text-gray-900 selection:bg-gray-900 selection:text-white pb-24">
@@ -63,7 +68,7 @@ export default function SettingsPaywall() {
           </Link>
           <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-100">
             <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Current Plan:</span>
-            <span className={`text-[10px] font-black uppercase tracking-widest ${isFlagship ? 'text-yellow-600' : isPro ? 'text-blue-600' : 'text-gray-900'}`}>
+            <span className={`text-[10px] font-black uppercase tracking-widest ${isAdvanced ? 'text-yellow-600' : isPro ? 'text-blue-600' : 'text-gray-900'}`}>
               {shop?.subscription_tier || 'Starter'}
             </span>
           </div>
@@ -73,7 +78,7 @@ export default function SettingsPaywall() {
       {/* 2. DYNAMIC HEADER TEXT BASED ON TIER */}
       <main className="max-w-6xl mx-auto px-4 py-12 md:px-10">
         <div className="text-center max-w-2xl mx-auto mb-16">
-          {isFlagship ? (
+          {isAdvanced ? (
             <>
               <h1 className="text-3xl md:text-4xl font-serif font-bold text-gray-900 flex items-center justify-center gap-3">
                 <Crown className="text-yellow-500" size={32} /> Absolute Dominance
@@ -103,10 +108,10 @@ export default function SettingsPaywall() {
         </div>
 
         {/* 3. DYNAMIC PAYWALL GRID */}
-        <div className={`grid grid-cols-1 gap-8 mx-auto ${isFlagship ? 'max-w-md' : 'md:grid-cols-2 max-w-4xl'}`}>
+        <div className={`grid grid-cols-1 gap-8 mx-auto ${isAdvanced ? 'max-w-md' : 'md:grid-cols-2 max-w-4xl'}`}>
           
           {/* PRO TIER */}
-          {!isFlagship && (
+          {!isAdvanced && (
             <div className={`relative flex flex-col rounded-[2rem] bg-white p-8 shadow-sm transition-all border-2 ${isPro ? 'border-blue-500 ring-4 ring-blue-500/10' : 'border-gray-100 hover:border-blue-200'}`}>
               {isPro && (
                 <div className="absolute -top-3.5 left-0 right-0 mx-auto w-fit rounded-full bg-blue-500 px-4 py-1 text-[10px] font-bold uppercase tracking-widest text-white flex items-center gap-1 shadow-sm">
@@ -144,8 +149,8 @@ export default function SettingsPaywall() {
           )}
 
           {/* ADVANCED FLAGSHIP TIER */}
-          <div className={`relative flex flex-col rounded-[2rem] bg-[#1a1a1a] p-8 shadow-xl transition-all border-2 ${isFlagship ? 'border-yellow-400 ring-4 ring-yellow-400/20' : 'border-[#2a2a2a] hover:border-yellow-500/50'}`}>
-            {isFlagship && (
+          <div className={`relative flex flex-col rounded-[2rem] bg-[#1a1a1a] p-8 shadow-xl transition-all border-2 ${isAdvanced ? 'border-yellow-400 ring-4 ring-yellow-400/20' : 'border-[#2a2a2a] hover:border-yellow-500/50'}`}>
+            {isAdvanced && (
               <div className="absolute -top-3.5 left-0 right-0 mx-auto w-fit rounded-full bg-yellow-500 px-4 py-1 text-[10px] font-bold uppercase tracking-widest text-gray-900 flex items-center gap-1 shadow-sm">
                 <CheckCircle2 size={12} /> Active Plan
               </div>
@@ -171,11 +176,11 @@ export default function SettingsPaywall() {
             </ul>
 
             <button 
-              onClick={() => handleUpgradeClick('flagship')}
-              disabled={isFlagship}
+              onClick={() => handleUpgradeClick('advanced')}
+              disabled={isAdvanced}
               className="w-full flex items-center justify-center gap-2 rounded-xl bg-yellow-500 py-4 text-xs font-bold uppercase tracking-widest text-gray-900 shadow-lg transition hover:bg-yellow-400 disabled:opacity-50 disabled:hover:bg-yellow-500"
             >
-              {isFlagship ? 'You Own The District' : <><Crown size={16} /> Claim Your Empire</>}
+              {isAdvanced ? 'You Own The District' : <><Crown size={16} /> Claim Your Empire</>}
             </button>
           </div>
 
