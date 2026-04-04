@@ -28,15 +28,16 @@ interface Notice {
   message: string;
 }
 
-function mapApiShopToUi(shop: ApiShop): Shop {
+// 🛡️ TITANIUM ARMOR ADDED: Safely handle undefined or null shops so React never crashes
+function mapApiShopToUi(shop: ApiShop | undefined | null): Shop {
   return {
-    id: shop.id,
-    shop_name: shop.shop_name, 
-    description: shop.description || undefined,
-    subscription_tier: (shop.subscription_tier || 'pending').toLowerCase(),
-    created_at: shop.created_at,
-    owner_email: shop.owner_email || undefined,
-    status: (shop.status || 'pending').toLowerCase(),
+    id: shop?.id || '',
+    shop_name: shop?.shop_name || 'Unnamed Shop', 
+    description: shop?.description || undefined,
+    subscription_tier: (shop?.subscription_tier || 'pending').toLowerCase(),
+    created_at: shop?.created_at || new Date().toISOString(),
+    owner_email: shop?.owner_email || undefined,
+    status: (shop?.status || 'pending').toLowerCase(),
   };
 }
 
@@ -72,7 +73,10 @@ export default function AdminDashboard() {
         throw new Error(data?.error || 'Failed to fetch shops');
       }
 
-      setShops(((data.shops || []) as ApiShop[]).map(mapApiShopToUi));
+      // 🛡️ FILTER ARMOR: Instantly remove any null/undefined ghost records before mapping
+      const validShops = ((data.shops || []) as ApiShop[]).filter(Boolean);
+      setShops(validShops.map(mapApiShopToUi));
+      
     } catch (error) {
       console.error('Error fetching shops:', error);
       setShops([]);
@@ -114,6 +118,7 @@ export default function AdminDashboard() {
       setShops((prev) => prev.map((shop) => {
         if (shop.id === shopId) {
           return {
+            ...shop, // Keep existing data as a fallback
             ...mapApiShopToUi(updatedShopFromDB),
             owner_email: shop.owner_email 
           };

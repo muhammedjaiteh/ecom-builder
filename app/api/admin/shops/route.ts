@@ -12,8 +12,7 @@ const ADMIN_EMAIL = 'muhammedjaiteh419@gmail.com';
 // --- GET: Fetch Shops and Mapped Emails (SECURED) ---
 export async function GET() {
   try {
-    // 1. Secure Authentication Check (Lock out non-admins)
-    // 🚨 Next.js 15 standard: cookies() is now ASYNCHRONOUS
+    // 1. Secure Authentication Check (Next.js 15 standard: cookies() is asynchronous)
     const cookieStore = await cookies();
     const supabaseAuth = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -32,7 +31,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized access' }, { status: 403 });
     }
 
-    // 2. God Mode Data Fetch (Only runs if Admin is verified)
+    // 2. Execute Data Fetch using God Mode
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -60,17 +59,27 @@ export async function GET() {
 
     return NextResponse.json({ shops: combinedShops });
   } catch (error: any) {
-    console.error("GET Error:", error);
-    return NextResponse.json({ error: 'Failed to fetch' }, { status: 500 });
+    console.error("GET Fatal Crash:", error);
+    // Guarantee a valid JSON response even on fatal crash
+    return NextResponse.json({ error: 'Failed to fetch. Server crashed.' }, { status: 500 });
   }
 }
 
-// --- PATCH: Total Control Updates (SECURED) ---
+// --- PATCH: Total Control Updates (SECURED & ROBUST) ---
 export async function PATCH(request: Request) {
   try {
     console.log("🚨 ADMIN UPDATE REQUEST INITIATED");
 
-    // 1. Secure Authentication Check (Lock out non-admins)
+    // 1. Validate Request Body Immediately
+    const body = await request.json();
+    console.log("📦 PAYLOAD RECEIVED:", body);
+    const { id, ...updates } = body;
+
+    if (!id) {
+      return NextResponse.json({ error: 'Critical failure: Missing shop ID' }, { status: 400 });
+    }
+
+    // 2. Secure Authentication Check (Lock out non-admins)
     // 🚨 Next.js 15 standard: cookies() is now ASYNCHRONOUS
     const cookieStore = await cookies();
     const supabaseAuth = createServerClient(
@@ -90,15 +99,6 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'Unauthorized access' }, { status: 403 });
     }
 
-    // 2. Process Request Body
-    const body = await request.json();
-    console.log("📦 PAYLOAD RECEIVED:", body);
-    const { id, ...updates } = body;
-
-    if (!id) {
-      return NextResponse.json({ error: 'Missing shop ID' }, { status: 400 });
-    }
-
     // 3. Execute Update using God Mode
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -112,15 +112,23 @@ export async function PATCH(request: Request) {
       .select();
 
     if (error) {
-      console.error("🚨 SUPABASE ERROR:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      // Log the specific database error for debugging
+      console.error("🚨 SUPABASE DATABASE ERROR:", error);
+      // Return the specific message so the admin knows exactly why it failed
+      return NextResponse.json({ error: error.message || 'Database update failed' }, { status: 500 });
+    }
+
+    if (!data || data.length === 0) {
+      return NextResponse.json({ error: 'Shop update succeeded but no data was returned' }, { status: 500 });
     }
 
     console.log("✅ UPDATE SUCCESS:", data);
     return NextResponse.json({ success: true, shop: data[0] });
 
   } catch (e: any) {
-    console.error("🚨 PATCH FATAL CRASH:", e);
-    return NextResponse.json({ error: e.message || 'Server crashed' }, { status: 500 });
+    // 🛡️ THE SAFETY LOCK: If *anything* unexpected happens, capture it and return clean JSON.
+    // This prevents the generic browser "can't load page" crash.
+    console.error("🚨 PATCH FATAL SERVER CRASH:", e);
+    return NextResponse.json({ error: e.message || 'Server crashed during update' }, { status: 500 });
   }
 }

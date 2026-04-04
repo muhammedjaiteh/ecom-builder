@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import WhatsAppEngine from '../../components/WhatsAppEngine';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 type Product = { id: string; image_url: string | null; name: string; price: number; category: string; };
 type Shop = { 
