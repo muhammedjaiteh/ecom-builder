@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import Anthropic from '@anthropic-ai/sdk';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -10,6 +9,13 @@ const supabaseAdmin = createClient(
 const METERED_TIERS = ['starter', 'pro'];
 const UNLIMITED_TIERS = ['advanced', 'flagship'];
 
+/**
+ * DEPRECATED: This file is a leftover duplicate.
+ * Campaign generation is now handled in /api/ai/route.ts with mode='campaign'
+ * 
+ * This route is kept for backwards compatibility but should be deleted.
+ * All requests should go through POST /api/ai with { mode: 'campaign', ... }
+ */
 export async function POST(request: NextRequest) {
   try {
     const authHeader = request.headers.get('authorization');
@@ -92,32 +98,61 @@ export async function POST(request: NextRequest) {
 
     // Prepare the AI prompt
     const productList = productNames.join(', ');
-    const systemPrompt = `You are a high-converting Gambian marketer. Write a punchy, urgent WhatsApp broadcast mentioning these specific products. Keep it under 75 words max to avoid mobile URL crashes. Use friendly emojis.`;
+    const userPrompt = `You are a high-converting Gambian marketer. Write a punchy, urgent WhatsApp broadcast mentioning these specific products: ${productList}. Keep it under 75 words max to avoid mobile URL crashes. Use friendly emojis. Make it compelling and urgent for a Gambian audience.`;
 
-    const userPrompt = `Write a WhatsApp broadcast message for these products: ${productList}. Make it compelling and urgent for a Gambian audience.`;
+    // Call OpenAI API
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: 'OpenAI configuration error' },
+        { status: 500 }
+      );
+    }
 
-    // Call Claude AI
-    const client = new Anthropic();
-    const response = await client.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
-      max_tokens: 150,
-      system: systemPrompt,
-      messages: [
-        {
-          role: 'user',
-          content: userPrompt
-        }
-      ]
+    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-3.5-turbo',
+        messages: [
+          {
+            role: 'user',
+            content: userPrompt
+          }
+        ],
+        max_tokens: 150,
+        temperature: 0.7
+      })
     });
 
-    const aiMessage = response.content[0].type === 'text' ? response.content[0].text : '';
+    const openaiData = await openaiResponse.json();
+
+    if (!openaiResponse.ok) {
+      console.error('OpenAI API error:', openaiData);
+      return NextResponse.json(
+        { error: 'Failed to generate campaign message. Please try again.' },
+        { status: 500 }
+      );
+    }
+
+    const aiMessage = openaiData.choices?.[0]?.message?.content || '';
+
+    if (!aiMessage) {
+      return NextResponse.json(
+        { error: 'No response from AI service' },
+        { status: 500 }
+      );
+    }
 
     // Count words in AI message
     const wordCount = aiMessage.trim().split(/\s+/).length;
     if (wordCount > 75) {
       return NextResponse.json(
         {
-          error: `AI message exceeded 75-word limit (${wordCount} words). Regenerating...`,
+          error: `AI message exceeded 75-word limit (${wordCount} words)`,
           suggestedMessage: aiMessage.split(' ').slice(0, 75).join(' ') + '...'
         },
         { status: 400 }
@@ -130,15 +165,10 @@ export async function POST(request: NextRequest) {
 
     // Deduct credit for metered tiers
     if (METERED_TIERS.includes(tier)) {
-      const { error: updateError } = await supabaseAdmin
+      await supabaseAdmin
         .from('shops')
         .update({ ai_credits: shop.ai_credits - 1 })
         .eq('id', shop.id);
-
-      if (updateError) {
-        console.error('Credit deduction error:', updateError);
-        // Don't fail the request - the message was generated
-      }
     }
 
     return NextResponse.json({
@@ -158,3 +188,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
