@@ -245,14 +245,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="mb-8">
-              <WhatsAppEngine 
-                shopName={shop?.shop_name || 'My Boutique'} 
-                shopSlug={shop?.shop_slug || ''} 
-                products={products} 
-              />
-            </div>
-
             <h3 className="text-sm font-bold uppercase tracking-widest text-gray-900 mb-4">Recent Activity</h3>
             <div className="rounded-[2rem] bg-white border border-gray-100 shadow-sm overflow-hidden">
               {orders.slice(0, 3).map((order) => (

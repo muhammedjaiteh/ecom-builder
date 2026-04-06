@@ -17,7 +17,8 @@ import {
   Loader2,
   ArrowRight,
   Users,
-  ArrowLeft
+  ArrowLeft,
+  Sparkles
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -30,9 +31,16 @@ interface Customer {
   last_order_date: string;
 }
 
+interface Product {
+  id: string;
+  name: string;
+  price: number;
+}
+
 interface ShopData {
   subscription_tier: string;
   shop_name: string;
+  shop_slug?: string;
 }
 
 function sanitizePhoneNumber(rawNumber?: string | null) {
@@ -52,11 +60,15 @@ function generateWhatsAppLink(phone: string | null, message: string) {
 export default function BroadcastPage() {
   const [shopData, setShopData] = useState<ShopData | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [isSending, setIsSending] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isGeneratingCampaign, setIsGeneratingCampaign] = useState(false);
+  const [campaignError, setCampaignError] = useState<string | null>(null);
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -79,10 +91,10 @@ export default function BroadcastPage() {
         return;
       }
 
-      // Fetch shop tier
+      // Fetch shop tier and slug
       const { data: shop, error: shopError } = await supabase
         .from('shops')
-        .select('subscription_tier, shop_name')
+        .select('subscription_tier, shop_name, shop_slug')
         .eq('id', user.id)
         .single();
 
@@ -92,6 +104,19 @@ export default function BroadcastPage() {
       }
 
       setShopData(shop);
+
+      // Fetch products
+      const { data: productData, error: productError } = await supabase
+        .from('products')
+        .select('id, name, price')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (!productError && productData) {
+        setProducts(productData);
+        // Pre-select first 3 products (or fewer if not available)
+        setSelectedProducts(productData.slice(0, 3).map(p => p.id));
+      }
 
       // Fetch orders with customer details
       const { data: orders, error: ordersError } = await supabase
@@ -175,6 +200,62 @@ export default function BroadcastPage() {
     navigator.clipboard.writeText(message);
     setCopiedId('message');
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleGenerateCampaign = async () => {
+    if (selectedProducts.length === 0) {
+      setCampaignError('Please select at least one product');
+      return;
+    }
+
+    try {
+      setIsGeneratingCampaign(true);
+      setCampaignError(null);
+
+      // Get current auth token
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        setCampaignError('Authentication required');
+        return;
+      }
+
+      // Get selected product names
+      const selectedProductNames = products
+        .filter(p => selectedProducts.includes(p.id))
+        .map(p => p.name);
+
+      // Call the AI campaign API
+      const response = await fetch('/api/ai', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          mode: 'campaign',
+          productNames: selectedProductNames,
+          shopName: shopData?.shop_name || 'Store',
+          shopSlug: shopData?.shop_slug || 'store'
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setCampaignError(data.error || 'Failed to generate campaign message');
+        return;
+      }
+
+      // Insert the generated message into the composer
+      setMessage(data.message);
+      setCampaignError(null);
+
+    } catch (err) {
+      console.error('Campaign generation error:', err);
+      setCampaignError('Failed to generate campaign message. Please try again.');
+    } finally {
+      setIsGeneratingCampaign(false);
+    }
   };
 
   const messageCharCount = message.length;
@@ -348,6 +429,87 @@ export default function BroadcastPage() {
                 <Send size={24} className="text-green-600" />
                 Compose Message
               </h2>
+
+              {/* Campaign Error Banner */}
+              {campaignError && (
+                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-start gap-3">
+                  <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="font-semibold">{campaignError}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Product Selector Section */}
+              <div className="mb-8">
+                <label className="block text-sm font-bold text-gray-700 mb-4">
+                  📦 Select Products (Max 5)
+                </label>
+                
+                {products.length === 0 ? (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-amber-700 text-sm">
+                    <p className="font-semibold">No products yet</p>
+                    <p className="text-xs mt-1">Add products to your store to use AI campaign generation</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                    {products.map((product) => (
+                      <button
+                        key={product.id}
+                        onClick={() => {
+                          if (selectedProducts.includes(product.id)) {
+                            setSelectedProducts(selectedProducts.filter(id => id !== product.id));
+                          } else if (selectedProducts.length < 5) {
+                            setSelectedProducts([...selectedProducts, product.id]);
+                          }
+                        }}
+                        className={`p-3 rounded-lg border-2 transition-all text-left ${
+                          selectedProducts.includes(product.id)
+                            ? 'bg-green-50 border-green-500'
+                            : 'bg-gray-50 border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className={`mt-1 w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                            selectedProducts.includes(product.id)
+                              ? 'bg-green-500 border-green-500'
+                              : 'border-gray-300'
+                          }`}>
+                            {selectedProducts.includes(product.id) && (
+                              <CheckCircle2 size={16} className="text-white" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-sm text-gray-900 truncate">{product.name}</p>
+                            <p className="text-xs text-gray-600 mt-0.5">D{product.price.toLocaleString()}</p>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Generate Campaign Button */}
+                {products.length > 0 && (
+                  <button
+                    onClick={handleGenerateCampaign}
+                    disabled={selectedProducts.length === 0 || isGeneratingCampaign}
+                    className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 disabled:from-gray-300 disabled:to-gray-300 disabled:cursor-not-allowed text-white font-bold py-3 px-6 rounded-xl transition-all"
+                  >
+                    {isGeneratingCampaign ? (
+                      <>
+                        <Loader2 size={18} className="animate-spin" />
+                        Generating Campaign...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={18} />
+                        ✨ Generate Campaign Message
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
 
               {/* Message Textarea */}
               <div className="mb-6">
