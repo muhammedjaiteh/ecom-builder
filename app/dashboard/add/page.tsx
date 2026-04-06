@@ -17,12 +17,13 @@ export default function AddProductPage() {
 
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false); // 🚀 Added success state for the VIP experience
+  const [success, setSuccess] = useState(false);
   
   // 🚀 AI Subscription States
   const [subscriptionTier, setSubscriptionTier] = useState('standard');
   const [aiCredits, setAiCredits] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   // Form States
   const [name, setName] = useState('');
@@ -79,19 +80,14 @@ export default function AddProductPage() {
   const addSize = () => { if (sizeInput.trim() && !sizes.includes(sizeInput.trim())) { setSizes([...sizes, sizeInput.trim()]); setSizeInput(''); } };
   const removeSize = (sizeToRemove: string) => setSizes(sizes.filter(s => s !== sizeToRemove));
 
-  // 🚀 THE AI ENGINE
+  // 🚀 THE AI ENGINE WITH CREDIT METERING
   const handleGenerateDescription = async () => {
     if (!name) {
       alert("Please enter a Product Name first so the AI knows what to write about!");
       return;
     }
 
-    if (subscriptionTier === 'standard' && aiCredits <= 0) {
-      alert("You are out of AI Credits! Please upgrade to District PRO to unlock unlimited AI writing.");
-      router.push('/dashboard/settings');
-      return;
-    }
-
+    setAiError(null);
     setIsGenerating(true);
 
     try {
@@ -102,19 +98,29 @@ export default function AddProductPage() {
       });
 
       const data = await response.json();
-      
+
+      // Handle 403 credit exhaustion error
+      if (response.status === 403) {
+        setAiError(data.error || 'AI Credit limit reached. Please upgrade to Advanced for unlimited access.');
+        return;
+      }
+
+      if (!response.ok) {
+        setAiError(data.error || 'Failed to generate description. Please try again.');
+        return;
+      }
+
       if (data.description) {
         setDescription(data.description);
-        
-        // Deduct credit if they are on the free plan
-        if (subscriptionTier === 'standard') {
-          const newCredits = aiCredits - 1;
-          setAiCredits(newCredits);
-          await supabase.from('shops').update({ ai_credits: newCredits }).eq('id', userId);
+
+        // Update local credits state instantly (no page refresh needed)
+        if (data.creditsRemaining !== null && data.creditsRemaining !== undefined) {
+          setAiCredits(data.creditsRemaining);
         }
       }
     } catch (error) {
-      alert("AI failed to generate. Please try again.");
+      console.error('AI generation error:', error);
+      setAiError('Failed to connect to AI service. Please check your connection and try again.');
     } finally {
       setIsGenerating(false);
     }
@@ -231,15 +237,22 @@ export default function AddProductPage() {
                     </div>
                   </div>
 
-                  {/* 🚀 AI DESCRIPTION BOX */}
+                  {/* 🚀 AI DESCRIPTION BOX - ENHANCED */}
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-500">Description</label>
                       
                       <div className="flex items-center gap-3">
-                        {subscriptionTier === 'standard' && (
-                          <span className="text-[9px] font-bold uppercase tracking-widest text-gray-400">
-                            {aiCredits} Credits Left
+                        {['starter', 'pro'].includes(subscriptionTier) && (
+                          <span className={`text-[9px] font-bold uppercase tracking-widest ${
+                            aiCredits <= 0 ? 'text-red-500' : 'text-gray-400'
+                          }`}>
+                            ✨ {aiCredits} Credits Left
+                          </span>
+                        )}
+                        {['advanced', 'flagship'].includes(subscriptionTier) && (
+                          <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-600">
+                            ✨ Unlimited AI
                           </span>
                         )}
                         <button
@@ -253,6 +266,31 @@ export default function AddProductPage() {
                         </button>
                       </div>
                     </div>
+                    
+                    {aiError && (
+                      <div className="mb-3 rounded-xl border border-red-200 bg-red-50 p-3 flex items-start gap-3 animate-in slide-in-from-top duration-300">
+                        <div className="flex-shrink-0 mt-0.5">
+                          <svg className="h-5 w-5 text-red-500" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                          </svg>
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-semibold text-red-900">{aiError}</p>
+                          {aiError.includes('limit reached') && (
+                            <Link href="/pricing" className="mt-2 inline-block text-xs font-bold text-red-600 hover:text-red-700 underline">
+                              Upgrade to Advanced for Unlimited AI →
+                            </Link>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setAiError(null)}
+                          className="flex-shrink-0 text-red-400 hover:text-red-500 transition"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    )}
                     
                     <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={6} placeholder="Describe the product, material, and fit..." className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-sm font-medium text-gray-900 outline-none transition-all focus:border-purple-500 focus:bg-white focus:ring-1 focus:ring-purple-500" />
                   </div>
