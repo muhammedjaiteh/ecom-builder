@@ -3,7 +3,7 @@
 import { createBrowserClient } from '@supabase/ssr';
 import { use, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Loader2, Plus, Save, Star, Trash2 } from 'lucide-react';
+import { ArrowLeft, Loader2, Plus, Save, Star, Trash2, Sparkles, X } from 'lucide-react';
 import Link from 'next/link';
 
 const CATEGORY_OPTIONS = ['Food & Culinary', 'Drinks', 'Beauty & Wellness', 'Fashion', 'Sneakers', 'Home & Artisan', 'Tech Accessories', 'General'] as const;
@@ -60,6 +60,12 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  
+  // 🚀 AI Subscription States
+  const [subscriptionTier, setSubscriptionTier] = useState('standard');
+  const [aiCredits, setAiCredits] = useState(0);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
@@ -89,15 +95,20 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
         return;
       }
 
+      // Fetch shop data for theme, tier, and AI credits
       const { data: shopData } = await supabase
         .from('shops')
-        .select('theme_color')
+        .select('theme_color, subscription_tier, ai_credits')
         .eq('id', user.id)
         .maybeSingle();
 
-      const nextTheme = shopData?.theme_color;
-      if (nextTheme && nextTheme in themeButtonClasses) {
-        setThemeColor(nextTheme as ThemeColor);
+      if (shopData) {
+        const nextTheme = shopData.theme_color;
+        if (nextTheme && nextTheme in themeButtonClasses) {
+          setThemeColor(nextTheme as ThemeColor);
+        }
+        setSubscriptionTier(shopData.subscription_tier || 'standard');
+        setAiCredits(shopData.ai_credits || 0);
       }
 
       // UPGRADE 1: Fetching the product_variants data
@@ -205,6 +216,52 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = '';
+    }
+  };
+
+  // 🚀 THE AI ENGINE WITH CREDIT METERING
+  const handleGenerateDescription = async () => {
+    if (!name) {
+      alert("Please enter a Product Name first so the AI knows what to write about!");
+      return;
+    }
+
+    setAiError(null);
+    setIsGenerating(true);
+
+    try {
+      const response = await fetch('/api/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: `${name} in the ${category} category` }),
+      });
+
+      const data = await response.json();
+
+      // Handle 403 credit exhaustion error
+      if (response.status === 403) {
+        setAiError(data.error || 'AI Credit limit reached. Please upgrade to Advanced for unlimited access.');
+        return;
+      }
+
+      if (!response.ok) {
+        setAiError(data.error || 'Failed to generate description. Please try again.');
+        return;
+      }
+
+      if (data.description) {
+        setDescription(data.description);
+
+        // Update local credits state instantly (no page refresh needed)
+        if (data.creditsRemaining !== null && data.creditsRemaining !== undefined) {
+          setAiCredits(data.creditsRemaining);
+        }
+      }
+    } catch (error) {
+      console.error('AI generation error:', error);
+      setAiError('Failed to connect to AI service. Please check your connection and try again.');
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -448,8 +505,61 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
               </div>
             </div>
 
+            {/* 🚀 AI DESCRIPTION BOX - ENHANCED */}
             <div>
-              <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">Description</label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">Description</label>
+                
+                <div className="flex items-center gap-3">
+                  {['starter', 'pro'].includes(subscriptionTier) && (
+                    <span className={`text-[9px] font-bold uppercase tracking-widest ${
+                      aiCredits <= 0 ? 'text-red-500' : 'text-gray-400'
+                    }`}>
+                      ✨ {aiCredits} Credits Left
+                    </span>
+                  )}
+                  {['advanced', 'flagship'].includes(subscriptionTier) && (
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-600">
+                      ✨ Unlimited AI
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleGenerateDescription}
+                    disabled={isGenerating || !name}
+                    className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-white shadow-md transition hover:opacity-90 disabled:opacity-50"
+                  >
+                    {isGenerating ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                    {isGenerating ? 'Writing...' : 'Write with AI'}
+                  </button>
+                </div>
+              </div>
+              
+              {aiError && (
+                <div className="mb-3 rounded-xl border border-red-200 bg-red-50 p-3 flex items-start gap-3 animate-in slide-in-from-top duration-300">
+                  <div className="flex-shrink-0 mt-0.5">
+                    <svg className="h-5 w-5 text-red-500" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-red-900">{aiError}</p>
+                    {aiError.includes('limit reached') && (
+                      <Link href="/pricing" className="mt-2 inline-block text-xs font-bold text-red-600 hover:text-red-700 underline">
+                        Upgrade to Advanced for Unlimited AI →
+                      </Link>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAiError(null)}
+                    className="flex-shrink-0 text-red-400 hover:text-red-500 transition"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              )}
+              
               <textarea
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
