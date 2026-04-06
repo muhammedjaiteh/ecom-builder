@@ -7,10 +7,11 @@ import {
   Package, DollarSign, TrendingUp, Plus, Edit, Trash2, ExternalLink, 
   BarChart3, Eye, Store, Truck, LogOut, Lock,
   ShoppingCart, Clock, CheckCircle2, Phone, User, Users, MessageCircle, 
-  LayoutDashboard, Settings, Loader2, Palette
+  LayoutDashboard, Settings, Loader2, Palette, Megaphone
 } from 'lucide-react';
 import Link from 'next/link';
 import WhatsAppEngine from '../../components/WhatsAppEngine';
+import Broadcast from './broadcast';
 
 type Product = { id: string; image_url: string | null; name: string; price: number; category: string; };
 type Shop = { 
@@ -48,7 +49,7 @@ export default function Dashboard() {
   const [customersCRM, setCustomersCRM] = useState<CustomerCRM[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   
-  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'customers' | 'inventory'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'customers' | 'inventory' | 'broadcast'>('overview');
 
   const [totalOrders, setTotalOrders] = useState(0);
   const [totalRevenue, setTotalRevenue] = useState(0);
@@ -200,6 +201,7 @@ export default function Dashboard() {
             { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
             { id: 'orders', icon: ShoppingCart, label: `Orders (${orders.filter(o => o.status === 'pending').length})` },
             { id: 'customers', icon: Users, label: 'Customers' },
+            { id: 'broadcast', icon: Megaphone, label: 'Broadcast' },
             { id: 'inventory', icon: Package, label: 'Inventory' }
           ].map((tab) => (
             <button
@@ -395,6 +397,13 @@ export default function Dashboard() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* BROADCAST TAB */}
+        {activeTab === 'broadcast' && (
+          <div className="animate-in fade-in duration-300">
+            <Broadcast />
           </div>
         )}
 
