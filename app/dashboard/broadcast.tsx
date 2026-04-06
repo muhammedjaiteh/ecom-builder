@@ -212,29 +212,20 @@ export default function BroadcastPage() {
       setIsGeneratingCampaign(true);
       setCampaignError(null);
 
-      // Get current auth token
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        setCampaignError('Authentication required');
-        return;
-      }
-
       // Get selected product names
       const selectedProductNames = products
         .filter(p => selectedProducts.includes(p.id))
         .map(p => p.name);
 
-      // Call the AI campaign API
+      // Call the AI campaign API (uses session cookies for auth)
       const response = await fetch('/api/ai', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           mode: 'campaign',
           productNames: selectedProductNames,
-          shopName: shopData?.shop_name || 'Store',
           shopSlug: shopData?.shop_slug || 'store'
         })
       });
@@ -242,6 +233,7 @@ export default function BroadcastPage() {
       const data = await response.json();
 
       if (!response.ok) {
+        // Show the actual error from the API
         setCampaignError(data.error || 'Failed to generate campaign message');
         return;
       }
