@@ -219,6 +219,19 @@ export default function AddProductPage() {
                 
                 <div className="space-y-5">
                   <div>
+                    <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Stock Quantity</label>
+                    <input
+                      type="number"
+                      value={stockQuantity}
+                      onChange={(e) => setStockQuantity(Math.max(0, Number(e.target.value) || 0))}
+                      placeholder="0"
+                      min="0"
+                      className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
+                    />
+                    <p className="mt-1 text-[9px] text-gray-400">How many units are available for sale?</p>
+                  </div>
+
+                  <div>
                     <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Product Name</label>
                     <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Midnight Leather Boots" className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900" />
                   </div>
@@ -237,19 +250,6 @@ export default function AddProductPage() {
                         {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                       </select>
                     </div>
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Stock Quantity</label>
-                    <input
-                      type="number"
-                      value={stockQuantity}
-                      onChange={(e) => setStockQuantity(Math.max(0, Number(e.target.value) || 0))}
-                      placeholder="0"
-                      min="0"
-                      className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
-                    />
-                    <p className="mt-1 text-[9px] text-gray-400">How many units are available for sale?</p>
                   </div>
 
                   {/* 🚀 AI DESCRIPTION BOX - ENHANCED */}
