@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     const { data: shop, error: shopError } = await supabase
       .from('shops')
       .select('id, subscription_tier, ai_credits, shop_slug')
-      .eq('id', user.id)
+      .eq('user_id', user.id)
       .single();
 
     if (shopError || !shop) {
