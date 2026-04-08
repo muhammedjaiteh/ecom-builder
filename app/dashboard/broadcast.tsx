@@ -218,13 +218,12 @@ export default function BroadcastPage() {
         .map(p => p.name);
 
       // Call the AI campaign API (uses session cookies for auth)
-      const response = await fetch('/api/ai', {
+      const response = await fetch('/api/ai/campaign', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          mode: 'campaign',
           productNames: selectedProductNames,
           shopSlug: shopData?.shop_slug || 'store'
         })
