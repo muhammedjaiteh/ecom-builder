@@ -10,6 +10,7 @@ interface Order {
   product_name: string;
   price: number;
   status: 'new' | 'processing' | 'shipped' | 'completed' | 'cancelled';
+  fulfillment_method?: 'delivery' | 'pickup';
   created_at: string;
 }
 
@@ -164,6 +165,7 @@ export default function OrdersPage() {
                 <th className="p-5 font-bold text-green-900">Product</th>
                 <th className="p-5 font-bold text-green-900">Price</th>
                 <th className="p-5 font-bold text-green-900">Date</th>
+                <th className="p-5 font-bold text-green-900">Fulfillment</th>
                 <th className="p-5 font-bold text-green-900">Status</th>
                 <th className="p-5 font-bold text-green-900 text-right">Action</th>
               </tr>
@@ -175,6 +177,11 @@ export default function OrdersPage() {
                   <td className="p-5 font-medium text-gray-600">D{order.price}</td>
                   <td className="p-5 text-sm text-gray-500">
                     {new Date(order.created_at).toLocaleDateString()}
+                  </td>
+                  <td className="p-5 text-sm">
+                    <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200">
+                      {order.fulfillment_method ? (order.fulfillment_method.charAt(0).toUpperCase() + order.fulfillment_method.slice(1)) : 'Not set'}
+                    </span>
                   </td>
                   <td className="p-5">
                     <StatusBadge status={order.status} />

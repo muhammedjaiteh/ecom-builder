@@ -3,17 +3,21 @@
 import { createBrowserClient } from '@supabase/ssr';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { Phone, ArrowLeft, ShoppingBag, X, Smartphone, Banknote, Copy, Check, ShieldCheck, CreditCard } from 'lucide-react';
+import { Phone, ArrowLeft, ShoppingBag, X, Smartphone, Banknote, Copy, Check, ShieldCheck, Truck, HomeIcon } from 'lucide-react';
 import Link from 'next/link';
+import { useCart } from '@/components/CartProvider';
 
 export default function ProductClient() {
   const [product, setProduct] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [shopSettings, setShopSettings] = useState<any>(null);
   
   // 🟢 TERMINAL STATE
   const [showTerminal, setShowTerminal] = useState(false);
   const [paymentStep, setPaymentStep] = useState('SELECT');
   const [copied, setCopied] = useState(false);
+
+  const { fulfillmentMethod, setFulfillmentMethod } = useCart();
   
   const params = useParams();
   const supabase = createBrowserClient(
@@ -30,12 +34,13 @@ export default function ProductClient() {
 
       const { data: productData, error } = await supabase
         .from('products')
-        .select(`*, shops (phone, shop_name, shop_slug, logo_url)`)
+        .select(`*, shops (id, phone, shop_name, shop_slug, logo_url, offers_delivery, offers_pickup)`)
         .eq('id', cleanId)
         .single();
 
       if (error || !productData) { setLoading(false); return; }
       setProduct(productData);
+      setShopSettings(productData.shops);
       setLoading(false);
     }
     loadProduct();
@@ -146,6 +151,39 @@ export default function ProductClient() {
             <p className="text-base text-[#5F6F5F] leading-relaxed font-light max-w-md">
                 {product.description || "Authentic quality from trusted sellers. Verified for excellence."}
             </p>
+
+            {/* Fulfillment Method Selection */}
+            {(shopSettings?.offers_delivery || shopSettings?.offers_pickup) && (
+              <div className="pt-2 pb-4">
+                <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Fulfillment Method</p>
+                <div className="flex gap-3">
+                  {shopSettings?.offers_delivery && (
+                    <button
+                      onClick={() => setFulfillmentMethod('delivery')}
+                      className={`flex items-center gap-2 px-4 py-3 rounded-lg font-bold text-xs transition-all uppercase tracking-wider ${
+                        fulfillmentMethod === 'delivery'
+                          ? 'bg-[#2C3E2C] text-white shadow-lg'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      <Truck size={16} /> Delivery
+                    </button>
+                  )}
+                  {shopSettings?.offers_pickup && (
+                    <button
+                      onClick={() => setFulfillmentMethod('pickup')}
+                      className={`flex items-center gap-2 px-4 py-3 rounded-lg font-bold text-xs transition-all uppercase tracking-wider ${
+                        fulfillmentMethod === 'pickup'
+                          ? 'bg-[#2C3E2C] text-white shadow-lg'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      <HomeIcon size={16} /> Pickup
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* 🟢 THE FIXED BUTTON (No more stretching) */}
             <div className="pt-4">

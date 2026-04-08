@@ -134,6 +134,7 @@ export async function POST(request: Request) {
           product_name: body.product_name,
           price_d: body.price_d,
           status: "new",
+          fulfillment_method: body.fulfillment_method || 'delivery',
         },
       ])
       .select();

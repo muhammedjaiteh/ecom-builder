@@ -26,6 +26,8 @@ type CartContextType = {
   isCartOpen: boolean;
   setIsCartOpen: (isOpen: boolean) => void;
   cartCount: number;
+  fulfillmentMethod: 'delivery' | 'pickup';
+  setFulfillmentMethod: (method: 'delivery' | 'pickup') => void;
 };
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -34,14 +36,23 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [fulfillmentMethod, setFulfillmentMethod] = useState<'delivery' | 'pickup'>('delivery');
 
   useEffect(() => {
     const savedCart = localStorage.getItem('sanndikaa_cart');
+    const savedFulfillment = localStorage.getItem('sanndikaa_fulfillment');
     if (savedCart) {
       try {
         setCartItems(JSON.parse(savedCart));
       } catch (e) {
         console.error('Failed to parse cart');
+      }
+    }
+    if (savedFulfillment) {
+      try {
+        setFulfillmentMethod(JSON.parse(savedFulfillment));
+      } catch (e) {
+        console.error('Failed to parse fulfillment method');
       }
     }
     setIsLoaded(true);
@@ -52,6 +63,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('sanndikaa_cart', JSON.stringify(cartItems));
     }
   }, [cartItems, isLoaded]);
+
+  useEffect(() => {
+    if (isLoaded) {
+      localStorage.setItem('sanndikaa_fulfillment', JSON.stringify(fulfillmentMethod));
+    }
+  }, [fulfillmentMethod, isLoaded]);
 
   const addToCart = (item: CartItem) => {
     setCartItems((prev) => {
@@ -100,7 +117,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
         .insert({
           shop_id: targetShopId,
           total_amount: cartTotal,
-          status: 'pending'
+          status: 'pending',
+          fulfillment_method: fulfillmentMethod
         })
         .select()
         .single();
@@ -130,7 +148,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
       })
       .join("\n\n");
 
-    const message = `Hello ${targetShopName},\n\nI would like to place an order via Sanndikaa:\n\n${itemsList}\n\n-------------------------\nTotal: D${cartTotal.toLocaleString()}\n-------------------------\n\nMy Details:\nName: [Type your name]\nLocation: [Type your location]\n\nPreferred Payment Method:\n[Cash on Delivery / Mobile Money]\n\nPlease confirm availability. Thank you.`;
+    const fulfillmentText = `\nFulfillment Method: ${fulfillmentMethod.charAt(0).toUpperCase() + fulfillmentMethod.slice(1)}`;
+
+    const message = `Hello ${targetShopName},\n\nI would like to place an order via Sanndikaa:\n\n${itemsList}\n\n-------------------------\nTotal: D${cartTotal.toLocaleString()}\n-------------------------\n${fulfillmentText}\n\nMy Details:\nName: [Type your name]\nLocation: [Type your location]\n\nPreferred Payment Method:\n[Cash on Delivery / Mobile Money]\n\nPlease confirm availability. Thank you.`;
 
     const encodedMessage = encodeURIComponent(message);
     const formattedPhone = targetShopPhone.replace(/\D/g, "");
@@ -139,7 +159,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <CartContext.Provider value={{ cartItems, addToCart, removeFromCart, updateQuantity, clearCart, isCartOpen, setIsCartOpen, cartCount }}>
+    <CartContext.Provider value={{ cartItems, addToCart, removeFromCart, updateQuantity, clearCart, isCartOpen, setIsCartOpen, cartCount, fulfillmentMethod, setFulfillmentMethod }}>
       {children}
 
       {/* Cart Sidebar */}
