@@ -12,6 +12,7 @@ import {
 import Link from 'next/link';
 import WhatsAppEngine from '../../components/WhatsAppEngine';
 import Broadcast from './broadcast';
+import AnalyticsDashboard from '@/components/AnalyticsDashboard';
 
 type Product = { id: string; image_url: string | null; name: string; price: number; category: string; };
 type Shop = { 
@@ -49,7 +50,7 @@ export default function Dashboard() {
   const [customersCRM, setCustomersCRM] = useState<CustomerCRM[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   
-  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'customers' | 'inventory' | 'broadcast'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'analytics' | 'orders' | 'customers' | 'inventory' | 'broadcast'>('overview');
 
   const [totalOrders, setTotalOrders] = useState(0);
   const [totalRevenue, setTotalRevenue] = useState(0);
@@ -199,6 +200,7 @@ export default function Dashboard() {
         <div className="max-w-7xl mx-auto mt-6 flex gap-1 overflow-x-auto hide-scrollbar">
           {[
             { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
+            { id: 'analytics', icon: BarChart3, label: 'Analytics' },
             { id: 'orders', icon: ShoppingCart, label: `Orders (${orders.filter(o => o.status === 'pending').length})` },
             { id: 'customers', icon: Users, label: 'Customers' },
             { id: 'broadcast', icon: Megaphone, label: 'Broadcast' },
@@ -264,6 +266,11 @@ export default function Dashboard() {
               {orders.length === 0 && <div className="p-8 text-center text-sm text-gray-400">No recent orders.</div>}
             </div>
           </div>
+        )}
+
+        {/* ANALYTICS TAB */}
+        {activeTab === 'analytics' && (
+          <AnalyticsDashboard orders={orders} products={products} />
         )}
 
         {/* ORDERS TAB */}
