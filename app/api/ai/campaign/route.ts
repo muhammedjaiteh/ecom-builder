@@ -142,9 +142,14 @@ export async function POST(request: NextRequest) {
     const openaiData = await openaiResponse.json();
 
     if (!openaiResponse.ok) {
-      console.error('OpenAI API error:', openaiData);
+      const openaiError = openaiData.error?.message || JSON.stringify(openaiData);
+      console.error('OpenAI API error:', { status: openaiResponse.status, error: openaiData });
       return NextResponse.json(
-        { error: 'Failed to generate campaign message. Please try again.' },
+        {
+          error: `OpenAI API Error: ${openaiError}`,
+          openaiStatus: openaiResponse.status,
+          openaiDetails: openaiData
+        },
         { status: 500 }
       );
     }
@@ -203,8 +208,9 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Campaign generation error:', error);
+    const errorMsg = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: 'Failed to generate campaign message. Please try again.' },
+      { error: `Server Error: ${errorMsg}` },
       { status: 500 }
     );
   }

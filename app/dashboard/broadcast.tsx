@@ -238,11 +238,20 @@ export default function BroadcastPage() {
         })
       });
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseErr) {
+        console.error('Failed to parse API response:', parseErr, await response.text());
+        setCampaignError(`API Error (${response.status}): Unable to parse server response`);
+        return;
+      }
 
       if (!response.ok) {
-        // Show the actual error from the API
-        setCampaignError(data.error || 'Failed to generate campaign message');
+        // Show the actual error from the API backend
+        const errorMessage = data.error || `API Error (${response.status})`;
+        console.error('Campaign API error:', { status: response.status, data });
+        setCampaignError(errorMessage);
         return;
       }
 
@@ -251,8 +260,10 @@ export default function BroadcastPage() {
       setCampaignError(null);
 
     } catch (err) {
-      console.error('Campaign generation error:', err);
-      setCampaignError('Failed to generate campaign message. Please try again.');
+      // Network error or other fetch error
+      console.error('Campaign generation network error:', err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      setCampaignError(`Network Error: ${errorMsg}`);
     } finally {
       setIsGeneratingCampaign(false);
     }
