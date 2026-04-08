@@ -217,11 +217,20 @@ export default function BroadcastPage() {
         .filter(p => selectedProducts.includes(p.id))
         .map(p => p.name);
 
-      // Call the AI campaign API (uses session cookies for auth)
+      // Get session token for authorization
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        setCampaignError('Authentication required. Please sign in.');
+        setIsGeneratingCampaign(false);
+        return;
+      }
+
+      // Call the AI campaign API with Bearer token
       const response = await fetch('/api/ai/campaign', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
         },
         body: JSON.stringify({
           productNames: selectedProductNames,

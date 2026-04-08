@@ -1,41 +1,39 @@
+import { createClient } from '@supabase/supabase-js';
 import { NextResponse, NextRequest } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
 
 const METERED_TIERS = ['starter', 'pro'];
 
 /**
  * POST /api/ai/campaign
  * Generate a WhatsApp broadcast campaign message using OpenAI
- * Auth: Uses session cookies from Supabase
+ * Auth: Uses Bearer token (same pattern as GET /api/orders)
  * Deducts 1 AI credit for starter/pro tiers
  */
 export async function POST(request: NextRequest) {
   try {
     // ========================================
-    // 1. AUTHENTICATION: Verify user via session cookies
+    // 1. AUTHENTICATION: Extract & verify Bearer token
     // ========================================
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll: async () => (await cookies()).getAll(),
-          setAll: async (cookiesToSet) => {
-            const cookieStore = await cookies();
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            );
-          },
-        },
-      }
-    );
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader) {
+      return NextResponse.json(
+        { error: 'Unauthorized: Missing authorization header' },
+        { status: 401 }
+      );
+    }
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const token = authHeader.replace('Bearer ', '');
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+    // Verify the token and get the user
+    const verifyClient = createClient(supabaseUrl, supabaseAnonKey);
+    const { data: { user }, error: authError } = await verifyClient.auth.getUser(token);
 
     if (authError || !user) {
       return NextResponse.json(
-        { error: 'Unauthorized. Please sign in to use AI features.' },
+        { error: 'Unauthorized: Invalid or expired token' },
         { status: 401 }
       );
     }
@@ -61,12 +59,14 @@ export async function POST(request: NextRequest) {
     }
 
     // ========================================
-    // 3. QUERY SHOP & VERIFY TIER/CREDITS
+    // 3. CREATE SERVICE CLIENT & QUERY SHOP
     // ========================================
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
     const { data: shop, error: shopError } = await supabase
       .from('shops')
       .select('id, subscription_tier, ai_credits, shop_slug')
-      .eq('user_id', user.id)
+      .eq('id', user.id)
       .single();
 
     if (shopError || !shop) {
@@ -79,6 +79,9 @@ export async function POST(request: NextRequest) {
 
     const tier = shop.subscription_tier?.toLowerCase() || '';
 
+    // ========================================
+    // 4. VERIFY TIER & CREDITS
+    // ========================================
     // Block inactive accounts
     if (tier === 'pending' || tier === 'suspended') {
       return NextResponse.json(
@@ -104,7 +107,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ========================================
-    // 4. PREPARE & CALL OPENAI API
+    // 5. PREPARE & CALL OPENAI API
     // ========================================
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
@@ -156,7 +159,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ========================================
-    // 5. VALIDATE WORD COUNT
+    // 6. VALIDATE WORD COUNT
     // ========================================
     const wordCount = aiMessage.trim().split(/\s+/).length;
     if (wordCount > 75) {
@@ -170,7 +173,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ========================================
-    // 6. DEDUCT CREDIT FOR METERED TIERS
+    // 7. DEDUCT CREDIT FOR METERED TIERS
     // ========================================
     if (METERED_TIERS.includes(tier)) {
       const { error: updateError } = await supabase
@@ -184,7 +187,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ========================================
-    // 7. BUILD FINAL MESSAGE & RETURN
+    // 8. BUILD FINAL MESSAGE & RETURN
     // ========================================
     const storeLink = `\n\nShop here: sanndikaa.com/shop/${shopSlug || shop.shop_slug || 'store'}`;
     const finalMessage = aiMessage + storeLink;
