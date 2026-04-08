@@ -182,11 +182,11 @@ export async function POST(req: Request) {
     const { data: shop, error: shopError } = await supabase
       .from('shops')
       .select('id, subscription_tier, ai_credits')
-      .eq('owner_email', user.email)
+      .eq('id', user.id)
       .single();
 
     if (shopError || !shop) {
-      console.error(`Shop not found for user ${user.email}:`, shopError);
+      console.error(`Shop not found for user ${user.id}:`, shopError);
       return NextResponse.json(
         { error: 'Shop profile not found. Please complete registration.' },
         { status: 404 }
