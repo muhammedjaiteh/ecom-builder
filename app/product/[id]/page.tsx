@@ -6,6 +6,7 @@ import { ArrowLeft, Loader2, ShoppingBag, Plus, Minus, ChevronLeft, ChevronDown 
 import Link from 'next/link';
 import { useCart } from '../../../components/CartProvider'; 
 import TrustUrgencyBlock from '../../../components/TrustUrgencyBlock'; 
+import type { Product, ProductVariant } from '@/lib/types';
 
 type ShopInfo = {
   id: string;
@@ -15,20 +16,8 @@ type ShopInfo = {
   theme_color: string | null;
 };
 
-type ProductVariant = {
-  variant_name: string;
-  variant_value: string;
-};
-
-type Product = {
-  id: string;
-  name: string;
-  price: number;
-  description: string | null;
-  image_url: string | null;
-  image_urls: string[] | null;
-  colors: string[] | null;
-  sizes: string[] | null;
+// For this page's specific Product usage with shops
+type PageProduct = Omit<Product, 'shops'> & {
   shops: ShopInfo | ShopInfo[];
   product_variants?: ProductVariant[] | null;
 };
@@ -52,7 +41,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
   const { id: productId } = use(params);
   const { addToCart } = useCart(); 
 
-  const [product, setProduct] = useState<Product | null>(null);
+  const [product, setProduct] = useState<PageProduct | null>(null);
   const [loading, setLoading] = useState(true);
   
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
@@ -78,7 +67,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
       if (error) {
         console.error('Error fetching product:', error);
       } else {
-        const fetchedProduct = data as Product;
+        const fetchedProduct = data as PageProduct;
         setProduct(fetchedProduct);
 
         const availableColors = (() => {

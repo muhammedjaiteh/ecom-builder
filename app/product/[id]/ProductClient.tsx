@@ -16,6 +16,7 @@ export default function ProductClient() {
   const [showTerminal, setShowTerminal] = useState(false);
   const [paymentStep, setPaymentStep] = useState('SELECT');
   const [copied, setCopied] = useState(false);
+  const [isOutOfStock, setIsOutOfStock] = useState(false);
 
   const { fulfillmentMethod, setFulfillmentMethod } = useCart();
   
@@ -34,7 +35,7 @@ export default function ProductClient() {
 
       const { data: productData, error } = await supabase
         .from('products')
-        .select(`*, shops (id, phone, shop_name, shop_slug, logo_url, offers_delivery, offers_pickup)`)
+        .select(`*, shops (id, phone, shop_name, shop_slug, logo_url, offers_delivery, offers_pickup), stock_quantity`)
         .eq('id', cleanId)
         .single();
 
@@ -45,6 +46,12 @@ export default function ProductClient() {
     }
     loadProduct();
   }, [params]);
+
+  useEffect(() => {
+    if (product?.stock_quantity !== undefined && product?.stock_quantity !== null) {
+      setIsOutOfStock(product.stock_quantity === 0);
+    }
+  }, [product]);
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -185,19 +192,64 @@ export default function ProductClient() {
               </div>
             )}
 
-            {/* 🟢 THE FIXED BUTTON (No more stretching) */}
-            <div className="pt-4">
-                <button 
+            {/* Out of Stock vs Available */}
+            {isOutOfStock ? (
+              <div className="pt-4">
+                <div className="w-full rounded-full bg-red-50 border-2 border-red-200 py-4 px-6 text-center">
+                  <p className="text-sm font-bold text-red-700 uppercase tracking-wider">Out of Stock</p>
+                  <p className="text-xs text-red-600 mt-1">Check back soon for restocks!</p>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Fulfillment Method Selection */}
+                {(shopSettings?.offers_delivery || shopSettings?.offers_pickup) && (
+                  <div className="pt-2 pb-4">
+                    <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Fulfillment Method</p>
+                    <div className="flex gap-3">
+                      {shopSettings?.offers_delivery && (
+                        <button
+                          onClick={() => setFulfillmentMethod('delivery')}
+                          className={`flex items-center gap-2 px-4 py-3 rounded-lg font-bold text-xs transition-all uppercase tracking-wider ${
+                            fulfillmentMethod === 'delivery'
+                              ? 'bg-[#2C3E2C] text-white shadow-lg'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          <Truck size={16} /> Delivery
+                        </button>
+                      )}
+                      {shopSettings?.offers_pickup && (
+                        <button
+                          onClick={() => setFulfillmentMethod('pickup')}
+                          className={`flex items-center gap-2 px-4 py-3 rounded-lg font-bold text-xs transition-all uppercase tracking-wider ${
+                            fulfillmentMethod === 'pickup'
+                              ? 'bg-[#2C3E2C] text-white shadow-lg'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          <HomeIcon size={16} /> Pickup
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 🟢 THE FIXED BUTTON */}
+                <div className="pt-4">
+                  <button 
                     onClick={() => setShowTerminal(true)} 
                     className="w-full md:w-auto bg-[#2C3E2C] hover:bg-[#1a2e1a] text-white py-4 px-10 rounded-full font-bold text-sm tracking-widest uppercase flex items-center justify-center gap-3 shadow-xl hover:shadow-2xl transition-all transform active:scale-95"
-                >
+                  >
                     <Phone size={18} /> 
                     <span>Order via WhatsApp</span>
-                </button>
-                <p className="text-[10px] text-gray-400 mt-4 text-center md:text-left flex items-center justify-center md:justify-start gap-1">
+                  </button>
+                  <p className="text-[10px] text-gray-400 mt-4 text-center md:text-left flex items-center justify-center md:justify-start gap-1">
                     <ShieldCheck size={12} /> Secure Transaction
-                </p>
-            </div>
+                  </p>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </main>

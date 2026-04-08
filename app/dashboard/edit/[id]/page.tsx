@@ -72,6 +72,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<(typeof CATEGORY_OPTIONS)[number]>('General');
   const [status, setStatus] = useState('Active');
+  const [stockQuantity, setStockQuantity] = useState('0');
   const [images, setImages] = useState<ImageItem[]>([]);
   const [colorsInput, setColorsInput] = useState('');
   const [sizesInput, setSizesInput] = useState('');
@@ -114,7 +115,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       // UPGRADE 1: Fetching the product_variants data
       const { data: product, error } = await supabase
         .from('products')
-        .select('id, name, price, description, image_url, image_urls, category, status, colors, sizes, product_variants(variant_name, variant_value)')
+        .select('id, name, price, description, image_url, image_urls, category, status, stock_quantity, colors, sizes, product_variants(variant_name, variant_value)')
         .eq('id', productId)
         .eq('user_id', user.id)
         .single();
@@ -134,6 +135,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       setDescription(product.description || '');
       setCategory((product.category as (typeof CATEGORY_OPTIONS)[number]) || 'General');
       setStatus(product.status || 'Active');
+      setStockQuantity(product?.stock_quantity ? String(product.stock_quantity) : '0');
       setImages(allImages.map((url, index) => ({ url, isDefault: index === 0 })));
 
       // UPGRADE 2: Combine legacy arrays with the new database vault for seamless loading
@@ -284,6 +286,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           description,
           category,
           status,
+          stock_quantity: parseInt(stockQuantity) || 0,
           image_urls: orderedImages.map((image) => image.url),
           image_url: orderedImages[0]?.url || null,
         })
@@ -476,6 +479,21 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                   <option value="Active">Active (Visible to buyers)</option>
                   <option value="Draft">Draft / Sold Out (Hidden from buyers)</option>
                 </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">Stock Quantity</label>
+                <input
+                  type="number"
+                  value={stockQuantity}
+                  onChange={(e) => setStockQuantity(e.target.value)}
+                  placeholder="0"
+                  min="0"
+                  className="w-full rounded-xl bg-[#F9F8F6] p-4 text-lg font-bold text-gray-700 focus:ring-2 focus:ring-[#2C3E2C]"
+                />
+                <p className="mt-1 text-xs text-gray-400">How many units available?</p>
               </div>
             </div>
 

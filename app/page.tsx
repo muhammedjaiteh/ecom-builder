@@ -5,16 +5,7 @@ import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Search, ShoppingBag, Sparkles, Store, TrendingUp, X, Crown, Menu, BadgeCheck } from 'lucide-react';
 import { useCart } from '../components/CartProvider';
-
-type Product = {
-  id: string;
-  name: string;
-  price: number;
-  image_url: string | null;
-  image_urls: string[] | null;
-  category: string | null; 
-  shop?: { shop_name: string; shop_slug: string; subscription_tier?: string };
-};
+import type { Product } from '@/lib/types';
 
 type Shop = {
   id: string;

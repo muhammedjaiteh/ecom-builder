@@ -3,7 +3,41 @@ import { NextResponse, NextRequest } from 'next/server';
 
 const METERED_TIERS = ['starter', 'pro'];
 
-/**
+/**export type Product = {
+  id: string;
+  name: string;
+  price: number;
+  description?: string | null;
+  image_url?: string | null;
+  image_urls?: string[] | null;
+  colors?: string[] | null;
+  sizes?: string[] | null;
+  category?: string;
+  stock_quantity?: number | null;  // ← NEW FIELD
+  user_id?: string;
+  created_at?: string;
+};
+
+export type Shop = { ... };
+export type Order = { ... };
+export type OrderItem = { ... };
+export type CustomerCRM = { ... };
+export type CartItem = { ... };
+export type ProductVariant = { ... };type Product = { 
+  id: string; 
+  image_url: string | null; 
+  name: string; 
+  price: number; 
+  category: string; 
+  stock_quantity?: number | null;  // ← NEW
+};type Product = { 
+  id: string; 
+  image_url: string | null; 
+  name: string; 
+  price: number; 
+  category: string; 
+  stock_quantity?: number | null;  // ← NEW
+};
  * POST /api/ai/campaign
  * Generate a WhatsApp broadcast campaign message using OpenAI
  * Auth: Uses Bearer token (same pattern as GET /api/orders)

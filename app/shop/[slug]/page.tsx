@@ -3,19 +3,9 @@
 import { createBrowserClient } from '@supabase/ssr';
 import { use, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-// 🚨 VERCEL PROTECTION: Removed unused icons so the build doesn't crash
 import { ArrowLeft, Loader2, MapPin, Search, ShoppingBag, Store, Truck, X, Share, BadgeCheck } from 'lucide-react';
 import { useCart } from '../../../components/CartProvider';
-
-type Product = {
-  id: string;
-  name: string;
-  description: string | null;
-  price: number;
-  image_url: string | null;
-  image_urls: string[] | null;
-  category: string | null;
-};
+import type { Product } from '@/lib/types';
 
 type Shop = {
   id: string;

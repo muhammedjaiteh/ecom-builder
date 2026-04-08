@@ -13,26 +13,7 @@ import Link from 'next/link';
 import WhatsAppEngine from '../../components/WhatsAppEngine';
 import Broadcast from './broadcast';
 import AnalyticsDashboard from '@/components/AnalyticsDashboard';
-
-type Product = { id: string; image_url: string | null; name: string; price: number; category: string; };
-type Shop = { 
-  id: string; 
-  shop_name: string | null; 
-  shop_slug: string | null; 
-  banner_url: string | null; 
-  logo_url: string | null; 
-  bio: string | null; 
-  store_layout: string | null; 
-  theme_color: string | null; 
-  offers_delivery: boolean | null; 
-  offers_pickup: boolean | null; 
-  pickup_instructions: string | null;
-  subscription_tier: string; 
-  ai_credits: number;        
-};
-type OrderItem = { quantity: number; variant_details: string; products: { name: string; image_url: string | null }; };
-type Order = { id: string; total_amount: number; status: string; fulfillment_method: string; created_at: string; customers: { name: string; phone_number: string; location: string }; order_items: OrderItem[]; };
-type CustomerCRM = { phone: string; name: string; location: string; totalSpent: number; orderCount: number; lastOrderDate: string; };
+import type { Product, Shop, Order, OrderItem, CustomerCRM } from '@/lib/types';
 
 function sanitizePhoneNumber(rawNumber?: string | null) {
   if (!rawNumber) return null;
