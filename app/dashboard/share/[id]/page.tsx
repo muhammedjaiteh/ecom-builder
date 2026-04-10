@@ -2,7 +2,7 @@
 
 import { createBrowserClient } from '@supabase/ssr';
 import { useEffect, useState, useRef } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { toPng } from 'html-to-image';
 import { Download, Palette, Type, ArrowLeft, Instagram, Sparkles } from 'lucide-react';
 import Link from 'next/link';
@@ -67,6 +67,7 @@ export default function PremiumAdStudio() {
   const [showPrice, setShowPrice] = useState(true);
 
   const params = useParams();
+  const router = useRouter();
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -75,8 +76,26 @@ export default function PremiumAdStudio() {
 
   useEffect(() => {
     async function loadData() {
-      const { data } = await supabase.from('products').select('*').eq('id', params.id).single();
-      if (data) setProduct(data);
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (!user) {
+        router.replace('/login');
+        return;
+      }
+
+      const { data } = await supabase
+        .from('products')
+        .select('*')
+        .eq('id', params.id)
+        .eq('user_id', user.id)
+        .single();
+
+      if (!data) {
+        router.replace('/dashboard/products');
+        return;
+      }
+
+      setProduct(data);
       setLoading(false);
     }
     loadData();

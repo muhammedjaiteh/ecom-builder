@@ -92,9 +92,23 @@ export default function Dashboard() {
   }, [router, supabase]);
 
   const handleUpdateOrderStatus = async (orderId: string, newStatus: string) => {
+    if (!userId) {
+      alert('You must be logged in to update orders.');
+      return;
+    }
+
+    const previousOrders = orders;
     setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: newStatus as any } : o)));
-    const { error } = await supabase.from('orders').update({ status: newStatus }).eq('id', orderId);
-    if (error) { alert("Failed to update status."); setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: o.status === 'completed' ? 'pending' : 'completed' } : o))); }
+    const { error } = await supabase
+      .from('orders')
+      .update({ status: newStatus })
+      .eq('id', orderId)
+      .eq('shop_id', userId);
+
+    if (error) {
+      alert("Failed to update status.");
+      setOrders(previousOrders);
+    }
   };
 
   const handleDelete = async (id: string) => {
