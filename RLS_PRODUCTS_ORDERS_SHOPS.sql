@@ -146,5 +146,10 @@ USING (
 WITH CHECK (
   shop_id = auth.uid()
 );
-
+-- Allow anyone (buyers) to place an order
+CREATE POLICY "orders_public_insert"
+ON public.orders
+FOR INSERT
+TO anon, authenticated
+WITH CHECK (true);
 commit;
