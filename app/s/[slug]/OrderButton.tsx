@@ -10,7 +10,7 @@ export default function OrderButton({ product, storeId, storePhone }: any) {
 
     try {
       // 1. Record the order in your database
-      await fetch('/api/orders', {
+      const response = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -21,13 +21,29 @@ export default function OrderButton({ product, storeId, storePhone }: any) {
         }),
       });
 
+      if (!response.ok) {
+        let message = 'Unable to place order right now.';
+        try {
+          const payload = await response.json();
+          if (payload?.error) message = payload.error;
+        } catch {
+          // Keep default message if response body is not JSON.
+        }
+        throw new Error(message);
+      }
+
+      if (!storePhone) {
+        throw new Error('Seller WhatsApp number is not available.');
+      }
+
       // 2. Open WhatsApp with a pre-filled message
       const message = `Hello! I want to order ${product.name} for D${product.price_d}`;
       const whatsappUrl = `https://wa.me/${storePhone}?text=${encodeURIComponent(message)}`;
       
       window.location.href = whatsappUrl;
     } catch (error) {
-      alert("Error placing order. Check your connection.");
+      const message = error instanceof Error ? error.message : 'Error placing order. Check your connection.';
+      alert(message);
     } finally {
       setLoading(false);
     }

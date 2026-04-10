@@ -41,9 +41,21 @@ export default function OrdersPage() {
 
   const fetchOrders = async () => {
     try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setOrders([]);
+        setError('You must be logged in to view orders');
+        return;
+      }
+
       const { data } = await supabase
         .from('orders')
         .select('*')
+        .eq('shop_id', user.id)
         .order('created_at', { ascending: false });
       setOrders(data || []);
       setError(null);

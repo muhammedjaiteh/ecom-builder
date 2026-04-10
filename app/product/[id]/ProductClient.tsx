@@ -149,7 +149,7 @@ export default function ProductClient() {
               <h1 className="text-4xl md:text-5xl font-serif font-medium leading-tight mb-6 text-[#1a2e1a]">{product.name}</h1>
               <div className="flex items-center gap-6">
                   <p className="text-3xl font-light text-[#2C3E2C]">D{product.price}</p>
-                  <span className="text-[10px] font-bold border border-green-800/30 text-green-800 px-3 py-1 rounded-full uppercase tracking-wider">In Stock</span>
+                  <span className="text-[10px] font-bold border border-green-800/30 text-green-800 px-3 py-1 rounded-full uppercase tracking-wider">{isOutOfStock ? 'Out of Stock' : 'In Stock'}</span>
               </div>
             </div>
 

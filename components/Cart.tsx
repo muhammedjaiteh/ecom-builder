@@ -85,44 +85,76 @@ export default function Cart() {
       const whatsappLink = generateWhatsAppLink(shopData.shopWhatsapp, message);
       if (!whatsappLink) { 
         alert(`Sorry, ${shopData.shopName} has not provided a valid WhatsApp number.`); 
-        setIsProcessing(false); 
         return; 
       }
 
-      // 3. SILENT DATABASE INSERT (Does not break the checkout if it fails)
-      try {
-        const { data: customerData } = await supabase.from('customers').insert({ name: customerName, phone_number: customerPhone, location: fulfillmentMethod === 'delivery' ? deliveryAddress : 'Pickup' }).select().single();
-        if (customerData) {
-          const { data: orderData } = await supabase.from('orders').insert({ shop_id: shopId, customer_id: customerData.id, total_amount: shopData.total, fulfillment_method: fulfillmentMethod, status: 'pending' }).select().single();
-          if (orderData) {
-            const orderItemsToInsert = shopData.items.map((item) => ({ order_id: orderData.id, product_id: item.productId, quantity: item.quantity, price_at_time: item.price, variant_details: item.variant_details }));
-            await supabase.from('order_items').insert(orderItemsToInsert);
+      // 3. STRICT DATABASE INSERT + INVENTORY DEDUCTION
+      const { data: customerData, error: customerError } = await supabase
+        .from('customers')
+        .insert({
+          name: customerName,
+          phone_number: customerPhone,
+          location: fulfillmentMethod === 'delivery' ? deliveryAddress : 'Pickup'
+        })
+        .select()
+        .single();
 
-            // 🚀 INVENTORY DEDUCTION: Decrement stock for each product
-            for (const item of shopData.items) {
-              await supabase.rpc('decrement_stock', {
-                product_id_param: item.productId,
-                quantity_param: item.quantity,
-              });
-            }
-          }
+      if (customerError || !customerData) {
+        throw new Error('Failed to create customer record.');
+      }
+
+      const { data: orderData, error: orderError } = await supabase
+        .from('orders')
+        .insert({
+          shop_id: shopId,
+          customer_id: customerData.id,
+          total_amount: shopData.total,
+          fulfillment_method: fulfillmentMethod,
+          status: 'pending'
+        })
+        .select()
+        .single();
+
+      if (orderError || !orderData) {
+        throw new Error('Failed to create order record.');
+      }
+
+      const orderItemsToInsert = shopData.items.map((item) => ({
+        order_id: orderData.id,
+        product_id: item.productId,
+        quantity: item.quantity,
+        price_at_time: item.price,
+        variant_details: item.variant_details
+      }));
+
+      const { error: orderItemsError } = await supabase.from('order_items').insert(orderItemsToInsert);
+      if (orderItemsError) {
+        throw new Error('Failed to create order items.');
+      }
+
+      // 🚀 INVENTORY DEDUCTION: Decrement stock for each product
+      for (const item of shopData.items) {
+        const { error: stockError } = await supabase.rpc('decrement_stock', {
+          product_id_param: item.productId,
+          quantity_param: item.quantity,
+        });
+        if (stockError) {
+          throw new Error('Inventory update failed.');
         }
-      } catch (dbError) {
-        console.warn("Silent DB Error (Order still sent to WhatsApp):", dbError);
       }
 
       // 4. CLEAR CART AND REDIRECT TO WHATSAPP
       shopData.items.forEach(item => removeFromCart(item.id));
       setActiveCheckoutShop(null);
       setIsCartOpen(false);
-      setIsProcessing(false);
       
       // Open WhatsApp in a new tab/window
       window.open(whatsappLink, '_blank');
 
     } catch (error) {
       console.error("Checkout Error:", error);
-      alert("Issue processing order. Please try again.");
+      alert("Unable to process checkout right now. Your order was not sent. Please try again.");
+    } finally {
       setIsProcessing(false);
     }
   };
@@ -189,7 +221,13 @@ export default function Cart() {
                             <div className="flex items-center rounded-lg border border-gray-200 bg-gray-50/50">
                               <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="px-2.5 py-1 text-gray-400 hover:text-gray-900"><Minus size={12} /></button>
                               <span className="w-5 text-center text-xs font-bold text-gray-700">{item.quantity}</span>
-                              <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="px-2.5 py-1 text-gray-400 hover:text-gray-900"><Plus size={12} /></button>
+                              <button
+                                onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                                disabled={typeof item.stock_quantity === 'number' && item.quantity >= item.stock_quantity}
+                                className="px-2.5 py-1 text-gray-400 hover:text-gray-900"
+                              >
+                                <Plus size={12} />
+                              </button>
                             </div>
                             <button onClick={() => removeFromCart(item.id)} className="text-gray-300 hover:text-red-500 transition"><Trash2 size={16} /></button>
                           </div>

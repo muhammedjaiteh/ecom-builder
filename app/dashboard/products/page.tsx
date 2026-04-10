@@ -15,10 +15,22 @@ export default function InventoryPage() {
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
       );
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setProducts([]);
+        setLoading(false);
+        return;
+      }
       
       const { data } = await supabase
         .from("products")
         .select("*")
+        .eq('user_id', user.id)
         .order("created_at", { ascending: false });
         
       if (data) setProducts(data);

@@ -10,6 +10,7 @@ export type CartItem = {
   name: string;
   price: number;
   quantity: number;
+  stock_quantity?: number | null;
   image_url: string;
   shop_id: string;
   shop_name: string;
@@ -73,10 +74,20 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const addToCart = (item: CartItem) => {
     setCartItems((prev) => {
       const existing = prev.find((i) => i.id === item.id);
+      const maxStock = typeof item.stock_quantity === 'number' ? item.stock_quantity : null;
+
       if (existing) {
-        return prev.map((i) => (i.id === item.id ? { ...i, quantity: i.quantity + item.quantity } : i));
+        return prev.map((i) => {
+          if (i.id !== item.id) return i;
+          const nextQuantity = i.quantity + item.quantity;
+          const quantity = maxStock !== null ? Math.min(nextQuantity, maxStock) : nextQuantity;
+          return { ...i, quantity };
+        });
       }
-      return [...prev, item];
+
+      const nextQuantity = item.quantity < 1 ? 1 : item.quantity;
+      const quantity = maxStock !== null ? Math.min(nextQuantity, maxStock) : nextQuantity;
+      return [...prev, { ...item, quantity }];
     });
     setIsCartOpen(true);
   };
@@ -84,7 +95,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const removeFromCart = (id: string) => setCartItems((prev) => prev.filter((i) => i.id !== id));
   const updateQuantity = (id: string, quantity: number) => {
     if (quantity < 1) return;
-    setCartItems((prev) => prev.map((i) => (i.id === id ? { ...i, quantity } : i)));
+    setCartItems((prev) =>
+      prev.map((i) => {
+        if (i.id !== id) return i;
+        const maxStock = typeof i.stock_quantity === 'number' ? i.stock_quantity : null;
+        const nextQuantity = maxStock !== null ? Math.min(quantity, maxStock) : quantity;
+        return { ...i, quantity: nextQuantity };
+      })
+    );
   };
   const clearCart = () => setCartItems([]);
 
@@ -93,7 +111,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   // 🚀 THE MONEY MAKER: Cart-to-WhatsApp Bridge + Silent DB Save
   const handleCheckout = async () => {
-    if (cartItems.length === 0) return;
+    if (cartItems.length === 0) {
+      alert('Your bag is empty. Add at least one item before checkout.');
+      return;
+    }
 
     const targetShopName = cartItems[0].shop_name || 'Boutique';
     const targetShopPhone = cartItems[0].shop_whatsapp;
@@ -203,7 +224,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
                           <div className="inline-flex items-center rounded-lg border border-gray-200 bg-white">
                             <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="flex h-8 w-8 items-center justify-center text-gray-500 hover:text-gray-900"><Minus size={12} /></button>
                             <span className="w-8 text-center text-xs font-bold text-gray-900">{item.quantity}</span>
-                            <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="flex h-8 w-8 items-center justify-center text-gray-500 hover:text-gray-900"><Plus size={12} /></button>
+                            <button
+                              onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                              disabled={typeof item.stock_quantity === 'number' && item.quantity >= item.stock_quantity}
+                              className="flex h-8 w-8 items-center justify-center text-gray-500 hover:text-gray-900"
+                            >
+                              <Plus size={12} />
+                            </button>
                           </div>
                           <p className="text-sm font-black text-gray-900">D{(item.price * item.quantity).toLocaleString()}</p>
                         </div>

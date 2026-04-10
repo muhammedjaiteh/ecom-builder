@@ -20,6 +20,7 @@ type ShopInfo = {
 type PageProduct = Omit<Product, 'shops'> & {
   shops: ShopInfo | ShopInfo[];
   product_variants?: ProductVariant[] | null;
+  stock_quantity?: number | null;
 };
 
 // The Brand Colors for the checkout button
@@ -60,7 +61,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
     async function fetchProduct() {
       const { data, error } = await supabase
         .from('products')
-        .select('id, name, price, description, image_url, image_urls, colors, sizes, shops(id, shop_name, shop_slug, whatsapp_number, theme_color), product_variants(variant_name, variant_value)')
+        .select('id, name, price, description, stock_quantity, image_url, image_urls, colors, sizes, shops(id, shop_name, shop_slug, whatsapp_number, theme_color), product_variants(variant_name, variant_value)')
         .eq('id', productId)
         .single();
 
@@ -116,6 +117,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
   const themeColor = resolvedShop?.theme_color;
   const activeColor = themeColor ? themeColors[themeColor] || themeColors.emerald : themeColors.emerald;
   const currentImageIndex = Math.min(activeImageIndex, Math.max(normalizedImageUrls.length - 1, 0));
+  const maxSelectableQuantity = typeof product?.stock_quantity === 'number' ? product.stock_quantity : null;
 
   const handleCarouselScroll = () => {
     const node = carouselRef.current;
@@ -127,6 +129,12 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
   const handleAddToBag = () => {
     if (!product || !resolvedShop) return;
+    if (maxSelectableQuantity === 0) {
+      alert('This item is out of stock.');
+      return;
+    }
+
+    const safeQuantity = maxSelectableQuantity !== null ? Math.min(quantity, maxSelectableQuantity) : quantity;
     const variationDetails = [selectedColor ? `Color: ${selectedColor}` : null, selectedSize ? `Size: ${selectedSize}` : null].filter(Boolean).join(', ');
     const cartItemId = `${product.id}-${selectedColor || 'none'}-${selectedSize || 'none'}`;
 
@@ -135,7 +143,8 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
       productId: product.id,
       name: product.name,
       price: product.price,
-      quantity: quantity,
+      quantity: safeQuantity,
+      stock_quantity: product.stock_quantity ?? null,
       image_url: normalizedImageUrls[0] || '',
       shop_id: resolvedShop.id,
       shop_name: resolvedShop.shop_name,
@@ -241,7 +250,13 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
              <div className="inline-flex items-center rounded-xl border border-gray-200 bg-white shadow-sm p-1">
               <button onClick={() => setQuantity((c) => Math.max(1, c - 1))} className="flex h-11 w-11 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition"><Minus size={16} /></button>
               <span className="w-14 text-center text-sm font-bold text-gray-900">{quantity}</span>
-              <button onClick={() => setQuantity((c) => c + 1)} className="flex h-11 w-11 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition"><Plus size={16} /></button>
+              <button
+                onClick={() => setQuantity((c) => c + 1)}
+                disabled={maxSelectableQuantity !== null && quantity >= maxSelectableQuantity}
+                className="flex h-11 w-11 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition"
+              >
+                <Plus size={16} />
+              </button>
             </div>
           </div>
         </div>
