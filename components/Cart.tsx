@@ -97,6 +97,14 @@ export default function Cart() {
           if (orderData) {
             const orderItemsToInsert = shopData.items.map((item) => ({ order_id: orderData.id, product_id: item.productId, quantity: item.quantity, price_at_time: item.price, variant_details: item.variant_details }));
             await supabase.from('order_items').insert(orderItemsToInsert);
+
+            // 🚀 INVENTORY DEDUCTION: Decrement stock for each product
+            for (const item of shopData.items) {
+              await supabase.rpc('decrement_stock', {
+                product_id_param: item.productId,
+                quantity_param: item.quantity,
+              });
+            }
           }
         }
       } catch (dbError) {
