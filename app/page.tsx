@@ -82,15 +82,15 @@ export default function GlobalHomepage() {
     shops.forEach(shop => {
       shop.products.forEach(product => {
         if (product.name.toLowerCase().includes(query) || (product.category && product.category.toLowerCase().includes(query)) || shop.shop_name.toLowerCase().includes(query)) {
-          allProducts.push({ ...product, shop: { shop_name: shop.shop_name, shop_slug: shop.shop_slug, subscription_tier: shop.subscription_tier } });
+          allProducts.push({ ...product, shop: { shop_name: shop.shop_name, shop_slug: shop.shop_slug, subscription_tier: shop.subscription_tier } } as any);
         }
       });
     });
 
     return allProducts.sort((a, b) => {
       const tierRank = { advanced: 3, pro: 2, starter: 1 };
-      const rankA = tierRank[a.shop?.subscription_tier?.toLowerCase().trim() as keyof typeof tierRank] || 1;
-      const rankB = tierRank[b.shop?.subscription_tier?.toLowerCase().trim() as keyof typeof tierRank] || 1;
+      const rankA = tierRank[(a as any).shop?.subscription_tier?.toLowerCase().trim() as keyof typeof tierRank] || 1;
+const rankB = tierRank[(b as any).shop?.subscription_tier?.toLowerCase().trim() as keyof typeof tierRank] || 1;
       return rankB - rankA;
     });
   }, [shops, searchQuery]);
@@ -249,7 +249,7 @@ export default function GlobalHomepage() {
                   const imgUrl = product.image_urls?.[0] || product.image_url;
                   
                   // 🚀 MATCH THE BADGES IN SEARCH RESULTS with .trim() safety
-                  const tier = (product.shop?.subscription_tier || 'starter').toLowerCase().trim();
+                  const tier = ((product as any).shop?.subscription_tier || 'starter').toLowerCase().trim();
                   const isAdvanced = tier === 'advanced';
                   const isPro = tier === 'pro';
 

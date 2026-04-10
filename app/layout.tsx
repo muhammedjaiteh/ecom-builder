@@ -15,9 +15,29 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Sanndikaa | The Gambian Marketplace',
-  description: 'Buy and sell authentic Gambian products.',
-}
+  title: 'Sanndikaa - The Ultimate E-commerce Platform',
+  description: 'Discover authentic Gambian products. Buy and sell on The Gambian Marketplace.',
+  openGraph: {
+    title: 'Sanndikaa - The Ultimate E-commerce Platform',
+    description: 'Discover authentic Gambian products. Buy and sell on The Gambian Marketplace.',
+    url: 'https://sanndikaa-vip.vercel.app',
+    type: 'website',
+    images: [
+      {
+        url: 'https://sanndikaa-vip.vercel.app/og-image.png', 
+        width: 1200,
+        height: 630,
+        alt: 'Sanndikaa E-commerce Platform',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Sanndikaa - The Ultimate E-commerce Platform',
+    description: 'Discover authentic Gambian products. Buy and sell on The Gambian Marketplace.',
+    images: ['https://sanndikaa-vip.vercel.app/og-image.png'],
+  },
+};
 
 export default function RootLayout({
   children,
@@ -31,7 +51,7 @@ export default function RootLayout({
       >
         <CartProvider>
           {children}
-          <Cart /> {/* 🚀 The Cart is now active everywhere! */}
+          <Cart />
         </CartProvider>
       </body>
     </html>

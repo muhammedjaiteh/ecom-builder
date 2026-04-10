@@ -92,7 +92,7 @@ export default function Dashboard() {
   }, [router, supabase]);
 
   const handleUpdateOrderStatus = async (orderId: string, newStatus: string) => {
-    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o)));
+    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: newStatus as any } : o)));
     const { error } = await supabase.from('orders').update({ status: newStatus }).eq('id', orderId);
     if (error) { alert("Failed to update status."); setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: o.status === 'completed' ? 'pending' : 'completed' } : o))); }
   };
@@ -251,7 +251,7 @@ export default function Dashboard() {
 
         {/* ANALYTICS TAB */}
         {activeTab === 'analytics' && (
-          <AnalyticsDashboard orders={orders} products={products} />
+          <AnalyticsDashboard orders={orders as any} products={products as any} />
         )}
 
         {/* ORDERS TAB */}
