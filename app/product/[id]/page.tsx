@@ -190,7 +190,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
       {/* 2. PRODUCT DETAILS SECTION */}
       <main className="mx-auto max-w-2xl px-5 py-8 md:px-8 md:py-12 md:bg-white md:-mt-10 md:relative md:z-10 md:rounded-3xl md:shadow-xl md:mb-12">
         <header className="mb-8">
-          <Link href={`/shop/${resolvedShop.shop_slug}`} className="mb-3 inline-block text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 hover:text-gray-900 transition">
+          <Link href={`/shop/${resolvedShop.shop_slug}`} className="mb-3 inline-block text-xs font-medium uppercase tracking-[0.08em] text-gray-500 hover:text-gray-900 transition">
             {resolvedShop.shop_name}
           </Link>
           <h1 className="text-3xl font-serif font-bold leading-tight text-gray-900 md:text-4xl">{product.name}</h1>
@@ -202,7 +202,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
           
           {normalizedColors.length > 0 && (
             <div>
-              <label className="mb-2.5 block text-[10px] font-bold uppercase tracking-widest text-gray-500">
+              <label className="mb-2.5 block text-xs font-medium uppercase tracking-[0.08em] text-gray-500">
                 Select Color
               </label>
               <div className="relative">
@@ -224,7 +224,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
           {normalizedSizes.length > 0 && (
             <div>
-              <label className="mb-2.5 block text-[10px] font-bold uppercase tracking-widest text-gray-500">
+              <label className="mb-2.5 block text-xs font-medium uppercase tracking-[0.08em] text-gray-500">
                 Select Size
               </label>
               <div className="relative">
@@ -246,7 +246,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
 
           {/* QUANTITY SELECTOR */}
         <div className="pt-2">
-             <span className="mb-2.5 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Quantity</span>
+             <span className="mb-2.5 block text-xs font-medium uppercase tracking-[0.08em] text-gray-500">Quantity</span>
              <div className="inline-flex items-center rounded-xl border border-gray-200 bg-white shadow-sm p-1">
               <button onClick={() => setQuantity((c) => Math.max(1, c - 1))} className="flex h-11 w-11 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition"><Minus size={16} /></button>
               <span className="w-14 text-center text-sm font-bold text-gray-900">{quantity}</span>
@@ -282,7 +282,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
           <button
             type="button"
             onClick={handleAddToBag}
-            className={`flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-[13px] font-bold uppercase tracking-widest text-white shadow-[0_8px_30px_rgb(0,0,0,0.12)] transition-transform hover:scale-[1.01] active:scale-[0.98] ${activeColor.bg}`}
+            className={`flex h-14 w-full items-center justify-center gap-2 rounded-2xl px-6 text-base font-semibold text-white shadow-[0_1px_2px_rgba(16,24,40,0.08),0_10px_24px_rgba(16,24,40,0.18)] transition-transform hover:-translate-y-0.5 active:translate-y-0 ${activeColor.bg}`}
           >
             <ShoppingBag size={18} /> 
             Add to Bag — D{(product.price * quantity).toLocaleString()}

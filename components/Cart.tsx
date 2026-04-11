@@ -218,7 +218,7 @@ export default function Cart() {
                             <p className="mt-1 text-sm font-bold text-emerald-700">D{item.price.toLocaleString()}</p>
                           </div>
                           <div className="flex items-center justify-between mt-2">
-                            <div className="flex items-center rounded-lg border border-gray-200 bg-gray-50/50">
+                            <div className="flex items-center rounded-lg border border-black/10 bg-gray-50/50">
                               <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="px-2.5 py-1 text-gray-400 hover:text-gray-900"><Minus size={12} /></button>
                               <span className="w-5 text-center text-xs font-bold text-gray-700">{item.quantity}</span>
                               <button
@@ -247,26 +247,26 @@ export default function Cart() {
                       <div className="space-y-3">
                         <div className="relative">
                           <User size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                          <input type="text" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Full Name" className="w-full rounded-xl border border-gray-200 bg-gray-50/50 py-3 pl-10 pr-4 text-xs font-medium outline-none focus:border-gray-900 focus:bg-white transition-all" />
+                          <input type="text" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Full Name" className="w-full rounded-xl border border-black/10 bg-gray-50/50 py-3 pl-10 pr-4 text-xs font-medium outline-none focus:border-gray-900 focus:bg-white transition-all" />
                         </div>
                         <div className="relative">
                           <Phone size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                          <input type="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="Phone / WhatsApp Number" className="w-full rounded-xl border border-gray-200 bg-gray-50/50 py-3 pl-10 pr-4 text-xs font-medium outline-none focus:border-gray-900 focus:bg-white transition-all" />
+                          <input type="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="Phone / WhatsApp Number" className="w-full rounded-xl border border-black/10 bg-gray-50/50 py-3 pl-10 pr-4 text-xs font-medium outline-none focus:border-gray-900 focus:bg-white transition-all" />
                         </div>
                         
                         <div className="grid grid-cols-2 gap-2 pt-1">
-                          <button type="button" onClick={() => setFulfillmentMethod('delivery')} className={`flex items-center justify-center gap-1.5 rounded-xl border py-2.5 text-[10px] font-bold uppercase tracking-widest transition ${fulfillmentMethod === 'delivery' ? 'border-emerald-700 bg-emerald-700 text-white shadow-md' : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'}`}><Truck size={14} /> Delivery</button>
-                          <button type="button" onClick={() => setFulfillmentMethod('pickup')} className={`flex items-center justify-center gap-1.5 rounded-xl border py-2.5 text-[10px] font-bold uppercase tracking-widest transition ${fulfillmentMethod === 'pickup' ? 'border-emerald-700 bg-emerald-700 text-white shadow-md' : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'}`}><MapPin size={14} /> Pickup</button>
+                          <button type="button" onClick={() => setFulfillmentMethod('delivery')} className={`flex items-center justify-center gap-1.5 rounded-xl border py-2.5 text-[10px] font-bold uppercase tracking-widest transition ${fulfillmentMethod === 'delivery' ? 'border-emerald-700 bg-emerald-700 text-white shadow-md' : 'border-black/10 bg-white text-gray-500 hover:bg-gray-50'}`}><Truck size={14} /> Delivery</button>
+                          <button type="button" onClick={() => setFulfillmentMethod('pickup')} className={`flex items-center justify-center gap-1.5 rounded-xl border py-2.5 text-[10px] font-bold uppercase tracking-widest transition ${fulfillmentMethod === 'pickup' ? 'border-emerald-700 bg-emerald-700 text-white shadow-md' : 'border-black/10 bg-white text-gray-500 hover:bg-gray-50'}`}><MapPin size={14} /> Pickup</button>
                         </div>
                         
                         {fulfillmentMethod === 'delivery' && (
-                          <textarea value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} rows={2} placeholder="Full Delivery Address (Street, Neighborhood)" className="w-full rounded-xl border border-gray-200 bg-gray-50/50 p-3.5 text-xs font-medium outline-none focus:border-gray-900 focus:bg-white transition-all mt-1" />
+                          <textarea value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} rows={2} placeholder="Full Delivery Address (Street, Neighborhood)" className="w-full rounded-xl border border-black/10 bg-gray-50/50 p-3.5 text-xs font-medium outline-none focus:border-gray-900 focus:bg-white transition-all mt-1" />
                         )}
                         
                         <button 
                           onClick={() => handleProcessCheckout(shopId, shopData)} 
                           disabled={isProcessing} 
-                          className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#1a2e1a] py-4 text-xs font-bold uppercase tracking-widest text-white shadow-xl transition hover:bg-black disabled:opacity-70"
+                          className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#1a2e1a] px-5 text-sm font-semibold tracking-normal text-white shadow-[0_1px_2px_rgba(16,24,40,0.08),0_10px_24px_rgba(16,24,40,0.18)] transition hover:-translate-y-0.5 hover:bg-black disabled:opacity-70"
                         >
                           {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} 
                           {isProcessing ? 'Processing...' : `Send Order to Seller • D${shopData.total.toLocaleString()}`}

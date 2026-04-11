@@ -25,6 +25,11 @@ export default function AddProductPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
 
+  // 🎨 AI Image Enhancement States
+  const [enhancingIndex, setEnhancingIndex] = useState<number | null>(null);
+  const [enhancedIndices, setEnhancedIndices] = useState<Set<number>>(new Set());
+  const [enhanceError, setEnhanceError] = useState<string | null>(null);
+
   // Form States
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
@@ -124,6 +129,54 @@ export default function AddProductPage() {
       setAiError('Failed to connect to AI service. Please check your connection and try again.');
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  // 🎨 AI IMAGE ENHANCEMENT ENGINE
+  const handleEnhanceImage = async (idx: number) => {
+    if (enhancingIndex !== null) return;
+    if (!userId) return;
+
+    setEnhancingIndex(idx);
+    setEnhanceError(null);
+
+    try {
+      // Upload the original file to Supabase to obtain a public URL
+      const file = imageFiles[idx];
+      const fileExt = file.name.split('.').pop() ?? 'jpg';
+      const tempPath = `${userId}/enhance_temp_${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage.from('products').upload(tempPath, file);
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage.from('products').getPublicUrl(tempPath);
+
+      // Call the enhance API
+      const res = await fetch('/api/ai/enhance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageUrl: publicUrl, category }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Enhancement failed. Please try again.');
+
+      // Fetch the enhanced image and convert to a File for upload on publish
+      const enhancedRes = await fetch(data.enhancedImageUrl);
+      const enhancedBlob = await enhancedRes.blob();
+      const enhancedFile = new File([enhancedBlob], `enhanced_${Date.now()}.png`, { type: 'image/png' });
+
+      setImageFiles(prev => { const next = [...prev]; next[idx] = enhancedFile; return next; });
+      setImagePreviews(prev => { const next = [...prev]; next[idx] = URL.createObjectURL(enhancedBlob); return next; });
+      setEnhancedIndices(prev => new Set([...prev, idx]));
+
+      // Best-effort cleanup of the temp upload
+      await supabase.storage.from('products').remove([tempPath]);
+    } catch (error: any) {
+      console.error('AI enhance error:', error);
+      setEnhanceError(error.message || 'Image enhancement failed. Please try again.');
+    } finally {
+      setEnhancingIndex(null);
     }
   };
 
@@ -315,11 +368,48 @@ export default function AddProductPage() {
               {/* Media Upload Card */}
               <div className="rounded-[2rem] bg-white p-6 md:p-8 shadow-sm border border-gray-100">
                 <h2 className="text-lg font-serif font-bold text-gray-900 mb-6 flex items-center gap-2"><ImageIcon size={18} className="text-gray-400" /> Media Gallery</h2>
+
+                {enhanceError && (
+                  <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 flex items-start gap-3 animate-in slide-in-from-top duration-300">
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-red-900">{enhanceError}</p>
+                    </div>
+                    <button type="button" onClick={() => setEnhanceError(null)} className="text-red-400 hover:text-red-500 transition"><X size={16} /></button>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                   {imagePreviews.map((src, idx) => (
                     <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden bg-gray-50 border border-gray-200 group">
                       <img src={src} className="w-full h-full object-cover" />
-                      <button onClick={() => removeImage(idx)} className="absolute top-2 right-2 h-7 w-7 flex items-center justify-center rounded-full bg-white/90 text-red-500 opacity-0 group-hover:opacity-100 transition shadow-sm"><X size={14} /></button>
+
+                      {/* Enhanced badge */}
+                      {enhancedIndices.has(idx) && (
+                        <div className="absolute top-2 left-2 flex items-center gap-1 bg-purple-600 text-white text-[9px] font-bold px-2 py-1 rounded-full shadow-sm">
+                          <Sparkles size={9} /> Enhanced
+                        </div>
+                      )}
+
+                      {/* Enhancing overlay */}
+                      {enhancingIndex === idx ? (
+                        <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center gap-2">
+                          <Loader2 size={22} className="animate-spin text-white" />
+                          <p className="text-[9px] font-bold uppercase tracking-widest text-white">Enhancing...</p>
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            title="Enhance with AI"
+                            onClick={() => handleEnhanceImage(idx)}
+                            disabled={enhancingIndex !== null}
+                            className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-white/90 text-purple-700 text-[9px] font-bold px-2.5 py-1 rounded-full shadow opacity-0 group-hover:opacity-100 transition hover:bg-purple-600 hover:text-white whitespace-nowrap disabled:opacity-40"
+                          >
+                            <Sparkles size={10} /> Enhance
+                          </button>
+                          <button onClick={() => removeImage(idx)} className="absolute top-2 right-2 h-7 w-7 flex items-center justify-center rounded-full bg-white/90 text-red-500 opacity-0 group-hover:opacity-100 transition shadow-sm"><X size={14} /></button>
+                        </>
+                      )}
                     </div>
                   ))}
                   <label className="relative aspect-square rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50/50 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 hover:border-gray-300 transition group">
