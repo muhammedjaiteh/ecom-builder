@@ -2,7 +2,7 @@
 
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { ArrowLeft, Loader2, Upload, X, Image as ImageIcon, Plus, Package, Sparkles, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -10,10 +10,10 @@ const CATEGORIES = ['Fashion', 'Sneakers', 'Beauty & Wellness', 'Home & Artisan'
 
 export default function AddProductPage() {
   const router = useRouter();
-  const supabase = createBrowserClient(
+  const supabase = useMemo(() => createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  ), []);
 
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -27,6 +27,8 @@ export default function AddProductPage() {
 
   // 🎨 AI Image Enhancement States
   const [enhancingIndex, setEnhancingIndex] = useState<number | null>(null);
+  const [isEnhancing, setIsEnhancing] = useState(false);
+  const [enhanceStatus, setEnhanceStatus] = useState('');
   const [enhancedIndices, setEnhancedIndices] = useState<Set<number>>(new Set());
   const [enhanceError, setEnhanceError] = useState<string | null>(null);
 
@@ -69,6 +71,14 @@ export default function AddProductPage() {
     fetchUserData();
   }, [router, supabase]);
 
+  // Revoke all object URLs when the component unmounts to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      imagePreviews.forEach(url => URL.revokeObjectURL(url));
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Handle Images & Variants
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -78,6 +88,7 @@ export default function AddProductPage() {
     }
   };
   const removeImage = (index: number) => {
+    URL.revokeObjectURL(imagePreviews[index]);
     setImageFiles((prev) => prev.filter((_, i) => i !== index));
     setImagePreviews((prev) => prev.filter((_, i) => i !== index));
   };
@@ -132,51 +143,165 @@ export default function AddProductPage() {
     }
   };
 
-  // 🎨 AI IMAGE ENHANCEMENT ENGINE
+  // 🎨 AI IMAGE ENHANCEMENT ENGINE — 3-step cascade orchestrated via browser
+  // Each step is a separate serverless call. Two 7.5s browser-side sleeps between
+  // steps keep us inside Replicate's burst-1 rate limit without any server timeout.
+  // Every fetch is wrapped in a 60s AbortController + Promise.race timeout.
   const handleEnhanceImage = async (idx: number) => {
-    if (enhancingIndex !== null) return;
+    if (isEnhancing) return;
     if (!userId) return;
 
+    setIsEnhancing(true);
     setEnhancingIndex(idx);
     setEnhanceError(null);
+    setEnhanceStatus('');
 
-    try {
-      // Upload the original file to Supabase to obtain a public URL
-      const file = imageFiles[idx];
-      const fileExt = file.name.split('.').pop() ?? 'jpg';
-      const tempPath = `${userId}/enhance_temp_${Date.now()}.${fileExt}`;
+    const TIMEOUT_MS = 60_000;
+    const TIMEOUT_MSG =
+      'The AI Creative Director is taking too long. Please try again or with a smaller image.';
 
-      const { error: uploadError } = await supabase.storage.from('products').upload(tempPath, file);
-      if (uploadError) throw uploadError;
+    const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-      const { data: { publicUrl } } = supabase.storage.from('products').getPublicUrl(tempPath);
+    // Wraps a fetch in a 60s hard timeout using AbortController + Promise.race.
+    const fetchWithTimeout = async (
+      url: string,
+      body: object,
+      signal: AbortSignal,
+    ): Promise<Response> => {
+      const controller = new AbortController();
 
-      // Call the enhance API
-      const res = await fetch('/api/ai/enhance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageUrl: publicUrl, category }),
+      // If the outer cascade is already aborted, propagate immediately
+      if (signal.aborted) throw new Error(TIMEOUT_MSG);
+      signal.addEventListener('abort', () => controller.abort(), { once: true });
+
+      const timeout = new Promise<never>((_, reject) => {
+        const id = setTimeout(() => {
+          controller.abort();
+          reject(new Error(TIMEOUT_MSG));
+        }, TIMEOUT_MS);
+        // Clear timeout if fetch finishes first
+        controller.signal.addEventListener('abort', () => clearTimeout(id), { once: true });
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Enhancement failed. Please try again.');
+      const request = fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
 
-      // Fetch the enhanced image and convert to a File for upload on publish
-      const enhancedRes = await fetch(data.enhancedImageUrl);
+      return Promise.race([request, timeout]);
+    };
+
+    // Fetch a route with a 60s timeout and one automatic 429 retry.
+    const fetchStep = async (
+      url: string,
+      body: object,
+      signal: AbortSignal,
+    ): Promise<Response> => {
+      const res = await fetchWithTimeout(url, body, signal);
+
+      if (res.status === 429) {
+        const data = await res.json();
+        const waitMs = ((data.retry_after as number) ?? 7) * 1000;
+        setEnhanceStatus('Rate limited — retrying...');
+        await sleep(waitMs);
+        return fetchWithTimeout(url, body, signal);
+      }
+
+      return res;
+    };
+
+    // One controller to rule them all — aborting this cancels any in-flight step.
+    const cascadeController = new AbortController();
+    let tempPath: string | null = null;
+
+    try {
+      // ── Upload original file to Supabase for a public URL ────────────────
+      const file = imageFiles[idx];
+      const fileExt = file.name.split('.').pop() ?? 'jpg';
+      tempPath = `${userId}/enhance_temp_${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('products')
+        .upload(tempPath, file);
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('products')
+        .getPublicUrl(tempPath);
+
+      // ── STEP 1: Vision analysis — BLIP captions the image, detects niche ──
+      setEnhanceStatus('Sharpening product...');
+      const visionRes = await fetchStep('/api/ai/upscale-caption', { imageUrl: publicUrl, category }, cascadeController.signal);
+      const visionData = await visionRes.json();
+      if (!visionRes.ok) throw new Error(visionData.error || 'Vision analysis failed.');
+
+      const { hdImageUrl, niche } = visionData as { hdImageUrl: string; niche: string };
+
+      // ── 7.5s browser-side pause: no server involved, no timeout risk ──────
+      setEnhanceStatus('Removing background...');
+      await sleep(7500);
+
+      // ── STEP 2: Background removal ────────────────────────────────────────
+      const removeBgRes = await fetchStep('/api/ai/remove-bg', { imageUrl: hdImageUrl }, cascadeController.signal);
+      const removeBgData = await removeBgRes.json();
+      if (!removeBgRes.ok) throw new Error(removeBgData.error || 'Background removal failed.');
+
+      const { transparentImageUrl } = removeBgData as { transparentImageUrl: string };
+
+      // ── 7.5s browser-side pause ───────────────────────────────────────────
+      const nicheLabel = niche.charAt(0) + niche.slice(1).toLowerCase();
+      setEnhanceStatus(`Designing ${nicheLabel} Studio...`);
+      await sleep(7500);
+
+      // ── STEP 3: Niche-aware background synthesis ──────────────────────────
+      const generateBgRes = await fetchStep('/api/ai/generate-bg', {
+        transparentImageUrl,
+        niche,
+        category,
+      }, cascadeController.signal);
+      const generateBgData = await generateBgRes.json();
+      if (!generateBgRes.ok) throw new Error(generateBgData.error || 'Background generation failed.');
+
+      // ── Swap image in form state ──────────────────────────────────────────
+      const enhancedRes = await fetch(generateBgData.enhancedImageUrl);
       const enhancedBlob = await enhancedRes.blob();
-      const enhancedFile = new File([enhancedBlob], `enhanced_${Date.now()}.png`, { type: 'image/png' });
+      const enhancedFile = new File(
+        [enhancedBlob],
+        `enhanced_${Date.now()}.png`,
+        { type: 'image/png' }
+      );
 
       setImageFiles(prev => { const next = [...prev]; next[idx] = enhancedFile; return next; });
-      setImagePreviews(prev => { const next = [...prev]; next[idx] = URL.createObjectURL(enhancedBlob); return next; });
+      setImagePreviews(prev => {
+        const next = [...prev];
+        URL.revokeObjectURL(next[idx]); // free the old blob URL before replacing
+        next[idx] = URL.createObjectURL(enhancedBlob);
+        return next;
+      });
       setEnhancedIndices(prev => new Set([...prev, idx]));
 
-      // Best-effort cleanup of the temp upload
-      await supabase.storage.from('products').remove([tempPath]);
+      // Best-effort cleanup of the temp upload is handled in finally
+
     } catch (error: any) {
       console.error('AI enhance error:', error);
-      setEnhanceError(error.message || 'Image enhancement failed. Please try again.');
+      cascadeController.abort(); // kill any in-flight request on ANY failure
+      const msg =
+        error?.name === 'AbortError'
+          ? TIMEOUT_MSG
+          : error?.message || 'Image enhancement failed. Please try again.';
+      setEnhanceError(msg);
     } finally {
+      // Always clean up the temp file, whether we succeeded or failed
+      if (tempPath) {
+        supabase.storage.from('products').remove([tempPath]).catch(e =>
+          console.error('[enhance] temp cleanup failed:', e)
+        );
+      }
+      setIsEnhancing(false);
       setEnhancingIndex(null);
+      setEnhanceStatus('');
     }
   };
 
@@ -394,7 +519,7 @@ export default function AddProductPage() {
                       {enhancingIndex === idx ? (
                         <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center gap-2">
                           <Loader2 size={22} className="animate-spin text-white" />
-                          <p className="text-[9px] font-bold uppercase tracking-widest text-white">Enhancing...</p>
+                          <p className="text-[9px] font-bold uppercase tracking-widest text-white">{enhanceStatus || 'Enhancing...'}</p>
                         </div>
                       ) : (
                         <>
@@ -402,8 +527,8 @@ export default function AddProductPage() {
                             type="button"
                             title="Enhance with AI"
                             onClick={() => handleEnhanceImage(idx)}
-                            disabled={enhancingIndex !== null}
-                            className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-white/90 text-purple-700 text-[9px] font-bold px-2.5 py-1 rounded-full shadow opacity-0 group-hover:opacity-100 transition hover:bg-purple-600 hover:text-white whitespace-nowrap disabled:opacity-40"
+                            disabled={isEnhancing}
+                            className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-white/90 text-purple-700 text-[9px] font-bold px-2.5 py-1 rounded-full shadow opacity-100 md:opacity-0 md:group-hover:opacity-100 transition hover:bg-purple-600 hover:text-white whitespace-nowrap disabled:opacity-40"
                           >
                             <Sparkles size={10} /> Enhance
                           </button>

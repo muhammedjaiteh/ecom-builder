@@ -1,6 +1,7 @@
 'use client';
 
 import { createBrowserClient } from '@supabase/ssr';
+import { PostgrestError } from '@supabase/supabase-js';
 import { use, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Loader2, MapPin, Search, ShoppingBag, Store, Truck, X, Share, BadgeCheck } from 'lucide-react';
@@ -54,18 +55,25 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
 
   useEffect(() => {
     async function fetchShop() {
+      // Next.js params can be URL-encoded (e.g. "jambaba%20boutique09").
+      // The DB stores the decoded value, so we must decode before querying.
+      const decodedSlug = decodeURIComponent(slug);
+
       const { data, error } = await supabase
         .from('shops')
         .select(`
           id, shop_name, shop_slug, banner_url, logo_url, bio, theme_color, store_layout, offers_delivery, offers_pickup, pickup_instructions, subscription_tier, ai_credits,
           products (id, name, description, price, image_url, image_urls, category)
         `)
-        .eq('shop_slug', slug)
-        .single();
+        .eq('shop_slug', decodedSlug)
+        .maybeSingle();
 
-      if (error) console.error('Error fetching shop:', error);
-      else setShop(data as Shop);
-      
+      if (error) {
+        console.error('Error fetching shop:', (error as PostgrestError).code, (error as PostgrestError).message, (error as PostgrestError).details);
+      } else {
+        setShop(data as Shop);
+      }
+
       setLoading(false);
     }
     fetchShop();

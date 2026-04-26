@@ -6,17 +6,20 @@ import { useParams } from 'next/navigation';
 import { Phone, ArrowLeft, ShoppingBag, X, Smartphone, Banknote, Copy, Check, ShieldCheck, Truck, HomeIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useCart } from '@/components/CartProvider';
+import ReviewForm from '@/components/ReviewForm';
+import ReviewList from '@/components/ReviewList';
 
-export default function ProductClient() {
-  const [product, setProduct] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [shopSettings, setShopSettings] = useState<any>(null);
+export default function ProductClient({ product: initialProduct }: { product?: any }) {
+  const [product, setProduct] = useState<any>(initialProduct || null);
+  const [loading, setLoading] = useState(!initialProduct);
+  const [shopSettings, setShopSettings] = useState<any>(initialProduct?.shops || null);
   
   // 🟢 TERMINAL STATE
   const [showTerminal, setShowTerminal] = useState(false);
   const [paymentStep, setPaymentStep] = useState('SELECT');
   const [copied, setCopied] = useState(false);
   const [isOutOfStock, setIsOutOfStock] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const { fulfillmentMethod, setFulfillmentMethod } = useCart();
   
@@ -29,6 +32,7 @@ export default function ProductClient() {
 
   useEffect(() => {
     async function loadProduct() {
+      if (initialProduct) return;
       if (!params?.id) return;
       const rawId = String(params.id);
       const cleanId = rawId.replace(/[^a-zA-Z0-9-]/g, '');
@@ -37,7 +41,7 @@ export default function ProductClient() {
         .from('products')
         .select(`*, shops (id, phone, shop_name, shop_slug, logo_url, offers_delivery, offers_pickup), stock_quantity`)
         .eq('id', cleanId)
-        .single();
+        .maybeSingle();
 
       if (error || !productData) { setLoading(false); return; }
       setProduct(productData);
@@ -59,6 +63,10 @@ export default function ProductClient() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleReviewSubmitted = () => {
+    setRefreshTrigger(prev => prev + 1);
+  };
+
   const handleOrder = (method: string) => {
     if (method === 'Wave' && paymentStep === 'SELECT') {
         setPaymentStep('WAVE_INFO');
@@ -72,6 +80,8 @@ export default function ProductClient() {
             product_name: product.name,
             product_price: product.price,
             created_at: new Date().toISOString()
+        }).then(({ error }) => {
+            if (error) console.error('[leads] insert failed:', error.message);
         });
     }
 
@@ -90,6 +100,38 @@ export default function ProductClient() {
     setShowTerminal(false);
     setPaymentStep('SELECT');
   };
+
+  const FulfillmentSelector = () => (shopSettings?.offers_delivery || shopSettings?.offers_pickup) ? (
+    <div className="pt-2 pb-4">
+      <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Fulfillment Method</p>
+      <div className="flex gap-3">
+        {shopSettings?.offers_delivery && (
+          <button
+            onClick={() => setFulfillmentMethod('delivery')}
+            className={`flex items-center gap-2 px-4 py-3 rounded-lg font-bold text-xs transition-all uppercase tracking-wider ${
+              fulfillmentMethod === 'delivery'
+                ? 'bg-[#2C3E2C] text-white shadow-lg'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            <Truck size={16} /> Delivery
+          </button>
+        )}
+        {shopSettings?.offers_pickup && (
+          <button
+            onClick={() => setFulfillmentMethod('pickup')}
+            className={`flex items-center gap-2 px-4 py-3 rounded-lg font-bold text-xs transition-all uppercase tracking-wider ${
+              fulfillmentMethod === 'pickup'
+                ? 'bg-[#2C3E2C] text-white shadow-lg'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            <HomeIcon size={16} /> Pickup
+          </button>
+        )}
+      </div>
+    </div>
+  ) : null;
 
   if (loading) return <div className="min-h-screen bg-[#F9F8F6] flex items-center justify-center text-[#2C3E2C] font-serif animate-pulse">Loading Luxury...</div>;
   if (!product) return <div className="min-h-screen bg-[#F9F8F6] flex items-center justify-center text-[#2C3E2C]">Item Unavailable</div>;
@@ -160,37 +202,7 @@ export default function ProductClient() {
             </p>
 
             {/* Fulfillment Method Selection */}
-            {(shopSettings?.offers_delivery || shopSettings?.offers_pickup) && (
-              <div className="pt-2 pb-4">
-                <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Fulfillment Method</p>
-                <div className="flex gap-3">
-                  {shopSettings?.offers_delivery && (
-                    <button
-                      onClick={() => setFulfillmentMethod('delivery')}
-                      className={`flex items-center gap-2 px-4 py-3 rounded-lg font-bold text-xs transition-all uppercase tracking-wider ${
-                        fulfillmentMethod === 'delivery'
-                          ? 'bg-[#2C3E2C] text-white shadow-lg'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      <Truck size={16} /> Delivery
-                    </button>
-                  )}
-                  {shopSettings?.offers_pickup && (
-                    <button
-                      onClick={() => setFulfillmentMethod('pickup')}
-                      className={`flex items-center gap-2 px-4 py-3 rounded-lg font-bold text-xs transition-all uppercase tracking-wider ${
-                        fulfillmentMethod === 'pickup'
-                          ? 'bg-[#2C3E2C] text-white shadow-lg'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      <HomeIcon size={16} /> Pickup
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
+            <FulfillmentSelector />
 
             {/* Out of Stock vs Available */}
             {isOutOfStock ? (
@@ -203,37 +215,7 @@ export default function ProductClient() {
             ) : (
               <>
                 {/* Fulfillment Method Selection */}
-                {(shopSettings?.offers_delivery || shopSettings?.offers_pickup) && (
-                  <div className="pt-2 pb-4">
-                    <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Fulfillment Method</p>
-                    <div className="flex gap-3">
-                      {shopSettings?.offers_delivery && (
-                        <button
-                          onClick={() => setFulfillmentMethod('delivery')}
-                          className={`flex items-center gap-2 px-4 py-3 rounded-lg font-bold text-xs transition-all uppercase tracking-wider ${
-                            fulfillmentMethod === 'delivery'
-                              ? 'bg-[#2C3E2C] text-white shadow-lg'
-                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                          }`}
-                        >
-                          <Truck size={16} /> Delivery
-                        </button>
-                      )}
-                      {shopSettings?.offers_pickup && (
-                        <button
-                          onClick={() => setFulfillmentMethod('pickup')}
-                          className={`flex items-center gap-2 px-4 py-3 rounded-lg font-bold text-xs transition-all uppercase tracking-wider ${
-                            fulfillmentMethod === 'pickup'
-                              ? 'bg-[#2C3E2C] text-white shadow-lg'
-                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                          }`}
-                        >
-                          <HomeIcon size={16} /> Pickup
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
+                <FulfillmentSelector />
 
                 {/* 🟢 THE FIXED BUTTON */}
                 <div className="pt-4">
@@ -252,6 +234,35 @@ export default function ProductClient() {
             )}
           </div>
         </div>
+
+        {/* --- REVIEWS INTEGRATION --- */}
+        <div className="mt-24 pt-12 border-t border-black/5">
+          <div className="flex items-center gap-4 mb-8">
+            <h2 className="text-3xl font-serif font-medium leading-tight text-[#1a2e1a]">Customer Feedback</h2>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+            
+            {/* Left Column: Review List & Stats */}
+            <div className="lg:col-span-2">
+              <ReviewList 
+                 productId={product.id} 
+                 refreshTrigger={refreshTrigger} 
+              />
+            </div>
+            
+            {/* Right Column: Submission Form */}
+            <div className="lg:col-span-1">
+              <div className="sticky top-24">
+                <ReviewForm 
+                   productId={product.id} 
+                   onReviewSubmitted={handleReviewSubmitted} 
+                />
+              </div>
+            </div>
+            
+          </div>
+        </div>
+        {/* --- END REVIEWS INTEGRATION --- */}
       </main>
 
       {/* 💳 THE VIP TERMINAL (Redesigned) */}

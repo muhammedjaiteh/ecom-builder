@@ -154,7 +154,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
           price: item.price,
           variant_details: item.variant_details
         }));
-        await supabase.from('order_items').insert(orderItemsToInsert);
+        const { error: itemsError } = await supabase.from('order_items').insert(orderItemsToInsert);
+        if (itemsError) {
+          // Rollback the orphaned order so we don't have header-only orders in the DB
+          await supabase.from('orders').delete().eq('id', orderData.id);
+          throw new Error('Could not record your order items. Please try again.');
+        }
       }
     } catch (err) {
       console.error("Non-fatal error saving silent order", err);

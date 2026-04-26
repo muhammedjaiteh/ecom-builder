@@ -22,7 +22,7 @@ function CheckoutEngine() {
     async function loadShop() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push('/login'); return; }
-      const { data } = await supabase.from('shops').select('shop_name').eq('id', user.id).single();
+      const { data } = await supabase.from('shops').select('shop_name').eq('id', user.id).maybeSingle();
       if (data) setShopName(data.shop_name || 'my boutique');
       setLoading(false);
     }
