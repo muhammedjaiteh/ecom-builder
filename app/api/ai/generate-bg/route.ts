@@ -58,6 +58,12 @@ function extractUrl(output: unknown): string {
 
 const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
 
+// Tell Vercel to allow up to 60 s for this function (requires Pro or higher).
+// NOTE: lucataco/realvisxl-v2-img2img is a COLD model — cold boots can take
+// 3+ minutes. If 60 s is still too short, consider Vercel Pro (up to 300 s)
+// or migrate to a WARM model such as stability-ai/sdxl.
+export const maxDuration = 60;
+
 // ============================================================
 // POST /api/ai/generate-bg
 // Body:    { transparentImageUrl: string, niche: string, category?: string }
@@ -154,10 +160,32 @@ export async function POST(req: Request) {
 
     if (isRateLimit) {
       return NextResponse.json(
-        { error: 'Rate limit reached. Retrying shortly...', retry_after: 7 },
+        { error: 'AI Model Busy — rate limited. Retrying shortly...', retry_after: 7 },
         { status: 429 }
       );
     }
+
+    // The RealVisXL model is COLD — cold boots can exhaust the function timeout.
+    // Surface this as a retriable 503 so the client shows a helpful message.
+    const isColdBootTimeout =
+      message.toLowerCase().includes('timed out') ||
+      message.toLowerCase().includes('timeout') ||
+      message.toLowerCase().includes('prediction failed') ||
+      message.toLowerCase().includes('starting');
+
+    if (isColdBootTimeout) {
+      return NextResponse.json(
+        {
+          error:
+            'AI Studio is warming up (cold boot). Please retry in 30 seconds.',
+          retry_after: 30,
+        },
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json({ error: message }, { status: 500 });
+  } finally {
+    // No temp storage files are created in this route — nothing to clean up.
   }
 }

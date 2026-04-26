@@ -157,8 +157,6 @@ export default function AddProductPage() {
     setEnhanceStatus('');
 
     const TIMEOUT_MS = 60_000;
-    const TIMEOUT_MSG =
-      'The AI Creative Director is taking too long. Please try again or with a smaller image.';
 
     const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -193,7 +191,7 @@ export default function AddProductPage() {
       return Promise.race([request, timeout]);
     };
 
-    // Fetch a route with a 60s timeout and one automatic 429 retry.
+    // Fetch a route with a 60s timeout and one automatic 429/503 retry.
     const fetchStep = async (
       url: string,
       body: object,
@@ -201,11 +199,21 @@ export default function AddProductPage() {
     ): Promise<Response> => {
       const res = await fetchWithTimeout(url, body, signal);
 
-      if (res.status === 429) {
-        const data = await res.json();
-        const waitMs = ((data.retry_after as number) ?? 7) * 1000;
-        setEnhanceStatus('Rate limited — retrying...');
-        await sleep(waitMs);
+      if (res.status === 429 || res.status === 503) {
+        // Safely parse JSON — Vercel 504/502 bodies are HTML, not JSON
+        let retryAfterSec = 7;
+        try {
+          const data = await res.clone().json();
+          retryAfterSec = (data.retry_after as number) ?? retryAfterSec;
+          if (data.retry_after === 30) {
+            setEnhanceStatus('AI Studio warming up — retrying...');
+          } else {
+            setEnhanceStatus('Rate limited — retrying...');
+          }
+        } catch {
+          setEnhanceStatus('Retrying...');
+        }
+        await sleep(retryAfterSec * 1000);
         return fetchWithTimeout(url, body, signal);
       }
 
@@ -234,7 +242,8 @@ export default function AddProductPage() {
       // ── STEP 1: Vision analysis — BLIP captions the image, detects niche ──
       setEnhanceStatus('Sharpening product...');
       const visionRes = await fetchStep('/api/ai/upscale-caption', { imageUrl: publicUrl, category }, cascadeController.signal);
-      const visionData = await visionRes.json();
+      let visionData: any;
+      try { visionData = await visionRes.json(); } catch { throw new Error('Vision analysis failed — server returned an unexpected response.'); }
       if (!visionRes.ok) throw new Error(visionData.error || 'Vision analysis failed.');
 
       const { hdImageUrl, niche } = visionData as { hdImageUrl: string; niche: string };
@@ -245,7 +254,8 @@ export default function AddProductPage() {
 
       // ── STEP 2: Background removal ────────────────────────────────────────
       const removeBgRes = await fetchStep('/api/ai/remove-bg', { imageUrl: hdImageUrl }, cascadeController.signal);
-      const removeBgData = await removeBgRes.json();
+      let removeBgData: any;
+      try { removeBgData = await removeBgRes.json(); } catch { throw new Error('Background removal failed — server returned an unexpected response.'); }
       if (!removeBgRes.ok) throw new Error(removeBgData.error || 'Background removal failed.');
 
       const { transparentImageUrl } = removeBgData as { transparentImageUrl: string };
@@ -261,7 +271,8 @@ export default function AddProductPage() {
         niche,
         category,
       }, cascadeController.signal);
-      const generateBgData = await generateBgRes.json();
+      let generateBgData: any;
+      try { generateBgData = await generateBgRes.json(); } catch { throw new Error('Background generation failed — server returned an unexpected response.'); }
       if (!generateBgRes.ok) throw new Error(generateBgData.error || 'Background generation failed.');
 
       // ── Swap image in form state ──────────────────────────────────────────
@@ -287,10 +298,31 @@ export default function AddProductPage() {
     } catch (error: any) {
       console.error('AI enhance error:', error);
       cascadeController.abort(); // kill any in-flight request on ANY failure
-      const msg =
-        error?.name === 'AbortError'
-          ? TIMEOUT_MSG
-          : error?.message || 'Image enhancement failed. Please try again.';
+
+      let msg: string;
+      if (error?.name === 'AbortError') {
+        msg = 'AI Creative Director timed out — the studio model may be warming up. Please retry in 30 seconds.';
+      } else if (
+        error?.message?.toLowerCase().includes('too large') ||
+        error?.message?.toLowerCase().includes('payload') ||
+        error?.message?.toLowerCase().includes('413')
+      ) {
+        msg = 'Image Too Large — please use an image under 5 MB and retry.';
+      } else if (
+        error?.message?.toLowerCase().includes('warming up') ||
+        error?.message?.toLowerCase().includes('cold boot') ||
+        error?.message?.toLowerCase().includes('503')
+      ) {
+        msg = 'AI Studio is warming up. Please retry in 30 seconds.';
+      } else if (
+        error?.message?.toLowerCase().includes('rate limit') ||
+        error?.message?.toLowerCase().includes('429') ||
+        error?.message?.toLowerCase().includes('busy')
+      ) {
+        msg = 'AI Model Busy — please wait a moment and try again.';
+      } else {
+        msg = error?.message || 'Image enhancement failed. Please try again.';
+      }
       setEnhanceError(msg);
     } finally {
       // Always clean up the temp file, whether we succeeded or failed

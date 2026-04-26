@@ -5,6 +5,9 @@ import Replicate from 'replicate';
 
 const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
 
+// Tell Vercel to allow up to 60 s for this function (requires Pro or higher).
+export const maxDuration = 60;
+
 // ─── SAFE URL EXTRACTOR ───────────────────────────────────────────────────────
 // Replicate SDK v0.25+ returns FileOutput objects (not plain strings).
 // FileOutput implements ReadableStream but also exposes .url() → URL and
@@ -106,10 +109,26 @@ export async function POST(req: Request) {
 
     if (isRateLimit) {
       return NextResponse.json(
-        { error: 'Rate limit reached. Retrying shortly...', retry_after: 7 },
+        { error: 'AI Model Busy — rate limited. Retrying shortly...', retry_after: 7 },
         { status: 429 }
       );
     }
+
+    const isImageTooLarge =
+      message.toLowerCase().includes('too large') ||
+      message.toLowerCase().includes('payload') ||
+      message.toLowerCase().includes('file size') ||
+      (error as any)?.status === 413;
+
+    if (isImageTooLarge) {
+      return NextResponse.json(
+        { error: 'Image Too Large — please use an image under 5 MB.' },
+        { status: 413 }
+      );
+    }
+
     return NextResponse.json({ error: message }, { status: 500 });
+  } finally {
+    // No temp storage files are created in this route — nothing to clean up.
   }
 }

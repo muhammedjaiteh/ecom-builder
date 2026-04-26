@@ -37,6 +37,10 @@ function detectNiche(caption: string, category?: string): string {
 
 const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
 
+// Tell Vercel to allow up to 60 s for this function (requires Pro or higher).
+// On Hobby the hard cap is 10 s — upgrade to Pro if models keep timing out.
+export const maxDuration = 60;
+
 // ============================================================
 // POST /api/ai/upscale-caption
 // Body:    { imageUrl: string, category?: string }
@@ -124,10 +128,25 @@ export async function POST(req: Request) {
 
     if (isRateLimit) {
       return NextResponse.json(
-        { error: 'Rate limit reached. Retrying shortly...', retry_after: 7 },
+        { error: 'AI Model Busy — rate limited. Retrying shortly...', retry_after: 7 },
         { status: 429 }
       );
     }
+
+    const isTimeout =
+      message.toLowerCase().includes('timed out') ||
+      message.toLowerCase().includes('timeout') ||
+      message.toLowerCase().includes('taking too long');
+
+    if (isTimeout) {
+      return NextResponse.json(
+        { error: 'Vision analysis timed out — the AI model is warming up. Please retry in 30 seconds.' },
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json({ error: message }, { status: 500 });
+  } finally {
+    // No temp storage files are created in this route — nothing to clean up.
   }
 }
