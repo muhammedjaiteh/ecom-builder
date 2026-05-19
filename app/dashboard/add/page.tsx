@@ -609,7 +609,7 @@ export default function AddProductPage() {
                     type="button"
                     onClick={handleMagicAutofill}
                     disabled={isMagicFilling || imageFiles.length === 0}
-                    className="flex items-center gap-2 rounded-full bg-[#2C3E2C] px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-white shadow-md transition hover:bg-[#1a2e1a] disabled:opacity-50"
+                    className="flex items-center gap-2 rounded-full bg-[#2C3E2C] px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-white shadow-md transition-all duration-200 hover:bg-[#1a2e1a] hover:scale-105 hover:shadow-[0_0_22px_rgba(44,62,44,0.45)] active:scale-95 disabled:opacity-50 disabled:hover:scale-100 disabled:hover:shadow-md"
                   >
                     {isMagicFilling ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
                     {isMagicFilling ? magicStatus : '✨ Magic Auto-Fill'}

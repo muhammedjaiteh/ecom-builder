@@ -2,6 +2,7 @@
 
 import { createBrowserClient } from '@supabase/ssr';
 import { useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   BadgePercent, Loader2, Plus, Sparkles, Trash2, ToggleLeft, ToggleRight, X,
 } from 'lucide-react';
@@ -191,31 +192,40 @@ export default function DiscountManager({ userId, products }: Props) {
               </div>
             )}
 
-            {suggestion && (
-              <div className="animate-in slide-in-from-top duration-300 rounded-2xl border border-purple-200 bg-white p-5 shadow-sm">
-                <div className="mb-4 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-purple-500 mb-1">AI Recommendation</p>
-                    <div className="flex items-center gap-3">
-                      <span className="rounded-lg bg-[#1a2e1a] px-3 py-1.5 font-mono text-sm font-bold tracking-widest text-white">
-                        {suggestion.code_name}
-                      </span>
-                      <span className="text-2xl font-black text-gray-900">{suggestion.discount_percentage}% off</span>
-                    </div>
-                  </div>
-                  <button onClick={() => setSuggestion(null)} className="text-gray-300 hover:text-gray-500"><X size={16} /></button>
-                </div>
-                <p className="mb-5 text-sm leading-relaxed text-gray-600 italic">&ldquo;{suggestion.strategy}&rdquo;</p>
-                <button
-                  onClick={handleSaveSuggestion}
-                  disabled={isSavingSuggestion}
-                  className="flex items-center gap-2 rounded-xl bg-[#1a2e1a] px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-white shadow-md transition hover:bg-black disabled:opacity-60"
+            <AnimatePresence>
+              {suggestion && (
+                <motion.div
+                  key="ai-suggestion"
+                  initial={{ opacity: 0, y: -10, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -10, scale: 0.97 }}
+                  transition={{ duration: 0.3, ease: 'easeOut' }}
+                  className="rounded-2xl border border-purple-200 bg-white p-5 shadow-sm"
                 >
-                  {isSavingSuggestion ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
-                  {isSavingSuggestion ? 'Saving...' : 'Save This Code'}
-                </button>
-              </div>
-            )}
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-purple-500 mb-1">AI Recommendation</p>
+                      <div className="flex items-center gap-3">
+                        <span className="rounded-lg bg-[#1a2e1a] px-3 py-1.5 font-mono text-sm font-bold tracking-widest text-white">
+                          {suggestion.code_name}
+                        </span>
+                        <span className="text-2xl font-black text-gray-900">{suggestion.discount_percentage}% off</span>
+                      </div>
+                    </div>
+                    <button onClick={() => setSuggestion(null)} className="text-gray-300 transition-colors hover:text-gray-500"><X size={16} /></button>
+                  </div>
+                  <p className="mb-5 text-sm leading-relaxed text-gray-600 italic">&ldquo;{suggestion.strategy}&rdquo;</p>
+                  <button
+                    onClick={handleSaveSuggestion}
+                    disabled={isSavingSuggestion}
+                    className="flex items-center gap-2 rounded-xl bg-[#1a2e1a] px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-white shadow-md transition-all duration-200 hover:bg-black hover:scale-[1.03] hover:shadow-lg active:scale-95 disabled:opacity-60 disabled:hover:scale-100 disabled:hover:shadow-md"
+                  >
+                    {isSavingSuggestion ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+                    {isSavingSuggestion ? 'Saving...' : 'Save This Code'}
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </section>
 
           {/* Manual creation form */}
@@ -306,7 +316,7 @@ export default function DiscountManager({ userId, products }: Props) {
                   <div className="flex shrink-0 items-center gap-1">
                     <button
                       onClick={() => handleToggle(d.id, d.active_status)}
-                      className="rounded-full p-1.5 text-gray-400 transition hover:text-gray-700"
+                      className="rounded-full p-1.5 text-gray-400 transition-all duration-150 hover:bg-gray-100 hover:text-gray-700 hover:scale-110 active:scale-95"
                       title={d.active_status ? 'Deactivate' : 'Activate'}
                     >
                       {d.active_status
@@ -315,7 +325,7 @@ export default function DiscountManager({ userId, products }: Props) {
                     </button>
                     <button
                       onClick={() => handleDelete(d.id)}
-                      className="rounded-full p-1.5 text-gray-300 transition hover:text-red-500"
+                      className="rounded-full p-1.5 text-gray-300 transition-all duration-150 hover:bg-red-50 hover:text-red-500 hover:scale-110 active:scale-95"
                       title="Delete"
                     >
                       <Trash2 size={15} />

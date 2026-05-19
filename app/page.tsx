@@ -4,6 +4,7 @@ import { createBrowserClient } from '@supabase/ssr';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, ShoppingBag, Store, X, Menu, Sparkles,
   BadgeCheck, Shield, Truck, RotateCcw, Award, Mail, ArrowRight,
@@ -544,7 +545,12 @@ export default function GlobalHomepage() {
         {isSearching ? (
 
           /* ── AI LOADING STATE ────────────────────────────── */
-          <div className="flex min-h-[60vh] flex-col items-center justify-center px-4 py-24 text-center">
+          <motion.div
+            className="flex min-h-[60vh] flex-col items-center justify-center px-4 py-24 text-center"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.4, ease: 'easeOut' }}
+          >
             <div className="relative mb-6 flex h-16 w-16 items-center justify-center">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#1a2e1a]/20" />
               <div className="relative flex h-14 w-14 items-center justify-center rounded-full bg-[#1a2e1a] text-white shadow-lg">
@@ -562,7 +568,7 @@ export default function GlobalHomepage() {
                 />
               ))}
             </div>
-          </div>
+          </motion.div>
 
         ) : searchResults !== null ? (
 
@@ -611,9 +617,24 @@ export default function GlobalHomepage() {
             ) : (
               <>
                 <p className="mb-4 text-xs text-gray-400">{searchResults.length} item{searchResults.length !== 1 ? 's' : ''} found</p>
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                  {searchResults.map((product) => renderProductCard(product))}
-                </div>
+                <motion.div
+                  className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
+                  initial="hidden"
+                  animate="show"
+                  variants={{ hidden: {}, show: { transition: { staggerChildren: 0.055 } } }}
+                >
+                  {searchResults.map((product) => (
+                    <motion.div
+                      key={`${product.id}-${product.shop?.shop_slug}`}
+                      variants={{
+                        hidden: { opacity: 0, y: 18 },
+                        show: { opacity: 1, y: 0, transition: { duration: 0.32, ease: 'easeOut' } },
+                      }}
+                    >
+                      {renderProductCard(product)}
+                    </motion.div>
+                  ))}
+                </motion.div>
               </>
             )}
           </div>
