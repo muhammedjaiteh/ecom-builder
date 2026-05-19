@@ -5,12 +5,13 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import {
-  ArrowRight, Search, ShoppingBag, Sparkles, Store, X, Menu,
-  BadgeCheck, Shield, Truck, RotateCcw, Award, Mail,
+  Search, ShoppingBag, Store, X, Menu, Sparkles,
+  BadgeCheck, Shield, Truck, RotateCcw, Award, Mail, ArrowRight,
 } from 'lucide-react';
 import { useCart } from '../components/CartProvider';
 import type { Product } from '@/lib/types';
 
+// ── Types ─────────────────────────────────────────────────────────────────────
 type Shop = {
   id: string;
   shop_name: string;
@@ -22,9 +23,57 @@ type Shop = {
   products: Product[];
 };
 
-const WORLDS = [
-  'All', 'Fashion', 'Sneakers', 'Beauty & Wellness',
-  'Home & Artisan', 'Tech Accessories', 'Food & Culinary',
+type CategoryShelf = {
+  id: string;
+  title: string;
+  description: string;
+  keywords: string[];
+  emptyMessage: string;
+};
+
+const CATEGORY_SHELVES: CategoryShelf[] = [
+  {
+    id: 'beauty-personal-care',
+    title: 'Beauty & Personal Care',
+    description: 'Skincare, fragrance, and self-care essentials from independent boutiques.',
+    keywords: ['beauty', 'wellness', 'personal care', 'skincare', 'makeup', 'fragrance'],
+    emptyMessage: 'No beauty products have been added yet.',
+  },
+  {
+    id: 'fashion-apparel',
+    title: 'Fashion & Apparel',
+    description: 'Statement clothing, ready-to-wear pieces, and everyday style picks.',
+    keywords: ['fashion', 'apparel', 'clothing'],
+    emptyMessage: 'No fashion products have been added yet.',
+  },
+  {
+    id: 'sneakers-footwear',
+    title: 'Sneakers & Footwear',
+    description: 'Sneakers, slides, and standout footwear worth rotating into your collection.',
+    keywords: ['sneaker', 'footwear', 'shoe'],
+    emptyMessage: 'No footwear products have been added yet.',
+  },
+  {
+    id: 'home-artisan',
+    title: 'Home & Artisan',
+    description: 'Handcrafted goods, home decor, and artisan-made pieces for every space.',
+    keywords: ['home', 'artisan', 'decor', 'handmade', 'craft'],
+    emptyMessage: 'No home and artisan products have been added yet.',
+  },
+  {
+    id: 'tech-accessories',
+    title: 'Tech Accessories',
+    description: 'Cables, cases, and smart accessories for modern everyday life.',
+    keywords: ['tech', 'accessories', 'electronics', 'gadget', 'phone', 'cable', 'case'],
+    emptyMessage: 'No tech products have been added yet.',
+  },
+  {
+    id: 'food-culinary',
+    title: 'Food & Culinary',
+    description: 'Local flavours, spices, snacks, and artisan food products.',
+    keywords: ['food', 'culinary', 'spice', 'snack', 'drink', 'beverage', 'sauce', 'ingredient'],
+    emptyMessage: 'No food products have been added yet.',
+  },
 ];
 
 type ProductWithShop = Product & {
@@ -41,10 +90,16 @@ function getTierRank(tier?: string): number {
   return TIER_RANK[(tier?.toLowerCase().trim() as keyof typeof TIER_RANK)] || 1;
 }
 
+function categoryMatchesShelf(category: string | null | undefined, keywords: string[]): boolean {
+  const value = category?.toLowerCase().trim();
+  if (!value) return false;
+  return keywords.some((kw) => value.includes(kw));
+}
+
 function ProductCardSkeleton() {
   return (
     <div className="flex flex-col animate-pulse">
-      <div className="aspect-[4/5] rounded-2xl bg-gray-200" />
+      <div className="aspect-[3/4] rounded-2xl bg-gray-200" />
       <div className="mt-3 space-y-2">
         <div className="h-3 w-3/4 rounded-full bg-gray-200" />
         <div className="h-3 w-1/3 rounded-full bg-gray-200" />
@@ -54,120 +109,129 @@ function ProductCardSkeleton() {
   );
 }
 
+// ── Component ─────────────────────────────────────────────────────────────────
 export default function GlobalHomepage() {
-  const [activeWorld, setActiveWorld] = useState('All');
   const [shops, setShops] = useState<Shop[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchResults, setSearchResults] = useState<ProductWithShop[] | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [newsletterEmail, setNewsletterEmail] = useState('');
   const [newsletterSubmitted, setNewsletterSubmitted] = useState(false);
-  const [isAnnouncementVisible, setIsAnnouncementVisible] = useState(true);
 
   const { cartCount, setIsCartOpen } = useCart();
 
-  // ─── SUPABASE CLIENT ─── unchanged
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // ─── DATA FETCH ─── unchanged
   useEffect(() => {
     async function fetchCuratedMall() {
       const { data, error } = await supabase
         .from('shops')
-        .select(`id, shop_name, shop_slug, logo_url, theme_color, subscription_tier, status, products (id, name, price, image_url, image_urls, category)`)
+        .select(`id, shop_name, shop_slug, logo_url, theme_color, subscription_tier, status, products (id, name, price, image_url, image_urls, category, stock_quantity)`)
         .eq('status', 'active');
 
       if (!error && data) {
         const activeShops = (data as unknown as Shop[]).filter(
           (shop) => shop.products && shop.products.length > 0
         );
-        const sortedShops = activeShops.sort(
-          (a, b) => getTierRank(b.subscription_tier) - getTierRank(a.subscription_tier)
+        setShops(
+          activeShops.sort((a, b) => getTierRank(b.subscription_tier) - getTierRank(a.subscription_tier))
         );
-        setShops(sortedShops);
       }
       setLoading(false);
     }
     fetchCuratedMall();
   }, [supabase]);
 
-  // ─── FILTER LOGIC ─── unchanged
-  const displayedShops = useMemo(() => {
-    if (activeWorld === 'All') return shops;
-    const searchKey = activeWorld.split(' ')[0].toLowerCase();
-    return shops
-      .map((shop) => ({
-        ...shop,
-        products: shop.products.filter(
-          (p) => p.category && p.category.toLowerCase().includes(searchKey)
-        ),
-      }))
-      .filter((shop) => shop.products.length > 0);
-  }, [shops, activeWorld]);
-
-  // ─── SEARCH LOGIC ─── unchanged
-  const searchResults = useMemo(() => {
-    if (!searchQuery.trim()) return [];
-    const query = searchQuery.toLowerCase();
-    const allProducts: Product[] = [];
+  const marketplaceProducts = useMemo(() => {
+    const all: ProductWithShop[] = [];
     shops.forEach((shop) => {
       shop.products.forEach((product) => {
-        if (
-          product.name.toLowerCase().includes(query) ||
-          (product.category && product.category.toLowerCase().includes(query)) ||
-          shop.shop_name.toLowerCase().includes(query)
-        ) {
-          allProducts.push({
-            ...product,
-            shop: { shop_name: shop.shop_name, shop_slug: shop.shop_slug, subscription_tier: shop.subscription_tier },
-          } as any);
-        }
-      });
-    });
-    return allProducts.sort(
-      (a, b) => getTierRank((b as any).shop?.subscription_tier) - getTierRank((a as any).shop?.subscription_tier)
-    );
-  }, [shops, searchQuery]);
-
-  const marketplaceProducts = useMemo(() => {
-    const allProducts: ProductWithShop[] = [];
-    displayedShops.forEach((shop) => {
-      shop.products.forEach((product) => {
-        allProducts.push({
+        all.push({
           ...(product as Product),
           shop: { shop_name: shop.shop_name, shop_slug: shop.shop_slug, subscription_tier: shop.subscription_tier },
         } as ProductWithShop);
       });
     });
-    return allProducts.sort(
-      (a, b) => getTierRank(b.shop?.subscription_tier) - getTierRank(a.shop?.subscription_tier)
-    );
-  }, [displayedShops]);
-
-  const spotlightProduct = useMemo(() => {
-    const topShop = shops[0];
-    if (!topShop) return null;
-    const topProduct = topShop.products.find(
-      (p) => p.image_url || (p.image_urls && p.image_urls.length > 0)
-    );
-    if (!topProduct) return null;
-    return {
-      ...topProduct,
-      shop: { shop_name: topShop.shop_name, shop_slug: topShop.shop_slug, subscription_tier: topShop.subscription_tier },
-    } as ProductWithShop;
+    return all.sort((a, b) => getTierRank(b.shop?.subscription_tier) - getTierRank(a.shop?.subscription_tier));
   }, [shops]);
 
-  const totalProducts = useMemo(
-    () => shops.reduce((acc, shop) => acc + shop.products.length, 0),
-    [shops]
+  const categoryShelves = useMemo(
+    () => CATEGORY_SHELVES.map((shelf) => ({
+      ...shelf,
+      products: marketplaceProducts.filter((p) => categoryMatchesShelf(p.category, shelf.keywords)),
+    })),
+    [marketplaceProducts]
   );
 
-  // ─── PRODUCT CARD ───
+  const handleCategoryJump = (sectionId: string) => {
+    setSearchQuery('');
+    setIsSearching(false);
+    setSearchResults(null);
+    setIsMobileMenuOpen(false);
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame(() => {
+        document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
+  };
+
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    // Clear results when the input is emptied so swimlanes reappear
+    if (!value.trim()) {
+      setSearchResults(null);
+    }
+  };
+
+  const handleSearchSubmit = async () => {
+    const q = searchQuery.trim();
+    if (!q) return;
+
+    setIsSearching(true);
+    setSearchResults(null);
+
+    try {
+      const res = await fetch('/api/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: q }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Search failed');
+
+      // Enrich returned products with shop data from locally loaded shops
+      const shopMap = new Map(shops.map((s) => [s.id, s]));
+      const enriched: ProductWithShop[] = (data.products ?? []).map((p: Product) => {
+        const shop = shopMap.get((p.user_id || p.shop_id) as string);
+        return {
+          ...p,
+          shop: shop
+            ? { shop_name: shop.shop_name, shop_slug: shop.shop_slug, subscription_tier: shop.subscription_tier }
+            : { shop_name: '', shop_slug: '', subscription_tier: 'starter' },
+        };
+      });
+
+      setSearchResults(enriched);
+    } catch (err) {
+      console.error('[search] client error:', err);
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const clearSearch = () => {
+    setSearchQuery('');
+    setIsSearching(false);
+    setSearchResults(null);
+  };
+
+  // ── Product card ─────────────────────────────────────────────────────────
   const renderProductCard = (product: ProductWithShop) => {
     const imgUrl = product.image_urls?.[0] || product.image_url;
     const tier = (product.shop?.subscription_tier || 'starter').toLowerCase().trim();
@@ -177,139 +241,228 @@ export default function GlobalHomepage() {
     return (
       <Link
         href={`/product/${product.id}`}
-        key={`${product.id}-${product.shop?.shop_slug || 'shop'}`}
+        key={`${product.id}-${product.shop?.shop_slug}`}
         className="group flex flex-col"
       >
-        <div className={`relative aspect-[4/5] overflow-hidden rounded-2xl border bg-neutral-100 ${isAdvanced ? 'border-yellow-300' : isPro ? 'border-purple-300' : 'border-black/5'}`}>
+        <div
+          className={`relative aspect-square overflow-hidden rounded-xl border bg-neutral-100 ${
+            isAdvanced ? 'border-yellow-300' : isPro ? 'border-purple-300' : 'border-black/5'
+          }`}
+        >
           {imgUrl ? (
             <Image
               src={imgUrl}
               alt={product.name}
               fill
               className="object-cover transition-transform duration-700 group-hover:scale-105"
-              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+              sizes="(max-width: 640px) 160px, (max-width: 1024px) 192px, 208px"
             />
           ) : (
             <div className="flex h-full items-center justify-center text-gray-300">
               <ShoppingBag size={22} />
             </div>
           )}
-
           {(isAdvanced || isPro) && (
-            <div className="absolute left-2 top-2 flex items-center gap-1 rounded-md bg-white/95 px-2 py-1 shadow-sm backdrop-blur text-[10px] font-semibold">
+            <div className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 text-[10px] font-semibold shadow-sm backdrop-blur">
               {isAdvanced ? (
-                <><BadgeCheck size={11} className="text-yellow-500" /><span className="text-yellow-700">Featured</span></>
+                <><BadgeCheck size={10} className="text-yellow-500" /><span className="text-yellow-700">Featured</span></>
               ) : (
-                <><BadgeCheck size={11} className="text-purple-500" /><span className="text-purple-700">Pro Seller</span></>
+                <><BadgeCheck size={10} className="text-purple-500" /><span className="text-purple-700">Pro</span></>
               )}
             </div>
           )}
         </div>
-
-        <div className="mt-3 space-y-0.5">
-          <h4 className="truncate text-sm font-medium text-gray-900 group-hover:underline">{product.name}</h4>
-          <p className="text-sm font-semibold text-gray-900">D{product.price}</p>
-          <p className="truncate text-xs font-medium text-gray-500">{product.shop?.shop_name}</p>
+        <div className="mt-2.5 space-y-0.5">
+          <h4 className="line-clamp-2 text-[13px] font-medium leading-5 text-gray-900 group-hover:underline">
+            {product.name}
+          </h4>
+          <p className="text-[13px] font-semibold text-gray-900">D{product.price}</p>
+          <p className="truncate text-[11px] text-gray-500">{product.shop?.shop_name}</p>
         </div>
       </Link>
     );
   };
 
-  // ─── SKELETON LOADER ───
+  // ── Loading skeleton ──────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="min-h-screen bg-neutral-50 font-sans text-gray-900">
-        <div className="h-10 w-full bg-[#1a2e1a]" />
-        <div className="h-[72px] w-full border-b border-black/5 bg-white" />
-        <div className="border-b border-black/5 bg-white">
-          <div className="mx-auto grid max-w-7xl grid-cols-1 gap-8 px-4 py-8 md:grid-cols-2 md:px-10 md:py-12 animate-pulse">
-            <div className="space-y-4">
-              <div className="h-4 w-40 rounded-full bg-gray-200" />
-              <div className="h-12 w-4/5 rounded-xl bg-gray-200" />
-              <div className="h-4 w-3/5 rounded-full bg-gray-200" />
-              <div className="h-12 w-full rounded-full bg-gray-200" />
-            </div>
-            <div className="aspect-[4/3] rounded-2xl bg-gray-200" />
+      <div className="min-h-screen bg-neutral-50 font-sans">
+        <div className="h-8 w-full bg-[#1a2e1a]" />
+        <div className="bg-[#1a2e1a] px-4 py-3">
+          <div className="mb-2 flex items-center justify-between">
+            <div className="h-9 w-9 rounded-md bg-white/20" />
+            <div className="h-8 w-28 rounded bg-white/20" />
+            <div className="h-9 w-9 rounded-md bg-white/20" />
+          </div>
+          <div className="h-11 w-full rounded-lg bg-white/20" />
+        </div>
+        <div className="border-b border-black/5 bg-white px-4 py-4">
+          <div className="grid grid-cols-2 gap-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="flex animate-pulse items-center gap-2.5">
+                <div className="h-8 w-8 flex-shrink-0 rounded-full bg-gray-200" />
+                <div className="space-y-1.5">
+                  <div className="h-3 w-24 rounded-full bg-gray-200" />
+                  <div className="h-2.5 w-16 rounded-full bg-gray-200" />
+                </div>
+              </div>
+            ))}
           </div>
         </div>
-        <div className="mx-auto max-w-7xl px-4 py-12 md:px-10">
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-            {Array.from({ length: 10 }).map((_, i) => <ProductCardSkeleton key={i} />)}
-          </div>
+        <div className="space-y-8 px-4 pt-8">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="animate-pulse space-y-3">
+              <div className="h-5 w-44 rounded-full bg-gray-200" />
+              <div className="flex gap-3 overflow-hidden">
+                {Array.from({ length: 4 }).map((__, j) => (
+                  <div key={j} className="w-[160px] flex-shrink-0 sm:w-48">
+                    <ProductCardSkeleton />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     );
   }
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-neutral-50 font-sans text-gray-900 selection:bg-gray-900 selection:text-white">
+    <div className="min-h-screen bg-neutral-50 font-sans text-gray-900 selection:bg-green-100">
 
-      {/* ═══════════════════════════════════════════
-          ANNOUNCEMENT BAR
-      ═══════════════════════════════════════════ */}
-      {isAnnouncementVisible && (
-        <div className="relative flex items-center justify-center bg-[#1a2e1a] px-10 py-2.5 text-center">
-          <p className="text-xs font-medium tracking-wide text-white/90">
-            ✨ Free delivery on orders over D500 &nbsp;·&nbsp; Secure checkout &nbsp;·&nbsp; Buyer protection on every order
-          </p>
-          <button
-            onClick={() => setIsAnnouncementVisible(false)}
-            className="absolute right-4 text-white/50 transition hover:text-white"
-            aria-label="Dismiss announcement"
-          >
-            <X size={14} />
-          </button>
-        </div>
-      )}
 
-      {/* ═══════════════════════════════════════════
-          NAVIGATION
-      ═══════════════════════════════════════════ */}
-      <nav className="sticky top-0 z-50 w-full border-b border-black/5 bg-white/95 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 md:px-10">
-          {/* Left */}
-          <div className="flex flex-1 items-center justify-start gap-4">
+      {/* ═══════════════════════════════════════════════════════
+          HEADER
+      ═══════════════════════════════════════════════════════ */}
+      <header className="sticky top-0 z-50">
+
+        {/* ── MOBILE HEADER: dark green, two-row Amazon-style (hidden on md+) ── */}
+        <div className="bg-[#1a2e1a] md:hidden">
+          {/* Row 1: Burger | Logo | Cart */}
+          <div className="grid grid-cols-[44px_1fr_44px] items-center px-3 pb-2 pt-3">
             <button
-              onClick={() => { setIsMobileMenuOpen(!isMobileMenuOpen); setIsSearchOpen(false); }}
-              className="-ml-2 flex items-center justify-center p-2 text-gray-900 transition hover:opacity-70 md:hidden"
-              aria-label="Toggle navigation menu"
+              onClick={() => setIsMobileMenuOpen((o) => !o)}
+              className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md text-white transition hover:bg-white/10 active:bg-white/20"
+              aria-label="Toggle menu"
             >
-              {isMobileMenuOpen ? <X size={24} strokeWidth={1.5} /> : <Menu size={24} strokeWidth={1.5} />}
+              {isMobileMenuOpen ? <X size={22} strokeWidth={1.8} /> : <Menu size={22} strokeWidth={1.8} />}
             </button>
-            <div className="hidden items-center gap-6 md:flex">
-              <Link href="/login" className="text-sm font-medium text-gray-500 transition hover:text-gray-900">
+
+            <div className="flex items-center justify-center">
+              <Link href="/" className="flex-shrink-0">
+                <img
+                  src="/logo.png"
+                  alt="Sanndikaa"
+                  className="h-16 w-auto flex-shrink-0 object-contain brightness-0 invert"
+                />
+              </Link>
+            </div>
+
+            <button
+              onClick={() => setIsCartOpen(true)}
+              className="relative flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md text-white transition hover:bg-white/10 active:bg-white/20"
+              aria-label="Open cart"
+            >
+              <ShoppingBag size={22} strokeWidth={1.8} />
+              {cartCount > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-yellow-400 text-[9px] font-bold leading-none text-[#1a2e1a] shadow">
+                  {cartCount > 9 ? '9+' : cartCount}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* Row 2: Full-width search bar */}
+          <div className="px-3 pb-3">
+            <div className="flex h-11 overflow-hidden rounded-lg bg-white shadow-sm">
+              <label htmlFor="mobile-search" className="flex cursor-text items-center pl-3 text-gray-400">
+                <Search size={16} />
+              </label>
+              <input
+                id="mobile-search"
+                type="text"
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearchSubmit()}
+                placeholder="Search 'summer wedding outfit' or 'glowing skin'..."
+                className="flex-1 bg-transparent px-2 text-sm text-gray-900 outline-none placeholder:text-gray-400"
+              />
+              {searchQuery ? (
+                <button
+                  onClick={clearSearch}
+                  className="flex items-center justify-center px-3 text-gray-400 hover:text-gray-700"
+                >
+                  <X size={16} />
+                </button>
+              ) : (
+                <button
+                  onClick={handleSearchSubmit}
+                  className="flex items-center justify-center bg-[#f0a500] px-4"
+                >
+                  <Search size={17} className="text-[#1a2e1a]" />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── DESKTOP HEADER (visible from md+) ── */}
+        <div className="hidden w-full border-b border-black/5 bg-white/95 backdrop-blur-md md:block">
+          <div className="mx-auto flex max-w-7xl items-center gap-5 px-10 py-4">
+            <Link href="/" className="flex-shrink-0">
+              <img
+                src="/logo.png"
+                alt="Sanndikaa"
+                className="h-16 w-auto flex-shrink-0 object-contain"
+              />
+            </Link>
+            <div className="flex items-center gap-4">
+              <Link
+                href="/login"
+                className="text-sm font-medium text-gray-500 transition hover:text-gray-900"
+              >
                 Seller Login
               </Link>
-              <Link href="/pricing" className="rounded-full bg-[#1a2e1a] px-5 py-2 text-sm font-medium text-white transition hover:bg-black">
+              <Link
+                href="/pricing"
+                className="rounded-full bg-[#1a2e1a] px-5 py-2 text-sm font-medium text-white transition hover:bg-black"
+              >
                 Open Boutique
               </Link>
             </div>
-          </div>
-
-          {/* Center — Logo */}
-          <div className="flex items-center justify-center">
-            <Link href="/" className="flex-shrink-0 transition-transform hover:scale-105 active:scale-95">
-              <img src="/logo.png" alt="Sanndikaa" className="h-16 w-auto origin-center object-contain scale-[1.8] md:h-20 md:scale-[2.2]" />
-            </Link>
-          </div>
-
-          {/* Right */}
-          <div className="flex flex-1 items-center justify-end gap-2 md:gap-4">
-            <button
-              onClick={() => { setIsSearchOpen(!isSearchOpen); setIsMobileMenuOpen(false); }}
-              className="-mr-1 flex items-center justify-center p-2 text-gray-900 transition hover:opacity-70 md:mr-0"
-              aria-label="Toggle search"
-            >
-              <Search size={22} strokeWidth={1.5} />
-            </button>
+            <div className="ml-auto flex w-full max-w-md items-center overflow-hidden rounded-full border border-black/10 bg-neutral-50 px-4 py-3 shadow-sm">
+              <Search size={16} className="flex-shrink-0 text-gray-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearchSubmit()}
+                placeholder="Search 'summer wedding outfit' or 'glowing skin'..."
+                className="w-full bg-transparent px-3 text-sm text-gray-900 outline-none placeholder:text-gray-400"
+              />
+              {searchQuery ? (
+                <button onClick={clearSearch} className="flex-shrink-0 text-gray-400 transition hover:text-gray-900">
+                  <X size={16} />
+                </button>
+              ) : (
+                <button
+                  onClick={handleSearchSubmit}
+                  className="flex-shrink-0 rounded-full bg-[#1a2e1a] p-1.5 text-white transition hover:bg-black"
+                  aria-label="Search"
+                >
+                  <Search size={13} />
+                </button>
+              )}
+            </div>
             <button
               onClick={() => setIsCartOpen(true)}
-              className="-mr-2 relative flex items-center justify-center p-2 text-gray-900 transition hover:opacity-70 md:mr-0"
+              className="relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-gray-900 transition hover:bg-neutral-100"
               aria-label="Open cart"
             >
-              <ShoppingBag size={22} strokeWidth={1.5} />
+              <ShoppingBag size={21} strokeWidth={1.8} />
               {cartCount > 0 && (
-                <span className="absolute right-0 top-0 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow-sm ring-2 ring-white">
+                <span className="absolute right-1 top-1 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow-sm ring-2 ring-white">
                   {cartCount}
                 </span>
               )}
@@ -317,9 +470,15 @@ export default function GlobalHomepage() {
           </div>
         </div>
 
-        {/* Mobile Menu Panel */}
-        <div className={`overflow-hidden transition-all duration-300 ease-in-out md:hidden ${isMobileMenuOpen ? 'max-h-[32rem] border-t border-black/5 opacity-100' : 'max-h-0 opacity-0'}`}>
-          <div className="flex flex-col gap-1 bg-white px-4 py-4">
+        {/* ── MOBILE MENU PANEL ── */}
+        <div
+          className={`overflow-hidden transition-all duration-300 ease-in-out md:hidden ${
+            isMobileMenuOpen
+              ? 'max-h-[28rem] border-b border-black/5 opacity-100'
+              : 'max-h-0 opacity-0'
+          }`}
+        >
+          <div className="flex flex-col gap-1 bg-white px-4 py-4 shadow-lg">
             <Link
               href="/login"
               onClick={() => setIsMobileMenuOpen(false)}
@@ -335,174 +494,42 @@ export default function GlobalHomepage() {
               Open Your Boutique
             </Link>
             <div className="my-2 border-t border-black/5" />
-            <p className="px-4 pb-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">Browse Categories</p>
-            {WORLDS.filter((w) => w !== 'All').map((world) => (
+            <p className="px-4 pb-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+              Categories
+            </p>
+            {CATEGORY_SHELVES.map((shelf) => (
               <button
-                key={world}
-                onClick={() => { setActiveWorld(world); setIsMobileMenuOpen(false); }}
-                className="flex items-center justify-between rounded-xl px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-neutral-50 text-left"
+                key={shelf.id}
+                onClick={() => handleCategoryJump(shelf.id)}
+                className="flex items-center justify-between rounded-xl px-4 py-2.5 text-left text-sm font-medium text-gray-700 transition hover:bg-neutral-50"
               >
-                {world}
+                {shelf.title}
                 <ArrowRight size={14} className="text-gray-400" />
               </button>
             ))}
           </div>
         </div>
-
-        {/* Search Dropdown */}
-        <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isSearchOpen ? 'max-h-24 border-t border-black/5 bg-neutral-50 opacity-100' : 'max-h-0 bg-neutral-50 opacity-0'}`}>
-          <div className="mx-auto max-w-3xl px-4 py-4 md:px-10">
-            <div className="flex w-full items-center overflow-hidden rounded-full border border-black/5 bg-white px-4 py-3 shadow-sm">
-              <Search size={18} className="text-gray-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value); setIsSearching(e.target.value.length > 0); }}
-                placeholder="Search boutiques, products, categories..."
-                className="w-full bg-transparent px-3 text-sm font-medium text-gray-900 outline-none placeholder:text-gray-400"
-                autoFocus={isSearchOpen}
-              />
-              {searchQuery && (
-                <button onClick={() => { setSearchQuery(''); setIsSearching(false); }} className="text-gray-400 hover:text-gray-900 transition">
-                  <X size={18} />
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      {/* ═══════════════════════════════════════════
-          HERO
-      ═══════════════════════════════════════════ */}
-      <header className="relative border-b border-black/5 bg-white">
-        <div className="mx-auto grid max-w-7xl grid-cols-1 gap-8 px-4 py-8 md:grid-cols-2 md:items-center md:gap-10 md:px-10 md:py-12">
-          <div className="order-2 md:order-1 space-y-5">
-            <p className="inline-flex items-center rounded-full border border-black/5 bg-neutral-100 px-3 py-1 text-xs font-medium uppercase tracking-[0.08em] text-gray-600">
-              Premium Marketplace
-            </p>
-
-            <h1 className="text-4xl font-semibold tracking-tight text-gray-900 md:text-5xl lg:text-6xl">
-              Discover Global Design,{' '}
-              <span className="text-[#1a2e1a]">African Soul.</span>
-            </h1>
-
-            <p className="text-sm font-medium text-gray-600 md:text-base">
-              Curated finds from standout boutiques. Search first, discover faster.
-            </p>
-
-            {/* Live Stats */}
-            {shops.length > 0 && (
-              <div className="flex items-center gap-6">
-                <div>
-                  <p className="text-2xl font-bold text-gray-900">{shops.length}+</p>
-                  <p className="text-xs font-medium text-gray-500">Boutiques</p>
-                </div>
-                <div className="h-8 w-px bg-black/10" />
-                <div>
-                  <p className="text-2xl font-bold text-gray-900">{totalProducts}+</p>
-                  <p className="text-xs font-medium text-gray-500">Products</p>
-                </div>
-                <div className="h-8 w-px bg-black/10" />
-                <div>
-                  <p className="text-2xl font-bold text-gray-900">100%</p>
-                  <p className="text-xs font-medium text-gray-500">Verified Sellers</p>
-                </div>
-              </div>
-            )}
-
-            {/* Hero Search */}
-            <div className="w-full max-w-xl">
-              <div className="flex w-full items-center overflow-hidden rounded-full border border-black/5 bg-white px-4 py-3 shadow-sm">
-                <Search size={18} className="text-gray-400" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => { setSearchQuery(e.target.value); setIsSearching(e.target.value.length > 0); }}
-                  placeholder="Search products, categories, boutiques..."
-                  className="w-full bg-transparent px-3 text-sm font-medium text-gray-900 outline-none placeholder:text-gray-400"
-                />
-                {searchQuery && (
-                  <button onClick={() => { setSearchQuery(''); setIsSearching(false); }} className="text-gray-400 hover:text-gray-900 transition">
-                    <X size={18} />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              <a
-                href="#products"
-                className="inline-flex items-center gap-2 rounded-full bg-[#1a2e1a] px-6 py-2.5 text-sm font-medium text-white transition hover:bg-black"
-              >
-                Shop Now <ArrowRight size={14} />
-              </a>
-              <Link
-                href="/pricing"
-                className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-6 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-neutral-50"
-              >
-                Sell with Us
-              </Link>
-            </div>
-          </div>
-
-          {/* Spotlight Product */}
-          <div className="order-1 md:order-2">
-            {spotlightProduct ? (
-              <Link href={`/product/${spotlightProduct.id}`} className="group block overflow-hidden rounded-2xl border border-black/5 bg-white shadow-sm">
-                <div className="relative aspect-[4/3] bg-neutral-100">
-                  {(spotlightProduct.image_urls?.[0] || spotlightProduct.image_url) ? (
-                    <Image
-                      src={spotlightProduct.image_urls?.[0] || spotlightProduct.image_url || ''}
-                      alt={spotlightProduct.name}
-                      fill
-                      priority
-                      className="object-cover transition-transform duration-700 group-hover:scale-105"
-                      sizes="(max-width: 768px) 100vw, 50vw"
-                    />
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-gray-300">
-                      <ShoppingBag size={32} />
-                    </div>
-                  )}
-                  <div className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1 text-xs font-medium text-gray-700 shadow-sm backdrop-blur">
-                    <Sparkles size={12} /> Featured Product
-                  </div>
-                </div>
-                <div className="space-y-1 p-4">
-                  <h2 className="truncate text-lg font-semibold text-gray-900">{spotlightProduct.name}</h2>
-                  <p className="text-sm font-medium text-gray-600">{spotlightProduct.shop?.shop_name}</p>
-                  <p className="text-base font-semibold text-gray-900">D{spotlightProduct.price}</p>
-                </div>
-              </Link>
-            ) : (
-              <div className="flex aspect-[4/3] items-center justify-center rounded-2xl border border-black/5 bg-white shadow-sm">
-                <p className="text-sm font-medium text-gray-500">Featured product coming soon</p>
-              </div>
-            )}
-          </div>
-        </div>
       </header>
 
-      {/* ═══════════════════════════════════════════
+      {/* ═══════════════════════════════════════════════════════
           TRUST STRIP
-      ═══════════════════════════════════════════ */}
+      ═══════════════════════════════════════════════════════ */}
       <section className="border-b border-black/5 bg-white">
-        <div className="mx-auto max-w-7xl px-4 py-5 md:px-10">
-          <div className="grid grid-cols-2 gap-5 md:grid-cols-4">
+        <div className="mx-auto max-w-7xl px-4 py-4 md:px-10">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-5">
             {[
-              { icon: <Truck size={18} className="text-[#1a2e1a]" />, label: 'Free Delivery', sub: 'On orders over D500' },
-              { icon: <Shield size={18} className="text-[#1a2e1a]" />, label: 'Secure Checkout', sub: '256-bit SSL encryption' },
-              { icon: <Award size={18} className="text-[#1a2e1a]" />, label: 'Buyer Protection', sub: 'On every order' },
-              { icon: <RotateCcw size={18} className="text-[#1a2e1a]" />, label: 'Easy Returns', sub: 'Hassle-free policy' },
+              { icon: <Truck size={15} className="text-[#1a2e1a]" />, label: 'Free Delivery', sub: 'On orders over D500' },
+              { icon: <Shield size={15} className="text-[#1a2e1a]" />, label: 'Secure Checkout', sub: '256-bit SSL' },
+              { icon: <Award size={15} className="text-[#1a2e1a]" />, label: 'Buyer Protection', sub: 'On every order' },
+              { icon: <RotateCcw size={15} className="text-[#1a2e1a]" />, label: 'Easy Returns', sub: 'Hassle-free policy' },
             ].map(({ icon, label, sub }) => (
-              <div key={label} className="flex items-center gap-3">
-                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-green-50">
+              <div key={label} className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-green-50">
                   {icon}
                 </div>
                 <div>
                   <p className="text-xs font-semibold text-gray-900">{label}</p>
-                  <p className="text-[11px] text-gray-500">{sub}</p>
+                  <p className="text-[10px] text-gray-500">{sub}</p>
                 </div>
               </div>
             ))}
@@ -510,137 +537,162 @@ export default function GlobalHomepage() {
         </div>
       </section>
 
-      {/* ═══════════════════════════════════════════
-          CATEGORY FILTER
-      ═══════════════════════════════════════════ */}
-      {!isSearching && (
-        <section className="border-b border-black/5 bg-neutral-50 px-4 py-4 md:px-10">
-          <div className="hide-scrollbar flex w-full overflow-x-auto">
-            <div className="flex gap-2 pb-1.5 md:gap-3">
-              {WORLDS.map((world) => {
-                const count =
-                  world === 'All'
-                    ? marketplaceProducts.length
-                    : marketplaceProducts.filter((p) =>
-                        p.category?.toLowerCase().includes(world.split(' ')[0].toLowerCase())
-                      ).length;
-                return (
-                  <button
-                    key={world}
-                    onClick={() => setActiveWorld(world)}
-                    className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-all ${
-                      activeWorld === world
-                        ? 'bg-[#1a2e1a] text-white shadow-sm'
-                        : 'border border-black/10 bg-white text-gray-600 hover:border-black/20 hover:text-gray-900'
-                    }`}
-                  >
-                    {world}{count > 0 ? ` (${count})` : ''}
-                  </button>
-                );
-              })}
+      {/* ═══════════════════════════════════════════════════════
+          MAIN CONTENT
+      ═══════════════════════════════════════════════════════ */}
+      <main className="pb-0 pt-6 md:pt-8" id="category-shelves">
+        {isSearching ? (
+
+          /* ── AI LOADING STATE ────────────────────────────── */
+          <div className="flex min-h-[60vh] flex-col items-center justify-center px-4 py-24 text-center">
+            <div className="relative mb-6 flex h-16 w-16 items-center justify-center">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#1a2e1a]/20" />
+              <div className="relative flex h-14 w-14 items-center justify-center rounded-full bg-[#1a2e1a] text-white shadow-lg">
+                <Sparkles size={22} />
+              </div>
+            </div>
+            <h2 className="text-lg font-semibold text-gray-900">Your Personal Stylist is curating matches...</h2>
+            <p className="mt-2 text-sm text-gray-500">Searching across every boutique for &ldquo;{searchQuery}&rdquo;</p>
+            <div className="mt-6 flex items-center gap-1.5">
+              {[0, 150, 300].map((delay) => (
+                <span
+                  key={delay}
+                  className="h-2 w-2 animate-bounce rounded-full bg-[#1a2e1a]/40"
+                  style={{ animationDelay: `${delay}ms` }}
+                />
+              ))}
             </div>
           </div>
-        </section>
-      )}
 
-      {/* ═══════════════════════════════════════════
-          MAIN CONTENT
-      ═══════════════════════════════════════════ */}
-      <main className="mx-auto max-w-7xl px-4 pb-0 pt-8 md:px-10" id="products">
-        {isSearching ? (
-          /* ── SEARCH RESULTS ── */
-          <div className="animate-in fade-in duration-300 pb-20">
-            <h2 className="mb-6 text-xl font-semibold tracking-tight text-gray-900">
-              Search Results for{' '}
-              <span className="font-semibold text-gray-500">&ldquo;{searchQuery}&rdquo;</span>
-            </h2>
+        ) : searchResults !== null ? (
+
+          /* ── SEMANTIC SEARCH RESULTS ─────────────────────── */
+          <div className="animate-in fade-in mx-auto max-w-7xl px-4 pb-20 duration-300 md:px-10">
+            <div className="mb-6 flex items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Sparkles size={14} className="text-[#1a2e1a]" />
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#1a2e1a]">AI Stylist Results</span>
+                </div>
+                <h2 className="mt-1 text-lg font-semibold tracking-tight text-gray-900">
+                  Matches for{' '}
+                  <span className="text-gray-500">&ldquo;{searchQuery}&rdquo;</span>
+                </h2>
+              </div>
+              <button
+                onClick={clearSearch}
+                className="flex flex-shrink-0 items-center gap-1.5 rounded-full border border-black/10 bg-white px-4 py-2 text-xs font-medium text-gray-600 shadow-sm transition hover:border-black/20 hover:text-gray-900"
+              >
+                <X size={13} /> Clear Search
+              </button>
+            </div>
 
             {searchResults.length === 0 ? (
               <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-black/10 bg-white px-4 py-24 text-center shadow-sm">
-                <Search className="mb-4 h-10 w-10 text-gray-300" />
-                <h3 className="text-lg font-semibold text-gray-900">No items found</h3>
-                <p className="mt-1 text-sm text-gray-500">
-                  Try a different keyword or browse a category below
+                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-neutral-100 text-gray-300">
+                  <Search size={22} />
+                </div>
+                <h3 className="text-base font-semibold text-gray-900">No exact matches found</h3>
+                <p className="mt-2 max-w-sm text-sm text-gray-500">
+                  We couldn&apos;t find an exact match for that vibe. Try another search, or browse a category below.
                 </p>
                 <div className="mt-6 flex flex-wrap justify-center gap-2">
-                  {WORLDS.filter((w) => w !== 'All').map((w) => (
+                  {CATEGORY_SHELVES.map((shelf) => (
                     <button
-                      key={w}
-                      onClick={() => { setSearchQuery(''); setIsSearching(false); setActiveWorld(w); }}
-                      className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition hover:bg-neutral-50"
+                      key={shelf.id}
+                      onClick={() => handleCategoryJump(shelf.id)}
+                      className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition hover:bg-neutral-50 hover:border-black/20"
                     >
-                      {w}
+                      {shelf.title}
                     </button>
                   ))}
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                {searchResults.map((product) => renderProductCard(product as ProductWithShop))}
-              </div>
+              <>
+                <p className="mb-4 text-xs text-gray-400">{searchResults.length} item{searchResults.length !== 1 ? 's' : ''} found</p>
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                  {searchResults.map((product) => renderProductCard(product))}
+                </div>
+              </>
             )}
           </div>
-        ) : (
-          <div className="space-y-16 pb-0">
 
-            {/* ── FEATURED PRODUCTS GRID ── */}
-            <section>
-              <div className="mb-6 flex items-center justify-between">
+        ) : (
+
+          /* ── CATEGORY SWIMLANES ───────────────────────────── */
+          <div className="space-y-2 pb-0 md:space-y-4">
+
+            {categoryShelves.map((shelf) => (
+              <section key={shelf.id} id={shelf.id} className="bg-white py-5 md:py-6">
+
+                {/* Shelf header */}
+                <div className="mb-3 flex items-center justify-between px-4 md:px-10">
+                  <div>
+                    <h2 className="text-xl font-semibold tracking-tight text-gray-900 md:text-2xl">
+                      {shelf.title}
+                    </h2>
+                    <p className="mt-0.5 text-xs font-medium text-gray-500 md:text-sm">
+                      {shelf.description}
+                    </p>
+                  </div>
+                  <span className="flex-shrink-0 rounded-full bg-neutral-100 px-2.5 py-1 text-[10px] font-medium text-gray-600">
+                    {shelf.products.length} item{shelf.products.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+
+                {shelf.products.length === 0 ? (
+                  <div className="mx-4 flex min-h-[160px] flex-col items-center justify-center rounded-2xl border border-dashed border-black/10 bg-neutral-50 px-4 py-10 text-center md:mx-10">
+                    <Store className="mb-3 h-7 w-7 text-gray-300" />
+                    <h4 className="text-sm font-semibold text-gray-900">Shelf coming soon</h4>
+                    <p className="mt-1 text-xs text-gray-500">{shelf.emptyMessage}</p>
+                  </div>
+                ) : (
+                  /*
+                    Horizontal carousel — fixed 160px card width on mobile.
+                    On a 375px screen with 16px left padding and 12px gap:
+                    First card ends at 16+160=176px, gap at 188px, second card
+                    visible from 188px → 348px (full), third card starts at 360px
+                    → 15px of third card visible. Net effect: ~2 full + sliver,
+                    giving a clear swipe affordance.
+                  */
+                  <div className="scrollbar-none flex gap-3 overflow-x-auto snap-x snap-mandatory px-4 pb-4 md:gap-5 md:px-10">
+                    {shelf.products.map((product) => (
+                      <div
+                        key={`${shelf.id}-${product.id}-${product.shop.shop_slug}`}
+                        className="w-[160px] flex-shrink-0 snap-start sm:w-48 md:w-52 lg:w-56"
+                      >
+                        {renderProductCard(product)}
+                      </div>
+                    ))}
+                    {/* Right-edge spacer so last card doesn't hug the scroll edge */}
+                    <div className="w-4 flex-shrink-0 md:w-6" aria-hidden="true" />
+                  </div>
+                )}
+              </section>
+            ))}
+
+            {/* ── SHOP BY BOUTIQUE ──────────────────────────── */}
+            <section className="bg-white py-5 md:py-8">
+              <div className="mb-5 flex items-center justify-between px-4 md:px-10">
                 <div>
-                  <h2 className="text-xl font-semibold tracking-tight text-gray-900">
-                    {activeWorld === 'All' ? 'Featured Products' : activeWorld}
+                  <h2 className="text-xl font-semibold tracking-tight text-gray-900 md:text-2xl">
+                    Shop by Boutique
                   </h2>
                   <p className="mt-0.5 text-xs font-medium text-gray-500">
-                    {marketplaceProducts.length} product{marketplaceProducts.length !== 1 ? 's' : ''} · Sorted by seller tier
-                  </p>
-                </div>
-                {activeWorld !== 'All' && (
-                  <button
-                    onClick={() => setActiveWorld('All')}
-                    className="inline-flex items-center gap-1 text-sm font-medium text-gray-500 transition hover:text-gray-900"
-                  >
-                    View all <ArrowRight size={13} />
-                  </button>
-                )}
-              </div>
-
-              {marketplaceProducts.length === 0 ? (
-                <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-black/10 bg-white px-4 py-24 text-center shadow-sm">
-                  <Store className="mb-4 h-10 w-10 text-gray-300" />
-                  <h3 className="text-lg font-semibold text-gray-900">No products in this category yet</h3>
-                  <button
-                    onClick={() => setActiveWorld('All')}
-                    className="mt-4 rounded-full bg-[#1a2e1a] px-5 py-2 text-sm font-medium text-white transition hover:bg-black"
-                  >
-                    Browse All Products
-                  </button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                  {marketplaceProducts.map((product) => renderProductCard(product))}
-                </div>
-              )}
-            </section>
-
-            {/* ── SHOP BY BOUTIQUE ── */}
-            <section>
-              <div className="mb-6 flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-semibold tracking-tight text-gray-900">Shop by Boutique</h2>
-                  <p className="mt-0.5 text-xs font-medium text-gray-500">
-                    Discover curated boutiques from our verified seller network
+                    Discover curated boutiques from our verified sellers
                   </p>
                 </div>
               </div>
 
-              {displayedShops.length === 0 ? (
-                <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-black/10 bg-white px-4 py-24 text-center shadow-sm">
+              {shops.length === 0 ? (
+                <div className="mx-4 flex flex-col items-center justify-center rounded-2xl border border-dashed border-black/10 bg-neutral-50 px-4 py-20 text-center md:mx-10">
                   <Store className="mb-3 h-8 w-8 text-gray-300" />
-                  <h3 className="text-lg font-semibold text-gray-900">No boutiques found.</h3>
+                  <h3 className="text-base font-semibold text-gray-900">No boutiques yet.</h3>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 gap-8 md:grid-cols-2 md:gap-10">
-                  {displayedShops.map((shop) => {
+                <div className="grid grid-cols-1 gap-6 px-4 md:grid-cols-2 md:gap-8 md:px-10">
+                  {shops.map((shop) => {
                     const tier = (shop.subscription_tier || 'starter').toLowerCase().trim();
                     const isAdvanced = tier === 'advanced';
                     const isPro = tier === 'pro';
@@ -648,43 +700,45 @@ export default function GlobalHomepage() {
                     return (
                       <div
                         key={shop.id}
-                        className={`group flex flex-col rounded-2xl border bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md ${
+                        className={`group flex flex-col rounded-2xl border bg-white p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md ${
                           isAdvanced ? 'border-yellow-300' : isPro ? 'border-purple-300' : 'border-black/5'
                         }`}
                       >
-                        {/* Shop Header */}
-                        <div className="mb-5 flex items-center justify-between">
+                        <div className="mb-4 flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            <div className={`relative h-11 w-11 overflow-hidden rounded-full border bg-gray-50 flex-shrink-0 ${isAdvanced ? 'border-yellow-400' : isPro ? 'border-purple-400' : 'border-black/10'}`}>
+                            <div
+                              className={`relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-full border bg-gray-50 ${
+                                isAdvanced ? 'border-yellow-400' : isPro ? 'border-purple-400' : 'border-black/10'
+                              }`}
+                            >
                               {shop.logo_url ? (
                                 <Image
                                   src={shop.logo_url}
                                   alt={shop.shop_name}
                                   fill
                                   className="rounded-full object-cover"
-                                  sizes="44px"
+                                  sizes="40px"
                                 />
                               ) : (
                                 <div className="flex h-full items-center justify-center text-gray-300">
-                                  <Store size={18} />
+                                  <Store size={16} />
                                 </div>
                               )}
                             </div>
                             <div>
-                              <h3 className="flex items-center gap-1.5 text-base font-medium text-gray-900">
+                              <h3 className="flex items-center gap-1 text-sm font-medium text-gray-900">
                                 {shop.shop_name}
-                                {isAdvanced && <BadgeCheck size={15} className="text-yellow-500" />}
-                                {isPro && <BadgeCheck size={15} className="text-purple-500" />}
+                                {isAdvanced && <BadgeCheck size={13} className="text-yellow-500" />}
+                                {isPro && <BadgeCheck size={13} className="text-purple-500" />}
                               </h3>
                               <p className="text-xs text-gray-500">
                                 {shop.products.length} product{shop.products.length !== 1 ? 's' : ''}
                               </p>
                             </div>
                           </div>
-
                           <Link
                             href={`/shop/${shop.shop_slug}`}
-                            className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition ${
+                            className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition ${
                               isAdvanced
                                 ? 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100'
                                 : isPro
@@ -692,17 +746,24 @@ export default function GlobalHomepage() {
                                   : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
                             }`}
                           >
-                            Visit <ArrowRight size={12} />
+                            Visit <ArrowRight size={11} />
                           </Link>
                         </div>
 
-                        {/* Shop Products */}
-                        <div className="grid grid-cols-3 gap-3">
+                        <div className="grid grid-cols-3 gap-2">
                           {shop.products.slice(0, 3).map((product) => {
                             const imgUrl = product.image_urls?.[0] || product.image_url;
                             return (
-                              <Link href={`/product/${product.id}`} key={product.id} className="group/item flex flex-col gap-2">
-                                <div className={`relative aspect-[4/5] overflow-hidden rounded-xl border bg-gray-50 ${isAdvanced ? 'border-yellow-100' : isPro ? 'border-purple-100' : 'border-black/5'}`}>
+                              <Link
+                                href={`/product/${product.id}`}
+                                key={product.id}
+                                className="group/item flex flex-col gap-1.5"
+                              >
+                                <div
+                                  className={`relative aspect-[4/5] overflow-hidden rounded-xl border bg-gray-50 ${
+                                    isAdvanced ? 'border-yellow-100' : isPro ? 'border-purple-100' : 'border-black/5'
+                                  }`}
+                                >
                                   {imgUrl ? (
                                     <Image
                                       src={imgUrl}
@@ -713,7 +774,7 @@ export default function GlobalHomepage() {
                                     />
                                   ) : (
                                     <div className="flex h-full items-center justify-center text-gray-200">
-                                      <ShoppingBag size={20} />
+                                      <ShoppingBag size={18} />
                                     </div>
                                   )}
                                 </div>
@@ -736,18 +797,16 @@ export default function GlobalHomepage() {
         )}
       </main>
 
-      {/* ═══════════════════════════════════════════
+      {/* ═══════════════════════════════════════════════════════
           NEWSLETTER
-      ═══════════════════════════════════════════ */}
-      <section className="mt-16 border-t border-black/5 bg-[#1a2e1a]">
-        <div className="mx-auto max-w-7xl px-4 py-14 md:px-10">
+      ═══════════════════════════════════════════════════════ */}
+      <section className="mt-8 border-t border-black/5 bg-[#1a2e1a]">
+        <div className="mx-auto max-w-7xl px-4 py-12 md:px-10">
           <div className="mx-auto max-w-xl text-center">
             <div className="mb-3 flex items-center justify-center">
               <Mail size={22} className="text-white/50" />
             </div>
-            <h2 className="text-2xl font-semibold tracking-tight text-white md:text-3xl">
-              Stay in the loop
-            </h2>
+            <h2 className="text-2xl font-semibold tracking-tight text-white">Stay in the loop</h2>
             <p className="mt-2 text-sm text-white/60">
               New boutiques, exclusive drops, and curated edits — straight to your inbox.
             </p>
@@ -757,7 +816,10 @@ export default function GlobalHomepage() {
               </div>
             ) : (
               <form
-                onSubmit={(e) => { e.preventDefault(); if (newsletterEmail.trim()) setNewsletterSubmitted(true); }}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (newsletterEmail.trim()) setNewsletterSubmitted(true);
+                }}
                 className="mt-6 flex w-full flex-col gap-3 sm:flex-row"
               >
                 <input
@@ -766,11 +828,11 @@ export default function GlobalHomepage() {
                   onChange={(e) => setNewsletterEmail(e.target.value)}
                   placeholder="Enter your email address"
                   required
-                  className="w-full rounded-full border border-white/10 bg-white/10 px-5 py-3 text-sm font-medium text-white outline-none placeholder:text-white/40 transition focus:border-white/30 focus:bg-white/15"
+                  className="w-full rounded-full border border-white/10 bg-white/10 px-5 py-3 text-sm font-medium text-white outline-none placeholder:text-white/40 transition focus:border-white/30"
                 />
                 <button
                   type="submit"
-                  className="rounded-full bg-white px-7 py-3 text-sm font-semibold text-[#1a2e1a] transition hover:bg-neutral-100 whitespace-nowrap"
+                  className="whitespace-nowrap rounded-full bg-white px-7 py-3 text-sm font-semibold text-[#1a2e1a] transition hover:bg-neutral-100"
                 >
                   Subscribe
                 </button>
@@ -780,20 +842,19 @@ export default function GlobalHomepage() {
         </div>
       </section>
 
-      {/* ═══════════════════════════════════════════
+      {/* ═══════════════════════════════════════════════════════
           FOOTER
-      ═══════════════════════════════════════════ */}
+      ═══════════════════════════════════════════════════════ */}
       <footer className="border-t border-black/5 bg-white">
         <div className="mx-auto max-w-7xl px-4 py-12 md:px-10">
           <div className="grid grid-cols-2 gap-10 md:grid-cols-4 lg:grid-cols-5">
 
-            {/* Brand Column */}
             <div className="col-span-2 lg:col-span-2">
               <Link href="/">
-                <img src="/logo.png" alt="Sanndikaa" className="h-10 w-auto object-contain" />
+                <img src="/logo.png" alt="Sanndikaa" className="h-14 w-auto flex-shrink-0 object-contain" />
               </Link>
               <p className="mt-3 max-w-xs text-sm leading-relaxed text-gray-500">
-                Where African design meets global discovery. A premium marketplace connecting the world&apos;s buyers with Africa&apos;s finest boutiques.
+                Where African design meets global discovery. A premium marketplace connecting buyers with Africa&apos;s finest boutiques.
               </p>
               <div className="mt-5 flex flex-wrap items-center gap-2">
                 <div className="flex items-center gap-1.5 rounded-lg border border-black/5 bg-neutral-50 px-3 py-1.5 text-[10px] font-semibold text-gray-600">
@@ -805,32 +866,30 @@ export default function GlobalHomepage() {
               </div>
             </div>
 
-            {/* Shop Column */}
             <div>
               <h4 className="mb-4 text-xs font-bold uppercase tracking-widest text-gray-900">Shop</h4>
               <ul className="space-y-3">
                 <li>
                   <button
-                    onClick={() => { setActiveWorld('All'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                    onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
                     className="text-sm text-gray-500 transition hover:text-gray-900"
                   >
-                    All Products
+                    Homepage
                   </button>
                 </li>
-                {WORLDS.filter((w) => w !== 'All').map((w) => (
-                  <li key={w}>
+                {CATEGORY_SHELVES.map((shelf) => (
+                  <li key={shelf.id}>
                     <button
-                      onClick={() => { setActiveWorld(w); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                      className="text-sm text-gray-500 transition hover:text-gray-900 text-left"
+                      onClick={() => handleCategoryJump(shelf.id)}
+                      className="text-left text-sm text-gray-500 transition hover:text-gray-900"
                     >
-                      {w}
+                      {shelf.title}
                     </button>
                   </li>
                 ))}
               </ul>
             </div>
 
-            {/* Sell Column */}
             <div>
               <h4 className="mb-4 text-xs font-bold uppercase tracking-widest text-gray-900">Sell</h4>
               <ul className="space-y-3">
@@ -841,7 +900,6 @@ export default function GlobalHomepage() {
               </ul>
             </div>
 
-            {/* Support Column */}
             <div>
               <h4 className="mb-4 text-xs font-bold uppercase tracking-widest text-gray-900">Support</h4>
               <ul className="space-y-3">
@@ -854,7 +912,6 @@ export default function GlobalHomepage() {
 
           </div>
 
-          {/* Bottom Bar */}
           <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-black/5 pt-6 md:flex-row">
             <p className="text-xs text-gray-400">
               © {new Date().getFullYear()} Sanndikaa. All rights reserved.

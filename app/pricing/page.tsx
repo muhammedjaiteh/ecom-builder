@@ -17,7 +17,7 @@ export default function PricingPage() {
           <img 
             src="/logo.png" 
             alt="Sanndikaa Logo" 
-            className="h-8 w-auto object-contain scale-[1.3] origin-center" 
+            className="h-14 w-auto flex-shrink-0 object-contain" 
           />
         </div>
         <div className="w-[100px]"></div> {/* Spacer for perfect centering */}

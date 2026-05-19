@@ -63,7 +63,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
         .from('shops')
         .select(`
           id, shop_name, shop_slug, banner_url, logo_url, bio, theme_color, store_layout, offers_delivery, offers_pickup, pickup_instructions, subscription_tier, ai_credits,
-          products (id, name, description, price, image_url, image_urls, category)
+          products (id, name, description, price, image_url, image_urls, category, stock_quantity)
         `)
         .eq('shop_slug', decodedSlug)
         .maybeSingle();
@@ -138,7 +138,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
 
           <div className="flex items-center justify-center h-full">
             <Link href="/" className="flex items-center justify-center transition-transform hover:opacity-80 active:scale-95">
-              <img src="/logo.png" alt="Sanndikaa Logo" className="w-24 md:w-32 h-auto object-contain scale-110 md:scale-125 origin-center" />
+              <img src="/logo.png" alt="Sanndikaa Logo" className="h-12 w-auto flex-shrink-0 object-contain" />
             </Link>
           </div>
           

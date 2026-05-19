@@ -5,15 +5,19 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Package, DollarSign, TrendingUp, Plus, Edit, Trash2, ExternalLink, 
-  BarChart3, Eye, Store, Truck, LogOut, Lock,
+  BarChart3, Eye, Truck, LogOut, Lock,
   ShoppingCart, Clock, CheckCircle2, Phone, User, Users, MessageCircle, 
-  LayoutDashboard, Settings, Loader2, Palette, Megaphone
+  LayoutDashboard, Settings, Loader2, Palette, Megaphone, BadgePercent, Star
 } from 'lucide-react';
 import Link from 'next/link';
-import WhatsAppEngine from '../../components/WhatsAppEngine';
 import Broadcast from './broadcast';
 import AnalyticsDashboard from '@/components/AnalyticsDashboard';
-import type { Product, Shop, Order, OrderItem, CustomerCRM } from '@/lib/types';
+import DiscountManager from '@/components/DiscountManager';
+import ReviewForm from '@/components/ReviewForm';
+import ReviewList from '@/components/ReviewList';
+import type { Product, Shop, Order, CustomerCRM } from '@/lib/types';
+
+type DashboardTab = 'overview' | 'analytics' | 'orders' | 'customers' | 'discounts' | 'reviews' | 'inventory' | 'broadcast';
 
 function sanitizePhoneNumber(rawNumber?: string | null) {
   if (!rawNumber) return null;
@@ -21,6 +25,58 @@ function sanitizePhoneNumber(rawNumber?: string | null) {
   if (!cleanNumber) return null;
   if (cleanNumber.length === 7) cleanNumber = `220${cleanNumber}`;
   return cleanNumber;
+}
+
+function ReviewsPanel({ products }: { products: Product[] }) {
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(products[0]?.id ?? null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  const selectedProduct = products.find((product) => product.id === selectedProductId) ?? products[0];
+
+  if (!selectedProduct) {
+    return (
+      <div className="animate-in fade-in duration-300 rounded-[2rem] border border-dashed border-gray-200 bg-white p-12 text-center">
+        <Star className="mx-auto mb-4 h-10 w-10 text-gray-200" />
+        <p className="text-sm font-medium text-gray-500">Add a product first to collect and manage reviews.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="animate-in fade-in duration-300 space-y-6">
+      <div className="rounded-[2rem] border border-gray-100 bg-white p-6 shadow-sm md:p-8">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900">Reviews</h3>
+            <p className="mt-1 text-sm text-gray-500">Choose a product to view feedback or add external seller-verified reviews.</p>
+          </div>
+          <label className="block">
+            <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-400">Active Product</span>
+            <select
+              value={selectedProduct.id}
+              onChange={(event) => setSelectedProductId(event.target.value)}
+              className="w-full min-w-[260px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-medium text-gray-900 outline-none transition focus:border-gray-900"
+            >
+              {products.map((product) => (
+                <option key={product.id} value={product.id}>
+                  {product.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(360px,1fr)]">
+        <div className="rounded-[2rem] border border-gray-100 bg-white p-6 shadow-sm md:p-8">
+          <ReviewList productId={selectedProduct.id} refreshTrigger={refreshTrigger} />
+        </div>
+        <div>
+          <ReviewForm productId={selectedProduct.id} onReviewSubmitted={() => setRefreshTrigger((prev) => prev + 1)} />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function Dashboard() {
@@ -31,7 +87,7 @@ export default function Dashboard() {
   const [customersCRM, setCustomersCRM] = useState<CustomerCRM[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   
-  const [activeTab, setActiveTab] = useState<'overview' | 'analytics' | 'orders' | 'customers' | 'inventory' | 'broadcast'>('overview');
+  const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
 
   const [totalOrders, setTotalOrders] = useState(0);
   const [totalRevenue, setTotalRevenue] = useState(0);
@@ -91,14 +147,14 @@ export default function Dashboard() {
     loadDashboard();
   }, [router, supabase]);
 
-  const handleUpdateOrderStatus = async (orderId: string, newStatus: string) => {
+  const handleUpdateOrderStatus = async (orderId: string, newStatus: Order['status']) => {
     if (!userId) {
       alert('You must be logged in to update orders.');
       return;
     }
 
     const previousOrders = orders;
-    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: newStatus as any } : o)));
+    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o)));
     const { error } = await supabase
       .from('orders')
       .update({ status: newStatus })
@@ -116,6 +172,28 @@ export default function Dashboard() {
     await supabase.from('products').delete().eq('id', id);
     window.location.reload();
   };
+
+  const analyticsOrders = orders.map((order) => ({
+    id: order.id,
+    total_amount: order.total_amount,
+    status: order.status,
+    created_at: order.created_at,
+    customers: { name: order.customers.name },
+    order_items: order.order_items.map((item) => ({
+      quantity: item.quantity,
+      products: {
+        name: item.products?.name || 'Unknown Item',
+        image_url: item.products?.image_url ?? null,
+      },
+    })),
+  }));
+
+  const analyticsProducts = products.map((product) => ({
+    id: product.id,
+    name: product.name,
+    price: product.price,
+    image_url: product.image_url ?? null,
+  }));
 
   if (loading) return <div className="min-h-screen bg-[#F9F8F6] flex justify-center items-center"><Loader2 className="animate-spin text-gray-400" /></div>;
 
@@ -198,12 +276,14 @@ export default function Dashboard() {
             { id: 'analytics', icon: BarChart3, label: 'Analytics' },
             { id: 'orders', icon: ShoppingCart, label: `Orders (${orders.filter(o => o.status === 'pending').length})` },
             { id: 'customers', icon: Users, label: 'Customers' },
+            { id: 'reviews', icon: Star, label: 'Reviews' },
+            { id: 'discounts', icon: BadgePercent, label: 'Discounts' },
             { id: 'broadcast', icon: Megaphone, label: 'Broadcast' },
             { id: 'inventory', icon: Package, label: 'Inventory' }
           ].map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
+              onClick={() => setActiveTab(tab.id as DashboardTab)}
               className={`flex shrink-0 items-center gap-2 rounded-full px-5 py-2.5 text-[11px] font-bold uppercase tracking-widest transition-all duration-200 ${
                 activeTab === tab.id 
                   ? 'bg-gray-900 text-white shadow-md' 
@@ -265,7 +345,7 @@ export default function Dashboard() {
 
         {/* ANALYTICS TAB */}
         {activeTab === 'analytics' && (
-          <AnalyticsDashboard orders={orders as any} products={products as any} />
+          <AnalyticsDashboard orders={analyticsOrders} products={analyticsProducts} />
         )}
 
         {/* ORDERS TAB */}
@@ -295,7 +375,13 @@ export default function Dashboard() {
                     <div className="flex-1 md:px-8 border-y md:border-y-0 md:border-l border-gray-50 py-4 md:py-0">
                       {order.order_items.map((item, idx) => (
                         <div key={idx} className="flex items-center gap-3 mb-3 last:mb-0">
-                          <div className="h-12 w-10 rounded-lg bg-gray-50 overflow-hidden"><img src={item.products?.image_url!} className="w-full h-full object-cover" /></div>
+                          <div className="h-12 w-10 rounded-lg bg-gray-50 overflow-hidden">
+                            {item.products?.image_url ? (
+                              <img src={item.products.image_url} alt={item.products?.name || 'Ordered item'} className="w-full h-full object-cover" />
+                            ) : (
+                              <Package className="h-full w-full p-3 text-gray-300" />
+                            )}
+                          </div>
                           <div>
                             <p className="text-xs font-bold text-gray-900">{item.quantity}x {item.products?.name}</p>
                             {item.variant_details !== 'None' && <p className="text-[10px] text-gray-400 uppercase tracking-wider">{item.variant_details}</p>}
@@ -357,6 +443,16 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* REVIEWS TAB */}
+        {activeTab === 'reviews' && (
+          <ReviewsPanel products={products} />
+        )}
+
+        {/* DISCOUNTS TAB */}
+        {activeTab === 'discounts' && (
+          <DiscountManager userId={userId!} products={products} />
+        )}
+
         {/* INVENTORY TAB */}
         {activeTab === 'inventory' && (
           <div className="animate-in fade-in duration-300">
@@ -374,7 +470,7 @@ export default function Dashboard() {
                     <div key={product.id} className="flex items-center justify-between p-4 md:p-5 hover:bg-gray-50 transition">
                       <div className="flex items-center gap-4">
                         <div className="h-14 w-12 rounded-lg bg-gray-100 overflow-hidden shrink-0">
-                          {product.image_url ? <img src={product.image_url} className="h-full w-full object-cover" /> : <Package className="h-full w-full p-3 text-gray-300" />}
+                          {product.image_url ? <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" /> : <Package className="h-full w-full p-3 text-gray-300" />}
                         </div>
                         <div>
                           <h4 className="text-sm font-bold text-gray-900">{product.name}</h4>

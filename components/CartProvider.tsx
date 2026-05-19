@@ -160,6 +160,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
           await supabase.from('orders').delete().eq('id', orderData.id);
           throw new Error('Could not record your order items. Please try again.');
         }
+
+        // Decrement stock for every item in the order
+        for (const item of cartItems) {
+          const { error: stockError } = await supabase.rpc('decrement_stock', {
+            product_id_param: item.productId,
+            quantity_param: item.quantity,
+          });
+          if (stockError) {
+            console.error('[stock] decrement failed for', item.productId, stockError.message);
+          }
+        }
       }
     } catch (err) {
       console.error("Non-fatal error saving silent order", err);

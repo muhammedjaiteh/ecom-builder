@@ -20,8 +20,10 @@ export default function ProductClient({ product: initialProduct }: { product?: a
   const [copied, setCopied] = useState(false);
   const [isOutOfStock, setIsOutOfStock] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [selectedColor, setSelectedColor] = useState('');
+  const [selectedSize, setSelectedSize] = useState('');
 
-  const { fulfillmentMethod, setFulfillmentMethod } = useCart();
+  const { fulfillmentMethod, setFulfillmentMethod, addToCart, setIsCartOpen } = useCart();
   
   const params = useParams();
   const supabase = createBrowserClient(
@@ -146,7 +148,7 @@ export default function ProductClient({ product: initialProduct }: { product?: a
             <ArrowLeft size={14} /> Back to Market
           </Link>
           <div className="text-2xl font-black tracking-tighter">SANNDI<span className="text-green-800">KAA</span></div>
-          <button className="p-2 rounded-full hover:bg-white transition-colors"><ShoppingBag size={20} /></button>
+          <button onClick={() => setIsCartOpen(true)} className="p-2 rounded-full hover:bg-white transition-colors"><ShoppingBag size={20} /></button>
         </div>
       </nav>
 
@@ -201,8 +203,49 @@ export default function ProductClient({ product: initialProduct }: { product?: a
                 {product.description || "Authentic quality from trusted sellers. Verified for excellence."}
             </p>
 
-            {/* Fulfillment Method Selection */}
-            <FulfillmentSelector />
+            {/* Color Selector */}
+            {Array.isArray(product.colors) && product.colors.length > 0 && (
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Color</p>
+                <div className="flex flex-wrap gap-2">
+                  {product.colors.map((color: string) => (
+                    <button
+                      key={color}
+                      onClick={() => setSelectedColor(color)}
+                      className={`px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider border-2 transition-all ${
+                        selectedColor === color
+                          ? 'bg-[#2C3E2C] text-white border-[#2C3E2C]'
+                          : 'bg-white text-gray-600 border-gray-200 hover:border-[#2C3E2C]'
+                      }`}
+                    >
+                      {color}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Size Selector */}
+            {Array.isArray(product.sizes) && product.sizes.length > 0 && (
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Size</p>
+                <div className="flex flex-wrap gap-2">
+                  {product.sizes.map((size: string) => (
+                    <button
+                      key={size}
+                      onClick={() => setSelectedSize(size)}
+                      className={`px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider border-2 transition-all ${
+                        selectedSize === size
+                          ? 'bg-[#2C3E2C] text-white border-[#2C3E2C]'
+                          : 'bg-white text-gray-600 border-gray-200 hover:border-[#2C3E2C]'
+                      }`}
+                    >
+                      {size}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Out of Stock vs Available */}
             {isOutOfStock ? (
@@ -218,12 +261,38 @@ export default function ProductClient({ product: initialProduct }: { product?: a
                 <FulfillmentSelector />
 
                 {/* 🟢 THE FIXED BUTTON */}
-                <div className="pt-4">
-                  <button 
-                    onClick={() => setShowTerminal(true)} 
+                <div className="pt-4 flex flex-col md:flex-row gap-4">
+                  <button
+                    onClick={() => {
+                      const hasColors = Array.isArray(product.colors) && product.colors.length > 0;
+                      const hasSizes = Array.isArray(product.sizes) && product.sizes.length > 0;
+                      if (hasColors && !selectedColor) { alert('Please select a color.'); return; }
+                      if (hasSizes && !selectedSize) { alert('Please select a size.'); return; }
+                      const variantParts = [selectedColor, selectedSize].filter(Boolean);
+                      addToCart({
+                        id: product.id,
+                        productId: product.id,
+                        name: product.name,
+                        price: product.price,
+                        quantity: 1,
+                        stock_quantity: product.stock_quantity ?? null,
+                        image_url: product.image_url || '',
+                        shop_id: product.shops?.id || '',
+                        shop_name: product.shops?.shop_name || '',
+                        shop_whatsapp: product.shops?.phone || DEFAULT_PHONE,
+                        variant_details: variantParts.length > 0 ? variantParts.join(' / ') : 'None',
+                      });
+                    }}
+                    className="w-full md:w-auto bg-white border-2 border-[#2C3E2C] text-[#2C3E2C] hover:bg-[#2C3E2C] hover:text-white py-4 px-10 rounded-full font-bold text-sm tracking-widest uppercase flex items-center justify-center gap-3 shadow-md transition-all transform active:scale-95"
+                  >
+                    <ShoppingBag size={18} />
+                    <span>Add to Cart</span>
+                  </button>
+                  <button
+                    onClick={() => setShowTerminal(true)}
                     className="w-full md:w-auto bg-[#2C3E2C] hover:bg-[#1a2e1a] text-white py-4 px-10 rounded-full font-bold text-sm tracking-widest uppercase flex items-center justify-center gap-3 shadow-xl hover:shadow-2xl transition-all transform active:scale-95"
                   >
-                    <Phone size={18} /> 
+                    <Phone size={18} />
                     <span>Order via WhatsApp</span>
                   </button>
                   <p className="text-[10px] text-gray-400 mt-4 text-center md:text-left flex items-center justify-center md:justify-start gap-1">

@@ -32,6 +32,11 @@ export default function AddProductPage() {
   const [enhancedIndices, setEnhancedIndices] = useState<Set<number>>(new Set());
   const [enhanceError, setEnhanceError] = useState<string | null>(null);
 
+  // ✨ Magic Auto-Fill States
+  const [isMagicFilling, setIsMagicFilling] = useState(false);
+  const [magicError, setMagicError] = useState<string | null>(null);
+  const [magicStatus, setMagicStatus] = useState('');
+
   // Form States
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
@@ -122,6 +127,11 @@ export default function AddProductPage() {
         return;
       }
 
+      if (response.status === 429) {
+        setAiError('The AI assistant is currently busy. Please try again in a moment or write the description manually.');
+        return;
+      }
+
       if (!response.ok) {
         setAiError(data.error || 'Failed to generate description. Please try again.');
         return;
@@ -143,6 +153,65 @@ export default function AddProductPage() {
     }
   };
 
+  // ✨ MAGIC AUTO-FILL: Gemini vision → title + description from uploaded photo
+  const handleMagicAutofill = async () => {
+    if (imageFiles.length === 0) {
+      alert('Please upload at least one product photo first, then click Magic Auto-Fill.');
+      return;
+    }
+
+    setMagicError(null);
+    setIsMagicFilling(true);
+    setMagicStatus('AI is analyzing your product...');
+
+    try {
+      // Convert first image to base64
+      const file = imageFiles[0];
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.split(',')[1]); // strip "data:image/jpeg;base64," prefix
+        };
+        reader.onerror = reject;
+      });
+
+      setMagicStatus('Crafting your luxury listing...');
+
+      const response = await fetch('/api/ai/generate-listing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: base64, mimeType: file.type || 'image/jpeg' }),
+      });
+
+      const data = await response.json();
+
+      if (response.status === 429) {
+        setMagicError('The AI assistant is currently busy. Please try again in a moment or write the description manually.');
+        return;
+      }
+
+      if (!response.ok) {
+        setMagicError(data.error || 'Failed to generate listing. Please try again.');
+        return;
+      }
+
+      if (data.title) setName(data.title);
+      if (data.description) setDescription(data.description);
+
+      if (data.creditsRemaining !== null && data.creditsRemaining !== undefined) {
+        setAiCredits(data.creditsRemaining);
+      }
+    } catch (err) {
+      console.error('[magic-autofill] error:', err);
+      setMagicError('Failed to connect to AI service. Please check your connection and try again.');
+    } finally {
+      setIsMagicFilling(false);
+      setMagicStatus('');
+    }
+  };
+
   // 🎨 AI IMAGE ENHANCEMENT ENGINE — 3-step cascade orchestrated via browser
   // Each step is a separate serverless call. Two 7.5s browser-side sleeps between
   // steps keep us inside Replicate's burst-1 rate limit without any server timeout.
@@ -157,6 +226,7 @@ export default function AddProductPage() {
     setEnhanceStatus('');
 
     const TIMEOUT_MS = 60_000;
+    const TIMEOUT_MSG = 'The request timed out. The AI server is warming up — please try again in a moment.';
 
     const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -353,30 +423,40 @@ export default function AddProductPage() {
       for (const file of imageFiles) {
         const fileExt = file.name.split('.').pop();
         const filePath = `${shop.id}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-        
+
         const { error: uploadError } = await supabase.storage.from('products').upload(filePath, file);
         if (uploadError) throw uploadError;
-        
+
         const { data: { publicUrl } } = supabase.storage.from('products').getPublicUrl(filePath);
         imageUrls.push(publicUrl);
       }
 
-      // 3. Save to Database
-      const { error: insertError } = await supabase.from('products').insert({
-        user_id: userId, 
-        name: name.trim(), 
-        price: parseFloat(price), 
-        description: description.trim(),
-        category: category, 
-        image_url: imageUrls[0], 
-        image_urls: imageUrls, 
-        colors: colors.length > 0 ? colors : null, 
-        sizes: sizes.length > 0 ? sizes : null,
-        stock_quantity: stockQuantity || 0
+      // 3. Get auth token for server-side embedding generation
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Session expired. Please sign in again.');
+
+      const res = await fetch('/api/products', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          name: name.trim(),
+          price: parseFloat(price),
+          description: description.trim(),
+          category,
+          image_url: imageUrls[0],
+          image_urls: imageUrls,
+          colors: colors.length > 0 ? colors : null,
+          sizes: sizes.length > 0 ? sizes : null,
+          stock_quantity: stockQuantity || 0,
+        }),
       });
 
-      if (insertError) throw insertError;
-      
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Failed to save product.');
+
       // 4. Trigger VIP Success Screen
       setSuccess(true);
       setTimeout(() => {
@@ -500,7 +580,7 @@ export default function AddProductPage() {
                           </svg>
                         </div>
                         <div className="flex-1">
-                          <p className="text-sm font-semibold text-red-900">{aiError}</p>
+                        <p className="text-sm font-semibold text-red-900 break-words">{aiError}</p>
                           {aiError.includes('limit reached') && (
                             <Link href="/pricing" className="mt-2 inline-block text-xs font-bold text-red-600 hover:text-red-700 underline">
                               Upgrade to Advanced for Unlimited AI →
@@ -522,14 +602,33 @@ export default function AddProductPage() {
                 </div>
               </div>
 
-              {/* Media Upload Card */}
               <div className="rounded-[2rem] bg-white p-6 md:p-8 shadow-sm border border-gray-100">
-                <h2 className="text-lg font-serif font-bold text-gray-900 mb-6 flex items-center gap-2"><ImageIcon size={18} className="text-gray-400" /> Media Gallery</h2>
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-lg font-serif font-bold text-gray-900 flex items-center gap-2"><ImageIcon size={18} className="text-gray-400" /> Media Gallery</h2>
+                  <button
+                    type="button"
+                    onClick={handleMagicAutofill}
+                    disabled={isMagicFilling || imageFiles.length === 0}
+                    className="flex items-center gap-2 rounded-full bg-[#2C3E2C] px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-white shadow-md transition hover:bg-[#1a2e1a] disabled:opacity-50"
+                  >
+                    {isMagicFilling ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                    {isMagicFilling ? magicStatus : '✨ Magic Auto-Fill'}
+                  </button>
+                </div>
+
+                {magicError && (
+                  <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 flex items-start gap-3 animate-in slide-in-from-top duration-300">
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-red-900 break-words">{magicError}</p>
+                    </div>
+                    <button type="button" onClick={() => setMagicError(null)} className="text-red-400 hover:text-red-500 transition"><X size={16} /></button>
+                  </div>
+                )}
 
                 {enhanceError && (
                   <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 flex items-start gap-3 animate-in slide-in-from-top duration-300">
                     <div className="flex-1">
-                      <p className="text-sm font-semibold text-red-900">{enhanceError}</p>
+                      <p className="text-sm font-semibold text-red-900 break-words">{enhanceError}</p>
                     </div>
                     <button type="button" onClick={() => setEnhanceError(null)} className="text-red-400 hover:text-red-500 transition"><X size={16} /></button>
                   </div>

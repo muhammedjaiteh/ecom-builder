@@ -11,6 +11,7 @@ export type Product = {
   sizes?: string[] | null;
   category?: string;
   stock_quantity?: number | null;
+  shop_id?: string;
   user_id?: string;
   created_at?: string;
 };
@@ -73,6 +74,7 @@ export type CartItem = {
   name: string;
   price: number;
   quantity: number;
+  stock_quantity?: number | null;
   image_url: string;
   shop_id: string;
   shop_name: string;
