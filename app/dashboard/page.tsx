@@ -4,20 +4,21 @@ import { createBrowserClient } from '@supabase/ssr';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Package, DollarSign, TrendingUp, Plus, Edit, Trash2, ExternalLink, 
+  Package, DollarSign, TrendingUp, Plus, Edit, Trash2, ExternalLink,
   BarChart3, Eye, Truck, LogOut, Lock,
-  ShoppingCart, Clock, CheckCircle2, Phone, User, Users, MessageCircle, 
-  LayoutDashboard, Settings, Loader2, Palette, Megaphone, BadgePercent, Star
+  ShoppingCart, Clock, CheckCircle2, Phone, User, Users, MessageCircle,
+  LayoutDashboard, Settings, Loader2, Palette, Megaphone, BadgePercent, Star, Film, Globe
 } from 'lucide-react';
 import Link from 'next/link';
 import Broadcast from './broadcast';
 import AnalyticsDashboard from '@/components/AnalyticsDashboard';
 import DiscountManager from '@/components/DiscountManager';
+import VideoManager from '@/components/VideoManager';
 import ReviewForm from '@/components/ReviewForm';
 import ReviewList from '@/components/ReviewList';
 import type { Product, Shop, Order, CustomerCRM } from '@/lib/types';
 
-type DashboardTab = 'overview' | 'analytics' | 'orders' | 'customers' | 'discounts' | 'reviews' | 'inventory' | 'broadcast';
+type DashboardTab = 'overview' | 'analytics' | 'orders' | 'customers' | 'discounts' | 'videos' | 'reviews' | 'inventory' | 'broadcast';
 
 function sanitizePhoneNumber(rawNumber?: string | null) {
   if (!rawNumber) return null;
@@ -87,7 +88,24 @@ export default function Dashboard() {
   const [customersCRM, setCustomersCRM] = useState<CustomerCRM[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   
-  const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
+  const [activeTab, setActiveTabState] = useState<DashboardTab>('overview');
+
+  // URL-synced tab: ?tab=videos survives refresh. history.replaceState avoids
+  // the Suspense boundary useSearchParams() would require on this client page.
+  useEffect(() => {
+    const VALID_TABS: DashboardTab[] = ['overview', 'analytics', 'orders', 'customers', 'discounts', 'videos', 'reviews', 'inventory', 'broadcast'];
+    const fromUrl = new URLSearchParams(window.location.search).get('tab');
+    if (fromUrl && VALID_TABS.includes(fromUrl as DashboardTab)) {
+      setActiveTabState(fromUrl as DashboardTab);
+    }
+  }, []);
+
+  const setActiveTab = (tab: DashboardTab) => {
+    setActiveTabState(tab);
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', tab);
+    window.history.replaceState(null, '', url.toString());
+  };
 
   const [totalOrders, setTotalOrders] = useState(0);
   const [totalRevenue, setTotalRevenue] = useState(0);
@@ -256,6 +274,10 @@ export default function Dashboard() {
               <Palette size={14} /> Customize
             </Link>
 
+            <Link href="/dashboard/website" className="flex shrink-0 items-center gap-1.5 rounded-full bg-gradient-to-r from-amber-50 to-yellow-50 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-amber-800 ring-1 ring-amber-200 transition hover:from-amber-100 hover:to-yellow-100">
+              <Globe size={14} /> Website
+            </Link>
+
             <Link href="/dashboard/settings" className="flex shrink-0 items-center gap-1.5 rounded-full bg-gray-50 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:bg-gray-100">
               <Settings size={14} /> Settings
             </Link>
@@ -278,6 +300,7 @@ export default function Dashboard() {
             { id: 'customers', icon: Users, label: 'Customers' },
             { id: 'reviews', icon: Star, label: 'Reviews' },
             { id: 'discounts', icon: BadgePercent, label: 'Discounts' },
+            { id: 'videos', icon: Film, label: 'Ad Studio' },
             { id: 'broadcast', icon: Megaphone, label: 'Broadcast' },
             { id: 'inventory', icon: Package, label: 'Inventory' }
           ].map((tab) => (
@@ -451,6 +474,11 @@ export default function Dashboard() {
         {/* DISCOUNTS TAB */}
         {activeTab === 'discounts' && (
           <DiscountManager userId={userId!} products={products} />
+        )}
+
+        {/* AD STUDIO TAB */}
+        {activeTab === 'videos' && (
+          <VideoManager userId={userId!} products={products} />
         )}
 
         {/* INVENTORY TAB */}

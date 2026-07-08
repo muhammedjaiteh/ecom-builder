@@ -9,7 +9,7 @@ import {
   Search, ShoppingBag, Store, X, Menu, Sparkles,
   BadgeCheck, Shield, Truck, RotateCcw, Award, Mail, ArrowRight,
 } from 'lucide-react';
-import { useCart } from '../components/CartProvider';
+import { useCart } from '@/components/CartProvider';
 import type { Product } from '@/lib/types';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -914,6 +914,7 @@ export default function GlobalHomepage() {
             <div>
               <h4 className="mb-4 text-xs font-bold uppercase tracking-widest text-gray-900">Sell</h4>
               <ul className="space-y-3">
+                <li><Link href="/sell" className="text-sm text-gray-500 transition hover:text-gray-900">Why Sell on Sanndikaa</Link></li>
                 <li><Link href="/pricing" className="text-sm text-gray-500 transition hover:text-gray-900">Open Boutique</Link></li>
                 <li><Link href="/login" className="text-sm text-gray-500 transition hover:text-gray-900">Seller Login</Link></li>
                 <li><Link href="/pricing" className="text-sm text-gray-500 transition hover:text-gray-900">Pricing &amp; Plans</Link></li>

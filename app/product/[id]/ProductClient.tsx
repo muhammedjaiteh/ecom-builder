@@ -156,12 +156,27 @@ export default function ProductClient({ product: initialProduct }: { product?: a
       <main className="pt-32 pb-16 px-6 max-w-7xl mx-auto">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-start">
           
-          {/* Product Image (Fixed Aspect Ratio) */}
+          {/* Product Media (Fixed Aspect Ratio).
+              Priority: AI ad video → AI hero still → original seller image → placeholder. */}
           <div className="relative aspect-[4/5] bg-white rounded-sm overflow-hidden shadow-sm hover:shadow-xl transition-shadow duration-500">
-            {product.image_url ? (
-               <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+            {product.ad_video_url ? (
+              <video
+                key={product.ad_video_url}
+                src={product.ad_video_url}
+                poster={product.ad_hero_image_url ?? product.image_url ?? undefined}
+                autoPlay
+                loop
+                muted
+                playsInline
+                controls
+                className="w-full h-full object-cover"
+              />
+            ) : product.ad_hero_image_url ? (
+              <img src={product.ad_hero_image_url} alt={product.name} className="w-full h-full object-cover" />
+            ) : product.image_url ? (
+              <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
             ) : (
-               <div className="absolute inset-0 flex items-center justify-center text-gray-200"><ShoppingBag size={64} /></div>
+              <div className="absolute inset-0 flex items-center justify-center text-gray-200"><ShoppingBag size={64} /></div>
             )}
             <div className="absolute top-0 left-0 bg-[#2C3E2C] text-white px-5 py-2 text-[10px] font-bold tracking-[0.2em] uppercase">
                 Authentic
