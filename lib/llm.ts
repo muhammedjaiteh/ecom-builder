@@ -8,9 +8,7 @@ import type { ZodSchema } from 'zod';
 type ProviderEntry = { name: string; model: LanguageModel };
 
 const PROVIDERS: ProviderEntry[] = [
-  // Anthropic first: the cachedSystem prompt-cache directive earns on every
-  // request when Claude is primary, instead of only on cascade fallback.
-  { name: 'anthropic', model: anthropic('claude-3-5-sonnet-20241022') },
+  { name: 'anthropic', model: anthropic('claude-sonnet-5') },
   { name: 'google',    model: google('gemini-2.5-flash') },
   { name: 'openai',    model: openai('gpt-4o-mini') },
 ];
