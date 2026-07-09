@@ -88,6 +88,31 @@ export const WebsiteConfigSchema = z.object({
 
 export type WebsiteConfig = z.infer<typeof WebsiteConfigSchema>;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 2-step generator — Step 1 "Design Consultation" output. Two distinct
+// concepts (different templates) with mock positioning copy. Stateless: never
+// persisted — the client posts the chosen concept back for Step 2 execution.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const SiteConceptSchema = z.object({
+  template_key: z.enum(TEMPLATE_KEYS),
+  concept_name: z.string().min(1).max(60),
+  tagline: z.string().min(1).max(80),
+  vibe: z.string().min(1).max(240),
+  palette: z.string().min(1).max(160),
+  hero_headline: z.string().min(1).max(90),
+  hero_subheadline: z.string().min(1).max(200),
+});
+
+export type SiteConcept = z.infer<typeof SiteConceptSchema>;
+
+export const ConceptPairSchema = z.object({
+  niche_reasoning: z.string().min(1),
+  concepts: z.array(SiteConceptSchema).length(2),
+});
+
+export type ConceptPair = z.infer<typeof ConceptPairSchema>;
+
 // Shapes shared by the three template components.
 export type SiteProduct = {
   id: string;
