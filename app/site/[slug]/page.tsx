@@ -13,6 +13,7 @@ import {
   type SiteShop,
   type TemplateKey,
 } from '@/lib/siteTemplates';
+import { slugify } from '@/lib/slugify';
 
 const TEMPLATE_COMPONENTS: Record<TemplateKey, typeof EditorialTemplate> = {
   editorial: EditorialTemplate,
@@ -45,16 +46,53 @@ function getAuthedClient() {
 
 type SiteWebsite = { template_key: TemplateKey; config: unknown; status: string };
 
-async function loadSite(slug: string, preview: boolean) {
-  const supabase = getSupabase();
-  // Law 2 slug safety: strip illegal chars AND lowercase before lookup.
-  const cleanSlug = slug.replace(/[^a-zA-Z0-9-_]/g, '').toLowerCase();
+const SHOP_COLUMNS = 'id, shop_name, shop_slug, logo_url, banner_url, bio';
 
-  const { data: shop } = await supabase
+// Law 2 slug safety: decode the inbound param (Next delivers it URL-encoded),
+// normalize it to the canonical lowercase-hyphenated form, and look up the
+// shop. Legacy rows minted by the signup trigger may still store raw values
+// ("Jambaba Boutique09") until a generate/publish write-repairs them — the
+// fallback matches those case-insensitively with separators wildcarded, then
+// VERIFIES the candidate slugifies to exactly the requested slug.
+async function findShopBySlug(supabase: ReturnType<typeof getSupabase>, slug: string) {
+  let decoded = slug;
+  try {
+    decoded = decodeURIComponent(slug);
+  } catch {
+    // Malformed escape sequence — fall back to the raw param.
+  }
+  const cleanSlug = slugify(decoded);
+  if (!cleanSlug) return null;
+
+  const { data: exact } = await supabase
     .from('shops')
-    .select('id, shop_name, shop_slug, logo_url, banner_url, bio')
+    .select(SHOP_COLUMNS)
     .eq('shop_slug', cleanSlug)
     .maybeSingle();
+  if (exact) return exact;
+
+  // Legacy candidates: match ANY stored value that slugifies to exactly
+  // cleanSlug. The regex requires the row's alphanumeric runs to equal the
+  // slug's tokens, in order, with only symbol runs between/around them — so
+  // leading/trailing junk ("My Boutique ", "Boutique!") resolves too, and the
+  // result set is bounded to true collisions rather than wildcard
+  // over-matches that could push the real row past the limit. imatch (~*)
+  // folds case both in the tokens and inside the negated classes. cleanSlug
+  // is [a-z0-9-] only, so its tokens need no regex escaping.
+  const pattern = `^[^a-z0-9]*${cleanSlug.split('-').join('[^a-z0-9]+')}[^a-z0-9]*$`;
+  const { data: candidates } = await supabase
+    .from('shops')
+    .select(SHOP_COLUMNS)
+    .filter('shop_slug', 'imatch', pattern)
+    .order('id', { ascending: true })
+    .limit(10);
+
+  return candidates?.find((c) => slugify(c.shop_slug) === cleanSlug) ?? null;
+}
+
+async function loadSite(slug: string, preview: boolean) {
+  const supabase = getSupabase();
+  const shop = await findShopBySlug(supabase, slug);
 
   if (!shop) return null;
 
@@ -95,10 +133,14 @@ async function loadSite(slug: string, preview: boolean) {
     return { shop: shop as SiteShop, website: null, products: [] as SiteProduct[], isOwnerPreview: false };
   }
 
+  // Mixed legacy schema: the app's insert path (app/api/products) writes only
+  // products.user_id — which equals the shop's id, since shops are keyed on
+  // the owner's auth id — while older rows may carry shop_id instead. Match
+  // either column so app-added inventory always renders on the generated site.
   const { data: products } = await supabase
     .from('products')
     .select('id, name, price, description, image_url, ad_video_url, ad_hero_image_url, category')
-    .eq('shop_id', shop.id)
+    .or(`shop_id.eq.${shop.id},user_id.eq.${shop.id}`)
     .order('created_at', { ascending: false })
     .limit(12);
 
@@ -134,12 +176,14 @@ export default async function SitePage({ params, searchParams }: PageProps) {
   // No shop → back to the mall; no visible website → fall back to the
   // standard boutique page rather than a dead end.
   if (!data) redirect('/');
-  if (!data.website) redirect(`/shop/${data.shop.shop_slug ?? slug}`);
+  // /shop decodes its param and matches the raw stored value, so legacy slugs
+  // (with spaces) must be URL-encoded here to survive the round trip.
+  if (!data.website) redirect(`/shop/${encodeURIComponent(data.shop.shop_slug ?? slug)}`);
 
   const parsed = WebsiteConfigSchema.safeParse(data.website.config);
   if (!parsed.success) {
     console.error(`[site/${slug}] Stored config failed validation:`, parsed.error.issues);
-    redirect(`/shop/${data.shop.shop_slug ?? slug}`);
+    redirect(`/shop/${encodeURIComponent(data.shop.shop_slug ?? slug)}`);
   }
 
   const config = parsed.data;
