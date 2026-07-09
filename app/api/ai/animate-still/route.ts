@@ -3,6 +3,13 @@ import { createServerClient } from '@supabase/ssr';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { fal } from '@/lib/fal';
+import {
+  AdPipelineError,
+  createAdProgressStream,
+  describeFalQueueUpdate,
+  SSE_HEADERS,
+  type AdProgressEvent,
+} from '@/lib/adProgress';
 
 // Kling (~40s) + Creatomate poll (~30s) — comfortably under 300s.
 export const maxDuration = 300;
@@ -163,6 +170,186 @@ function buildCreatomateSource(videoUrl: string, sb: Storyboard) {
   };
 }
 
+type AnimatePipelineContext = {
+  admin: SupabaseClient;
+  id: string;
+  heroImageUrl: string;
+  motionPrompt: string | null;
+  sb: Storyboard;
+  baseUrl: string;
+};
+
+type AnimateOutcome =
+  // Full updated row — the JSON mode returns it with HTTP 200.
+  | { kind: 'completed'; payload: Record<string, unknown> }
+  // Creatomate exceeded the in-route polling window. The payload must mirror
+  // the row's actual DB state (status stays 'pending', stage 'finalizing'):
+  // the client merges it into its videoAd, and its fallback polling only runs
+  // while status === 'pending'. JSON mode returns it with HTTP 202.
+  | {
+      kind: 'handoff';
+      payload: { id: string; creatomate_render_id: string; status: 'pending'; pipeline_stage: 'finalizing' };
+    };
+
+// The full animate pipeline, shared by the JSON and SSE modes. `emit` is a
+// no-op in JSON mode. Model ids and parameters are IDENTICAL to the pre-SSE
+// pipeline; the webhook + render-status completion paths are untouched.
+async function executeAnimatePipeline(
+  ctx: AnimatePipelineContext,
+  emit: (event: AdProgressEvent) => void,
+): Promise<AnimateOutcome> {
+  const { admin, id, heroImageUrl, motionPrompt, sb, baseUrl } = ctx;
+
+  // ── Mark animating ────────────────────────────────────────────────────
+  emit({ t: 'stage', key: 'animating' });
+  await admin
+    .from('video_ads')
+    .update({ status: 'pending', pipeline_stage: 'animating' })
+    .eq('id', id);
+
+  // ── Stage 1: Kling 1.6 Pro image-to-video ─────────────────────────────
+  console.log('[animate-still] Stage 1: Kling 1.6 Pro');
+  const klingResult = await fal.subscribe('fal-ai/kling-video/v1.6/pro/image-to-video', {
+    input: {
+      image_url: heroImageUrl,
+      prompt: motionPrompt || 'subtle cinematic camera motion, slow dolly-in, shallow depth of field',
+      duration: '5',
+      aspect_ratio: '9:16',
+    },
+    logs: false,
+    onQueueUpdate: (update) => {
+      const message = describeFalQueueUpdate(update, 'Cinematography engine');
+      if (message) emit({ t: 'detail', key: 'animating', message });
+    },
+  });
+
+  const klingVideoUrl = extractFalVideoUrl(klingResult);
+  if (!klingVideoUrl) {
+    logFalFailure('Kling 1.6 Pro', klingResult);
+    throw new Error('Image-to-video failed: no video URL in Kling response.');
+  }
+  console.log('[animate-still] Kling video URL:', klingVideoUrl);
+  emit({ t: 'stage-done', key: 'animating' });
+
+  // ── Stage 2: Creatomate caption overlay ───────────────────────────────
+  emit({ t: 'stage', key: 'finalizing' });
+  emit({ t: 'detail', key: 'finalizing', message: 'Overlaying captions and CTA…' });
+  const source = buildCreatomateSource(klingVideoUrl, sb);
+
+  console.log('[animate-still] Stage 2: Creatomate render kickoff');
+  const renderRes = await fetch('https://api.creatomate.com/v1/renders', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer ' + process.env.CREATOMATE_API_KEY,
+    },
+    body: JSON.stringify({
+      webhook_url: `${baseUrl}/api/webhooks/video?videoId=${id}`,
+      source,
+    }),
+  });
+
+  if (!renderRes.ok) {
+    const errorBody = await renderRes.text();
+    console.error(`[animate-still] Creatomate ${renderRes.status}:`, errorBody);
+    throw new Error(`Creatomate rejected the render (status ${renderRes.status}).`);
+  }
+
+  const renderPayload = await renderRes.json();
+  const renderId = Array.isArray(renderPayload) ? renderPayload[0]?.id : renderPayload?.id;
+  if (!renderId) {
+    console.error('[animate-still] Creatomate returned no render id:', renderPayload);
+    throw new Error('Creatomate did not return a render id.');
+  }
+  console.log('[animate-still] Creatomate render queued:', renderId);
+
+  // Single roundtrip: persist the render id and flip the stage together
+  // (previously two sequential DB writes on the hot path).
+  await admin
+    .from('video_ads')
+    .update({ creatomate_render_id: renderId, pipeline_stage: 'finalizing' })
+    .eq('id', id);
+
+  // ── Poll Creatomate synchronously until done ──────────────────────────
+  const POLL_INTERVAL_MS = 2000;
+  const MAX_POLLS = 60; // ~120s of polling — total route stays under maxDuration
+  let finalVideoUrl: string | null = null;
+
+  for (let i = 0; i < MAX_POLLS; i++) {
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    emit({ t: 'detail', key: 'finalizing', message: `Rendering the final cut… ${(i + 1) * 2}s` });
+    const statusRes = await fetch(`https://api.creatomate.com/v1/renders/${renderId}`, {
+      headers: { Authorization: 'Bearer ' + process.env.CREATOMATE_API_KEY },
+    });
+    if (!statusRes.ok) continue;
+
+    const render = await statusRes.json();
+    if (render.status === 'succeeded') {
+      finalVideoUrl = render.url;
+      break;
+    }
+    if (render.status === 'failed') {
+      console.error('[animate-still] Creatomate render failed:', render);
+      throw new Error('Final caption overlay failed.');
+    }
+    // planned / waiting / rendering — keep polling
+  }
+
+  if (!finalVideoUrl) {
+    // Took too long — hand off so the webhook + render-status path can finish it.
+    console.log('[animate-still] Creatomate still rendering after max polls, falling back to webhook');
+    emit({ t: 'detail', key: 'finalizing', message: 'Final render is taking longer than usual — finishing in the background…' });
+    return {
+      kind: 'handoff',
+      payload: { id, creatomate_render_id: renderId, status: 'pending', pipeline_stage: 'finalizing' },
+    };
+  }
+
+  // ── Persist final video ───────────────────────────────────────────────
+  const { data: updated, error: updateError } = await admin
+    .from('video_ads')
+    .update({
+      video_url: finalVideoUrl,
+      status: 'completed',
+      pipeline_stage: 'completed',
+    })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (updateError || !updated) {
+    console.error('[animate-still] Final update failed:', updateError);
+    throw new AdPipelineError('Failed to save final video.', 500);
+  }
+  emit({ t: 'stage-done', key: 'finalizing' });
+  emit({ t: 'stage', key: 'completed' });
+  emit({ t: 'stage-done', key: 'completed' });
+
+  return { kind: 'completed', payload: updated };
+}
+
+// Marks the row failed and maps any pipeline error to the same
+// { message, status } contract the pre-SSE catch block produced
+// (error.message passthrough, HTTP 500).
+async function failAnimatePipeline(
+  error: unknown,
+  admin: SupabaseClient | null,
+  videoAdId: string | null,
+): Promise<{ message: string; status: number }> {
+  console.error('[animate-still] fatal error:', error);
+  if (admin && videoAdId) {
+    await admin
+      .from('video_ads')
+      .update({ status: 'failed', pipeline_stage: 'failed' })
+      .eq('id', videoAdId);
+  }
+  if (error instanceof AdPipelineError) {
+    return { message: error.message, status: error.status };
+  }
+  const message = (error as { message?: string } | null)?.message;
+  return { message: message || 'Failed to animate the scene. Please try again.', status: 500 };
+}
+
 export async function POST(req: Request) {
   let videoAdId: string | null = null;
   let admin: SupabaseClient | null = null;
@@ -232,135 +419,54 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Storyboard copy missing — regenerate the scene.' }, { status: 400 });
     }
 
-    // ── Mark animating ────────────────────────────────────────────────────
-    await admin
-      .from('video_ads')
-      .update({ status: 'pending', pipeline_stage: 'animating' })
-      .eq('id', id);
-
-    // ── Stage 1: Kling 1.6 Pro image-to-video ─────────────────────────────
-    console.log('[animate-still] Stage 1: Kling 1.6 Pro');
-    const klingResult = await fal.subscribe('fal-ai/kling-video/v1.6/pro/image-to-video', {
-      input: {
-        image_url: row.hero_image_url,
-        prompt: row.motion_prompt || 'subtle cinematic camera motion, slow dolly-in, shallow depth of field',
-        duration: '5',
-        aspect_ratio: '9:16',
-      },
-      logs: false,
-    });
-
-    const klingVideoUrl = extractFalVideoUrl(klingResult);
-    if (!klingVideoUrl) {
-      logFalFailure('Kling 1.6 Pro', klingResult);
-      throw new Error('Image-to-video failed: no video URL in Kling response.');
-    }
-    console.log('[animate-still] Kling video URL:', klingVideoUrl);
-
-    // ── Stage 2: Creatomate caption overlay ───────────────────────────────
     const baseUrl = process.env.PUBLIC_APP_URL ?? `https://${req.headers.get('host')}`;
-    const source = buildCreatomateSource(klingVideoUrl, sb);
+    const ctx: AnimatePipelineContext = {
+      admin,
+      id,
+      heroImageUrl: row.hero_image_url,
+      motionPrompt: row.motion_prompt ?? null,
+      sb,
+      baseUrl,
+    };
 
-    console.log('[animate-still] Stage 2: Creatomate render kickoff');
-    const renderRes = await fetch('https://api.creatomate.com/v1/renders', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: 'Bearer ' + process.env.CREATOMATE_API_KEY,
-      },
-      body: JSON.stringify({
-        webhook_url: `${baseUrl}/api/webhooks/video?videoId=${id}`,
-        source,
-      }),
-    });
+    // ── SSE mode — client opted in via Accept: text/event-stream ─────────
+    // All auth/validation errors above still return plain JSON before the
+    // stream starts. Terminal 'result' frames carry the exact payloads the
+    // JSON mode returns (200 completed row, or the 202 handoff mirror).
+    const wantsStream = (req.headers.get('accept') ?? '').includes('text/event-stream');
+    if (wantsStream) {
+      const { readable, send, close } = createAdProgressStream();
+      const adminForStream = admin;
+      const idForStream = videoAdId;
 
-    if (!renderRes.ok) {
-      const errorBody = await renderRes.text();
-      console.error(`[animate-still] Creatomate ${renderRes.status}:`, errorBody);
-      throw new Error(`Creatomate rejected the render (status ${renderRes.status}).`);
+      void (async () => {
+        try {
+          const outcome = await executeAnimatePipeline(ctx, send);
+          send({
+            t: 'result',
+            status: outcome.kind === 'completed' ? 200 : 202,
+            payload: outcome.payload,
+          });
+        } catch (error) {
+          const { message, status } = await failAnimatePipeline(error, adminForStream, idForStream);
+          send({ t: 'error', status, error: message });
+        } finally {
+          close();
+        }
+      })();
+
+      return new Response(readable, { status: 200, headers: SSE_HEADERS });
     }
 
-    const renderPayload = await renderRes.json();
-    const renderId = Array.isArray(renderPayload) ? renderPayload[0]?.id : renderPayload?.id;
-    if (!renderId) {
-      console.error('[animate-still] Creatomate returned no render id:', renderPayload);
-      throw new Error('Creatomate did not return a render id.');
+    // ── JSON mode — identical contract to the pre-SSE route ──────────────
+    const outcome = await executeAnimatePipeline(ctx, () => {});
+    if (outcome.kind === 'handoff') {
+      return NextResponse.json(outcome.payload, { status: 202 });
     }
-    console.log('[animate-still] Creatomate render queued:', renderId);
+    return NextResponse.json(outcome.payload, { status: 200 });
 
-    // Single roundtrip: persist the render id and flip the stage together
-    // (previously two sequential DB writes on the hot path).
-    await admin
-      .from('video_ads')
-      .update({ creatomate_render_id: renderId, pipeline_stage: 'finalizing' })
-      .eq('id', id);
-
-    // ── Poll Creatomate synchronously until done ──────────────────────────
-    const POLL_INTERVAL_MS = 2000;
-    const MAX_POLLS = 60; // ~120s of polling — total route stays under maxDuration
-    let finalVideoUrl: string | null = null;
-
-    for (let i = 0; i < MAX_POLLS; i++) {
-      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-      const statusRes = await fetch(`https://api.creatomate.com/v1/renders/${renderId}`, {
-        headers: { Authorization: 'Bearer ' + process.env.CREATOMATE_API_KEY },
-      });
-      if (!statusRes.ok) continue;
-
-      const render = await statusRes.json();
-      if (render.status === 'succeeded') {
-        finalVideoUrl = render.url;
-        break;
-      }
-      if (render.status === 'failed') {
-        console.error('[animate-still] Creatomate render failed:', render);
-        throw new Error('Final caption overlay failed.');
-      }
-      // planned / waiting / rendering — keep polling
-    }
-
-    if (!finalVideoUrl) {
-      // Took too long — return 202 so the webhook + render-status path can finish it.
-      // The payload must mirror the row's actual DB state (status stays 'pending',
-      // stage 'finalizing'): the client merges this response into its videoAd, and
-      // its fallback polling only runs while status === 'pending'.
-      console.log('[animate-still] Creatomate still rendering after max polls, falling back to webhook');
-      return NextResponse.json(
-        { id, creatomate_render_id: renderId, status: 'pending', pipeline_stage: 'finalizing' },
-        { status: 202 }
-      );
-    }
-
-    // ── Persist final video ───────────────────────────────────────────────
-    const { data: updated, error: updateError } = await admin
-      .from('video_ads')
-      .update({
-        video_url: finalVideoUrl,
-        status: 'completed',
-        pipeline_stage: 'completed',
-      })
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (updateError || !updated) {
-      console.error('[animate-still] Final update failed:', updateError);
-      return NextResponse.json({ error: 'Failed to save final video.' }, { status: 500 });
-    }
-
-    return NextResponse.json(updated, { status: 200 });
-
-  } catch (error: any) {
-    console.error('[animate-still] fatal error:', error);
-    if (admin && videoAdId) {
-      await admin
-        .from('video_ads')
-        .update({ status: 'failed', pipeline_stage: 'failed' })
-        .eq('id', videoAdId);
-    }
-    return NextResponse.json(
-      { error: error?.message || 'Failed to animate the scene. Please try again.' },
-      { status: 500 }
-    );
+  } catch (error) {
+    const { message, status } = await failAnimatePipeline(error, admin, videoAdId);
+    return NextResponse.json({ error: message }, { status });
   }
 }

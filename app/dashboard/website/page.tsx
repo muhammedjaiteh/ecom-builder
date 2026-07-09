@@ -1,14 +1,17 @@
 'use client';
 
 import { createBrowserClient } from '@supabase/ssr';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
-  ArrowLeft, Globe, Crown, Loader2, Sparkles, ExternalLink,
-  RefreshCw, Check, Eye, EyeOff, Wand2,
+  ArrowLeft, Globe, Crown, Loader2, ExternalLink,
+  RefreshCw, Eye, EyeOff, Wand2, Compass,
 } from 'lucide-react';
-import { SITE_TEMPLATES, TEMPLATE_KEYS, type TemplateKey, type WebsiteConfig } from '@/lib/siteTemplates';
+import { SITE_TEMPLATES, SiteConceptSchema, type SiteConcept, type WebsiteConfig, type TemplateKey } from '@/lib/siteTemplates';
+import { slugify } from '@/lib/slugify';
+import ConceptCard from '@/components/website/ConceptCard';
 
 type ShopRow = {
   id: string;
@@ -30,15 +33,33 @@ type WebsiteRow = {
 
 const WEBSITE_TIERS = ['advanced', 'flagship'];
 
+// Client-side ceiling for either AI step — the route's maxDuration (120s)
+// plus a small network margin, so a hung provider can never lock the UI.
+const STEP_TIMEOUT_MS = 125_000;
+
+// Two-step premium flow:
+//   idle       → nothing in flight; consult button available
+//   consulting → Step 1 running (fast concept pitch)
+//   choosing   → two concepts on screen, awaiting the seller's pick
+//   building   → Step 2 running (full site generation for the chosen concept)
+type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
+
 export default function WebsiteGeneratorPage() {
   const [loading, setLoading] = useState(true);
   const [shop, setShop] = useState<ShopRow | null>(null);
   const [website, setWebsite] = useState<WebsiteRow | null>(null);
-  const [templateOverride, setTemplateOverride] = useState<'auto' | TemplateKey>('auto');
-  const [generating, setGenerating] = useState(false);
+  const [phase, setPhase] = useState<GenPhase>('idle');
+  const [concepts, setConcepts] = useState<SiteConcept[] | null>(null);
+  const [conceptReasoning, setConceptReasoning] = useState<string | null>(null);
+  const [selectedConcept, setSelectedConcept] = useState<number | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [elapsedSec, setElapsedSec] = useState(0);
+
+  // Controller for the in-flight AI step. Aborted with a reason string
+  // ('cancel' | 'timeout' | 'unmount' | 'superseded') so the catch blocks can
+  // tell a seller-initiated cancel from a timeout from navigation.
+  const abortRef = useRef<AbortController | null>(null);
 
   const router = useRouter();
   const supabase = createBrowserClient(
@@ -63,41 +84,181 @@ export default function WebsiteGeneratorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Elapsed ticker during generation.
+  // Elapsed ticker during either AI step.
+  const busy = phase === 'consulting' || phase === 'building';
   useEffect(() => {
-    if (!generating) { setElapsedSec(0); return; }
+    if (!busy) { setElapsedSec(0); return; }
     const started = Date.now();
     const t = setInterval(() => setElapsedSec(Math.floor((Date.now() - started) / 1000)), 1000);
     return () => clearInterval(t);
-  }, [generating]);
+  }, [busy]);
+
+  // Abort any in-flight AI step when the seller navigates away — no leaked
+  // requests, no setState on an unmounted component.
+  useEffect(() => () => { abortRef.current?.abort('unmount'); }, []);
+
+  const beginStep = () => {
+    abortRef.current?.abort('superseded');
+    const controller = new AbortController();
+    abortRef.current = controller;
+    return controller;
+  };
 
   const tier = (shop?.subscription_tier ?? '').toLowerCase().trim();
   const hasAccess = WEBSITE_TIERS.includes(tier);
 
-  // Law 2 slug safety: every /site link is minted lowercase, and a shop with a
-  // missing slug never produces a broken /site/undefined URL (links are hidden).
-  const siteSlug = shop?.shop_slug?.trim().toLowerCase() || null;
+  // Law 2 slug safety: /site links are minted ONLY from a slug that is
+  // already canonical (lowercase, hyphenated) in the DB. Slugifying a legacy
+  // value client-side could collide with ANOTHER shop's canonical slug and
+  // open the wrong storefront — so legacy rows show no link until the
+  // write-repair below round-trips the slug this shop verifiably owns.
+  const storedSlug = shop?.shop_slug ?? null;
+  const siteSlug = storedSlug && storedSlug === slugify(storedSlug) ? storedSlug : null;
 
-  const handleGenerate = async () => {
+  const syncShopSlug = (slug: unknown) => {
+    if (typeof slug === 'string' && slug) {
+      setShop((prev) => (prev ? { ...prev, shop_slug: slug } : prev));
+    }
+  };
+
+  // Write-repair a legacy slug as soon as the dashboard loads, so "View Live
+  // Site" works for pre-existing websites without requiring a generate or
+  // publish first. The server resolves collisions (deterministic suffix) and
+  // returns the canonical slug we mint links with.
+  useEffect(() => {
+    if (loading || !shop || !hasAccess || siteSlug) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/ai/generate-website', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ step: 'repair-slug' }),
+        });
+        const data = await res.json();
+        if (!cancelled && res.ok) syncShopSlug(data.shop_slug);
+      } catch {
+        // Non-fatal: the /site route's verified fallback still resolves
+        // legacy slugs; we simply don't mint a link until repair succeeds.
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, shop?.id, hasAccess, siteSlug]);
+
+  // ── Step 1: design consultation ─────────────────────────────────────────
+  const handleConsult = async () => {
     setError(null);
-    setGenerating(true);
+    setPhase('consulting');
+    const controller = beginStep();
+    const timeout = setTimeout(() => controller.abort('timeout'), STEP_TIMEOUT_MS);
     try {
       const res = await fetch('/api/ai/generate-website', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(templateOverride === 'auto' ? {} : { templateOverride }),
+        body: JSON.stringify({ step: 'concepts' }),
+        signal: controller.signal,
       });
       const data = await res.json();
+      if (controller.signal.aborted) return;
       if (!res.ok) {
-        setError(data.error || 'Failed to generate the website.');
+        setError(data.error || 'Failed to prepare your design concepts.');
+        setPhase('idle');
         return;
       }
-      setWebsite(data as WebsiteRow);
+      // Defensive contract check: never enter 'choosing' without two
+      // renderable concepts, or the panel has nothing to show and no way back.
+      const received = Array.isArray(data.concepts)
+        ? (data.concepts as unknown[]).filter((c): c is SiteConcept => SiteConceptSchema.safeParse(c).success)
+        : [];
+      if (received.length < 2) {
+        setError('The consultation returned an unexpected response. Please try again.');
+        setPhase('idle');
+        return;
+      }
+      syncShopSlug(data.shop_slug);
+      setConcepts(received);
+      setConceptReasoning(typeof data.niche_reasoning === 'string' ? data.niche_reasoning : null);
+      setSelectedConcept(null);
+      setPhase('choosing');
     } catch {
-      setError('Network error generating the website. Please try again.');
+      if (controller.signal.aborted) {
+        // 'cancel' / 'unmount' / 'superseded' already left the UI where it
+        // belongs; only a timeout needs surfacing.
+        if (controller.signal.reason === 'timeout') {
+          setError('The design consultation timed out. Please try again.');
+          setPhase('idle');
+        }
+        return;
+      }
+      setError('Network error preparing your design concepts. Please try again.');
+      setPhase('idle');
     } finally {
-      setGenerating(false);
+      clearTimeout(timeout);
+      if (abortRef.current === controller) abortRef.current = null;
     }
+  };
+
+  // ── Step 2: build the chosen concept ────────────────────────────────────
+  const handleBuild = async () => {
+    if (selectedConcept === null || !concepts?.[selectedConcept]) return;
+    const concept = concepts[selectedConcept];
+    setError(null);
+    setPhase('building');
+    const controller = beginStep();
+    const timeout = setTimeout(() => controller.abort('timeout'), STEP_TIMEOUT_MS);
+    try {
+      const res = await fetch('/api/ai/generate-website', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ step: 'execute', concept }),
+        signal: controller.signal,
+      });
+      const data = await res.json();
+      if (controller.signal.aborted) return;
+      if (!res.ok) {
+        setError(data.error || 'Failed to build the website.');
+        setPhase('choosing');
+        return;
+      }
+      syncShopSlug(data.shop_slug);
+      setWebsite(data as WebsiteRow);
+      setConcepts(null);
+      setConceptReasoning(null);
+      setSelectedConcept(null);
+      setPhase('idle');
+    } catch {
+      if (controller.signal.aborted) {
+        if (controller.signal.reason === 'timeout') {
+          setError('Building the website timed out. Your concepts are saved — please try again.');
+          setPhase('choosing');
+        }
+        return;
+      }
+      setError('Network error building the website. Please try again.');
+      setPhase('choosing');
+    } finally {
+      clearTimeout(timeout);
+      if (abortRef.current === controller) abortRef.current = null;
+    }
+  };
+
+  // Cancel an in-flight step: abort the request, land on the right phase.
+  const handleCancelConsult = () => {
+    abortRef.current?.abort('cancel');
+    setPhase('idle');
+  };
+
+  const handleCancelBuild = () => {
+    abortRef.current?.abort('cancel');
+    setPhase('choosing');
+  };
+
+  const handleCancelConcepts = () => {
+    setConcepts(null);
+    setConceptReasoning(null);
+    setSelectedConcept(null);
+    setPhase('idle');
   };
 
   const handlePublishToggle = async () => {
@@ -116,6 +277,7 @@ export default function WebsiteGeneratorPage() {
         setError(data.error || 'Failed to update publish state.');
         return;
       }
+      syncShopSlug(data.shop_slug);
       setWebsite(data as WebsiteRow);
     } catch {
       setError('Network error updating publish state.');
@@ -134,6 +296,10 @@ export default function WebsiteGeneratorPage() {
 
   const site = website?.config?.site;
   const templateMeta = website ? SITE_TEMPLATES[website.template_key] : null;
+  const chosenConceptName =
+    selectedConcept !== null && concepts?.[selectedConcept]
+      ? concepts[selectedConcept].concept_name
+      : null;
 
   return (
     <div className="min-h-screen bg-[#F9F8F6] pb-24 font-sans text-gray-900">
@@ -183,8 +349,8 @@ export default function WebsiteGeneratorPage() {
             <Crown size={36} className="mx-auto text-[#f0a500]" />
             <h2 className="mt-6 font-serif text-3xl font-bold md:text-4xl">Your entire storefront, generated.</h2>
             <p className="mx-auto mt-4 max-w-lg leading-relaxed text-white/60">
-              The AI Website Generator studies your inventory, picks a niche-matched premium template, and writes
-              every line of your storefront — hero film, brand story, and all. Exclusive to the Advanced tier.
+              The AI Website Generator studies your inventory, pitches two bespoke design concepts, and builds
+              the one you choose — hero film, brand story, and all. Exclusive to the Advanced tier.
             </p>
             <Link
               href="/pricing"
@@ -199,63 +365,167 @@ export default function WebsiteGeneratorPage() {
         {hasAccess && (
           <div className="space-y-6">
 
-            {/* Controls */}
-            <div className="rounded-[2rem] border border-gray-100 bg-white p-6 shadow-sm md:p-8">
-              <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-                <div className="flex-1">
-                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-400">
-                    Template
-                  </label>
-                  <select
-                    value={templateOverride}
-                    onChange={(e) => setTemplateOverride(e.target.value as 'auto' | TemplateKey)}
-                    disabled={generating}
-                    className="w-full max-w-sm rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-medium outline-none transition focus:border-gray-900 focus:bg-white disabled:opacity-60"
-                  >
-                    <option value="auto">Auto — let the AI match my niche</option>
-                    {TEMPLATE_KEYS.map((k) => (
-                      <option key={k} value={k}>
-                        {SITE_TEMPLATES[k].name} — {SITE_TEMPLATES[k].niche}
-                      </option>
-                    ))}
-                  </select>
+            {/* Step 1 — Consultation controls */}
+            {(phase === 'idle' || phase === 'consulting') && (
+              <div className="rounded-[2rem] border border-gray-100 bg-white p-6 shadow-sm md:p-8">
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div className="flex-1">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                      Step 1 · Design Consultation
+                    </p>
+                    <p className="mt-2 max-w-xl text-sm leading-relaxed text-gray-500">
+                      The AI studies your inventory and pitches two distinct storefront directions.
+                      Choose the one that feels like your brand — then it builds the full site around
+                      your products, logo, and Ad Studio assets.
+                    </p>
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-3">
+                    <button
+                      onClick={handleConsult}
+                      disabled={phase === 'consulting'}
+                      className="flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#1a2e1a] to-gray-900 px-8 py-3.5 text-[10px] font-bold uppercase tracking-widest text-white shadow-md transition-all hover:opacity-90 hover:shadow-lg active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {phase === 'consulting'
+                        ? <><Loader2 size={13} className="animate-spin" /> Consulting… {elapsedSec}s</>
+                        : website
+                          ? <><RefreshCw size={13} /> Design New Concepts</>
+                          : <><Compass size={13} /> Start Design Consultation</>}
+                    </button>
+                    {phase === 'consulting' && (
+                      <button
+                        onClick={handleCancelConsult}
+                        className="rounded-full bg-gray-50 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
                 </div>
 
-                <button
-                  onClick={handleGenerate}
-                  disabled={generating}
-                  className="flex shrink-0 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#1a2e1a] to-gray-900 px-8 py-3.5 text-[10px] font-bold uppercase tracking-widest text-white shadow-md transition-all hover:opacity-90 hover:shadow-lg active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {generating
-                    ? <><Loader2 size={13} className="animate-spin" /> Generating… {elapsedSec}s</>
-                    : website
-                      ? <><RefreshCw size={13} /> Regenerate Website</>
-                      : <><Sparkles size={13} /> Generate My Website</>}
-                </button>
+                {error && (
+                  <div className="mt-4 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3">
+                    <p className="flex-1 text-sm font-medium text-red-800">{error}</p>
+                    <button onClick={() => setError(null)} className="text-[11px] font-bold text-red-400 hover:text-red-600">✕</button>
+                  </div>
+                )}
               </div>
+            )}
 
-              {error && (
-                <div className="mt-4 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3">
-                  <p className="flex-1 text-sm font-medium text-red-800">{error}</p>
-                  <button onClick={() => setError(null)} className="text-[11px] font-bold text-red-400 hover:text-red-600">✕</button>
-                </div>
+            {/* Step 2 — Concept selection */}
+            <AnimatePresence>
+              {phase === 'choosing' && concepts && (
+                <motion.div
+                  key="concepts"
+                  initial={{ opacity: 0, y: -10, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -10, scale: 0.97 }}
+                  transition={{ duration: 0.3, ease: 'easeOut' }}
+                  className="rounded-[2rem] border border-gray-100 bg-white p-6 shadow-sm md:p-8"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-[#f0a500]">
+                        Step 2 · Choose Your Direction
+                      </p>
+                      <h2 className="mt-2 font-serif text-2xl font-bold">Two concepts, tailored to your boutique.</h2>
+                      {conceptReasoning && (
+                        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-gray-500">{conceptReasoning}</p>
+                      )}
+                    </div>
+                    <button
+                      onClick={handleCancelConcepts}
+                      className="rounded-full bg-gray-50 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+
+                  <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2">
+                    {concepts.map((concept, i) => (
+                      <ConceptCard
+                        key={`${concept.template_key}-${i}`}
+                        concept={concept}
+                        index={i}
+                        selected={selectedConcept === i}
+                        onSelect={() => setSelectedConcept(i)}
+                      />
+                    ))}
+                  </div>
+
+                  {error && (
+                    <div className="mt-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3">
+                      <p className="flex-1 text-sm font-medium text-red-800">{error}</p>
+                      <button onClick={() => setError(null)} className="text-[11px] font-bold text-red-400 hover:text-red-600">✕</button>
+                    </div>
+                  )}
+
+                  <div className="mt-6 flex flex-col items-center justify-between gap-4 border-t border-gray-100 pt-6 md:flex-row">
+                    <p className="text-sm text-gray-500">
+                      {selectedConcept !== null && chosenConceptName
+                        ? <>Selected: <span className="font-bold text-gray-900">{chosenConceptName}</span></>
+                        : 'Select the concept that feels like your brand.'}
+                    </p>
+                    <button
+                      onClick={handleBuild}
+                      disabled={selectedConcept === null}
+                      className="flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#1a2e1a] to-gray-900 px-8 py-3.5 text-[10px] font-bold uppercase tracking-widest text-white shadow-md transition-all hover:opacity-90 hover:shadow-lg active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <Wand2 size={13} /> Build This Site
+                    </button>
+                  </div>
+                </motion.div>
               )}
-            </div>
+            </AnimatePresence>
+
+            {/* Step 2 — Execution progress */}
+            <AnimatePresence>
+              {phase === 'building' && (
+                <motion.div
+                  key="building"
+                  initial={{ opacity: 0, y: -10, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -10, scale: 0.97 }}
+                  transition={{ duration: 0.3, ease: 'easeOut' }}
+                  className="rounded-[2rem] border border-gray-100 bg-white p-10 text-center shadow-sm md:p-14"
+                >
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#1a2e1a]">
+                    <Loader2 className="h-6 w-6 animate-spin text-[#f0a500]" />
+                  </div>
+                  <h2 className="mt-6 font-serif text-2xl font-bold">
+                    Building {chosenConceptName ? `“${chosenConceptName}”` : 'your storefront'}…
+                  </h2>
+                  <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-gray-500">
+                    Injecting your products, logo, and inventory into the chosen layout and writing
+                    every line of your site copy. About 20 seconds.
+                  </p>
+                  <p className="mt-5 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                    Elapsed {elapsedSec}s
+                  </p>
+                  <button
+                    onClick={handleCancelBuild}
+                    className="mt-5 rounded-full bg-gray-50 px-5 py-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
+                  >
+                    Cancel — Keep My Concepts
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Empty state */}
-            {!website && !generating && (
+            {!website && phase === 'idle' && (
               <div className="rounded-[2rem] border border-dashed border-gray-200 bg-white p-14 text-center">
                 <Globe className="mx-auto mb-4 h-10 w-10 text-gray-300" />
                 <p className="text-sm font-bold">No website generated yet.</p>
                 <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-gray-500">
-                  The AI reads your inventory and your Ad Studio assets, picks the template that fits your niche,
-                  and writes the whole site. About 20 seconds.
+                  Start the design consultation to see two bespoke storefront concepts for your
+                  inventory — then pick one and the AI builds the whole site. Each step takes seconds.
                 </p>
               </div>
             )}
 
             {/* Generated preview */}
-            {website && site && (
+            {website && site && phase !== 'building' && (
               <div className="space-y-6">
                 {/* Status + publish row */}
                 <div className="flex flex-wrap items-center justify-between gap-4 rounded-[2rem] border border-gray-100 bg-white p-6 shadow-sm">

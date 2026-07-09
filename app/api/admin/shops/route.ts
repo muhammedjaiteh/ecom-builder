@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { slugifyWithFallback } from '@/lib/slugify';
 
 // Force Next.js to always fetch fresh data
 export const dynamic = 'force-dynamic';
@@ -104,6 +105,13 @@ export async function PATCH(request: Request) {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
+
+    // Law 2 slug safety: this PATCH is the only in-repo write path for
+    // shops.shop_slug. Normalize it so spaces/uppercase can never enter the DB
+    // and break /site routing (never store an empty slug either).
+    if (typeof updates.shop_slug === 'string') {
+      updates.shop_slug = slugifyWithFallback(updates.shop_slug, id);
+    }
 
     const { data, error } = await supabaseAdmin
       .from('shops')

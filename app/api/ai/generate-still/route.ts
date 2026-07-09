@@ -6,6 +6,14 @@ import { z } from 'zod';
 import { fal } from '@/lib/fal';
 import { generateWithFallback } from '@/lib/llm';
 import { ELITE_COPY_RULES } from '@/lib/adCopy';
+import {
+  AdPipelineError,
+  createAdProgressStream,
+  describeFalQueueUpdate,
+  SSE_HEADERS,
+  type AdProgressEvent,
+  type FalQueueUpdate,
+} from '@/lib/adProgress';
 
 // Unified director schema — under the BiRefNet → IC-Light architecture, apparel and
 // cosmetics now require the same output shape. The seller's foreground (product + any
@@ -62,13 +70,16 @@ function logFalFailure(stage: string, result: any) {
 
 // Wraps fal.subscribe so 422/4xx failures surface the actual FastAPI `detail`
 // array instead of opaque "[Object]" output. Re-throws so existing error flow is unchanged.
+// The optional onQueueUpdate hook feeds the SSE progress stream — it never
+// changes model inputs or outputs.
 async function falSubscribeWithLogging<T = any>(
   modelId: string,
   input: Record<string, unknown>,
   stageLabel: string,
+  onQueueUpdate?: (update: FalQueueUpdate) => void,
 ): Promise<T> {
   try {
-    const result = (await fal.subscribe(modelId, { input, logs: false })) as T;
+    const result = (await fal.subscribe(modelId, { input, logs: false, onQueueUpdate })) as T;
 
     // ── Silent-failure detection (apparent-success responses with bad payloads) ──
     // Some Fal models return HTTP 200 + a valid URL pointing at a blank/black PNG
@@ -87,8 +98,11 @@ async function falSubscribeWithLogging<T = any>(
         `[generate-still] Fal ${modelId} (${stageLabel}) was content-filtered. Full response:`,
         JSON.stringify(data, null, 2)
       );
-      throw new Error(
-        `${stageLabel} output was blocked by the provider's content filter. Please retry or use a different photo.`
+      // AdPipelineError carries this crafted copy all the way to the seller
+      // instead of collapsing into the generic catch-all message.
+      throw new AdPipelineError(
+        `${stageLabel} output was blocked by the provider's content filter. Please retry or use a different photo.`,
+        500
       );
     }
 
@@ -102,8 +116,9 @@ async function falSubscribeWithLogging<T = any>(
         `[generate-still] Fal ${modelId} (${stageLabel}) returned suspiciously small file (${fileSize} bytes) — likely blank/black. Full response:`,
         JSON.stringify(data, null, 2)
       );
-      throw new Error(
-        `${stageLabel} returned an empty image. The model may have failed silently. Please retry.`
+      throw new AdPipelineError(
+        `${stageLabel} returned an empty image. The model may have failed silently. Please retry.`,
+        500
       );
     }
 
@@ -199,8 +214,190 @@ Example output (cosmetics — Niche Intelligence applied to a hydrating serum):
 {"scene_prompt":"Clean cool-aqua to soft-white color-gradient studio backdrop, dynamic macro fluid splash of dewy translucent serum matching the bottle's clear hydrating texture, weightless water pearls catching directional light floating around the product, single drifting hibiscus petal at the right edge, macro depth-of-field with selective focus on the splash, gentle volumetric haze","motion_prompt":"Snap push-in with whipping clockwise spiral around the bottle, hard deceleration locking on the label as an anamorphic flare sweeps across the glass; volumetric caustics ignite over the bottle in time with the rotation, water pearls scatter outward from a virtual gust, hibiscus petal drifts past the lens; final accelerated pull-back reveals concentric ripples blooming through the splash while god-rays punch through the haze","hook":"Skin Drinks Light","value_prop":"Botanical Ferments Brighten","cta":"Begin The Ritual"}`;
 }
 
+type StillPipelineContext = {
+  admin: SupabaseClient;
+  shopId: string;
+  productId: string;
+  category: Category;
+  product: { id: string; name: string; description: string | null; image_url: string };
+  // Mutable tracker so the failure path can mark the row failed even when the
+  // pipeline throws after the insert.
+  track: { videoAdId: string | null };
+};
+
+// The full still pipeline, shared by the JSON and SSE modes. `emit` is a
+// no-op in JSON mode. Model ids, parameters, and the cutout → composite
+// ordering (product-pixel integrity) are IDENTICAL to the pre-SSE pipeline.
+async function executeStillPipeline(
+  ctx: StillPipelineContext,
+  emit: (event: AdProgressEvent) => void,
+): Promise<Record<string, unknown>> {
+  const { admin, shopId, productId, category, product, track } = ctx;
+
+  // ── Stage 1: Director + BiRefNet in parallel (Law 3: render speed) ────
+  // The two calls are fully independent — the director needs only the product
+  // name/description; BiRefNet needs only the product photo. Running them
+  // concurrently removes the entire BiRefNet latency (~3-5s) from the critical
+  // path. Any failure here happens BEFORE the video_ads row exists, so the
+  // failure handler simply returns an error with no row to mark failed.
+  const directorPrompt = buildDirectorPrompt(product, category);
+  console.log('[generate-still] Stage 1: Director + BiRefNet foreground extraction (parallel)');
+  emit({ t: 'stage', key: 'directing' });
+  // 'soft' — extraction runs in parallel with directing; it must not
+  // auto-complete the directing row on the client checklist.
+  emit({ t: 'stage', key: 'extracting', soft: true });
+
+  const [{ data: director, provider }, isolateResult] = await Promise.all([
+    generateWithFallback({
+      schema: DirectorSchema,
+      prompt: directorPrompt,
+      callerName: 'generate-still',
+    }).then((r) => {
+      emit({ t: 'stage-done', key: 'directing' });
+      emit({ t: 'detail', key: 'directing', message: 'Creative brief locked — scene, motion, and copy written.' });
+      return r;
+    }),
+    // BiRefNet extracts the entire foreground subject — product + any model +
+    // shoes + styling = a single pristine cutout. No diffusion model touches
+    // the subject pixels at any point in the pipeline.
+    falSubscribeWithLogging('fal-ai/birefnet', {
+      image_url: product.image_url,
+    }, 'BiRefNet', (update) => {
+      const message = describeFalQueueUpdate(update, 'Foreground extraction');
+      if (message) emit({ t: 'detail', key: 'extracting', message });
+    }).then((r) => {
+      emit({ t: 'stage-done', key: 'extracting' });
+      emit({ t: 'detail', key: 'extracting', message: 'Product isolated — original pixels untouched.' });
+      return r;
+    }),
+  ]);
+  console.log(`[generate-still] Director generated by ${provider}:`, director);
+
+  const cutoutUrl = extractFalImageUrl(isolateResult);
+  if (!cutoutUrl) {
+    logFalFailure('BiRefNet', isolateResult);
+    throw new AdPipelineError(
+      'Background removal failed. Please retry with a clearer product photo.',
+      500
+    );
+  }
+  console.log('[generate-still] BiRefNet cutout URL:', cutoutUrl);
+
+  // ── Insert video_ads row ──────────────────────────────────────────────
+  // Isolation is already done by insert time, so the row starts at the
+  // 'composing' stage (the UI's STAGE_LABELS map matches).
+  const { data: videoAd, error: insertError } = await admin
+    .from('video_ads')
+    .insert({
+      shop_id: shopId,
+      product_id: productId,
+      category,
+      status: 'pending',
+      pipeline_stage: 'composing',
+      scene_prompt: director.scene_prompt,
+      motion_prompt: director.motion_prompt,
+      storyboard: {
+        hook: director.hook,
+        value_prop: director.value_prop,
+        cta: director.cta,
+      },
+    })
+    .select()
+    .single();
+
+  if (insertError || !videoAd) {
+    console.error('[generate-still] Insert failed:', insertError);
+    throw new AdPipelineError('Failed to create video ad record.', 500);
+  }
+  track.videoAdId = videoAd.id;
+
+  // ── Stage 2: IC-Light v2 — composite cutout into generated luxury scene ─
+  // IC-Light only relights and composites; the subject pixels are preserved.
+  console.log('[generate-still] Stage 2: IC-Light v2 scene composition');
+  emit({ t: 'stage', key: 'composing' });
+  emit({ t: 'detail', key: 'composing', message: 'Applying IC-Light studio relighting…' });
+  const iclResult = await falSubscribeWithLogging('fal-ai/iclight-v2', {
+    image_url: cutoutUrl,
+    prompt: director.scene_prompt,
+    // Law 3: 25 steps optimizes render latency while holding luxury asset quality.
+    num_inference_steps: 25,
+  }, 'IC-Light v2', (update) => {
+    const message = describeFalQueueUpdate(update, 'Scene composition');
+    if (message) emit({ t: 'detail', key: 'composing', message });
+  });
+  const heroImageUrl = extractFalImageUrl(iclResult);
+  if (!heroImageUrl) {
+    logFalFailure('IC-Light v2', iclResult);
+    throw new Error('Scene composition failed: no image URL in IC-Light response.');
+  }
+  console.log('[generate-still] IC-Light hero URL:', heroImageUrl);
+  emit({ t: 'stage-done', key: 'composing' });
+
+  // ── Mark preview ready ────────────────────────────────────────────────
+  emit({ t: 'stage', key: 'preview_ready' });
+  const { data: updated, error: updateError } = await admin
+    .from('video_ads')
+    .update({
+      hero_image_url: heroImageUrl,
+      status: 'preview_ready',
+      pipeline_stage: 'preview_ready',
+    })
+    .eq('id', videoAd.id)
+    .select()
+    .single();
+
+  if (updateError || !updated) {
+    console.error('[generate-still] Final update failed:', updateError);
+    throw new AdPipelineError('Failed to save hero image.', 500);
+  }
+  emit({ t: 'stage-done', key: 'preview_ready' });
+
+  return updated;
+}
+
+// Marks the row failed (when one exists) and maps any pipeline error to the
+// same { message, status } contract the pre-SSE catch block produced.
+async function failStillPipeline(
+  error: unknown,
+  admin: SupabaseClient | null,
+  track: { videoAdId: string | null },
+): Promise<{ message: string; status: number }> {
+  console.error('[generate-still] fatal error:', error);
+  if (admin && track.videoAdId) {
+    await admin
+      .from('video_ads')
+      .update({ status: 'failed', pipeline_stage: 'failed' })
+      .eq('id', track.videoAdId);
+  }
+
+  const err = error as { status?: number; response?: { status?: number }; message?: string } | null;
+  const msg: string = err?.message || '';
+  const isBusy =
+    err?.status === 429 || err?.status === 503 ||
+    err?.response?.status === 429 || err?.response?.status === 503 ||
+    msg.includes('429') || msg.includes('503') ||
+    msg.toLowerCase().includes('quota') ||
+    msg.toLowerCase().includes('rate limit') ||
+    msg.toLowerCase().includes('too many requests') ||
+    msg.toLowerCase().includes('overloaded') ||
+    msg.toLowerCase().includes('unavailable');
+
+  if (isBusy) {
+    return {
+      message: 'The AI assistant is currently busy. Please try again in a moment.',
+      status: 429,
+    };
+  }
+
+  if (error instanceof AdPipelineError) {
+    return { message: error.message, status: error.status };
+  }
+
+  return { message: 'Failed to generate scene. Please try again.', status: 500 };
+}
+
 export async function POST(req: Request) {
-  let videoAdId: string | null = null;
+  const track: { videoAdId: string | null } = { videoAdId: null };
   let admin: SupabaseClient | null = null;
 
   try {
@@ -273,132 +470,45 @@ export async function POST(req: Request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    // ── Stage 1: Director + BiRefNet in parallel (Law 3: render speed) ────
-    // The two calls are fully independent — the director needs only the product
-    // name/description; BiRefNet needs only the product photo. Running them
-    // concurrently removes the entire BiRefNet latency (~3-5s) from the critical
-    // path. Any failure here happens BEFORE the video_ads row exists, so the
-    // catch below simply returns an error with no row to mark failed.
-    const directorPrompt = buildDirectorPrompt(product, category);
-    console.log('[generate-still] Stage 1: Director + BiRefNet foreground extraction (parallel)');
-    const [{ data: director, provider }, isolateResult] = await Promise.all([
-      generateWithFallback({
-        schema: DirectorSchema,
-        prompt: directorPrompt,
-        callerName: 'generate-still',
-      }),
-      // BiRefNet extracts the entire foreground subject — product + any model +
-      // shoes + styling = a single pristine cutout. No diffusion model touches
-      // the subject pixels at any point in the pipeline.
-      falSubscribeWithLogging('fal-ai/birefnet', {
-        image_url: product.image_url,
-      }, 'BiRefNet'),
-    ]);
-    console.log(`[generate-still] Director generated by ${provider}:`, director);
+    const ctx: StillPipelineContext = {
+      admin,
+      shopId,
+      productId,
+      category,
+      product: product as StillPipelineContext['product'],
+      track,
+    };
 
-    const cutoutUrl = extractFalImageUrl(isolateResult);
-    if (!cutoutUrl) {
-      logFalFailure('BiRefNet', isolateResult);
-      return NextResponse.json(
-        { error: 'Background removal failed. Please retry with a clearer product photo.' },
-        { status: 500 }
-      );
-    }
-    console.log('[generate-still] BiRefNet cutout URL:', cutoutUrl);
+    // ── SSE mode — client opted in via Accept: text/event-stream ─────────
+    // All auth/validation errors above still return plain JSON before the
+    // stream starts. The terminal 'result' frame carries the exact payload
+    // the JSON mode returns, so downstream client logic is unchanged.
+    const wantsStream = (req.headers.get('accept') ?? '').includes('text/event-stream');
+    if (wantsStream) {
+      const { readable, send, close } = createAdProgressStream();
+      const adminForStream = admin;
 
-    // ── Insert video_ads row ──────────────────────────────────────────────
-    // Isolation is already done by insert time, so the row starts at the
-    // 'composing' stage (the UI's STAGE_LABELS map matches).
-    const { data: videoAd, error: insertError } = await admin
-      .from('video_ads')
-      .insert({
-        shop_id: shopId,
-        product_id: productId,
-        category,
-        status: 'pending',
-        pipeline_stage: 'composing',
-        scene_prompt: director.scene_prompt,
-        motion_prompt: director.motion_prompt,
-        storyboard: {
-          hook: director.hook,
-          value_prop: director.value_prop,
-          cta: director.cta,
-        },
-      })
-      .select()
-      .single();
+      void (async () => {
+        try {
+          const updated = await executeStillPipeline(ctx, send);
+          send({ t: 'result', status: 200, payload: updated });
+        } catch (error) {
+          const { message, status } = await failStillPipeline(error, adminForStream, track);
+          send({ t: 'error', status, error: message });
+        } finally {
+          close();
+        }
+      })();
 
-    if (insertError || !videoAd) {
-      console.error('[generate-still] Insert failed:', insertError);
-      return NextResponse.json({ error: 'Failed to create video ad record.' }, { status: 500 });
-    }
-    videoAdId = videoAd.id;
-
-    // ── Stage 2: IC-Light v2 — composite cutout into generated luxury scene ─
-    // IC-Light only relights and composites; the subject pixels are preserved.
-    console.log('[generate-still] Stage 2: IC-Light v2 scene composition');
-    const iclResult = await falSubscribeWithLogging('fal-ai/iclight-v2', {
-      image_url: cutoutUrl,
-      prompt: director.scene_prompt,
-      // Law 3: 25 steps optimizes render latency while holding luxury asset quality.
-      num_inference_steps: 25,
-    }, 'IC-Light v2');
-    const heroImageUrl = extractFalImageUrl(iclResult);
-    if (!heroImageUrl) {
-      logFalFailure('IC-Light v2', iclResult);
-      throw new Error('Scene composition failed: no image URL in IC-Light response.');
-    }
-    console.log('[generate-still] IC-Light hero URL:', heroImageUrl);
-
-    // ── Mark preview ready ────────────────────────────────────────────────
-    const { data: updated, error: updateError } = await admin
-      .from('video_ads')
-      .update({
-        hero_image_url: heroImageUrl,
-        status: 'preview_ready',
-        pipeline_stage: 'preview_ready',
-      })
-      .eq('id', videoAd.id)
-      .select()
-      .single();
-
-    if (updateError || !updated) {
-      console.error('[generate-still] Final update failed:', updateError);
-      return NextResponse.json({ error: 'Failed to save hero image.' }, { status: 500 });
+      return new Response(readable, { status: 200, headers: SSE_HEADERS });
     }
 
+    // ── JSON mode — identical contract to the pre-SSE route ──────────────
+    const updated = await executeStillPipeline(ctx, () => {});
     return NextResponse.json(updated, { status: 200 });
 
-  } catch (error: any) {
-    console.error('[generate-still] fatal error:', error);
-    if (admin && videoAdId) {
-      await admin
-        .from('video_ads')
-        .update({ status: 'failed', pipeline_stage: 'failed' })
-        .eq('id', videoAdId);
-    }
-
-    const msg: string = error?.message || '';
-    const isBusy =
-      error?.status === 429 || error?.status === 503 ||
-      error?.response?.status === 429 || error?.response?.status === 503 ||
-      msg.includes('429') || msg.includes('503') ||
-      msg.toLowerCase().includes('quota') ||
-      msg.toLowerCase().includes('rate limit') ||
-      msg.toLowerCase().includes('too many requests') ||
-      msg.toLowerCase().includes('overloaded') ||
-      msg.toLowerCase().includes('unavailable');
-
-    if (isBusy) {
-      return NextResponse.json(
-        { error: 'The AI assistant is currently busy. Please try again in a moment.' },
-        { status: 429 }
-      );
-    }
-
-    return NextResponse.json(
-      { error: 'Failed to generate scene. Please try again.' },
-      { status: 500 }
-    );
+  } catch (error) {
+    const { message, status } = await failStillPipeline(error, admin, track);
+    return NextResponse.json({ error: message }, { status });
   }
 }

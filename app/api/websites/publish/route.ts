@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import { repairShopSlug } from '@/lib/slugify';
 
 // Toggles the shop's generated website between draft and published.
 const WEBSITE_TIERS = ['advanced', 'flagship'];
@@ -37,7 +38,7 @@ export async function POST(req: Request) {
 
     const { data: shop } = await supabase
       .from('shops')
-      .select('id, subscription_tier')
+      .select('id, shop_name, shop_slug, subscription_tier')
       .eq('id', user.id)
       .single();
 
@@ -56,6 +57,10 @@ export async function POST(req: Request) {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
+
+    // Law 2 slug safety: publishing must never advertise an unroutable /site
+    // link — write-repair legacy slugs (spaces/uppercase) to canonical form.
+    const canonicalSlug = await repairShopSlug(admin, shop);
 
     const { data: updated, error: updateError } = await admin
       .from('shop_websites')
@@ -76,7 +81,8 @@ export async function POST(req: Request) {
     }
 
     console.log(`[websites/publish] Shop ${shop.id} → ${updated.status}`);
-    return NextResponse.json(updated);
+    // Full row (dashboard contract) + the canonical slug for link minting.
+    return NextResponse.json({ ...updated, shop_slug: canonicalSlug });
   } catch (error: any) {
     console.error('[websites/publish] fatal:', error);
     return NextResponse.json({ error: 'Failed to update publish state.' }, { status: 500 });

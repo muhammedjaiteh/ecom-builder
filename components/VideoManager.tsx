@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Clapperboard,
@@ -17,6 +17,18 @@ import {
 } from 'lucide-react';
 import type { Product } from '@/lib/types';
 import { createBrowserClient } from '@supabase/ssr';
+import {
+  ANIMATE_STAGES,
+  STILL_STAGES,
+  advanceStages,
+  completeStage,
+  fetchAdPipeline,
+  initialStageStatuses,
+  type AdProgressEvent,
+  type AdStageDef,
+  type AdStageKey,
+  type AdStageStatus,
+} from '@/lib/adProgress';
 
 type Category = 'apparel' | 'cosmetics' | 'electronics' | 'food' | 'other';
 
@@ -80,6 +92,36 @@ export default function VideoManager({ userId: _userId, products }: Props) {
   const [regeneratingCopy, setRegeneratingCopy] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [elapsedSec, setElapsedSec] = useState(0);
+
+  // ── Streamed progress state (SSE from generate-still / animate-still) ───
+  const [phase, setPhase] = useState<'still' | 'animate' | null>(null);
+  const [stageStatuses, setStageStatuses] = useState<Record<string, AdStageStatus>>({});
+  const [progressDetail, setProgressDetail] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const linkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Abort any in-flight stream and clear armed timers on unmount so nothing
+  // fires setState against an unmounted component.
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+      if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
+      if (linkTimerRef.current) clearTimeout(linkTimerRef.current);
+    };
+  }, []);
+
+  // Applies streamed micro-stage events to the checklist for a given phase.
+  const makeProgressHandler = (order: AdStageDef[]) => (event: AdProgressEvent) => {
+    if (event.t === 'stage') {
+      setProgressDetail(null);
+      setStageStatuses((prev) => advanceStages(prev, event.key, order, event.soft));
+    } else if (event.t === 'stage-done') {
+      setStageStatuses((prev) => completeStage(prev, event.key));
+    } else if (event.t === 'detail') {
+      setProgressDetail(event.message);
+    }
+  };
 
   // Sync selectedProductId once products arrive.
   useEffect(() => {
@@ -219,6 +261,21 @@ export default function VideoManager({ userId: _userId, products }: Props) {
     return () => clearInterval(interval);
   }, [videoAd?.id, videoAd?.status, videoAd?.pipeline_stage]);
 
+  // ── Fold DB pipeline_stage updates (realtime / poll / rehydration) into
+  // the streamed checklist so the video-render phase drives the same UI ────
+  useEffect(() => {
+    if (!isGenerating) return;
+    const ps = videoAd?.pipeline_stage as AdStageKey | null | undefined;
+    if (!ps) return;
+    if (ps === 'animating' || ps === 'finalizing' || ps === 'completed') {
+      setPhase((p) => p ?? 'animate');
+      setStageStatuses((prev) => advanceStages(prev, ps, ANIMATE_STAGES));
+    } else if (ps === 'composing' || ps === 'preview_ready') {
+      setPhase((p) => p ?? 'still');
+      setStageStatuses((prev) => advanceStages(prev, ps, STILL_STAGES));
+    }
+  }, [videoAd?.pipeline_stage, isGenerating]);
+
   // ── Elapsed-time ticker while generating ─────────────────────────────────
   useEffect(() => {
     if (!isGenerating) {
@@ -252,53 +309,81 @@ export default function VideoManager({ userId: _userId, products }: Props) {
       return;
     }
 
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setError(null);
     setVideoAd(null);
+    setPhase('still');
+    setStageStatuses(initialStageStatuses(STILL_STAGES));
+    setProgressDetail(null);
     setIsGenerating(true);
 
     try {
-      const res = await fetch('/api/ai/generate-still', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId: selectedProductId, category }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || 'Failed to generate scene.');
+      const result = await fetchAdPipeline(
+        '/api/ai/generate-still',
+        { productId: selectedProductId, category },
+        { signal: controller.signal, onEvent: makeProgressHandler(STILL_STAGES) }
+      );
+      if (controller.signal.aborted) return;
+      if (!result.ok) {
+        setError(result.error || 'Failed to generate scene.');
         return;
       }
-      setVideoAd(data as VideoAd);
+      setVideoAd(result.payload as VideoAd);
     } catch {
+      if (controller.signal.aborted) return;
       setError('Network error contacting the Director. Please try again.');
     } finally {
-      setIsGenerating(false);
+      if (!controller.signal.aborted) setIsGenerating(false);
     }
   };
 
   const handleAnimate = async () => {
     if (!videoAd?.id) return;
+
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setError(null);
+    setPhase('animate');
+    setStageStatuses(initialStageStatuses(ANIMATE_STAGES));
+    setProgressDetail(null);
     setIsGenerating(true);
     setVideoAd((prev) => prev ? { ...prev, status: 'pending', pipeline_stage: 'animating' } : prev);
 
     try {
-      const res = await fetch('/api/ai/animate-still', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoAdId: videoAd.id }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || 'Failed to animate the scene.');
+      const result = await fetchAdPipeline(
+        '/api/ai/animate-still',
+        { videoAdId: videoAd.id },
+        { signal: controller.signal, onEvent: makeProgressHandler(ANIMATE_STAGES) }
+      );
+      if (controller.signal.aborted) return;
+      if (!result.ok) {
+        if (result.status === 0) {
+          // The stream dropped mid-render but the server keeps working — the
+          // row stays 'pending'/'animating|finalizing', so the realtime
+          // channel + render-status poller will still land the final state.
+          setError(result.error);
+          return;
+        }
+        setError(result.error || 'Failed to animate the scene.');
         setVideoAd((prev) => prev ? { ...prev, status: 'preview_ready', pipeline_stage: 'preview_ready' } : prev);
         setIsGenerating(false);
         return;
       }
-      setVideoAd((prev) => prev ? { ...prev, ...(data as Partial<VideoAd>) } : (data as VideoAd));
-      if (res.status === 200 && (data as VideoAd).video_url) {
+      const payload = result.payload as Partial<VideoAd>;
+      setVideoAd((prev) => prev ? { ...prev, ...payload } : (payload as VideoAd));
+      if (payload.status === 'completed' && payload.video_url) {
         setIsGenerating(false);
       }
+      // Otherwise this was the 202-style handoff mirror ({ status: 'pending',
+      // pipeline_stage: 'finalizing' }) — the fallback poller + realtime
+      // channel keep driving the checklist to completion.
     } catch {
+      if (controller.signal.aborted) return;
       setError('Network error during animation. Please try again.');
       setVideoAd((prev) => prev ? { ...prev, status: 'preview_ready', pipeline_stage: 'preview_ready' } : prev);
       setIsGenerating(false);
@@ -380,7 +465,8 @@ export default function VideoManager({ userId: _userId, products }: Props) {
     e.stopPropagation();
     if (deleteConfirmId !== genId) {
       setDeleteConfirmId(genId);
-      setTimeout(() => setDeleteConfirmId((prev) => (prev === genId ? null : prev)), 3000);
+      if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
+      deleteTimerRef.current = setTimeout(() => setDeleteConfirmId((prev) => (prev === genId ? null : prev)), 3000);
       return;
     }
     setDeleteConfirmId(null);
@@ -426,7 +512,8 @@ export default function VideoManager({ userId: _userId, products }: Props) {
       }
       console.log('[VideoManager] Linked video to product:', data);
       setLinkSuccess(true);
-      setTimeout(() => setLinkSuccess(false), 3500);
+      if (linkTimerRef.current) clearTimeout(linkTimerRef.current);
+      linkTimerRef.current = setTimeout(() => setLinkSuccess(false), 3500);
     } catch {
       setError('Network error linking video to product.');
     } finally {
@@ -436,6 +523,18 @@ export default function VideoManager({ userId: _userId, products }: Props) {
 
   const selectedProductName = products.find((p) => p.id === videoAd?.product_id)?.name;
   const stageLabel = videoAd?.pipeline_stage ? STAGE_LABELS[videoAd.pipeline_stage] : null;
+
+  // Loader derivations — `phase` is set the moment a run starts; the
+  // hero_image_url heuristic covers rehydration after a mid-flight refresh.
+  const loaderPhase: 'still' | 'animate' = phase ?? (videoAd?.hero_image_url ? 'animate' : 'still');
+  const loaderStages = loaderPhase === 'animate' ? ANIMATE_STAGES : STILL_STAGES;
+  // Streamed micro-update wins; the DB stage label covers realtime/poll
+  // updates; static copy is the graceful fallback when the stream yields no
+  // events (e.g. behind a buffering proxy).
+  const loaderSubline =
+    progressDetail ??
+    stageLabel ??
+    (loaderPhase === 'animate' ? 'Rendering your commercial…' : 'Preparing your generation…');
 
   return (
     <div className="animate-in fade-in duration-300 space-y-6">
@@ -569,7 +668,7 @@ export default function VideoManager({ userId: _userId, products }: Props) {
             <div className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-violet-500/10 blur-3xl" />
             <div className="pointer-events-none absolute -bottom-8 -left-8 h-48 w-48 rounded-full bg-emerald-500/10 blur-2xl" />
 
-            <div className="relative flex flex-col items-center gap-6 text-center">
+            <div className="relative mx-auto flex w-full max-w-md flex-col items-center gap-6 text-center">
               <div className="relative flex h-20 w-20 items-center justify-center">
                 <span className="absolute inset-0 animate-ping rounded-full bg-emerald-500/15" />
                 <motion.span
@@ -584,25 +683,79 @@ export default function VideoManager({ userId: _userId, products }: Props) {
 
               <div>
                 <p className="text-lg font-bold text-white">
-                  {videoAd?.hero_image_url ? '🎬 Animating your commercial…' : '✨ Building your premium scene…'}
+                  {loaderPhase === 'animate' ? 'Animating your commercial' : 'Building your premium scene'}
                 </p>
-                <p className="mt-2 max-w-sm text-sm leading-relaxed text-gray-400">
-                  {stageLabel ?? 'Preparing your generation…'}
-                </p>
+                <AnimatePresence mode="wait">
+                  <motion.p
+                    key={loaderSubline}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.25, ease: 'easeOut' }}
+                    className="mt-2 max-w-sm text-sm leading-relaxed text-gray-400"
+                  >
+                    {loaderSubline}
+                  </motion.p>
+                </AnimatePresence>
                 <p className="mt-1 text-[11px] font-bold uppercase tracking-widest text-emerald-400/70">
                   {elapsedSec}s elapsed
                 </p>
               </div>
 
-              <div className="flex gap-2">
-                {[0, 0.2, 0.4].map((delay, i) => (
-                  <motion.div
-                    key={i}
-                    className="h-1.5 w-1.5 rounded-full bg-emerald-400"
-                    animate={{ scale: [1, 1.6, 1], opacity: [0.4, 1, 0.4] }}
-                    transition={{ duration: 1.2, delay, repeat: Infinity, ease: 'easeInOut' }}
-                  />
-                ))}
+              {/* ── Live stage checklist (streamed micro-stages) ─────────── */}
+              <div className="w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5 text-left backdrop-blur-sm">
+                {loaderStages.map((stage, i) => {
+                  const status = stageStatuses[stage.key] ?? 'pending';
+                  return (
+                    <motion.div
+                      key={stage.key}
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.3, delay: i * 0.06, ease: 'easeOut' }}
+                      className={`flex items-center gap-3 px-5 py-3 ${i > 0 ? 'border-t border-white/5' : ''}`}
+                    >
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center">
+                        {status === 'done' ? (
+                          <motion.span
+                            initial={{ scale: 0.5, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            transition={{ duration: 0.25, ease: 'easeOut' }}
+                            className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/90 text-white"
+                          >
+                            <Check size={11} />
+                          </motion.span>
+                        ) : status === 'active' ? (
+                          <Loader2 size={15} className="animate-spin text-emerald-300" />
+                        ) : (
+                          <span className="h-1.5 w-1.5 rounded-full bg-white/20" />
+                        )}
+                      </span>
+                      <span
+                        className={`flex-1 text-[12px] font-semibold tracking-wide transition-colors duration-300 ${
+                          status === 'done'
+                            ? 'text-emerald-300/80'
+                            : status === 'active'
+                              ? 'text-white'
+                              : 'text-gray-500'
+                        }`}
+                      >
+                        {stage.label}
+                      </span>
+                      {status === 'active' && (
+                        <span className="flex gap-1">
+                          {[0, 0.2, 0.4].map((delay, j) => (
+                            <motion.span
+                              key={j}
+                              className="h-1 w-1 rounded-full bg-emerald-400"
+                              animate={{ scale: [1, 1.5, 1], opacity: [0.4, 1, 0.4] }}
+                              transition={{ duration: 1.1, delay, repeat: Infinity, ease: 'easeInOut' }}
+                            />
+                          ))}
+                        </span>
+                      )}
+                    </motion.div>
+                  );
+                })}
               </div>
             </div>
           </motion.div>
