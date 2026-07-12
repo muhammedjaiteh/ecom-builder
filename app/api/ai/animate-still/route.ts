@@ -16,25 +16,37 @@ export const maxDuration = 300;
 
 type Storyboard = { hook: string; value_prop: string; cta: string };
 
-function extractFalVideoUrl(result: any): string | null {
+// Structural shape covering every key Fal video models are known to return
+// a URL under — same extraction order and semantics as the pre-typed version.
+type FalVideoPayload = {
+  video?: { url?: string };
+  videos?: Array<{ url?: string }>;
+  video_url?: string;
+  url?: string;
+  output?: string | { url?: string } | Array<{ url?: string }>;
+};
+
+function extractFalVideoUrl(result: unknown): string | null {
   if (!result) return null;
-  const data = result.data ?? result;
+  const data = (result as { data?: unknown }).data ?? result;
   if (!data) return null;
   if (typeof data === 'string') return data;
 
+  const payload = data as FalVideoPayload;
+  const output = payload.output;
   return (
-    data.video?.url ||
-    data.videos?.[0]?.url ||
-    data.video_url ||
-    data.url ||
-    data.output?.url ||
-    data.output?.[0]?.url ||
-    (typeof data.output === 'string' ? data.output : null) ||
+    payload.video?.url ||
+    payload.videos?.[0]?.url ||
+    payload.video_url ||
+    payload.url ||
+    (output && typeof output === 'object' && !Array.isArray(output) ? output.url : undefined) ||
+    (Array.isArray(output) ? output[0]?.url : undefined) ||
+    (typeof output === 'string' ? output : null) ||
     null
   );
 }
 
-function logFalFailure(stage: string, result: any) {
+function logFalFailure(stage: string, result: unknown) {
   console.error(
     `[animate-still] ${stage} — could not extract video URL. Full Fal response:`,
     JSON.stringify(result, null, 2)
@@ -194,6 +206,14 @@ type AnimateOutcome =
 // The full animate pipeline, shared by the JSON and SSE modes. `emit` is a
 // no-op in JSON mode. Model ids and parameters are IDENTICAL to the pre-SSE
 // pipeline; the webhook + render-status completion paths are untouched.
+//
+// DISCONNECT CONTINUATION GUARANTEE: nothing in this pipeline reads
+// req.signal — a route handler's promise is never cancelled by a client
+// disconnect, so if the seller navigates away or closes the tab mid-request
+// the runtime keeps executing (Kling await → Creatomate submit → DB writes)
+// and the row still reaches a terminal state for the dashboard notifier,
+// the render-status poller, and the Creatomate webhook to pick up. Do NOT
+// wire req.signal into any await below.
 async function executeAnimatePipeline(
   ctx: AnimatePipelineContext,
   emit: (event: AdProgressEvent) => void,
@@ -430,9 +450,13 @@ export async function POST(req: Request) {
     };
 
     // ── SSE mode — client opted in via Accept: text/event-stream ─────────
-    // All auth/validation errors above still return plain JSON before the
-    // stream starts. Terminal 'result' frames carry the exact payloads the
-    // JSON mode returns (200 completed row, or the 202 handoff mirror).
+    // Retained for contract compatibility (older deployments / tooling).
+    // The dashboard client now uses the JSON path below with fire-and-forget
+    // semantics: video renders are a background handoff, never a babysat
+    // stream. All auth/validation errors above still return plain JSON
+    // before the stream starts. Terminal 'result' frames carry the exact
+    // payloads the JSON mode returns (200 completed row, or the 202 handoff
+    // mirror).
     const wantsStream = (req.headers.get('accept') ?? '').includes('text/event-stream');
     if (wantsStream) {
       const { readable, send, close } = createAdProgressStream();
@@ -459,6 +483,9 @@ export async function POST(req: Request) {
     }
 
     // ── JSON mode — identical contract to the pre-SSE route ──────────────
+    // The handler itself awaits the pipeline, so the serverless invocation
+    // stays alive until every DB write lands even when the client has long
+    // since disconnected (fire-and-forget from VideoManager).
     const outcome = await executeAnimatePipeline(ctx, () => {});
     if (outcome.kind === 'handoff') {
       return NextResponse.json(outcome.payload, { status: 202 });

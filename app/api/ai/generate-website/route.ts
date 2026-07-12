@@ -6,11 +6,13 @@ import { generateWithFallback } from '@/lib/llm';
 import { ELITE_COPY_RULES } from '@/lib/adCopy';
 import { repairShopSlug } from '@/lib/slugify';
 import {
+  CONCEPT_TEMPLATE_KEYS,
   ConceptPairSchema,
   SITE_TEMPLATES,
   SiteConceptSchema,
   TEMPLATE_KEYS,
   WebsiteConfigSchema,
+  conceptTemplateFromCategory,
   templateFromCategory,
   type SiteConcept,
   type TemplateKey,
@@ -156,17 +158,31 @@ export async function POST(req: Request) {
 
     // ═══════════════════════════════════════════════════════════════════════
     // STEP 1 — Design consultation: two distinct concepts, no full pipeline.
+    // The pitch is constrained to the TWO structurally distinct layouts
+    // (CONCEPT_TEMPLATE_KEYS): 'ritual' = Minimal, 'editorial' = Editorial
+    // magazine. 'vitality' remains render-valid for legacy rows/overrides but
+    // is never offered here.
     // ═══════════════════════════════════════════════════════════════════════
     if (step === 'concepts') {
+      const conceptCatalog = CONCEPT_TEMPLATE_KEYS
+        .map((k) => {
+          const t = SITE_TEMPLATES[k];
+          return `- "${t.key}" — ${t.name} (${t.niche}): ${t.description}`;
+        })
+        .join('\n');
+
+      // Concept-pair-safe heuristic for the dynamic hint below.
+      const conceptHeuristic = conceptTemplateFromCategory(dominantCategory);
+
       // STATIC block (cachedSystem): byte-identical on every request — role,
-      // template catalog (built from SITE_TEMPLATES constants), copy rules,
+      // layout catalog (built from SITE_TEMPLATES constants), copy rules,
       // and the output field spec. Per-request data lives ONLY in `prompt`.
       const cachedSystem = `You are the creative director for Sanndikaa, running a design consultation for one of our sellers. Propose exactly TWO distinct premium storefront concepts they will choose between. This is positioning copy only — short, evocative, decisive. Do NOT write the full site.
 
-AVAILABLE TEMPLATES:
-${templateCatalog}
+AVAILABLE LAYOUTS:
+${conceptCatalog}
 
-The two concepts MUST use two DIFFERENT template_key values, and each must feel like it came from a different creative agency — different mood, different angle on the same inventory. Ground every line in the actual products (materials, ingredients, categories) the user provides.
+You MUST return exactly one concept per layout above — the two template_key values must be different, one for each layout. Each concept must feel like it came from a different creative agency: different mood, different angle on the same inventory. Ground every line in the actual products (materials, ingredients, categories) the user provides.
 
 ${ELITE_COPY_RULES}
 
@@ -176,7 +192,7 @@ Return a JSON object:
 - "niche_reasoning" : 1-2 sentences on this shop's niche and why these two directions suit it
 - "concepts"        : EXACTLY 2 items, each a DIFFERENT template_key, each:
   {
-    "template_key"     : one of ${TEMPLATE_KEYS.map((k) => `"${k}"`).join(' | ')}
+    "template_key"     : one of ${CONCEPT_TEMPLATE_KEYS.map((k) => `"${k}"`).join(' | ')}
     "concept_name"     : evocative 2-4 word concept title (max 60 chars) — like an agency pitch name
     "tagline"          : 3-8 word brand essence line (max 80 chars)
     "vibe"             : 1-2 sentences describing the mood and feel of this direction (max 240 chars)
@@ -192,7 +208,7 @@ ${shop.bio ? `- Bio: ${shop.bio}` : ''}
 INVENTORY (${products.length} products, first 15 shown):
 ${inventorySummary}
 
-NICHE HINT: dominant category "${dominantCategory ?? 'unknown'}" → heuristic template "${heuristicTemplate}". Lead with the strongest-fit template, then a genuinely different second direction.`;
+NICHE HINT: dominant category "${dominantCategory ?? 'unknown'}" → heuristic layout "${conceptHeuristic}". Lead with the strongest-fit layout, then a genuinely different second direction.`;
 
       const { data: pair, provider } = await generateWithFallback({
         schema: ConceptPairSchema,
@@ -201,14 +217,16 @@ NICHE HINT: dominant category "${dominantCategory ?? 'unknown'}" → heuristic t
         callerName: 'generate-website:concepts',
       });
 
-      // Belt-and-suspenders distinctness: if the model repeated a template,
-      // deterministically reassign the second concept to the nearest other key.
-      if (pair.concepts[0].template_key === pair.concepts[1].template_key) {
-        const alternate =
-          heuristicTemplate !== pair.concepts[0].template_key
-            ? heuristicTemplate
-            : TEMPLATE_KEYS.find((k) => k !== pair.concepts[0].template_key)!;
-        pair.concepts[1].template_key = alternate;
+      // Belt-and-suspenders: deterministically pin the pair to the two offered
+      // layouts even if the model drifted (repeated a key, or reached for
+      // 'vitality', which the shared SiteConceptSchema still accepts).
+      const conceptKeys = CONCEPT_TEMPLATE_KEYS as readonly TemplateKey[];
+      if (!conceptKeys.includes(pair.concepts[0].template_key)) {
+        pair.concepts[0].template_key = conceptHeuristic;
+      }
+      const remaining = conceptKeys.find((k) => k !== pair.concepts[0].template_key)!;
+      if (pair.concepts[1].template_key !== remaining) {
+        pair.concepts[1].template_key = remaining;
       }
 
       console.log(`[generate-website] Concepts by ${provider} for shop ${shop.id}: ${pair.concepts.map((c) => `${c.template_key}/"${c.concept_name}"`).join(' vs ')}`);

@@ -46,7 +46,9 @@ function getAuthedClient() {
 
 type SiteWebsite = { template_key: TemplateKey; config: unknown; status: string };
 
-const SHOP_COLUMNS = 'id, shop_name, shop_slug, logo_url, banner_url, bio';
+// Fulfillment columns feed the structured template footers (all confirmed
+// shops columns — also selected by app/shop/[slug]/page.tsx).
+const SHOP_COLUMNS = 'id, shop_name, shop_slug, logo_url, banner_url, bio, offers_delivery, offers_pickup, pickup_instructions';
 
 // Law 2 slug safety: decode the inbound param (Next delivers it URL-encoded),
 // normalize it to the canonical lowercase-hyphenated form, and look up the
@@ -139,7 +141,7 @@ async function loadSite(slug: string, preview: boolean) {
   // either column so app-added inventory always renders on the generated site.
   const { data: products } = await supabase
     .from('products')
-    .select('id, name, price, description, image_url, ad_video_url, ad_hero_image_url, category')
+    .select('id, name, price, description, image_url, ad_video_url, ad_hero_image_url, category, stock_quantity')
     .or(`shop_id.eq.${shop.id},user_id.eq.${shop.id}`)
     .order('created_at', { ascending: false })
     .limit(12);

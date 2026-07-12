@@ -1,40 +1,14 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Check, Palette } from 'lucide-react';
-import { SITE_TEMPLATES, type SiteConcept, type TemplateKey } from '@/lib/siteTemplates';
+import { Check } from 'lucide-react';
+import type { SiteConcept } from '@/lib/siteTemplates';
+import MiniSitePreview from './MiniSitePreview';
 
-// Per-template art direction so the two concept cards read like pitches from
-// two different agencies — each mini-hero mirrors its template's real look.
-const TEMPLATE_STYLES: Record<TemplateKey, {
-  hero: string;
-  heroLabel: string;
-  headline: string;
-  sub: string;
-  badge: string;
-}> = {
-  editorial: {
-    hero: 'bg-[#141414] text-white',
-    heroLabel: 'text-emerald-300',
-    headline: 'font-serif text-2xl font-bold leading-tight',
-    sub: 'text-white/60',
-    badge: 'bg-[#141414] text-white',
-  },
-  ritual: {
-    hero: 'bg-[#faf4ec] text-[#3c2f28]',
-    heroLabel: 'text-[#b08d6a]',
-    headline: 'font-serif text-2xl font-medium italic leading-tight',
-    sub: 'text-[#3c2f28]/70',
-    badge: 'bg-[#b08d6a] text-white',
-  },
-  vitality: {
-    hero: 'bg-[#10151b] text-white',
-    heroLabel: 'text-[#f0a500]',
-    headline: 'text-2xl font-black uppercase tracking-tight leading-tight',
-    sub: 'text-white/60',
-    badge: 'bg-[#f0a500] text-black',
-  },
-};
+// Visual concept selection (founder mandate): each card IS the website — a
+// live, true-to-structure miniature of the real template component wearing
+// the concept's AI copy. Card text is limited to the concept name and a
+// single tagline chip; everything else is shown, not described.
 
 type ConceptCardProps = {
   concept: SiteConcept;
@@ -42,61 +16,62 @@ type ConceptCardProps = {
   selected: boolean;
   disabled?: boolean;
   onSelect: () => void;
+  shopName?: string | null;
 };
 
-export default function ConceptCard({ concept, index, selected, disabled, onSelect }: ConceptCardProps) {
-  const meta = SITE_TEMPLATES[concept.template_key];
-  const styles = TEMPLATE_STYLES[concept.template_key];
-
+export default function ConceptCard({ concept, index, selected, disabled, onSelect, shopName }: ConceptCardProps) {
   return (
-    <motion.button
-      type="button"
-      onClick={onSelect}
-      disabled={disabled}
-      aria-pressed={selected}
+    <motion.div
       initial={{ opacity: 0, y: -10, scale: 0.97 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
+      whileHover={disabled ? undefined : { y: -5 }}
       transition={{ duration: 0.3, ease: 'easeOut', delay: index * 0.08 }}
-      className={`relative flex h-full flex-col overflow-hidden rounded-[2rem] border bg-white text-left shadow-sm transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
+      className={`relative flex h-full flex-col overflow-hidden rounded-[2rem] border bg-white text-left shadow-sm transition-shadow ${
         selected
-          ? 'border-[#f0a500] ring-2 ring-[#f0a500] ring-offset-2 ring-offset-[#F9F8F6]'
-          : 'border-gray-100 hover:-translate-y-0.5 hover:shadow-lg'
-      }`}
+          ? 'border-[#f0a500] shadow-lg ring-2 ring-[#f0a500] ring-offset-2 ring-offset-[#F9F8F6]'
+          : 'border-gray-100 hover:shadow-xl'
+      } ${disabled ? 'opacity-60' : ''}`}
     >
-      {/* Selection indicator */}
-      <span
-        className={`absolute right-4 top-4 z-10 flex h-7 w-7 items-center justify-center rounded-full transition-all ${
-          selected ? 'bg-[#f0a500] text-black' : 'bg-white/80 text-transparent ring-1 ring-gray-200'
-        }`}
-      >
-        <Check size={14} strokeWidth={3} />
-      </span>
+      {/* Full-card select affordance. An overlay button (rather than wrapping
+          the card in one) keeps the miniature's anchors out of the button
+          subtree — valid HTML, one clean focus target. */}
+      <button
+        type="button"
+        onClick={onSelect}
+        disabled={disabled}
+        aria-pressed={selected}
+        aria-label={`Choose the ${concept.concept_name} concept`}
+        className="absolute inset-0 z-20 cursor-pointer rounded-[2rem] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f0a500] focus-visible:ring-offset-2 disabled:cursor-not-allowed"
+      />
 
-      {/* Mini hero sample, art-directed per template */}
-      <div className={`px-7 pb-8 pt-10 ${styles.hero}`}>
-        <p className={`text-[10px] font-bold uppercase tracking-widest ${styles.heroLabel}`}>{concept.tagline}</p>
-        <h3 className={`mt-3 ${styles.headline}`}>{concept.hero_headline}</h3>
-        <p className={`mt-3 text-sm leading-relaxed ${styles.sub}`}>{concept.hero_subheadline}</p>
+      {/* Browser chrome — frames the miniature as a real page */}
+      <div className="flex items-center gap-1.5 border-b border-gray-100 bg-gray-50 px-4 py-2.5">
+        <span className="h-2 w-2 rounded-full bg-gray-300" />
+        <span className="h-2 w-2 rounded-full bg-gray-300" />
+        <span className="h-2 w-2 rounded-full bg-gray-300" />
+        <span className="ml-3 h-4 flex-1 rounded-full bg-white ring-1 ring-gray-200" />
       </div>
 
-      {/* Concept brief */}
-      <div className="flex flex-1 flex-col gap-4 p-7">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className={`inline-flex items-center rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest ${styles.badge}`}>
-            {meta.name} Template
-          </span>
-          <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">{meta.niche}</span>
-        </div>
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Concept</p>
-          <p className="mt-1 font-serif text-xl font-bold text-gray-900">{concept.concept_name}</p>
-        </div>
-        <p className="text-sm leading-relaxed text-gray-600">{concept.vibe}</p>
-        <div className="mt-auto flex items-start gap-2 rounded-xl bg-gray-50 p-3">
-          <Palette size={14} className="mt-0.5 shrink-0 text-gray-400" />
-          <p className="text-xs font-medium leading-relaxed text-gray-500">{concept.palette}</p>
-        </div>
+      {/* Live miniature of the actual template component */}
+      <div className="relative aspect-[4/5] w-full overflow-hidden bg-white">
+        <MiniSitePreview concept={concept} shopName={shopName} />
+        {/* Selection indicator */}
+        <span
+          className={`absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full shadow-md transition-all ${
+            selected ? 'bg-[#f0a500] text-black' : 'bg-white/90 text-transparent ring-1 ring-gray-200 backdrop-blur'
+          }`}
+        >
+          <Check size={15} strokeWidth={3} />
+        </span>
       </div>
-    </motion.button>
+
+      {/* Identity bar — concept name + tagline chip, nothing more */}
+      <div className="flex items-center justify-between gap-3 border-t border-gray-100 px-5 py-4">
+        <p className="truncate font-serif text-lg font-bold text-gray-900">{concept.concept_name}</p>
+        <span className="max-w-[55%] truncate rounded-full bg-gray-50 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-gray-500 ring-1 ring-gray-200">
+          {concept.tagline}
+        </span>
+      </div>
+    </motion.div>
   );
 }

@@ -274,8 +274,8 @@ export default function Dashboard() {
               <Palette size={14} /> Customize
             </Link>
 
-            <Link href="/dashboard/website" className="flex shrink-0 items-center gap-1.5 rounded-full bg-gradient-to-r from-amber-50 to-yellow-50 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-amber-800 ring-1 ring-amber-200 transition hover:from-amber-100 hover:to-yellow-100">
-              <Globe size={14} /> Website
+            <Link href="/dashboard/customize" className="flex shrink-0 items-center gap-1.5 rounded-full bg-gradient-to-r from-amber-50 to-yellow-50 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-amber-800 ring-1 ring-amber-200 transition hover:from-amber-100 hover:to-yellow-100">
+              <Globe size={14} /> Website Studio
             </Link>
 
             <Link href="/dashboard/settings" className="flex shrink-0 items-center gap-1.5 rounded-full bg-gray-50 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:bg-gray-100">

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Loader2, Save, Store, Image as ImageIcon, Camera, Palette, LayoutTemplate, Truck, MapPin, CheckCircle2, Lock } from 'lucide-react';
 import Link from 'next/link';
+import WebsiteGeneratorStudio, { type StudioShop } from '@/components/website/WebsiteGeneratorStudio';
 
 // 🚀 Premium Locks for Themes
 const THEMES = [
@@ -35,7 +36,9 @@ export default function CustomizeShopPage() {
 
   const [userId, setUserId] = useState<string | null>(null);
   const [shopId, setShopId] = useState<string | null>(null);
-  const [subscriptionTier, setSubscriptionTier] = useState('starter'); 
+  const [subscriptionTier, setSubscriptionTier] = useState('starter');
+  // Identity snapshot for the AI Website Studio (the flagship section below).
+  const [generatorShop, setGeneratorShop] = useState<StudioShop | null>(null);
   
   // States
   const [bio, setBio] = useState('');
@@ -65,6 +68,12 @@ export default function CustomizeShopPage() {
       if (shop) {
         setShopId(shop.id);
         setSubscriptionTier(shop.subscription_tier || 'starter');
+        setGeneratorShop({
+          id: shop.id,
+          shop_name: shop.shop_name ?? null,
+          shop_slug: shop.shop_slug ?? null,
+          subscription_tier: shop.subscription_tier ?? null,
+        });
         setBio(shop.bio || '');
         setThemeColor(shop.theme_color || 'emerald');
         setStoreLayout(shop.store_layout || 'bantaba');
@@ -100,8 +109,9 @@ export default function CustomizeShopPage() {
       
       if (type === 'logo') setLogoUrl(publicUrl);
       if (type === 'banner') setBannerUrl(publicUrl);
-    } catch (error: any) {
-      alert(error.message || `Failed to upload ${type}. Please try again.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      alert(message || `Failed to upload ${type}. Please try again.`);
     } finally {
       setUploadingImage(null);
     }
@@ -126,7 +136,7 @@ export default function CustomizeShopPage() {
 
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
-    } catch (error) {
+    } catch {
       alert("Failed to save changes.");
     } finally {
       setSaving(false);
@@ -170,6 +180,9 @@ export default function CustomizeShopPage() {
           <h1 className="text-3xl font-serif font-bold text-gray-900">Brand Identity</h1>
           <p className="mt-2 text-sm text-gray-500">Design your storefront. Choose your colors, layout, and upload your high-resolution assets.</p>
         </div>
+
+        {/* FLAGSHIP: AI WEBSITE STUDIO */}
+        {generatorShop && <WebsiteGeneratorStudio shop={generatorShop} />}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           

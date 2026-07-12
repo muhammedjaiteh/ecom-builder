@@ -7,7 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 //   - app/api/ai/generate-website/route.ts  (write-repair before save/return)
 //   - app/api/websites/publish/route.ts     (write-repair on publish)
 //   - app/api/admin/shops/route.ts          (normalize admin slug edits)
-//   - app/dashboard/website/page.tsx        (defensive link minting)
+//   - components/website/WebsiteGeneratorStudio.tsx (defensive link minting)
 //   - app/site/[slug]/page.tsx              (inbound param normalization)
 // ─────────────────────────────────────────────────────────────────────────────
 

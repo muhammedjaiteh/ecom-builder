@@ -50,6 +50,10 @@ export const STILL_STAGES: AdStageDef[] = [
   { key: 'preview_ready', label: 'Polishing your preview' },
 ];
 
+// NOTE: the dashboard client no longer consumes the animate pipeline over
+// SSE — video renders are a fire-and-forget background handoff (compact
+// status chip + dashboard-wide notifier, driven by DB pipeline_stage). This
+// checklist remains part of the wire contract for the route's SSE mode.
 export const ANIMATE_STAGES: AdStageDef[] = [
   { key: 'animating', label: 'Filming cinematic motion' },
   { key: 'finalizing', label: 'Assembling your commercial' },

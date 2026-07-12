@@ -4,6 +4,7 @@ import { createBrowserClient } from '@supabase/ssr';
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { Lock, Loader2 } from 'lucide-react';
+import AdRenderNotifier from '@/components/adstudio/AdRenderNotifier';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<string | null>(null);
@@ -101,5 +102,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
 
-  return <>{children}</>;
+  // Activated accounts get the dashboard-wide Ad Studio render notifier:
+  // video generations render in the background, so completion toasts + the
+  // unseen badge must live on EVERY dashboard page, not just the studio.
+  return (
+    <>
+      {children}
+      <AdRenderNotifier />
+    </>
+  );
 }

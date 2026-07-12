@@ -3,9 +3,10 @@ import { z } from 'zod';
 // ─────────────────────────────────────────────────────────────────────────────
 // AI Website Generator — template registry + generated-config schema.
 // Single source of truth consumed by:
-//   - app/api/ai/generate-website/route.ts  (matcher prompt + validation)
-//   - app/dashboard/website/page.tsx        (template picker UI)
-//   - app/site/[slug]/page.tsx              (renderer map)
+//   - app/api/ai/generate-website/route.ts       (matcher prompt + validation)
+//   - components/website/WebsiteGeneratorStudio  (studio UI in /dashboard/customize)
+//   - components/website/MiniSitePreview         (visual concept previews)
+//   - app/site/[slug]/page.tsx                   (renderer map)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type TemplateKey = 'editorial' | 'ritual' | 'vitality';
@@ -22,17 +23,17 @@ export const SITE_TEMPLATES: Record<TemplateKey, {
   editorial: {
     key: 'editorial',
     name: 'Editorial',
-    niche: 'Fashion & Apparel',
+    niche: 'Magazine & Lookbook',
     description:
-      'High-fashion lookbook. Full-bleed hero with overlaid serif headline, asymmetric product grid, monochrome palette with a deep-green accent. For garments, accessories, footwear, and anything worn.',
+      'Magazine-grade storefront. Serif masthead, asymmetric split hero, alternating full-width product features, dense hairline collection grid with hover reveals, pull-quote brand story, dark serif sign-off footer. For fashion, accessories, craft, and any brand with a strong visual story.',
     matchKeywords: ['fashion', 'apparel', 'clothing', 'dress', 'sneakers', 'shoes', 'accessories', 'jewelry', 'bags', 'textiles'],
   },
   ritual: {
     key: 'ritual',
-    name: 'Ritual',
-    niche: 'Beauty & Cosmetics',
+    name: 'Minimal',
+    niche: 'Clean & Contemporary',
     description:
-      'Soft, ceremonial beauty aesthetic. Split hero with arch-masked imagery, cream and pastel gradients, "The Ritual" three-step story band, symmetric product cards. For skincare, cosmetics, fragrance, and self-care.',
+      'Premium minimal storefront. Sticky logo nav, full-bleed cinematic hero with dual CTAs, numbered value-props band, airy spacious product grid with quick-view hovers, brand-story strip, dark CTA banner, structured footer with delivery, pickup, and contact. For beauty, wellness, home, and any brand that sells through clarity.',
     matchKeywords: ['beauty', 'cosmetics', 'skincare', 'serum', 'oil', 'fragrance', 'hair', 'spa', 'wellness', 'body care'],
   },
   vitality: {
@@ -44,6 +45,25 @@ export const SITE_TEMPLATES: Record<TemplateKey, {
     matchKeywords: ['health', 'fitness', 'supplements', 'nutrition', 'sports', 'food', 'drinks', 'tech', 'electronics', 'home'],
   },
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Step-1 concept pair — the TWO structurally distinct layouts the design
+// consultation pitches (founder mandate: two cards that LOOK like two
+// different websites). 'ritual' renders Layout A (Minimal) and 'editorial'
+// renders Layout B (Editorial magazine). 'vitality' stays render-valid for
+// every legacy row and explicit templateOverride, but is no longer pitched.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const CONCEPT_TEMPLATE_KEYS = ['ritual', 'editorial'] as const;
+
+export type ConceptTemplateKey = (typeof CONCEPT_TEMPLATE_KEYS)[number];
+
+/** Concept-pair-safe heuristic: collapses the 3-key matcher onto the two
+ *  pitched layouts. Fashion-adjacent inventory leads with Editorial; everything
+ *  else leads with Minimal (the universal premium default). */
+export function conceptTemplateFromCategory(dominantCategory: string | null | undefined): ConceptTemplateKey {
+  return templateFromCategory(dominantCategory) === 'editorial' ? 'editorial' : 'ritual';
+}
 
 // Deterministic fallback when the seller's dominant product category needs a
 // template without an LLM in the loop (used only as a matcher hint / safety net).
@@ -113,7 +133,8 @@ export const ConceptPairSchema = z.object({
 
 export type ConceptPair = z.infer<typeof ConceptPairSchema>;
 
-// Shapes shared by the three template components.
+// Shapes shared by the three template components. New fields are OPTIONAL:
+// every existing caller (and stored row) keeps compiling and rendering.
 export type SiteProduct = {
   id: string;
   name: string;
@@ -123,6 +144,9 @@ export type SiteProduct = {
   ad_video_url: string | null;
   ad_hero_image_url: string | null;
   category: string | null;
+  /** Live inventory count. Optional/additive — undefined means "not loaded"
+   *  and the templates render no stock badge at all. */
+  stock_quantity?: number | null;
 };
 
 export type SiteShop = {
@@ -132,6 +156,11 @@ export type SiteShop = {
   logo_url: string | null;
   banner_url: string | null;
   bio: string | null;
+  /** Fulfillment + contact facts for the structured footers. Optional/additive
+   *  — templates fall back to neutral copy when these are not loaded. */
+  offers_delivery?: boolean | null;
+  offers_pickup?: boolean | null;
+  pickup_instructions?: string | null;
 };
 
 export type HeroMedia =

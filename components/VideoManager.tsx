@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
+  BellRing,
   Clapperboard,
   Film,
   Loader2,
@@ -18,7 +19,6 @@ import {
 import type { Product } from '@/lib/types';
 import { createBrowserClient } from '@supabase/ssr';
 import {
-  ANIMATE_STAGES,
   STILL_STAGES,
   advanceStages,
   completeStage,
@@ -29,6 +29,7 @@ import {
   type AdStageKey,
   type AdStageStatus,
 } from '@/lib/adProgress';
+import { isAnimateInFlight } from '@/lib/adNotifications';
 
 type Category = 'apparel' | 'cosmetics' | 'electronics' | 'food' | 'other';
 
@@ -78,6 +79,10 @@ const STAGE_LABELS: Record<string, string> = {
 const VIDEO_AD_COLUMNS =
   'id, shop_id, product_id, status, storyboard, hero_image_url, video_url, category, pipeline_stage, created_at';
 
+// Gallery membership: completed commercials plus video renders still cooking
+// in the background (they render with the status chip until they land).
+const isGalleryWorthy = (row: VideoAd) => row.status === 'completed' || isAnimateInFlight(row);
+
 export default function VideoManager({ userId: _userId, products }: Props) {
   const [selectedProductId, setSelectedProductId] = useState<string>(products[0]?.id ?? '');
   const [category, setCategory] = useState<Category>('cosmetics');
@@ -93,16 +98,39 @@ export default function VideoManager({ userId: _userId, products }: Props) {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [elapsedSec, setElapsedSec] = useState(0);
 
-  // ── Streamed progress state (SSE from generate-still / animate-still) ───
-  const [phase, setPhase] = useState<'still' | 'animate' | null>(null);
+  // ── Streamed progress state (SSE from generate-still ONLY) ──────────────
+  // The animate pipeline is fire-and-forget JSON — it never drives this
+  // checklist; its progress renders as the compact background chip instead.
   const [stageStatuses, setStageStatuses] = useState<Record<string, AdStageStatus>>({});
   const [progressDetail, setProgressDetail] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const linkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Guards setState after unmount for the fire-and-forget animate fetch —
+  // the request itself is deliberately never aborted.
+  const mountedRef = useRef(true);
+  // Mirror of the active generation id so applyRowUpdate can decide whether a
+  // terminal update should clear the attended loader.
+  const activeAdIdRef = useRef<string | null>(null);
+  // Blocks duplicate animate submissions per row (double-click protection).
+  const inFlightAnimateRef = useRef<Set<string>>(new Set());
 
-  // Abort any in-flight stream and clear armed timers on unmount so nothing
-  // fires setState against an unmounted component.
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    activeAdIdRef.current = videoAd?.id ?? null;
+  }, [videoAd?.id]);
+
+  // Abort any in-flight STILL stream and clear armed timers on unmount so
+  // nothing fires setState against an unmounted component. The animate fetch
+  // is intentionally NOT registered here: it must survive unmount so the
+  // background render continues untouched (the DB row stays 'pending' and
+  // rehydration + the pollers land completion later).
   useEffect(() => {
     return () => {
       abortRef.current?.abort();
@@ -111,7 +139,39 @@ export default function VideoManager({ userId: _userId, products }: Props) {
     };
   }, []);
 
-  // Applies streamed micro-stage events to the checklist for a given phase.
+  // ── Single idempotent merge point for every update writer ────────────────
+  // Realtime events, the 5s poller, animate fetch results (200 row / 202
+  // handoff mirror), and optimistic transitions all land here, so the racing
+  // completion writers can never fight: partial patches merge into existing
+  // state, and brand-new gallery entries are only materialized from full rows.
+  const applyRowUpdate = useCallback((id: string, patch: Partial<VideoAd>) => {
+    if (
+      activeAdIdRef.current === id &&
+      (patch.status === 'preview_ready' || patch.status === 'completed' || patch.status === 'failed')
+    ) {
+      setIsGenerating(false);
+    }
+    setVideoAd((prev) => (prev && prev.id === id ? { ...prev, ...patch } : prev));
+    setGenerations((prev) => {
+      const idx = prev.findIndex((g) => g.id === id);
+      const merged: VideoAd | null =
+        idx !== -1
+          ? { ...prev[idx], ...patch }
+          : typeof patch.product_id === 'string' && typeof patch.shop_id === 'string'
+            ? (patch as VideoAd)
+            : null;
+      if (!merged) return prev;
+      if (!isGalleryWorthy(merged)) {
+        return idx === -1 ? prev : prev.filter((g) => g.id !== id);
+      }
+      if (idx === -1) return [merged, ...prev];
+      const next = [...prev];
+      next[idx] = merged;
+      return next;
+    });
+  }, []);
+
+  // Applies streamed micro-stage events to the checklist for the still phase.
   const makeProgressHandler = (order: AdStageDef[]) => (event: AdProgressEvent) => {
     if (event.t === 'stage') {
       setProgressDetail(null);
@@ -131,9 +191,10 @@ export default function VideoManager({ userId: _userId, products }: Props) {
   }, [products, selectedProductId]);
 
   // ── Load history + rehydrate any in-flight generation ───────────────────
-  // Two queries: completed rows feed the gallery; the most-recent row of ANY
-  // status lets a refresh mid-generation resume where it left off (the
-  // Realtime effect below re-attaches automatically once videoAd is set).
+  // Two queries: completed rows AND background video renders feed the
+  // gallery; the most-recent row of ANY status lets a refresh mid-generation
+  // resume where it left off (the realtime effect below re-attaches
+  // automatically once videoAd is set).
   useEffect(() => {
     if (!selectedProductId) {
       setGenerations([]);
@@ -148,12 +209,12 @@ export default function VideoManager({ userId: _userId, products }: Props) {
     );
 
     (async () => {
-      const [completedRes, recentRes] = await Promise.all([
+      const [galleryRes, recentRes] = await Promise.all([
         supabase
           .from('video_ads')
           .select(VIDEO_AD_COLUMNS)
           .eq('product_id', selectedProductId)
-          .eq('status', 'completed')
+          .or('status.eq.completed,and(status.eq.pending,pipeline_stage.in.(animating,finalizing))')
           .order('created_at', { ascending: false }),
         supabase
           .from('video_ads')
@@ -166,14 +227,14 @@ export default function VideoManager({ userId: _userId, products }: Props) {
 
       if (cancelled) return;
 
-      if (completedRes.error) {
-        console.error('[VideoManager] Failed to load generation history:', completedRes.error);
+      if (galleryRes.error) {
+        console.error('[VideoManager] Failed to load generation history:', galleryRes.error);
         return;
       }
 
-      const list = (completedRes.data ?? []) as VideoAd[];
+      const list = (galleryRes.data ?? []) as VideoAd[];
       const recent = (recentRes.data ?? null) as VideoAd | null;
-      console.log(`[VideoManager] Loaded ${list.length} completed generation(s) for product ${selectedProductId}`);
+      console.log(`[VideoManager] Loaded ${list.length} gallery generation(s) for product ${selectedProductId}`);
       setGenerations(list);
 
       setVideoAd((current) => {
@@ -189,7 +250,12 @@ export default function VideoManager({ userId: _userId, products }: Props) {
         return list[0] ?? null;
       });
 
-      if (recent?.status === 'pending') {
+      // Mid-STILL-generation refresh: the SSE stream is gone but the server
+      // keeps composing — resume the attended loader until preview_ready
+      // lands. In-flight VIDEO renders deliberately do NOT set isGenerating:
+      // they render as the compact background chip and the studio stays
+      // fully usable.
+      if (recent?.status === 'pending' && !isAnimateInFlight(recent)) {
         setIsGenerating(true);
       }
     })();
@@ -197,11 +263,13 @@ export default function VideoManager({ userId: _userId, products }: Props) {
     return () => { cancelled = true; };
   }, [selectedProductId]);
 
-  // ── Realtime: pick up server-side pipeline_stage / status updates ───────
+  // ── Realtime: product-scoped channel picks up server-side updates ────────
+  // Covers the active generation AND background renders sitting in the
+  // gallery. Channel name is distinct from the global notifier's shop-scoped
+  // channel (`video_ads_notifier_*`) — both merge idempotently through
+  // applyRowUpdate-style logic, so they never fight.
   useEffect(() => {
-    if (!videoAd || videoAd.status === 'completed' || videoAd.status === 'failed') {
-      return;
-    }
+    if (!selectedProductId) return;
 
     const supabase = createBrowserClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -209,49 +277,51 @@ export default function VideoManager({ userId: _userId, products }: Props) {
     );
 
     const channel = supabase
-      .channel(`video_ad_${videoAd.id}`)
+      .channel(`video_ads_product_${selectedProductId}`)
       .on(
         'postgres_changes',
         {
           event: 'UPDATE',
           schema: 'public',
           table: 'video_ads',
-          filter: `id=eq.${videoAd.id}`,
+          filter: `product_id=eq.${selectedProductId}`,
         },
         (payload) => {
           const next = payload.new as VideoAd;
-          setVideoAd((prev) => prev ? { ...prev, ...next } : next);
-          if (next.status === 'completed' || next.status === 'failed') {
-            setIsGenerating(false);
-          }
+          if (next?.id) applyRowUpdate(next.id, next);
         }
       )
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [videoAd?.id, videoAd?.status]);
+  }, [selectedProductId, applyRowUpdate]);
 
-  // ── Fallback polling while the animate step renders ──────────────────────
+  // ── Fallback polling while the ACTIVE row's video render runs ────────────
   // Realtime can silently drop a connection; render-status polls Creatomate
   // directly and writes completion to the DB itself, so this guarantees the
-  // UI always reaches a terminal state.
+  // active card always reaches a terminal state. Background rows on other
+  // pages are covered by the dashboard-wide notifier's 15s sweep.
+  const activeAdId = videoAd?.id;
+  const activeAdStatus = videoAd?.status;
+  const activeAdStage = videoAd?.pipeline_stage;
   useEffect(() => {
-    if (!videoAd || videoAd.status !== 'pending') return;
-    const stage = videoAd.pipeline_stage;
-    if (stage !== 'animating' && stage !== 'finalizing') return;
+    if (!activeAdId || activeAdStatus !== 'pending') return;
+    if (activeAdStage !== 'animating' && activeAdStage !== 'finalizing') return;
 
-    const videoId = videoAd.id;
+    const videoId = activeAdId;
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`/api/ai/render-status?videoId=${videoId}`);
         if (!res.ok) return;
         const { status, video_url } = await res.json() as { status: string; video_url?: string };
         if (status === 'completed') {
-          setVideoAd((prev) => prev ? { ...prev, status: 'completed', pipeline_stage: 'completed', video_url: video_url ?? prev.video_url } : prev);
-          setIsGenerating(false);
+          applyRowUpdate(videoId, {
+            status: 'completed',
+            pipeline_stage: 'completed',
+            ...(video_url ? { video_url } : {}),
+          });
         } else if (status === 'failed') {
-          setVideoAd((prev) => prev ? { ...prev, status: 'failed', pipeline_stage: 'failed' } : prev);
-          setIsGenerating(false);
+          applyRowUpdate(videoId, { status: 'failed', pipeline_stage: 'failed' });
         }
       } catch {
         // network blip — next tick retries
@@ -259,20 +329,15 @@ export default function VideoManager({ userId: _userId, products }: Props) {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [videoAd?.id, videoAd?.status, videoAd?.pipeline_stage]);
+  }, [activeAdId, activeAdStatus, activeAdStage, applyRowUpdate]);
 
-  // ── Fold DB pipeline_stage updates (realtime / poll / rehydration) into
-  // the streamed checklist so the video-render phase drives the same UI ────
+  // ── Fold DB pipeline_stage updates (realtime / rehydration) into the
+  // streamed checklist while the attended STILL loader is up ───────────────
   useEffect(() => {
     if (!isGenerating) return;
-    const ps = videoAd?.pipeline_stage as AdStageKey | null | undefined;
-    if (!ps) return;
-    if (ps === 'animating' || ps === 'finalizing' || ps === 'completed') {
-      setPhase((p) => p ?? 'animate');
-      setStageStatuses((prev) => advanceStages(prev, ps, ANIMATE_STAGES));
-    } else if (ps === 'composing' || ps === 'preview_ready') {
-      setPhase((p) => p ?? 'still');
-      setStageStatuses((prev) => advanceStages(prev, ps, STILL_STAGES));
+    const ps = videoAd?.pipeline_stage;
+    if (ps === 'composing' || ps === 'preview_ready') {
+      setStageStatuses((prev) => advanceStages(prev, ps as AdStageKey, STILL_STAGES));
     }
   }, [videoAd?.pipeline_stage, isGenerating]);
 
@@ -293,16 +358,6 @@ export default function VideoManager({ userId: _userId, products }: Props) {
     setCopyDraft(videoAd?.storyboard ? { ...videoAd.storyboard } : null);
   }, [videoAd?.id, videoAd?.storyboard]);
 
-  // ── Prepend a freshly completed generation into the gallery ─────────────
-  useEffect(() => {
-    if (videoAd?.status === 'completed' && videoAd.video_url) {
-      setGenerations((prev) => {
-        if (prev.some((g) => g.id === videoAd.id)) return prev;
-        return [videoAd, ...prev];
-      });
-    }
-  }, [videoAd?.id, videoAd?.status, videoAd?.video_url]);
-
   const handleGenerate = async () => {
     if (!selectedProductId) {
       setError('Please select a product first.');
@@ -315,7 +370,6 @@ export default function VideoManager({ userId: _userId, products }: Props) {
 
     setError(null);
     setVideoAd(null);
-    setPhase('still');
     setStageStatuses(initialStageStatuses(STILL_STAGES));
     setProgressDetail(null);
     setIsGenerating(true);
@@ -340,54 +394,83 @@ export default function VideoManager({ userId: _userId, products }: Props) {
     }
   };
 
-  const handleAnimate = async () => {
-    if (!videoAd?.id) return;
+  // Network drops leave the truth ambiguous (did the render start?) — read
+  // the row back instead of blindly rolling back the optimistic state.
+  const reconcileRowFromDb = useCallback(async (id: string) => {
+    const supabase = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+    const { data } = await supabase
+      .from('video_ads')
+      .select(VIDEO_AD_COLUMNS)
+      .eq('id', id)
+      .maybeSingle();
+    if (!mountedRef.current) return;
+    const row = (data ?? null) as VideoAd | null;
+    if (!row) {
+      setError('Network error during animation. Please refresh to check the render status.');
+      return;
+    }
+    applyRowUpdate(row.id, row);
+    if (row.status === 'preview_ready') {
+      setError('Network hiccup — the render did not start. Please approve again.');
+    }
+  }, [applyRowUpdate]);
 
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
+  // ── Approve & Animate — asynchronous background handoff ─────────────────
+  // Fire-and-forget JSON request (NO SSE): the route runs the full pipeline
+  // (Kling await → Creatomate submit with webhook → DB writes) independent of
+  // this connection, so navigating away or closing the tab cannot roll
+  // anything back. The card flips into a compact non-blocking chip; the
+  // realtime channel + pollers + dashboard notifier land the final state.
+  const handleAnimate = () => {
+    if (!videoAd?.id || !videoAd.hero_image_url) return;
+    if (videoAd.status !== 'preview_ready' && videoAd.status !== 'failed') return;
+    const targetId = videoAd.id;
+    if (inFlightAnimateRef.current.has(targetId)) return;
+    inFlightAnimateRef.current.add(targetId);
 
     setError(null);
-    setPhase('animate');
-    setStageStatuses(initialStageStatuses(ANIMATE_STAGES));
-    setProgressDetail(null);
-    setIsGenerating(true);
-    setVideoAd((prev) => prev ? { ...prev, status: 'pending', pipeline_stage: 'animating' } : prev);
+    // Optimistic flip into the background-rendering state — deliberately does
+    // NOT touch isGenerating: the studio stays fully usable.
+    applyRowUpdate(targetId, { ...videoAd, status: 'pending', pipeline_stage: 'animating' });
 
-    try {
-      const result = await fetchAdPipeline(
-        '/api/ai/animate-still',
-        { videoAdId: videoAd.id },
-        { signal: controller.signal, onEvent: makeProgressHandler(ANIMATE_STAGES) }
-      );
-      if (controller.signal.aborted) return;
-      if (!result.ok) {
-        if (result.status === 0) {
-          // The stream dropped mid-render but the server keeps working — the
-          // row stays 'pending'/'animating|finalizing', so the realtime
-          // channel + render-status poller will still land the final state.
-          setError(result.error);
+    void (async () => {
+      try {
+        // keepalive lets the tiny request body survive an immediate tab close.
+        const res = await fetch('/api/ai/animate-still', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ videoAdId: targetId }),
+          keepalive: true,
+        });
+        let data: (Partial<VideoAd> & { error?: string }) | null = null;
+        try {
+          data = await res.json();
+        } catch {
+          data = null;
+        }
+        // Unmounted mid-flight: the DB row stays 'pending', so rehydration +
+        // the pollers + the dashboard notifier finish the job. No rollback.
+        if (!mountedRef.current) return;
+        if (!res.ok) {
+          setError(data?.error || 'Failed to start the video render. Please try again.');
+          // Restore the approve card locally so the seller can retry at once.
+          applyRowUpdate(targetId, { status: 'preview_ready', pipeline_stage: 'preview_ready' });
           return;
         }
-        setError(result.error || 'Failed to animate the scene.');
-        setVideoAd((prev) => prev ? { ...prev, status: 'preview_ready', pipeline_stage: 'preview_ready' } : prev);
-        setIsGenerating(false);
-        return;
+        // 200 → full completed row; 202 → handoff mirror of the DB state
+        // ({ status: 'pending', pipeline_stage: 'finalizing' }) that keeps the
+        // chip + pollers driving toward completion. Merge either idempotently.
+        if (data) applyRowUpdate(targetId, data as Partial<VideoAd>);
+      } catch {
+        if (!mountedRef.current) return;
+        await reconcileRowFromDb(targetId);
+      } finally {
+        inFlightAnimateRef.current.delete(targetId);
       }
-      const payload = result.payload as Partial<VideoAd>;
-      setVideoAd((prev) => prev ? { ...prev, ...payload } : (payload as VideoAd));
-      if (payload.status === 'completed' && payload.video_url) {
-        setIsGenerating(false);
-      }
-      // Otherwise this was the 202-style handoff mirror ({ status: 'pending',
-      // pipeline_stage: 'finalizing' }) — the fallback poller + realtime
-      // channel keep driving the checklist to completion.
-    } catch {
-      if (controller.signal.aborted) return;
-      setError('Network error during animation. Please try again.');
-      setVideoAd((prev) => prev ? { ...prev, status: 'preview_ready', pipeline_stage: 'preview_ready' } : prev);
-      setIsGenerating(false);
-    }
+    })();
   };
 
   // Save hand-edited copy on blur — only fires when something actually changed.
@@ -452,6 +535,9 @@ export default function VideoManager({ userId: _userId, products }: Props) {
   };
 
   const handleSelectFromGallery = (gen: VideoAd) => {
+    // Never swap the active card out from under an attended still run — the
+    // SSE result would stomp the selection when it lands.
+    if (isGenerating) return;
     console.log(`[VideoManager] Selected generation ${gen.id} from gallery`);
     setVideoAd(gen);
     setError(null);
@@ -524,17 +610,14 @@ export default function VideoManager({ userId: _userId, products }: Props) {
   const selectedProductName = products.find((p) => p.id === videoAd?.product_id)?.name;
   const stageLabel = videoAd?.pipeline_stage ? STAGE_LABELS[videoAd.pipeline_stage] : null;
 
-  // Loader derivations — `phase` is set the moment a run starts; the
-  // hero_image_url heuristic covers rehydration after a mid-flight refresh.
-  const loaderPhase: 'still' | 'animate' = phase ?? (videoAd?.hero_image_url ? 'animate' : 'still');
-  const loaderStages = loaderPhase === 'animate' ? ANIMATE_STAGES : STILL_STAGES;
-  // Streamed micro-update wins; the DB stage label covers realtime/poll
+  // The active card's video render is running server-side — show the compact
+  // non-blocking chip instead of any takeover loader.
+  const isBackgroundRendering = !!videoAd && isAnimateInFlight(videoAd);
+
+  // Streamed micro-update wins; the DB stage label covers realtime/rehydration
   // updates; static copy is the graceful fallback when the stream yields no
   // events (e.g. behind a buffering proxy).
-  const loaderSubline =
-    progressDetail ??
-    stageLabel ??
-    (loaderPhase === 'animate' ? 'Rendering your commercial…' : 'Preparing your generation…');
+  const loaderSubline = progressDetail ?? stageLabel ?? 'Preparing your generation…';
 
   return (
     <div className="animate-in fade-in duration-300 space-y-6">
@@ -649,7 +732,7 @@ export default function VideoManager({ userId: _userId, products }: Props) {
         </AnimatePresence>
       </div>
 
-      {/* ── In-flight loader ───────────────────────────────────────────────── */}
+      {/* ── In-flight loader (attended STILL pipeline only) ───────────────── */}
       <AnimatePresence>
         {isGenerating && (
           <motion.div
@@ -683,7 +766,7 @@ export default function VideoManager({ userId: _userId, products }: Props) {
 
               <div>
                 <p className="text-lg font-bold text-white">
-                  {loaderPhase === 'animate' ? 'Animating your commercial' : 'Building your premium scene'}
+                  Building your premium scene
                 </p>
                 <AnimatePresence mode="wait">
                   <motion.p
@@ -704,7 +787,7 @@ export default function VideoManager({ userId: _userId, products }: Props) {
 
               {/* ── Live stage checklist (streamed micro-stages) ─────────── */}
               <div className="w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5 text-left backdrop-blur-sm">
-                {loaderStages.map((stage, i) => {
+                {STILL_STAGES.map((stage, i) => {
                   const status = stageStatuses[stage.key] ?? 'pending';
                   return (
                     <motion.div
@@ -762,8 +845,68 @@ export default function VideoManager({ userId: _userId, products }: Props) {
         )}
       </AnimatePresence>
 
-      {/* ── Hero still preview ─────────────────────────────────────────────── */}
       <AnimatePresence mode="wait">
+        {/* ── Background video render — compact, non-blocking ───────────── */}
+        {videoAd && !isGenerating && isBackgroundRendering && (
+          <motion.div
+            key="background-render"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.4, ease: 'easeOut' }}
+            className="relative overflow-hidden rounded-[2rem] border border-gray-100 bg-white p-6 shadow-sm md:p-7"
+          >
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+              <div className="relative h-40 w-24 shrink-0 overflow-hidden rounded-2xl bg-black shadow-lg">
+                {videoAd.hero_image_url ? (
+                  <img
+                    src={videoAd.hero_image_url}
+                    alt="Scene being animated"
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-gray-500">
+                    <Film size={20} />
+                  </div>
+                )}
+                <motion.div
+                  className="pointer-events-none absolute inset-0 -skew-x-12 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+                  animate={{ x: ['-140%', '240%'] }}
+                  transition={{ duration: 2.2, repeat: Infinity, ease: 'linear', repeatDelay: 0.9 }}
+                />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest text-amber-700">
+                    <Loader2 size={11} className="animate-spin" />
+                    Rendering in background
+                  </span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                    ID #{videoAd.id.split('-')[0].toUpperCase()}
+                  </span>
+                  {selectedProductName && (
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                      · {selectedProductName}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-3 text-sm font-bold text-gray-900">
+                  {stageLabel ?? 'Rendering your commercial…'}
+                </p>
+                <p className="mt-1.5 max-w-lg text-sm leading-relaxed text-gray-500">
+                  Your commercial is rendering on our studio servers. Keep working, switch pages, or close this tab — nothing is lost.
+                </p>
+                <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-gray-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-500 ring-1 ring-gray-100">
+                  <BellRing size={11} className="text-emerald-600" />
+                  We&apos;ll notify you the moment it&apos;s ready
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* ── Hero still preview ───────────────────────────────────────────── */}
         {videoAd && !isGenerating && videoAd.status === 'preview_ready' && videoAd.hero_image_url && (
           <motion.div
             key="hero-still"
@@ -871,6 +1014,9 @@ export default function VideoManager({ userId: _userId, products }: Props) {
                   >
                     <RefreshCw size={13} /> Regenerate Scene
                   </button>
+                  <p className="pt-1 text-center text-[10px] leading-relaxed text-gray-400">
+                    Animation renders in the background — you can keep working while we film.
+                  </p>
                 </div>
               </div>
             </div>
@@ -966,14 +1112,28 @@ export default function VideoManager({ userId: _userId, products }: Props) {
             exit={{ opacity: 0 }}
             className="rounded-[2rem] border border-red-200 bg-red-50 p-6 text-center"
           >
-            <p className="text-sm font-bold text-red-900">Scene generation failed.</p>
-            <p className="mt-2 text-sm text-red-700">Try regenerating — the AI models are stochastic and a retry usually fixes it.</p>
-            <button
-              onClick={handleGenerate}
-              className="mt-4 inline-flex items-center gap-2 rounded-full bg-red-600 px-6 py-2.5 text-[10px] font-bold uppercase tracking-widest text-white shadow-md transition-all hover:bg-red-700 active:scale-95"
-            >
-              <RefreshCw size={13} /> Retry
-            </button>
+            <p className="text-sm font-bold text-red-900">
+              {videoAd.hero_image_url ? 'The video render failed.' : 'Scene generation failed.'}
+            </p>
+            <p className="mt-2 text-sm text-red-700">Try again — the AI models are stochastic and a retry usually fixes it.</p>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+              {videoAd.hero_image_url && (
+                <button
+                  onClick={handleAnimate}
+                  className="inline-flex items-center gap-2 rounded-full bg-red-600 px-6 py-2.5 text-[10px] font-bold uppercase tracking-widest text-white shadow-md transition-all hover:bg-red-700 active:scale-95"
+                >
+                  <Clapperboard size={13} /> Retry Animation
+                </button>
+              )}
+              <button
+                onClick={handleGenerate}
+                className={videoAd.hero_image_url
+                  ? 'inline-flex items-center gap-2 rounded-full border border-red-200 bg-white px-6 py-2.5 text-[10px] font-bold uppercase tracking-widest text-red-700 shadow-sm transition-all hover:bg-red-100 active:scale-95'
+                  : 'inline-flex items-center gap-2 rounded-full bg-red-600 px-6 py-2.5 text-[10px] font-bold uppercase tracking-widest text-white shadow-md transition-all hover:bg-red-700 active:scale-95'}
+              >
+                <RefreshCw size={13} /> {videoAd.hero_image_url ? 'New Scene' : 'Retry'}
+              </button>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -992,6 +1152,7 @@ export default function VideoManager({ userId: _userId, products }: Props) {
             {generations.map((gen) => {
               const isActive = gen.id === videoAd?.id;
               const isArmed = deleteConfirmId === gen.id;
+              const isRendering = gen.status === 'pending';
               return (
                 <div
                   key={gen.id}
@@ -1002,10 +1163,16 @@ export default function VideoManager({ userId: _userId, products }: Props) {
                   className={`group relative shrink-0 cursor-pointer overflow-hidden rounded-2xl bg-black transition-all duration-200 hover:scale-[1.03] ${
                     isActive
                       ? 'ring-2 ring-emerald-500 ring-offset-2'
-                      : 'ring-1 ring-gray-200 hover:ring-gray-300'
+                      : isRendering
+                        ? 'ring-1 ring-amber-300 hover:ring-amber-400'
+                        : 'ring-1 ring-gray-200 hover:ring-gray-300'
                   }`}
                   style={{ width: 88, height: 156 }}
-                  aria-label={`Load generation ${gen.id.split('-')[0]}`}
+                  aria-label={
+                    isRendering
+                      ? `Generation ${gen.id.split('-')[0]} rendering in background`
+                      : `Load generation ${gen.id.split('-')[0]}`
+                  }
                 >
                   {gen.hero_image_url ? (
                     <img
@@ -1018,29 +1185,48 @@ export default function VideoManager({ userId: _userId, products }: Props) {
                       <Film size={20} />
                     </div>
                   )}
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2">
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-white/90">
-                      #{gen.id.split('-')[0].toUpperCase()}
-                    </p>
-                  </div>
+                  {isRendering ? (
+                    <>
+                      {/* Background-render chip + shimmer — replaces the id label */}
+                      <motion.div
+                        className="pointer-events-none absolute inset-0 -skew-x-12 bg-gradient-to-r from-transparent via-white/15 to-transparent"
+                        animate={{ x: ['-140%', '240%'] }}
+                        transition={{ duration: 2.2, repeat: Infinity, ease: 'linear', repeatDelay: 0.9 }}
+                      />
+                      <div className="pointer-events-none absolute inset-x-1.5 bottom-1.5 flex items-center justify-center gap-1 rounded-full bg-black/70 px-1.5 py-1 backdrop-blur-sm">
+                        <Loader2 size={9} className="animate-spin text-amber-300" />
+                        <span className="text-[8px] font-bold uppercase tracking-widest text-amber-200">Rendering</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2">
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-white/90">
+                        #{gen.id.split('-')[0].toUpperCase()}
+                      </p>
+                    </div>
+                  )}
                   {isActive && (
                     <div className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white shadow-md">
                       <Check size={11} />
                     </div>
                   )}
-                  <button
-                    onClick={(e) => handleDeleteGeneration(gen.id, e)}
-                    className={`absolute left-1.5 top-1.5 flex h-6 items-center justify-center gap-1 rounded-full px-1.5 text-white shadow-md transition-all ${
-                      isArmed
-                        ? 'bg-red-600 opacity-100'
-                        : 'bg-black/50 opacity-0 backdrop-blur-sm hover:bg-red-600 group-hover:opacity-100'
-                    }`}
-                    aria-label={isArmed ? 'Click again to confirm delete' : 'Delete generation'}
-                    title={isArmed ? 'Click again to confirm' : 'Delete'}
-                  >
-                    <Trash2 size={11} />
-                    {isArmed && <span className="text-[8px] font-bold uppercase">Sure?</span>}
-                  </button>
+                  {/* Delete stays hidden while a render is in flight — killing the
+                      row mid-render would orphan the Creatomate job. */}
+                  {!isRendering && (
+                    <button
+                      onClick={(e) => handleDeleteGeneration(gen.id, e)}
+                      className={`absolute left-1.5 top-1.5 flex h-6 items-center justify-center gap-1 rounded-full px-1.5 text-white shadow-md transition-all ${
+                        isArmed
+                          ? 'bg-red-600 opacity-100'
+                          : 'bg-black/50 opacity-0 backdrop-blur-sm hover:bg-red-600 group-hover:opacity-100'
+                      }`}
+                      aria-label={isArmed ? 'Click again to confirm delete' : 'Delete generation'}
+                      title={isArmed ? 'Click again to confirm' : 'Delete'}
+                    >
+                      <Trash2 size={11} />
+                      {isArmed && <span className="text-[8px] font-bold uppercase">Sure?</span>}
+                    </button>
+                  )}
                 </div>
               );
             })}
