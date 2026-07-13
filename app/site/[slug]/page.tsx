@@ -92,19 +92,29 @@ async function findShopBySlug(supabase: ReturnType<typeof getSupabase>, slug: st
   return candidates?.find((c) => slugify(c.shop_slug) === cleanSlug) ?? null;
 }
 
-async function loadSite(slug: string, preview: boolean) {
+async function loadSite(slug: string) {
   const supabase = getSupabase();
   const shop = await findShopBySlug(supabase, slug);
 
   if (!shop) return null;
 
-  let website: SiteWebsite | null = null;
+  // Strict public rule: anonymous traffic only ever sees published sites.
+  const { data: publishedRow } = await supabase
+    .from('shop_websites')
+    .select('template_key, config, status')
+    .eq('shop_id', shop.id)
+    .eq('status', 'published')
+    .maybeSingle();
+
+  let website: SiteWebsite | null = (publishedRow as SiteWebsite | null) ?? null;
   let isOwnerPreview = false;
 
-  // Owner draft preview: ?preview=1 + an authenticated session matching the
-  // shop's id lets the seller see their site regardless of publish status.
-  // Everyone else stays strictly published-only.
-  if (preview) {
+  // Owner draft fallback: when no published site is visible, an authenticated
+  // session matching the shop's id serves the draft — on the BARE /site URL as
+  // well as the legacy ?preview=1 link (both resolve here; the query string is
+  // no longer load-bearing). Anonymous visitors and non-owners never pass the
+  // user.id === shop.id check and keep the published-only redirect below.
+  if (!website) {
     const authed = getAuthedClient();
     const { data: { user } } = await authed.auth.getUser();
     if (user && user.id === shop.id) {
@@ -118,17 +128,6 @@ async function loadSite(slug: string, preview: boolean) {
       website = (data as SiteWebsite | null) ?? null;
       isOwnerPreview = website !== null;
     }
-  }
-
-  if (!website) {
-    const { data } = await supabase
-      .from('shop_websites')
-      .select('template_key, config, status')
-      .eq('shop_id', shop.id)
-      .eq('status', 'published')
-      .maybeSingle();
-    website = (data as SiteWebsite | null) ?? null;
-    isOwnerPreview = false;
   }
 
   if (!website) {
@@ -149,15 +148,21 @@ async function loadSite(slug: string, preview: boolean) {
   return { shop: shop as SiteShop, website, products: (products ?? []) as SiteProduct[], isOwnerPreview };
 }
 
+// The live storefront must always reflect the current publish state and the
+// latest generated config. Previously this page was implicitly dynamic via its
+// searchParams read; now that ?preview=1 is no longer load-bearing, pin it
+// explicitly so the route is never served from the full route cache.
+export const dynamic = 'force-dynamic';
+
+// ?preview=1 is still accepted on the URL (legacy dashboard links) but ignored:
+// ownership resolution in loadSite covers both the bare and preview URLs.
 type PageProps = {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ preview?: string }>;
 };
 
-export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const sp = await searchParams;
-  const data = await loadSite(slug, sp?.preview === '1');
+  const data = await loadSite(slug);
   if (!data?.website) return { title: 'Sanndikaa Boutique' };
 
   const parsed = WebsiteConfigSchema.safeParse(data.website.config);
@@ -170,10 +175,9 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   };
 }
 
-export default async function SitePage({ params, searchParams }: PageProps) {
+export default async function SitePage({ params }: PageProps) {
   const { slug } = await params;
-  const sp = await searchParams;
-  const data = await loadSite(slug, sp?.preview === '1');
+  const data = await loadSite(slug);
 
   // No shop → back to the mall; no visible website → fall back to the
   // standard boutique page rather than a dead end.

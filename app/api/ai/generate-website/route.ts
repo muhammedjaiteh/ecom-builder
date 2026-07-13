@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath, revalidateTag } from 'next/cache';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
@@ -342,6 +343,23 @@ ${templateConstraint}`;
       console.error('[generate-website] Upsert failed:', upsertError);
       return NextResponse.json({ error: 'Failed to save the generated website.' }, { status: 500 });
     }
+
+    // ── Cache bust: the live /site route must serve this config on the very
+    // next request. Path revalidation covers the concrete URL (query strings
+    // like ?preview=1 share the same path entry); the '/site/[slug]' page-level
+    // call clears the dynamic segment's route cache, since the site page reads
+    // via supabase-js rather than tagged fetch. The per-shop tag is inert
+    // today for the same reason — kept for when those reads gain fetch tags.
+    revalidatePath(`/site/${canonicalSlug}`);
+    if (shop.shop_slug && shop.shop_slug !== canonicalSlug) {
+      // Slug was write-repaired mid-request: bust the pre-repair path too,
+      // encoded exactly as a legacy raw slug appears in a shared URL.
+      revalidatePath(`/site/${encodeURIComponent(shop.shop_slug)}`);
+    }
+    revalidatePath('/site/[slug]', 'page');
+    // Next 16 signature: the 'max' profile expires the tag immediately —
+    // equivalent to the legacy single-argument revalidateTag behavior.
+    revalidateTag(`site:${shop.id}`, 'max');
 
     // Full row (dashboard contract) + the canonical slug for link minting.
     return NextResponse.json({ ...website, shop_slug: canonicalSlug });
