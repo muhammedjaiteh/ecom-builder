@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
@@ -25,6 +26,23 @@ function getSupabase() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
+
+// Service-role client for the shop_websites reads ONLY. That table was
+// provisioned outside this repo and its RLS policies are not versioned here
+// (shops/products public-read policies ARE — see RLS_PRODUCTS_ORDERS_SHOPS.sql),
+// so an anon/authed read of it can silently return zero rows and masquerade as
+// "no website". Access control is enforced in code instead: published rows are
+// public by definition of publishing, and draft rows are served only after the
+// cookie-session user is network-verified (auth.getUser) AND matches the
+// shop's owner id. This file is a Server Component — the key never ships to
+// the client.
+function getServiceClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } }
   );
 }
 
@@ -92,46 +110,76 @@ async function findShopBySlug(supabase: ReturnType<typeof getSupabase>, slug: st
   return candidates?.find((c) => slugify(c.shop_slug) === cleanSlug) ?? null;
 }
 
-async function loadSite(slug: string) {
+// Per-redirect telemetry payload: which viewer the auth gate resolved. The
+// gate only runs when a non-published row exists (published pages are public
+// and must not pay a per-view auth round trip), so `checked` distinguishes
+// "anonymous" from "never needed to check".
+type SiteViewer = {
+  checked: boolean;
+  userId: string | null;
+  isOwner: boolean;
+  hasAuthCookie: boolean;
+  authNote: string | null;
+};
+
+// cache(): generateMetadata and the page body both resolve the site; without
+// request-level deduplication every hit paid TWO full sets of DB round trips.
+const loadSite = cache(async (slug: string) => {
   const supabase = getSupabase();
   const shop = await findShopBySlug(supabase, slug);
 
+  const viewer: SiteViewer = { checked: false, userId: null, isOwner: false, hasAuthCookie: false, authNote: null };
+
   if (!shop) return null;
 
-  // Strict public rule: anonymous traffic only ever sees published sites.
-  const { data: publishedRow } = await supabase
+  // Single website read via the service client (see getServiceClient). One
+  // row per shop (shop_id is the upsert conflict key) — visibility is decided
+  // in code below, never left to unversioned RLS.
+  const { data: row, error: websiteError } = await getServiceClient()
     .from('shop_websites')
     .select('template_key, config, status')
     .eq('shop_id', shop.id)
-    .eq('status', 'published')
     .maybeSingle();
+  if (websiteError) {
+    console.error(`[site-route] slug=${slug} shop_websites read failed: ${websiteError.message}`);
+  }
 
-  let website: SiteWebsite | null = (publishedRow as SiteWebsite | null) ?? null;
+  const stored = (row as SiteWebsite | null) ?? null;
+  const storedStatus = stored?.status ?? 'none';
+
+  // Strict public rule: anonymous traffic only ever sees published sites.
+  let website: SiteWebsite | null = stored?.status === 'published' ? stored : null;
   let isOwnerPreview = false;
 
-  // Owner draft fallback: when no published site is visible, an authenticated
-  // session matching the shop's id serves the draft — on the BARE /site URL as
-  // well as the legacy ?preview=1 link (both resolve here; the query string is
-  // no longer load-bearing). Anonymous visitors and non-owners never pass the
-  // user.id === shop.id check and keep the published-only redirect below.
-  if (!website) {
+  // Owner draft fallback: a stored-but-unpublished row is served only when the
+  // cookie session's NETWORK-VERIFIED user id equals the shop's owner id — on
+  // the bare /site URL as well as the legacy ?preview=1 link (the query string
+  // is no longer load-bearing). Anonymous visitors and non-owners keep the
+  // published-only redirect below.
+  if (!website && stored) {
+    viewer.checked = true;
+    const jar = await cookies();
+    viewer.hasAuthCookie = jar.getAll().some((c) => c.name.includes('-auth-token'));
     const authed = getAuthedClient();
-    const { data: { user } } = await authed.auth.getUser();
-    if (user && user.id === shop.id) {
-      // Query with the owner's session so RLS treats this exactly like the
-      // dashboard's own read — drafts included.
-      const { data } = await authed
-        .from('shop_websites')
-        .select('template_key, config, status')
-        .eq('shop_id', shop.id)
-        .maybeSingle();
-      website = (data as SiteWebsite | null) ?? null;
-      isOwnerPreview = website !== null;
+    const { data: { user }, error: authError } = await authed.auth.getUser();
+    viewer.userId = user?.id ?? null;
+    viewer.authNote = user ? null : (authError?.message ?? 'no-session');
+    viewer.isOwner = user !== null && user.id === shop.id;
+    if (viewer.isOwner) {
+      website = stored;
+      isOwnerPreview = true;
     }
   }
 
   if (!website) {
-    return { shop: shop as SiteShop, website: null, products: [] as SiteProduct[], isOwnerPreview: false };
+    return {
+      shop: shop as SiteShop,
+      website: null,
+      storedStatus,
+      products: [] as SiteProduct[],
+      isOwnerPreview: false,
+      viewer,
+    };
   }
 
   // Mixed legacy schema: the app's insert path (app/api/products) writes only
@@ -145,8 +193,15 @@ async function loadSite(slug: string) {
     .order('created_at', { ascending: false })
     .limit(12);
 
-  return { shop: shop as SiteShop, website, products: (products ?? []) as SiteProduct[], isOwnerPreview };
-}
+  return {
+    shop: shop as SiteShop,
+    website,
+    storedStatus,
+    products: (products ?? []) as SiteProduct[],
+    isOwnerPreview,
+    viewer,
+  };
+});
 
 // The live storefront must always reflect the current publish state and the
 // latest generated config. Previously this page was implicitly dynamic via its
@@ -175,22 +230,41 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
+// Permanent branch telemetry: any 307 from this route must print exactly which
+// branch fired and why. `user` is the network-verified session id, 'anon' when
+// the gate ran and found none, or 'unchecked' when no gate was needed (public
+// published serve / no row at all with published visibility already decided).
+function viewerLog(v: SiteViewer): string {
+  const user = v.checked ? (v.userId ?? 'anon') : 'unchecked';
+  const note = v.checked && v.authNote ? ` authNote="${v.authNote}" authCookie=${v.hasAuthCookie}` : '';
+  return `user=${user} owner=${v.isOwner}${note}`;
+}
+
 export default async function SitePage({ params }: PageProps) {
   const { slug } = await params;
   const data = await loadSite(slug);
 
   // No shop → back to the mall; no visible website → fall back to the
   // standard boutique page rather than a dead end.
-  if (!data) redirect('/');
+  if (!data) {
+    console.log(`[site-route] slug=${slug} shop=miss → redirect:/`);
+    redirect('/');
+  }
   // /shop decodes its param and matches the raw stored value, so legacy slugs
   // (with spaces) must be URL-encoded here to survive the round trip.
-  if (!data.website) redirect(`/shop/${encodeURIComponent(data.shop.shop_slug ?? slug)}`);
+  if (!data.website) {
+    console.log(`[site-route] slug=${slug} shop=found website=${data.storedStatus} ${viewerLog(data.viewer)} → redirect:/shop`);
+    redirect(`/shop/${encodeURIComponent(data.shop.shop_slug ?? slug)}`);
+  }
 
   const parsed = WebsiteConfigSchema.safeParse(data.website.config);
   if (!parsed.success) {
     console.error(`[site/${slug}] Stored config failed validation:`, parsed.error.issues);
+    console.log(`[site-route] slug=${slug} shop=found website=${data.storedStatus} ${viewerLog(data.viewer)} config=invalid → redirect:/shop`);
     redirect(`/shop/${encodeURIComponent(data.shop.shop_slug ?? slug)}`);
   }
+
+  console.log(`[site-route] slug=${slug} shop=found website=${data.storedStatus} ${viewerLog(data.viewer)} → serve`);
 
   const config = parsed.data;
   const Template = TEMPLATE_COMPONENTS[config.template_key] ?? VitalityTemplate;
