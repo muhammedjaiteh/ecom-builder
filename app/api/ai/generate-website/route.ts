@@ -12,8 +12,9 @@ import {
   SITE_TEMPLATES,
   SiteConceptSchema,
   TEMPLATE_KEYS,
-  WebsiteConfigSchema,
+  WebsiteGenerationSchema,
   conceptTemplateFromCategory,
+  generationToConfig,
   templateFromCategory,
   type SiteConcept,
   type TemplateKey,
@@ -263,11 +264,13 @@ APPROVED CREATIVE DIRECTION — honor it precisely, refine and expand it into th
     // STATIC block (cachedSystem): every instruction that is byte-identical on
     // all requests — role, template catalog (built from SITE_TEMPLATES
     // constants), elite copy rules, and the full output field spec. This is
-    // the massive stable prefix the ephemeral cache keys on.
+    // the massive stable prefix the ephemeral cache keys on. Changed ONCE for
+    // the Phase-3 block model (the site is now written as content blocks) and
+    // byte-stable again from here — no per-request data inside.
     // DYNAMIC block (prompt): shop identity, inventory, and the per-request
     // template constraint / approved concept — anything here in the cached
     // block would silently kill every cache hit.
-    const cachedSystem = `You are the brand director for Sanndikaa, generating a COMPLETE premium storefront website for one of our sellers.
+    const cachedSystem = `You are the brand director for Sanndikaa, generating a COMPLETE premium storefront website for one of our sellers. The site is assembled from content blocks — you write the copy for every block.
 
 AVAILABLE TEMPLATES:
 ${templateCatalog}
@@ -276,22 +279,24 @@ Write every copy field in the elite voice. The site must read like a brand that 
 
 ${ELITE_COPY_RULES}
 
-(The 3-5 word limit above applies ONLY to cta_banner.button_label. Other fields follow their own length limits below.)
+(The 3-5 word limit above applies ONLY to cta.button_label. Other fields follow their own length limits below.)
 
 Return a JSON object:
 - "template_key"     : one of ${TEMPLATE_KEYS.map((k) => `"${k}"`).join(' | ')}
 - "niche_reasoning"  : 1-2 sentences on why this template fits this inventory
-- "site": {
-    "tagline"          : 3-8 word brand essence line (max 80 chars)
-    "hero_headline"    : 4-10 word headline (max 90 chars) — sensory, not salesy
-    "hero_subheadline" : 1-2 sentence supporting line (max 200 chars)
-    "brand_story"      : 2-3 sentence origin/craft story in the brand's voice (max 600 chars)
-    "value_props"      : EXACTLY 3 items, each { "title": max 60 chars, "body": one sentence max 200 chars }
-    "collection_title" : 2-5 word collection heading (max 60 chars)
-    "collection_intro" : one sentence introducing the products (max 240 chars)
-    "cta_banner"       : { "headline": max 90 chars, "subtext": max 200 chars, "button_label": 2-5 words }
-    "seo"              : { "title": max 70 chars including the shop name, "description": max 170 chars }
-  }`;
+- "hero"             : the opening banner block — {
+    "tagline"     : 3-8 word brand essence line (max 80 chars)
+    "headline"    : 4-10 word headline (max 90 chars) — sensory, not salesy
+    "subheadline" : 1-2 sentence supporting line (max 200 chars)
+  }
+- "value_props"      : the trust band block — EXACTLY 3 items, each { "title": max 60 chars, "body": one sentence max 200 chars }
+- "product_grid"     : the collection section block — {
+    "title" : 2-5 word collection heading (max 60 chars)
+    "intro" : one sentence introducing the products (max 240 chars)
+  }
+- "story"            : the brand-story block — { "body": 2-3 sentence origin/craft story in the brand's voice (max 600 chars) }
+- "cta"              : the closing banner block — { "headline": max 90 chars, "subtext": max 200 chars, "button_label": 2-5 words }
+- "seo"              : { "title": max 70 chars including the shop name, "description": max 170 chars }`;
 
     const prompt = `SHOP:
 - Name: ${shop.shop_name}
@@ -302,12 +307,18 @@ ${inventorySummary}
 
 ${templateConstraint}`;
 
-    const { data: config, provider } = await generateWithFallback({
-      schema: WebsiteConfigSchema,
+    const { data: generation, provider } = await generateWithFallback({
+      schema: WebsiteGenerationSchema,
       prompt,
       cachedSystem,
       callerName: 'generate-website',
     });
+
+    // Deterministic assembly: block array with stable ids PLUS the legacy
+    // site.* mirror via blocksToLegacySite — both representations stored
+    // consistently, so block-driven templates and legacy consumers
+    // (VitalityTemplate, tone bodies, seo metadata) read the same copy.
+    const config = generationToConfig(generation);
 
     // Belt-and-suspenders: enforce the chosen template even if the model drifted.
     if (chosenTemplate) {
@@ -350,13 +361,21 @@ ${templateConstraint}`;
     // call clears the dynamic segment's route cache, since the site page reads
     // via supabase-js rather than tagged fetch. The per-shop tag is inert
     // today for the same reason — kept for when those reads gain fetch tags.
+    // The omnichannel router's nested pages (collections, product detail)
+    // render the same config through the same chrome, so they bust together.
     revalidatePath(`/site/${canonicalSlug}`);
+    revalidatePath(`/site/${canonicalSlug}/collections`);
     if (shop.shop_slug && shop.shop_slug !== canonicalSlug) {
-      // Slug was write-repaired mid-request: bust the pre-repair path too,
+      // Slug was write-repaired mid-request: bust the pre-repair paths too,
       // encoded exactly as a legacy raw slug appears in a shared URL.
       revalidatePath(`/site/${encodeURIComponent(shop.shop_slug)}`);
+      revalidatePath(`/site/${encodeURIComponent(shop.shop_slug)}/collections`);
     }
     revalidatePath('/site/[slug]', 'page');
+    revalidatePath('/site/[slug]/collections', 'page');
+    // Per-product pages cannot be enumerated here — the page-level call
+    // clears the whole dynamic PDP segment.
+    revalidatePath('/site/[slug]/products/[id]', 'page');
     // Next 16 signature: the 'max' profile expires the tag immediately —
     // equivalent to the legacy single-argument revalidateTag behavior.
     revalidateTag(`site:${shop.id}`, 'max');

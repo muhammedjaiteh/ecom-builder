@@ -88,14 +88,22 @@ export async function POST(req: Request) {
     // strings share the same path entry); '/site/[slug]' clears the dynamic
     // segment's route cache, since the site page reads via supabase-js rather
     // than tagged fetch. The per-shop tag is inert today for the same reason —
-    // kept for when those reads gain fetch tags.
+    // kept for when those reads gain fetch tags. The omnichannel router's
+    // nested pages (collections, product detail) share the same visibility
+    // gate, so they bust together.
     revalidatePath(`/site/${canonicalSlug}`);
+    revalidatePath(`/site/${canonicalSlug}/collections`);
     if (shop.shop_slug && shop.shop_slug !== canonicalSlug) {
-      // Slug was write-repaired mid-request: bust the pre-repair path too,
+      // Slug was write-repaired mid-request: bust the pre-repair paths too,
       // encoded exactly as a legacy raw slug appears in a shared URL.
       revalidatePath(`/site/${encodeURIComponent(shop.shop_slug)}`);
+      revalidatePath(`/site/${encodeURIComponent(shop.shop_slug)}/collections`);
     }
     revalidatePath('/site/[slug]', 'page');
+    revalidatePath('/site/[slug]/collections', 'page');
+    // Per-product pages cannot be enumerated here — the page-level call
+    // clears the whole dynamic PDP segment.
+    revalidatePath('/site/[slug]/products/[id]', 'page');
     // Next 16 signature: the 'max' profile expires the tag immediately —
     // equivalent to the legacy single-argument revalidateTag behavior.
     revalidateTag(`site:${shop.id}`, 'max');
