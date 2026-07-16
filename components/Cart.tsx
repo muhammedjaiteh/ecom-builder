@@ -4,21 +4,9 @@ import { useCart, CartItem } from './CartProvider';
 import { X, ShoppingBag, Plus, Minus, Trash2, Store, ArrowRight, Loader2, User, Phone, Truck, MapPin, CheckCircle2 } from 'lucide-react';
 import { useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
-
-function sanitizePhoneNumber(rawNumber?: string | null) {
-  if (!rawNumber) return null;
-  let cleanNumber = rawNumber.replace(/\D/g, '');
-  if (!cleanNumber) return null;
-  // If it's a 7-digit Gambian number, add the 220 country code automatically
-  if (cleanNumber.length === 7) cleanNumber = `220${cleanNumber}`;
-  return cleanNumber;
-}
-
-function generateWhatsAppLink(number: string | null | undefined, message: string) {
-  const cleanNumber = sanitizePhoneNumber(number);
-  if (!cleanNumber) return null;
-  return `https://wa.me/${cleanNumber}?text=${encodeURIComponent(message)}`;
-}
+// Shared order-flow helpers (lib/orderFlow) — one phone sanitizer + wa.me
+// builder across the cart, the marketplace PDP, and the /site storefront PDP.
+import { buildWhatsAppLink as generateWhatsAppLink } from '@/lib/orderFlow';
 
 export default function Cart() {
   const { cartItems, isCartOpen, setIsCartOpen, updateQuantity, removeFromCart } = useCart();

@@ -8,17 +8,51 @@ import Link from 'next/link';
 import { useCart } from '@/components/CartProvider';
 import ReviewForm from '@/components/ReviewForm';
 import ReviewList from '@/components/ReviewList';
+import {
+  DEFAULT_ORDER_PHONE,
+  buildDirectOrderMessage,
+  buildWhatsAppLink,
+  recordLead,
+} from '@/lib/orderFlow';
 
-export default function ProductClient({ product: initialProduct }: { product?: any }) {
-  const [product, setProduct] = useState<any>(initialProduct || null);
+// The joined shops row this page reads (select in loadProduct) — typed so the
+// checkout call sites stay honest instead of `any`.
+type ProductShop = {
+  id: string;
+  phone: string | null;
+  shop_name: string | null;
+  shop_slug: string | null;
+  logo_url: string | null;
+  offers_delivery: boolean | null;
+  offers_pickup: boolean | null;
+};
+
+// Fields this component actually renders/orders with. The select is `*`, so
+// extra columns ride along untyped — only the accessed shape is declared.
+type MarketplaceProduct = {
+  id: string;
+  user_id: string | null;
+  name: string;
+  price: number;
+  description: string | null;
+  image_url: string | null;
+  ad_video_url: string | null;
+  ad_hero_image_url: string | null;
+  stock_quantity: number | null;
+  colors: string[] | null;
+  sizes: string[] | null;
+  shops: ProductShop | null;
+};
+
+export default function ProductClient({ product: initialProduct }: { product?: MarketplaceProduct }) {
+  const [product, setProduct] = useState<MarketplaceProduct | null>(initialProduct || null);
   const [loading, setLoading] = useState(!initialProduct);
-  const [shopSettings, setShopSettings] = useState<any>(initialProduct?.shops || null);
-  
+  const [shopSettings, setShopSettings] = useState<ProductShop | null>(initialProduct?.shops || null);
+
   // 🟢 TERMINAL STATE
   const [showTerminal, setShowTerminal] = useState(false);
   const [paymentStep, setPaymentStep] = useState('SELECT');
   const [copied, setCopied] = useState(false);
-  const [isOutOfStock, setIsOutOfStock] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [selectedColor, setSelectedColor] = useState('');
   const [selectedSize, setSelectedSize] = useState('');
@@ -30,7 +64,9 @@ export default function ProductClient({ product: initialProduct }: { product?: a
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
-  const DEFAULT_PHONE = "2207470187"; 
+  // Shared platform fallback (lib/orderFlow) — one source of truth with the
+  // cart drawer and the /site storefront PDP.
+  const DEFAULT_PHONE = DEFAULT_ORDER_PHONE;
 
   useEffect(() => {
     async function loadProduct() {
@@ -53,11 +89,9 @@ export default function ProductClient({ product: initialProduct }: { product?: a
     loadProduct();
   }, [params]);
 
-  useEffect(() => {
-    if (product?.stock_quantity !== undefined && product?.stock_quantity !== null) {
-      setIsOutOfStock(product.stock_quantity === 0);
-    }
-  }, [product]);
+  // Derived, not state: exactly the old effect's truth table (unknown stock →
+  // false) without the setState-in-effect cascade the lint flagged.
+  const isOutOfStock = product?.stock_quantity === 0;
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -69,41 +103,44 @@ export default function ProductClient({ product: initialProduct }: { product?: a
     setRefreshTrigger(prev => prev + 1);
   };
 
+  // Shared order mechanics (lib/orderFlow): lead capture, the platform's
+  // direct-order message, and a SANITIZED wa.me link — raw stored phones with
+  // "+"/spaces used to mint broken links here.
   const handleOrder = (method: string) => {
+    // Narrowing guard: the terminal only renders after the !product early
+    // return, so this never fires at runtime — it proves it to the compiler.
+    if (!product) return;
     if (method === 'Wave' && paymentStep === 'SELECT') {
         setPaymentStep('WAVE_INFO');
         return;
     }
 
-    if (product.user_id) {
-        supabase.from('leads').insert({
-            seller_id: product.user_id,
-            product_id: product.id,
-            product_name: product.name,
-            product_price: product.price,
-            created_at: new Date().toISOString()
-        }).then(({ error }) => {
-            if (error) console.error('[leads] insert failed:', error.message);
-        });
-    }
+    recordLead(supabase, {
+        sellerId: product.user_id,
+        productId: product.id,
+        productName: product.name,
+        productPrice: product.price,
+    });
 
     const sellerPhone = product.shops?.phone || DEFAULT_PHONE;
-    let message = `👋 Hello ${product.shops?.shop_name || 'Seller'}! \n\nI want to buy: *${product.name}* \n💰 Price: D${product.price}`;
+    const message = buildDirectOrderMessage({
+        shopName: product.shops?.shop_name,
+        productName: product.name,
+        price: product.price,
+        method: method === 'Wave' ? 'Wave' : 'Cash',
+        sellerPhone,
+    });
 
-    if (method === 'Wave') {
-        message += `\n\n💳 Payment Method: *Wave / Sadam* \n✅ I have copied your number (${sellerPhone}) and I am sending the money now. \n\nPlease confirm receipt.`;
-    } else {
-        message += `\n\n💵 Payment Method: *Cash on Delivery* \n📍 I will pay when you deliver.`;
-    }
-    
-    const waLink = `https://wa.me/${sellerPhone}?text=${encodeURIComponent(message)}`;
+    const waLink = buildWhatsAppLink(sellerPhone, message) ?? buildWhatsAppLink(DEFAULT_PHONE, message)!;
     window.open(waLink, '_blank');
-    
+
     setShowTerminal(false);
     setPaymentStep('SELECT');
   };
 
-  const FulfillmentSelector = () => (shopSettings?.offers_delivery || shopSettings?.offers_pickup) ? (
+  // Plain JSX element (not a component created during render — the lint-flagged
+  // pattern remounted its subtree every render). Same markup, same behavior.
+  const fulfillmentSelector = (shopSettings?.offers_delivery || shopSettings?.offers_pickup) ? (
     <div className="pt-2 pb-4">
       <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Fulfillment Method</p>
       <div className="flex gap-3">
@@ -273,7 +310,7 @@ export default function ProductClient({ product: initialProduct }: { product?: a
             ) : (
               <>
                 {/* Fulfillment Method Selection */}
-                <FulfillmentSelector />
+                {fulfillmentSelector}
 
                 {/* 🟢 THE FIXED BUTTON */}
                 <div className="pt-4 flex flex-col md:flex-row gap-4">

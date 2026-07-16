@@ -1,6 +1,5 @@
 'use client';
 
-import { createBrowserClient } from '@supabase/ssr';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -8,16 +7,25 @@ import {
   Globe, Crown, Loader2, ExternalLink, Lock,
   RefreshCw, Eye, EyeOff, Wand2, Compass,
 } from 'lucide-react';
-import { SITE_TEMPLATES, SiteConceptSchema, type SiteConcept, type WebsiteConfig, type TemplateKey } from '@/lib/siteTemplates';
+import { SITE_TEMPLATES, SiteConceptSchema, type ShopWebsiteRow, type SiteConcept } from '@/lib/siteTemplates';
 import { slugify } from '@/lib/slugify';
 import ConceptCard from '@/components/website/ConceptCard';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AI Website Studio — the full generator experience, embedded as the flagship
-// section of /dashboard/customize. Carries the complete 2-step flow:
+// section of Online Store → Themes. Carries the complete 2-step flow:
 // consultation → visual concept choice → build → preview/publish, with
 // abort/cancel, timeouts, slug write-repair, and publish toggling intact.
 // Advanced/Flagship tiers only; everyone else sees the premium lock.
+//
+// The website row is CONTROLLED BY THE PAGE (loaded once through the owner
+// content API, GET /api/websites/content). The studio previously read
+// shop_websites with the browser client here — that table has no select
+// policies, so the read returned zero rows silently and every pre-existing
+// site presented as "No website generated yet" until a generate/publish
+// response repopulated state. Generate/build/publish responses flow back up
+// through onWebsiteChange so the page (and the Site Editor beside this
+// studio) stay in sync.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type StudioShop = {
@@ -27,15 +35,11 @@ export type StudioShop = {
   subscription_tier: string | null;
 };
 
-type WebsiteRow = {
-  id: string;
-  shop_id: string;
-  template_key: TemplateKey;
-  config: WebsiteConfig;
-  status: 'draft' | 'published';
-  niche_reasoning: string | null;
-  generated_at: string;
-  published_at: string | null;
+type StudioProps = {
+  shop: StudioShop;
+  website: ShopWebsiteRow | null;
+  websiteLoading: boolean;
+  onWebsiteChange: (row: ShopWebsiteRow) => void;
 };
 
 const WEBSITE_TIERS = ['advanced', 'flagship'];
@@ -51,10 +55,8 @@ const STEP_TIMEOUT_MS = 125_000;
 //   building   → Step 2 running (full site generation for the chosen concept)
 type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
 
-export default function WebsiteGeneratorStudio({ shop }: { shop: StudioShop }) {
-  const [siteLoading, setSiteLoading] = useState(true);
+export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, onWebsiteChange }: StudioProps) {
   const [shopSlug, setShopSlug] = useState<string | null>(shop.shop_slug);
-  const [website, setWebsite] = useState<WebsiteRow | null>(null);
   const [phase, setPhase] = useState<GenPhase>('idle');
   const [concepts, setConcepts] = useState<SiteConcept[] | null>(null);
   const [conceptReasoning, setConceptReasoning] = useState<string | null>(null);
@@ -68,32 +70,8 @@ export default function WebsiteGeneratorStudio({ shop }: { shop: StudioShop }) {
   // tell a seller-initiated cancel from a timeout from navigation.
   const abortRef = useRef<AbortController | null>(null);
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-
   const tier = (shop.subscription_tier ?? '').toLowerCase().trim();
   const hasAccess = WEBSITE_TIERS.includes(tier);
-
-  // Load the existing website row (Advanced only — locked sellers never need it).
-  useEffect(() => {
-    if (!hasAccess) { setSiteLoading(false); return; }
-    let cancelled = false;
-    (async () => {
-      const { data } = await supabase
-        .from('shop_websites')
-        .select('*')
-        .eq('shop_id', shop.id)
-        .maybeSingle();
-      if (!cancelled) {
-        setWebsite(data as WebsiteRow | null);
-        setSiteLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shop.id, hasAccess]);
 
   // Elapsed ticker during either AI step.
   const busy = phase === 'consulting' || phase === 'building';
@@ -226,7 +204,7 @@ export default function WebsiteGeneratorStudio({ shop }: { shop: StudioShop }) {
         return;
       }
       syncShopSlug(data.shop_slug);
-      setWebsite(data as WebsiteRow);
+      onWebsiteChange(data as ShopWebsiteRow);
       setConcepts(null);
       setConceptReasoning(null);
       setSelectedConcept(null);
@@ -282,7 +260,7 @@ export default function WebsiteGeneratorStudio({ shop }: { shop: StudioShop }) {
         return;
       }
       syncShopSlug(data.shop_slug);
-      setWebsite(data as WebsiteRow);
+      onWebsiteChange(data as ShopWebsiteRow);
     } catch {
       setError('Network error updating publish state.');
     } finally {
@@ -363,13 +341,13 @@ export default function WebsiteGeneratorStudio({ shop }: { shop: StudioShop }) {
       )}
 
       {/* ── Studio (Advanced) ─────────────────────────────────────────────── */}
-      {hasAccess && siteLoading && (
+      {hasAccess && websiteLoading && (
         <div className="flex items-center justify-center rounded-[2rem] border border-gray-100 bg-white p-14 shadow-sm">
           <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
         </div>
       )}
 
-      {hasAccess && !siteLoading && (
+      {hasAccess && !websiteLoading && (
         <div className="space-y-6">
 
           {/* Step 1 — Consultation controls */}
