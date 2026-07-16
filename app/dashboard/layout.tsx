@@ -5,9 +5,11 @@ import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { Lock, Loader2 } from 'lucide-react';
 import AdRenderNotifier from '@/components/adstudio/AdRenderNotifier';
+import DashboardSidebar from '@/components/dashboard/DashboardSidebar';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<string | null>(null);
+  const [shopName, setShopName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [paymentLink, setPaymentLink] = useState('https://wa.me/447599710468');
   
@@ -32,6 +34,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       
       if (data) {
         setStatus(data.subscription_tier);
+        setShopName(data.shop_name ?? null);
 
         // 🧠 THE MAGIC: Read their memory and generate the personalized professional invoice
         if (data.subscription_tier === 'pending' || data.subscription_tier === 'suspended') {
@@ -102,12 +105,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
 
-  // Activated accounts get the dashboard-wide Ad Studio render notifier:
-  // video generations render in the background, so completion toasts + the
-  // unseen badge must live on EVERY dashboard page, not just the studio.
+  // Activated accounts get the persistent Shopify-standard sidebar plus the
+  // dashboard-wide Ad Studio render notifier: video generations render in the
+  // background, so completion toasts + the unseen badge must live on EVERY
+  // dashboard page, not just the studio. The lg:pl-60 content region matches
+  // the fixed w-60 sidebar; below lg the sidebar becomes a floating-trigger
+  // drawer and pages keep their full-width designs.
   return (
     <>
-      {children}
+      <DashboardSidebar shopName={shopName} />
+      <div className="lg:pl-60">{children}</div>
       <AdRenderNotifier />
     </>
   );
