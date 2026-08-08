@@ -97,6 +97,11 @@ export const SITE_COPY_LIMITS = {
   cta_button_label: 40,
   seo_title: 70,
   seo_description: 170,
+  // Phase 4 — product_tabs block budgets. tab_title stays terse (a tab strip
+  // wraps badly), tab_content is a short paragraph per panel.
+  tabs_heading: 60,
+  tab_title: 40,
+  tab_content: 400,
 } as const;
 
 const copy = (max: number) => z.string().min(1).max(max);
@@ -131,6 +136,12 @@ export const ProductGridBlockSchema = z.object({
   type: z.literal('product_grid'),
   title: copy(SITE_COPY_LIMITS.collection_title),
   intro: copy(SITE_COPY_LIMITS.collection_intro),
+  /** Phase 4 — presentation switch for the collection section. OPTIONAL and
+   *  additive: absent means 'grid', so every stored row keeps validating and
+   *  renders the exact historical grid. 'carousel' renders the horizontal
+   *  scroll-snap track. No site.* mirror exists for it — blocksToLegacySite
+   *  deliberately never reads it. */
+  displayMode: z.enum(['grid', 'carousel']).optional(),
 });
 
 export const StoryTextBlockSchema = z.object({
@@ -147,12 +158,44 @@ export const CTABannerBlockSchema = z.object({
   button_label: copy(SITE_COPY_LIMITS.cta_button_label),
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 4 blocks — seller-added sections. Neither type has a site.* mirror
+// field: blocksToLegacySite ignores them (existing mirror values preserved)
+// and legacySiteToBlocks never fabricates them, so a legacy row can never
+// grow one implicitly. They enter a config ONLY through the Site Editor's
+// explicit "Add section" flow; the AI generation schema deliberately excludes
+// them (the model must never invent video URLs or tab structures).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const ProductTabsBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal('product_tabs'),
+  title: copy(SITE_COPY_LIMITS.tabs_heading),
+  tabs: z.array(z.object({
+    title: copy(SITE_COPY_LIMITS.tab_title),
+    content: copy(SITE_COPY_LIMITS.tab_content),
+  })).min(2).max(4),
+});
+
+export const VideoHeroBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal('video_hero'),
+  /** Seller-owned asset URL (Ad Studio render or a validated manual URL) —
+   *  never AI-invented. */
+  videoUrl: z.string().url(),
+  headline: copy(SITE_COPY_LIMITS.hero_headline).optional(),
+  subheadline: copy(SITE_COPY_LIMITS.hero_subheadline).optional(),
+  posterUrl: z.string().url().optional(),
+});
+
 export const SiteBlockSchema = z.discriminatedUnion('type', [
   HeroBannerBlockSchema,
   ValuePropsBlockSchema,
   ProductGridBlockSchema,
   StoryTextBlockSchema,
   CTABannerBlockSchema,
+  ProductTabsBlockSchema,
+  VideoHeroBlockSchema,
 ]);
 
 export type SiteBlock = z.infer<typeof SiteBlockSchema>;
@@ -239,7 +282,10 @@ export function legacySiteToBlocks(site: WebsiteSiteCopy): SiteBlock[] {
 /** Mirror block copy back into the legacy site.* fields. seo.* is preserved
  *  from existingSite (fixed field — no block carries it), as is any field
  *  whose block type is absent from the array. When a type repeats, the last
- *  block wins — deterministic. Pure: never mutates its inputs. */
+ *  block wins — deterministic. Pure: never mutates its inputs.
+ *  TOTAL over the union by construction: block types with no site.* counterpart
+ *  (product_tabs, video_hero — and product_grid.displayMode within its case)
+ *  fall through the switch untouched, so the existing mirror values survive. */
 export function blocksToLegacySite(blocks: SiteBlock[], existingSite: WebsiteSiteCopy): WebsiteSiteCopy {
   const site: WebsiteSiteCopy = {
     ...existingSite,
@@ -336,7 +382,15 @@ export type WebsiteGeneration = z.infer<typeof WebsiteGenerationSchema>;
 
 /** Assemble the stored config from LLM output: blocks with stable ids plus
  *  the site.* mirror derived through blocksToLegacySite, so both
- *  representations are consistent by construction. */
+ *  representations are consistent by construction.
+ *
+ *  REGENERATE CONTRACT (Phase 4, preserved as found): generate-website Step 2
+ *  upserts this config WHOLESALE — there is no merge with the previously
+ *  stored blocks. Regenerating a site therefore rebuilds the classic 5-block
+ *  anatomy and drops any seller-added product_tabs/video_hero blocks along
+ *  with every copy edit, exactly as copy edits were already dropped pre-Phase
+ *  4. The generation schema stays classic-only on purpose: the model never
+ *  invents video URLs or tab structures. */
 export function generationToConfig(gen: WebsiteGeneration): WebsiteConfig {
   const blocks: SiteBlock[] = [
     {

@@ -8,7 +8,10 @@ import {
   type SiteProduct,
   type SiteTemplateProps,
 } from '@/lib/siteTemplates';
+import CarouselTrack from './CarouselTrack';
 import EditableText from './EditableText';
+import ProductTabsIsland from './ProductTabsIsland';
+import VideoHeroMedia from './VideoHeroMedia';
 import RitualChrome, {
   RITUAL_COLLECTION_GRID,
   RitualProductCard,
@@ -29,6 +32,14 @@ import RitualChrome, {
 // respected as-is. Copy nodes carry data-block-id/data-block-field for the
 // dashboard Site Editor (inert on the public site).
 //
+// Phase 4: product_grid honors displayMode ('carousel' renders the shared
+// scroll-snap CarouselTrack; absent/'grid' keeps the exact historical grid
+// markup), and the seller-added product_tabs / video_hero blocks render in
+// array order alongside the classic five. The grid/tabs/film section
+// wrappers carry data-block-section markers for the Site Editor's floating
+// settings chip — inert data attributes on the public site, exactly like the
+// EditableText copy markers.
+//
 // Omnichannel router: the nav + footer live in chrome/RitualChrome (shared by
 // /site home, /collections, and /products/[id]) and every journey stays on
 // /site — product cards open the on-site PDP, collection CTAs open the full
@@ -40,6 +51,8 @@ type ValuePropsBlock = Extract<SiteBlock, { type: 'value_props' }>;
 type ProductGridBlock = Extract<SiteBlock, { type: 'product_grid' }>;
 type StoryBlock = Extract<SiteBlock, { type: 'story_text' }>;
 type CtaBlock = Extract<SiteBlock, { type: 'cta_banner' }>;
+type ProductTabsBlock = Extract<SiteBlock, { type: 'product_tabs' }>;
+type VideoHeroBlock = Extract<SiteBlock, { type: 'video_hero' }>;
 
 function RitualHero({ block, shop, heroMedia, collectionsHref }: {
   block: HeroBlock;
@@ -128,7 +141,7 @@ function RitualProductGrid({ block, shop, products }: {
   products: SiteProduct[];
 }) {
   return (
-    <section id="collection" className="mx-auto max-w-7xl px-5 py-20 md:px-10 md:py-28">
+    <section id="collection" data-block-section={block.id} className="mx-auto max-w-7xl px-5 py-20 md:px-10 md:py-28">
       <div className="mx-auto max-w-xl text-center">
         <EditableText as="h2" blockId={block.id} field="title" className="font-serif text-3xl font-bold tracking-tight text-stone-900 md:text-5xl">
           {block.title}
@@ -138,10 +151,77 @@ function RitualProductGrid({ block, shop, products }: {
         </EditableText>
       </div>
 
-      <div className={`mt-14 md:mt-20 ${RITUAL_COLLECTION_GRID}`}>
-        {products.slice(0, 12).map((p, i) => (
-          <RitualProductCard key={p.id} product={p} index={i} href={ritualProductHref(shop, p.id)} />
-        ))}
+      {block.displayMode === 'carousel' ? (
+        <div className="mt-14 md:mt-20">
+          <CarouselTrack
+            ariaLabel={block.title}
+            trackClassName="gap-5 pb-2 md:gap-8"
+            itemClassName="w-[68vw] max-w-[300px] sm:w-[300px]"
+            buttonClassName="h-11 w-11 rounded-full bg-white text-stone-900 shadow-lg ring-1 ring-stone-200 hover:bg-stone-100 active:scale-95"
+            items={products.slice(0, 12).map((p, i) => ({
+              key: p.id,
+              node: <RitualProductCard product={p} index={i} href={ritualProductHref(shop, p.id)} />,
+            }))}
+          />
+        </div>
+      ) : (
+        <div className={`mt-14 md:mt-20 ${RITUAL_COLLECTION_GRID}`}>
+          {products.slice(0, 12).map((p, i) => (
+            <RitualProductCard key={p.id} product={p} index={i} href={ritualProductHref(shop, p.id)} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function RitualProductTabs({ block }: { block: ProductTabsBlock }) {
+  return (
+    <section data-block-section={block.id} className="border-b border-stone-200 bg-white py-16 md:py-24">
+      <div className="mx-auto max-w-4xl px-5 md:px-10">
+        <EditableText
+          as="h2"
+          blockId={block.id}
+          field="title"
+          className="text-center font-serif text-3xl font-bold tracking-tight text-stone-900 md:text-4xl"
+        >
+          {block.title}
+        </EditableText>
+        <div className="mt-10">
+          <ProductTabsIsland blockId={block.id} tabs={block.tabs} variant="ritual" />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function RitualVideoHero({ block, shopName }: { block: VideoHeroBlock; shopName: string | null }) {
+  return (
+    <section data-block-section={block.id} className="relative flex h-[72vh] min-h-[480px] w-full items-end overflow-hidden bg-stone-900">
+      <VideoHeroMedia
+        src={block.videoUrl}
+        poster={block.posterUrl ?? null}
+        alt={shopName ?? 'Brand film'}
+        className="absolute inset-0 h-full w-full object-cover"
+        fallbackClassName="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(214,203,186,0.35),transparent_55%),linear-gradient(to_bottom_right,#292524,#1c1917,#3a352e)]"
+      />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+      <div className="relative mx-auto w-full max-w-7xl px-5 pb-14 md:px-10 md:pb-20">
+        {block.headline && (
+          <EditableText
+            as="h2"
+            blockId={block.id}
+            field="headline"
+            className="max-w-2xl font-serif text-3xl font-bold leading-[1.08] tracking-tight text-white md:text-5xl"
+          >
+            {block.headline}
+          </EditableText>
+        )}
+        {block.subheadline && (
+          <EditableText as="p" blockId={block.id} field="subheadline" className="mt-4 max-w-xl text-base leading-relaxed text-white/80">
+            {block.subheadline}
+          </EditableText>
+        )}
       </div>
     </section>
   );
@@ -209,6 +289,10 @@ export default function RitualTemplate({ shop, products, config, heroMedia }: Si
             return <RitualStory key={block.id} block={block} shopName={shop.shop_name} />;
           case 'cta_banner':
             return <RitualCta key={block.id} block={block} collectionsHref={collectionsHref} />;
+          case 'product_tabs':
+            return <RitualProductTabs key={block.id} block={block} />;
+          case 'video_hero':
+            return <RitualVideoHero key={block.id} block={block} shopName={shop.shop_name} />;
           default:
             return null;
         }

@@ -9,7 +9,10 @@ import {
   type SiteShop,
   type SiteTemplateProps,
 } from '@/lib/siteTemplates';
+import CarouselTrack from './CarouselTrack';
 import EditableText from './EditableText';
+import ProductTabsIsland from './ProductTabsIsland';
+import VideoHeroMedia from './VideoHeroMedia';
 import EditorialChrome, {
   EDITORIAL_COLLECTION_GRID,
   EditorialProductCard,
@@ -40,6 +43,15 @@ import EditorialChrome, {
 // respected as-is. Copy nodes carry data-block-id/data-block-field for the
 // dashboard Site Editor (inert on the public site).
 //
+// Phase 4: product_grid honors displayMode ('carousel' renders the shared
+// scroll-snap CarouselTrack in the hairline dialect; absent/'grid' keeps the
+// exact historical grid markup), and the seller-added product_tabs /
+// video_hero blocks flow in array order — they are body blocks, never design
+// slots, so the pinned index row and chrome sign-off are untouched. The
+// grid/tabs/film section wrappers carry data-block-section markers for the
+// Site Editor's floating settings chip — inert data attributes on the public
+// site, exactly like the EditableText copy markers.
+//
 // Omnichannel router: the masthead + sign-off footer live in
 // chrome/EditorialChrome (shared by /site home, /collections, and
 // /products/[id]) and every journey stays on /site — features and grid plates
@@ -51,6 +63,8 @@ type HeroBlock = Extract<SiteBlock, { type: 'hero_banner' }>;
 type ValuePropsBlock = Extract<SiteBlock, { type: 'value_props' }>;
 type ProductGridBlock = Extract<SiteBlock, { type: 'product_grid' }>;
 type StoryBlock = Extract<SiteBlock, { type: 'story_text' }>;
+type ProductTabsBlock = Extract<SiteBlock, { type: 'product_tabs' }>;
+type VideoHeroBlock = Extract<SiteBlock, { type: 'video_hero' }>;
 
 function EditorialHero({ block, shop, heroMedia }: {
   block: HeroBlock;
@@ -156,7 +170,7 @@ function EditorialGrid({ block, shop, products }: {
   products: SiteProduct[];
 }) {
   return (
-    <section id="collection" className="border-b border-neutral-900">
+    <section id="collection" data-block-section={block.id} className="border-b border-neutral-900">
       <div className="flex flex-col items-start justify-between gap-4 px-5 py-10 md:flex-row md:items-baseline md:px-10 md:py-14">
         <EditableText as="h2" blockId={block.id} field="title" className="font-serif text-4xl font-black tracking-tight md:text-6xl">
           {block.title}
@@ -165,10 +179,83 @@ function EditorialGrid({ block, shop, products }: {
           {block.intro}
         </EditableText>
       </div>
-      <div className={EDITORIAL_COLLECTION_GRID}>
-        {products.slice(0, 12).map((p, i) => (
-          <EditorialProductCard key={p.id} product={p} index={i} href={editorialProductHref(shop, p.id)} />
-        ))}
+      {block.displayMode === 'carousel' ? (
+        <CarouselTrack
+          ariaLabel={block.title}
+          trackClassName="gap-px border-t border-neutral-900 bg-neutral-900"
+          itemClassName="w-[64vw] max-w-[300px] bg-[#F7F5F0] sm:w-[300px]"
+          buttonClassName="h-11 w-11 border border-neutral-900 bg-[#F7F5F0] text-neutral-900 shadow-lg hover:bg-neutral-900 hover:text-[#F7F5F0] active:scale-95"
+          items={products.slice(0, 12).map((p, i) => ({
+            key: p.id,
+            node: <EditorialProductCard product={p} index={i} href={editorialProductHref(shop, p.id)} />,
+          }))}
+        />
+      ) : (
+        <div className={EDITORIAL_COLLECTION_GRID}>
+          {products.slice(0, 12).map((p, i) => (
+            <EditorialProductCard key={p.id} product={p} index={i} href={editorialProductHref(shop, p.id)} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function EditorialProductTabs({ block }: { block: ProductTabsBlock }) {
+  return (
+    <section data-block-section={block.id} className="border-b border-neutral-900 px-5 py-16 md:px-10 md:py-24">
+      <div className="mx-auto max-w-4xl">
+        <EditableText
+          as="h2"
+          blockId={block.id}
+          field="title"
+          className="font-serif text-3xl font-black tracking-tight md:text-5xl"
+        >
+          {block.title}
+        </EditableText>
+        <div className="mt-8 md:mt-10">
+          <ProductTabsIsland blockId={block.id} tabs={block.tabs} variant="editorial" />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function EditorialVideoHero({ block, shopName }: { block: VideoHeroBlock; shopName: string | null }) {
+  return (
+    <section data-block-section={block.id} className="border-b border-neutral-900">
+      <div className="relative min-h-[380px] overflow-hidden md:min-h-[560px]">
+        <VideoHeroMedia
+          src={block.videoUrl}
+          poster={block.posterUrl ?? null}
+          alt={shopName ?? 'Brand film'}
+          className="absolute inset-0 h-full w-full object-cover"
+          fallbackClassName="absolute inset-0 bg-gradient-to-br from-neutral-200 via-[#EDEAE2] to-neutral-300"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-neutral-950/75 via-neutral-950/15 to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 px-5 py-10 md:px-10 md:py-14">
+          <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-white/60">The Film</p>
+          {block.headline && (
+            <EditableText
+              as="h2"
+              blockId={block.id}
+              field="headline"
+              className="mt-3 max-w-3xl font-serif text-3xl italic leading-tight text-white md:text-5xl"
+            >
+              {block.headline}
+            </EditableText>
+          )}
+          {block.subheadline && (
+            <EditableText
+              as="p"
+              blockId={block.id}
+              field="subheadline"
+              className="mt-4 max-w-xl text-sm leading-relaxed text-white/75 md:text-base"
+            >
+              {block.subheadline}
+            </EditableText>
+          )}
+        </div>
       </div>
     </section>
   );
@@ -236,6 +323,10 @@ export default function EditorialTemplate({ shop, products, config, heroMedia }:
             return <EditorialGrid key={block.id} block={block} shop={shop} products={products} />;
           case 'story_text':
             return <EditorialStory key={block.id} block={block} shopName={shop.shop_name} />;
+          case 'product_tabs':
+            return <EditorialProductTabs key={block.id} block={block} />;
+          case 'video_hero':
+            return <EditorialVideoHero key={block.id} block={block} shopName={shop.shop_name} />;
           default:
             return null;
         }
