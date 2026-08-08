@@ -64,6 +64,11 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [elapsedSec, setElapsedSec] = useState(0);
+  const [isWarningModalOpen, setIsWarningModalOpen] = useState(false);
+
+  // Cancel is the safe default — focus lands on it when the overwrite
+  // warning opens, and Escape dismisses without firing anything.
+  const warningCancelRef = useRef<HTMLButtonElement | null>(null);
 
   // Controller for the in-flight AI step. Aborted with a reason string
   // ('cancel' | 'timeout' | 'unmount' | 'superseded') so the catch blocks can
@@ -85,6 +90,17 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
   // Abort any in-flight AI step when the seller navigates away — no leaked
   // requests, no setState on an unmounted component.
   useEffect(() => () => { abortRef.current?.abort('unmount'); }, []);
+
+  // Overwrite-warning modal keyboard/focus wiring, active only while open.
+  useEffect(() => {
+    if (!isWarningModalOpen) return;
+    warningCancelRef.current?.focus();
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsWarningModalOpen(false);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isWarningModalOpen]);
 
   const beginStep = () => {
     abortRef.current?.abort('superseded');
@@ -179,6 +195,25 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
       clearTimeout(timeout);
       if (abortRef.current === controller) abortRef.current = null;
     }
+  };
+
+  // Destructive gate in front of Step 1. The execute step upserts config
+  // WHOLESALE (generationToConfig in lib/siteTemplates.ts): seller-added
+  // video_hero/product_tabs blocks and every inline copy edit are dropped.
+  // So an existing website interposes the warning modal before the
+  // consultation fires; a first-time seller has nothing to lose and proceeds
+  // directly — showing them an "overwrite" warning would be dishonest UX.
+  const handleConsultClick = () => {
+    if (website) {
+      setIsWarningModalOpen(true);
+      return;
+    }
+    void handleConsult();
+  };
+
+  const handleConfirmOverwrite = () => {
+    setIsWarningModalOpen(false);
+    void handleConsult();
   };
 
   // ── Step 2: build the chosen concept ────────────────────────────────────
@@ -367,7 +402,7 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
 
                 <div className="flex shrink-0 items-center gap-3">
                   <button
-                    onClick={handleConsult}
+                    onClick={handleConsultClick}
                     disabled={phase === 'consulting'}
                     className="flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#1a2e1a] to-gray-900 px-8 py-3.5 text-[10px] font-bold uppercase tracking-widest text-white shadow-md transition-all hover:opacity-90 hover:shadow-lg active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -641,6 +676,66 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
           )}
         </div>
       )}
+
+      {/* ── Destructive overwrite warning ─────────────────────────────────
+          Sits above every layer of dashboard chrome (notifier stack z-[60],
+          sidebar drawer z-[70]/z-[75], editor save bar) at z-[90]. */}
+      <AnimatePresence>
+        {isWarningModalOpen && (
+          <motion.div
+            key="overwrite-warning"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            className="fixed inset-0 z-[90] flex items-center justify-center p-4"
+          >
+            <button
+              type="button"
+              aria-label="Cancel and keep my current design"
+              onClick={() => setIsWarningModalOpen(false)}
+              className="absolute inset-0 cursor-default bg-neutral-950/60 backdrop-blur-sm"
+            />
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="overwrite-warning-title"
+              initial={{ opacity: 0, scale: 0.95, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl md:p-8"
+            >
+              <h3 id="overwrite-warning-title" className="font-serif text-xl font-bold leading-snug text-gray-900">
+                ⚠️ Warning: This will replace your current design.
+              </h3>
+              <p className="mt-3 text-sm leading-relaxed text-gray-600">
+                Generating a new concept will completely overwrite your existing website layout.
+                Any custom sections you added (like Videos or Tabs) and any text you manually
+                edited will be lost permanently.
+              </p>
+              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  ref={warningCancelRef}
+                  type="button"
+                  onClick={() => setIsWarningModalOpen(false)}
+                  className="rounded-full border border-gray-200 bg-white px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:bg-gray-50 active:scale-95"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmOverwrite}
+                  disabled={busy}
+                  className="rounded-full bg-red-600 px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-white shadow-md transition hover:bg-red-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Yes, Overwrite My Site
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </section>
   );
 }
