@@ -9,12 +9,16 @@
 
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
-import { useState, useEffect, useMemo } from 'react';
-import { ArrowLeft, Crown, Loader2, Save, Store, Image as ImageIcon, Camera, Palette, LayoutTemplate, Truck, MapPin, CheckCircle2, Lock, PenLine } from 'lucide-react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import useSWR, { SWRConfig } from 'swr';
+import { ArrowLeft, Crown, Loader2, Save, Store, Image as ImageIcon, Camera, Palette, LayoutTemplate, Truck, MapPin, CheckCircle2, Lock, PenLine, WifiOff, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import WebsiteGeneratorStudio, { type StudioShop } from '@/components/website/WebsiteGeneratorStudio';
 import SiteCopyEditor, { EDITABLE_TEMPLATE_COMPONENTS } from '@/components/website/SiteCopyEditor';
 import { WebsiteConfigSchema, type ShopWebsiteRow, type SiteShop } from '@/lib/siteTemplates';
+import { fetchJSON, isTransportError } from '@/lib/transport';
+import { createPersistedSwrProvider, websiteContentKey } from '@/lib/swrCache';
+import { flushWebsiteOutbox } from '@/lib/offlineOutbox';
 
 // Same gate as the studio and every website API route.
 const WEBSITE_TIERS = ['advanced', 'flagship'];
@@ -39,6 +43,15 @@ const LAYOUTS = [
   { id: 'serrekunda', name: 'The Serrekunda', desc: 'Dense, fast catalog grid', isPremium: true },
 ];
 
+// SWR fetcher for the owner website row — the key carries the user id (cache
+// namespacing); the endpoint itself authenticates via cookies. fetchJSON's
+// 12s deadline means a dead socket surfaces as a classified 'timeout' the
+// retry/backoff machinery handles — never a screen-locking hang.
+async function fetchWebsiteRow(): Promise<ShopWebsiteRow | null> {
+  const data = await fetchJSON<{ website: ShopWebsiteRow | null }>('/api/websites/content');
+  return data.website ?? null;
+}
+
 export default function OnlineStoreThemesPage() {
   const router = useRouter();
   const supabase = createBrowserClient(
@@ -54,13 +67,10 @@ export default function OnlineStoreThemesPage() {
   // Full shop identity the Site Editor's live preview renders with.
   const [editorShop, setEditorShop] = useState<SiteShop | null>(null);
 
-  // The shop_websites row — SINGLE source of truth for this page, loaded once
-  // through the owner content API (GET /api/websites/content). shop_websites
-  // has no select policies, so a browser-client read here would return zero
-  // rows silently; the studio and the Site Editor both hang off this state
-  // and every generate/publish/save response flows back into it.
-  const [website, setWebsite] = useState<ShopWebsiteRow | null>(null);
-  const [websiteLoading, setWebsiteLoading] = useState(true);
+  // The shop_websites row now lives in WebsiteStudioSections below: SWR over
+  // the owner content API with a per-user persisted cache (instant paint from
+  // the last synced row, background revalidate, deadline-bounded transport) —
+  // the bare mount fetch that could hang this page for minutes is gone.
 
   // States
   const [bio, setBio] = useState('');
@@ -118,25 +128,8 @@ export default function OnlineStoreThemesPage() {
         setOffersPickup(shop.offers_pickup || false);
         setLogoUrl(shop.logo_url || null);
         setBannerUrl(shop.banner_url || null);
-
-        // Website row via the owner content API (Advanced only — locked
-        // sellers get the premium pitch, never a wasted 403 round trip).
-        const rowTier = (shop.subscription_tier ?? '').toLowerCase().trim();
-        if (WEBSITE_TIERS.includes(rowTier)) {
-          try {
-            const res = await fetch('/api/websites/content');
-            if (!cancelled && res.ok) {
-              const data = await res.json();
-              setWebsite((data.website as ShopWebsiteRow | null) ?? null);
-            }
-          } catch {
-            // Non-fatal: the studio renders its empty state; a generate or
-            // publish response repopulates the row.
-          }
-        }
       }
       if (!cancelled) {
-        setWebsiteLoading(false);
         setLoading(false);
       }
     }
@@ -203,16 +196,6 @@ export default function OnlineStoreThemesPage() {
   const hasPremiumAccess = subscriptionTier === 'pro' || subscriptionTier === 'advanced' || subscriptionTier === 'flagship';
   const hasWebsiteAccess = WEBSITE_TIERS.includes((subscriptionTier ?? '').toLowerCase().trim());
 
-  // The Site Editor only mounts on schema-clean data for a block-driven
-  // template: the row's jsonb config is re-validated here (same gate the live
-  // /site route applies), and Vitality stays legacy-driven by design.
-  const editorWebsite = useMemo<ShopWebsiteRow | null>(() => {
-    if (!website || !EDITABLE_TEMPLATE_COMPONENTS[website.template_key]) return null;
-    const parsed = WebsiteConfigSchema.safeParse(website.config);
-    if (!parsed.success) return null;
-    return { ...website, config: parsed.data };
-  }, [website]);
-
   const handlePremiumClick = (itemName: string) => {
     alert(`The ${itemName} design is locked. Upgrade to District PRO or ADVANCED to unlock premium branding features!`);
     router.push('/dashboard/settings');
@@ -250,45 +233,17 @@ export default function OnlineStoreThemesPage() {
           <p className="mt-2 text-sm text-gray-500">Your storefront&apos;s design home. Generate your AI website, then tune your boutique&apos;s colors, layout, and brand assets.</p>
         </div>
 
-        {/* FLAGSHIP: AI WEBSITE STUDIO */}
-        {generatorShop && (
-          <WebsiteGeneratorStudio
-            shop={generatorShop}
-            website={website}
-            websiteLoading={websiteLoading}
-            onWebsiteChange={setWebsite}
+        {/* FLAGSHIP: AI WEBSITE STUDIO + SITE EDITOR — the website row lives
+            in SWR behind a per-user persisted cache. Keyed on the user id so
+            an account switch on a shared phone remounts a clean scope. */}
+        {generatorShop && userId && (
+          <WebsiteStudioSections
+            key={userId}
+            userId={userId}
+            generatorShop={generatorShop}
+            editorShop={editorShop}
+            hasWebsiteAccess={hasWebsiteAccess}
           />
-        )}
-
-        {/* SITE EDITOR — inline copy editing on the seller's real site.
-            Advanced/Flagship only, and only once a website exists. Keyed on
-            generated_at so a rebuilt site remounts the editor with fresh
-            blocks; saves keep the mount (generated_at is untouched by PUT). */}
-        {hasWebsiteAccess && editorWebsite && editorShop && (
-          <section id="site-editor" className="mb-12">
-            <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <h2 className="text-2xl font-serif font-bold text-gray-900 flex items-center gap-2.5">
-                    <PenLine size={20} className="text-[#f0a500]" /> Site Editor
-                  </h2>
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-amber-50 to-yellow-50 px-3 py-1 text-[9px] font-bold uppercase tracking-widest text-amber-800 ring-1 ring-amber-200">
-                    <Crown size={11} /> Advanced
-                  </span>
-                </div>
-                <p className="mt-2 max-w-xl text-sm text-gray-500">
-                  Your real website, live. Click any line of copy — the headline, your story, a
-                  button label — and rewrite it in place. Changes stay private until you save.
-                </p>
-              </div>
-            </div>
-            <SiteCopyEditor
-              key={`${editorWebsite.id}:${editorWebsite.generated_at}`}
-              website={editorWebsite}
-              shop={editorShop}
-              onSaved={setWebsite}
-            />
-          </section>
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -443,5 +398,161 @@ export default function OnlineStoreThemesPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WebsiteStudioSections — SWR scope for the shop_websites row.
+//
+// The provider is the per-user persisted cache (lib/swrCache.ts): the last
+// synced row paints instantly from localStorage while SWR revalidates in the
+// background with retry/backoff and focus/reconnect revalidation. The bare
+// mount fetch this replaces could pin `websiteLoading` on a dead socket for
+// minutes; now the transport deadline (12s) classifies the failure and the
+// studio shell renders regardless.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type WebsiteSectionsProps = {
+  userId: string;
+  generatorShop: StudioShop;
+  editorShop: SiteShop | null;
+  hasWebsiteAccess: boolean;
+};
+
+function WebsiteStudioSections(props: WebsiteSectionsProps) {
+  // Stable per user: the provider hands SWR the same persisted cache instance
+  // across page mounts, so client-side navigation keeps in-memory freshness.
+  const provider = useMemo(() => createPersistedSwrProvider(props.userId), [props.userId]);
+  return (
+    <SWRConfig value={{ provider }}>
+      <WebsiteStudioSectionsInner {...props} />
+    </SWRConfig>
+  );
+}
+
+function WebsiteStudioSectionsInner({ userId, generatorShop, editorShop, hasWebsiteAccess }: WebsiteSectionsProps) {
+  // Locked sellers get the premium pitch — null key, never a wasted 403.
+  const { data, error, mutate } = useSWR<ShopWebsiteRow | null>(
+    hasWebsiteAccess ? websiteContentKey(userId) : null,
+    fetchWebsiteRow,
+    {
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+      errorRetryCount: 6,
+      // Connectivity failures retry with SWR's exponential backoff; a server
+      // verdict (4xx/5xx) won't change by hammering — focus/reconnect
+      // revalidation picks those back up instead.
+      shouldRetryOnError: (err) => !(isTransportError(err) && err.kind === 'server'),
+    }
+  );
+
+  const website = data ?? null;
+  // "Loading" now means: no data from EITHER cache or network yet. A seller
+  // with a persisted row never sees this state again — stale paints first.
+  const websiteLoading = hasWebsiteAccess && data === undefined;
+
+  // Single source of truth: generate/build/publish/save responses all route
+  // through SWR's cache, so UI, cache, and localStorage persistence agree.
+  const handleWebsiteChange = useCallback(
+    (row: ShopWebsiteRow) => {
+      void mutate(row, { revalidate: false });
+    },
+    [mutate]
+  );
+
+  // Opportunistic outbox flush — mount + reconnect. The editor (when mounted)
+  // shares the same deduped in-flight promise, so this can never double-PUT;
+  // reconciling here covers queued saves even when the editor isn't rendered.
+  useEffect(() => {
+    if (!hasWebsiteAccess) return;
+    let cancelled = false;
+    const attempt = () => {
+      void flushWebsiteOutbox(userId).then((result) => {
+        if (!cancelled && result.status === 'flushed') {
+          void mutate(result.row, { revalidate: false });
+        }
+      });
+    };
+    attempt();
+    window.addEventListener('online', attempt);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('online', attempt);
+    };
+  }, [userId, hasWebsiteAccess, mutate]);
+
+  const transportError = isTransportError(error) ? error : null;
+  const connectivityIssue = transportError !== null && (transportError.kind === 'offline' || transportError.kind === 'timeout');
+  const serverIssue = transportError !== null && transportError.kind === 'server';
+
+  // The Site Editor only mounts on schema-clean data for a block-driven
+  // template: the row's jsonb config is re-validated here (same gate the live
+  // /site route applies), and Vitality stays legacy-driven by design.
+  const editorWebsite = useMemo<ShopWebsiteRow | null>(() => {
+    if (!website || !EDITABLE_TEMPLATE_COMPONENTS[website.template_key]) return null;
+    const parsed = WebsiteConfigSchema.safeParse(website.config);
+    if (!parsed.success) return null;
+    return { ...website, config: parsed.data };
+  }, [website]);
+
+  return (
+    <>
+      {/* Quiet connectivity chip — a failed revalidate over cached data never
+          locks the studio; it labels the data honestly instead. */}
+      {hasWebsiteAccess && connectivityIssue && (
+        <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-amber-800">
+          <WifiOff size={12} />
+          {data !== undefined
+            ? 'Offline — showing your last synced site. It will refresh automatically.'
+            : 'You appear to be offline — reconnecting…'}
+        </div>
+      )}
+      {hasWebsiteAccess && serverIssue && data === undefined && (
+        <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-red-200 bg-red-50 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-red-700">
+          <AlertTriangle size={12} />
+          {transportError.message}
+        </div>
+      )}
+
+      {/* FLAGSHIP: AI WEBSITE STUDIO */}
+      <WebsiteGeneratorStudio
+        shop={generatorShop}
+        website={website}
+        websiteLoading={websiteLoading}
+        onWebsiteChange={handleWebsiteChange}
+      />
+
+      {/* SITE EDITOR — inline copy editing on the seller's real site.
+          Advanced/Flagship only, and only once a website exists. Keyed on
+          generated_at so a rebuilt site remounts the editor with fresh
+          blocks; saves keep the mount (generated_at is untouched by PUT). */}
+      {hasWebsiteAccess && editorWebsite && editorShop && (
+        <section id="site-editor" className="mb-12">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <div className="flex flex-wrap items-center gap-3">
+                <h2 className="text-2xl font-serif font-bold text-gray-900 flex items-center gap-2.5">
+                  <PenLine size={20} className="text-[#f0a500]" /> Site Editor
+                </h2>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-amber-50 to-yellow-50 px-3 py-1 text-[9px] font-bold uppercase tracking-widest text-amber-800 ring-1 ring-amber-200">
+                  <Crown size={11} /> Advanced
+                </span>
+              </div>
+              <p className="mt-2 max-w-xl text-sm text-gray-500">
+                Your real website, live. Click any line of copy — the headline, your story, a
+                button label — and rewrite it in place. Changes stay private until you save.
+              </p>
+            </div>
+          </div>
+          <SiteCopyEditor
+            key={`${editorWebsite.id}:${editorWebsite.generated_at}`}
+            userId={userId}
+            website={editorWebsite}
+            shop={editorShop}
+            onSaved={handleWebsiteChange}
+          />
+        </section>
+      )}
+    </>
   );
 }

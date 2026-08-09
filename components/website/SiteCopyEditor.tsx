@@ -2,6 +2,7 @@
 
 import { createBrowserClient } from '@supabase/ssr';
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -14,17 +15,26 @@ import {
 import {
   CheckCircle2,
   Clapperboard,
+  CloudOff,
   Film,
   GalleryHorizontal,
   LayoutGrid,
   Loader2,
   MousePointerClick,
+  RefreshCw,
   Rows3,
   Save,
   Trash2,
   Undo2,
   X,
 } from 'lucide-react';
+import { fetchJSON, isTransportError } from '@/lib/transport';
+import {
+  clearWebsiteOutbox,
+  flushWebsiteOutbox,
+  queueWebsiteSave,
+  readWebsiteOutbox,
+} from '@/lib/offlineOutbox';
 import EditorialTemplate from '@/components/site-templates/EditorialTemplate';
 import RitualTemplate from '@/components/site-templates/RitualTemplate';
 import VideoHeroPicker, { type VideoHeroSelection } from '@/components/website/VideoHeroPicker';
@@ -280,16 +290,35 @@ type PickerState = { mode: 'add' } | { mode: 'replace'; blockId: string };
 type ToastState = { kind: 'success' | 'error'; message: string };
 
 type SiteCopyEditorProps = {
+  /** Auth user id — namespaces the offline outbox (shared phones: one
+   *  account's queued edit must never flush under another's session). */
+  userId: string;
   website: ShopWebsiteRow;
   shop: SiteShop;
   /** Receives the fresh row after a successful save (single source of truth
-   *  lives in the page — the studio's copy preview updates with it). */
+   *  lives in the page's SWR cache — the studio's copy preview updates with
+   *  it, and the persisted cache with both). */
   onSaved: (row: ShopWebsiteRow) => void;
 };
 
-export default function SiteCopyEditor({ website, shop, onSaved }: SiteCopyEditorProps) {
-  const [blocks, setBlocks] = useState<SiteBlock[]>(() => structuredClone(resolveBlocks(website.config)));
-  const [savedBlocks, setSavedBlocks] = useState<SiteBlock[]>(() => structuredClone(resolveBlocks(website.config)));
+export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteCopyEditorProps) {
+  // Mount-time outbox seed: a save queued offline (possibly in a previous
+  // session) IS the seller's latest truth for this exact build — the editor
+  // reopens showing it in 'queued' sync state instead of silently presenting
+  // the older server copy. Entries pinned to a different generated_at are
+  // ignored here; the flush below drops them with an honest message.
+  const [outboxSeed] = useState(() => {
+    const entry = readWebsiteOutbox(userId);
+    return entry && entry.baseGeneratedAt === website.generated_at ? entry : null;
+  });
+  const [blocks, setBlocks] = useState<SiteBlock[]>(() =>
+    structuredClone(outboxSeed ? outboxSeed.blocks : resolveBlocks(website.config))
+  );
+  const [savedBlocks, setSavedBlocks] = useState<SiteBlock[]>(() =>
+    structuredClone(outboxSeed ? outboxSeed.blocks : resolveBlocks(website.config))
+  );
+  // 'queued' = the last save is stored on this device awaiting connectivity.
+  const [syncState, setSyncState] = useState<'idle' | 'queued'>(outboxSeed ? 'queued' : 'idle');
   const [products, setProducts] = useState<SiteProduct[]>([]);
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [chip, setChip] = useState<ChipState | null>(null);
@@ -326,6 +355,40 @@ export default function SiteCopyEditor({ website, shop, onSaved }: SiteCopyEdito
     })();
     return () => { cancelled = true; };
   }, [shop.id]);
+
+  // Outbox flush — on mount, on window 'online', and via the manual "Sync
+  // now" affordance. flushWebsiteOutbox dedupes in-flight runs (the page
+  // section flushes opportunistically too), re-checks the row's generated_at
+  // before PUTting, and reports how the entry resolved so the banner and the
+  // page cache reconcile truthfully.
+  const attemptFlush = useCallback(() => {
+    const entry = readWebsiteOutbox(userId);
+    if (!entry) {
+      // Nothing queued (another surface may have flushed it already) — a
+      // stale 'queued' banner must not survive.
+      setSyncState('idle');
+      return;
+    }
+    void flushWebsiteOutbox(userId).then((result) => {
+      if (result.status === 'flushed') {
+        setSyncState('idle');
+        setToast({ kind: 'success', message: 'Back online — your saved changes are synced.' });
+        onSaved(result.row);
+      } else if (result.status === 'dropped') {
+        setSyncState('idle');
+        setToast({ kind: 'error', message: result.error });
+      } else if (result.status === 'empty') {
+        setSyncState('idle');
+      }
+      // 'kept': still offline — stay queued for the next trigger.
+    });
+  }, [userId, onSaved]);
+
+  useEffect(() => {
+    attemptFlush();
+    window.addEventListener('online', attemptFlush);
+    return () => window.removeEventListener('online', attemptFlush);
+  }, [attemptFlush]);
 
   // Scale to the frame width; track the unscaled content height so the
   // scroll spacer matches the VISUAL height (transforms don't affect layout).
@@ -573,24 +636,56 @@ export default function SiteCopyEditor({ website, shop, onSaved }: SiteCopyEdito
       setBlocks(payload);
       setEditing(null);
     }
+    // Optimistic: the UI settles clean immediately; the failure paths below
+    // decide between queue (connectivity) and rollback (server verdict).
+    const rollback = savedBlocks;
+    setSavedBlocks(structuredClone(payload));
+    // Latest-wins: this save supersedes any queued older payload. Cleared
+    // BEFORE the PUT so a concurrent outbox flush can never land stale
+    // blocks on top of this newer write.
+    clearWebsiteOutbox(userId);
     setSaving(true);
     setToast(null);
     try {
-      const res = await fetch('/api/websites/content', {
+      const row = await fetchJSON<ShopWebsiteRow>('/api/websites/content', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ blocks: payload }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setToast({ kind: 'error', message: data.error || 'Failed to save your changes.' });
-        return;
-      }
-      setSavedBlocks(structuredClone(payload));
+      setSyncState('idle');
       setToast({ kind: 'success', message: 'Copy saved — your site is updated.' });
-      onSaved(data as ShopWebsiteRow);
-    } catch {
-      setToast({ kind: 'error', message: 'Network error saving your changes. Please try again.' });
+      onSaved(row);
+    } catch (err) {
+      if (isTransportError(err) && (err.kind === 'offline' || err.kind === 'timeout')) {
+        // Connectivity failure: queue on-device (user-namespaced, pinned to
+        // this build's generated_at) and tell the truth in the save bar.
+        const queued = queueWebsiteSave(userId, {
+          blocks: payload,
+          baseGeneratedAt: website.generated_at,
+        });
+        if (queued) {
+          setSyncState('queued');
+        } else {
+          // localStorage refused (quota/private mode) — stay dirty + honest.
+          setSavedBlocks(rollback);
+          setToast({
+            kind: 'error',
+            message: 'You appear to be offline and this change could not be stored for later — please try again once connected.',
+          });
+        }
+      } else if (isTransportError(err) && err.kind === 'server') {
+        // The API rejected the payload (validation/409) — NEVER queue a
+        // payload that cannot succeed. Roll back the saved marker so the
+        // dirty bar returns, but KEEP the seller's text in the editor.
+        setSavedBlocks(rollback);
+        setToast({ kind: 'error', message: err.message || 'Failed to save your changes.' });
+      } else if (isTransportError(err) && err.kind === 'abort') {
+        // External abort — restore the dirty state silently.
+        setSavedBlocks(rollback);
+      } else {
+        setSavedBlocks(rollback);
+        setToast({ kind: 'error', message: 'Network error saving your changes. Please try again.' });
+      }
     } finally {
       setSaving(false);
     }
@@ -601,6 +696,7 @@ export default function SiteCopyEditor({ website, shop, onSaved }: SiteCopyEdito
   // automatically, and the toggle reads the current displayMode each render.
   const chipBlock = chip ? blocks.find((b) => b.id === chip.blockId) : undefined;
   const atBlockCapacity = blocks.length >= MAX_BLOCKS;
+  const queued = syncState === 'queued';
 
   return (
     <div className="sndk-copy-editor">
@@ -817,8 +913,8 @@ export default function SiteCopyEditor({ website, shop, onSaved }: SiteCopyEdito
         />
       )}
 
-      {/* Sticky save bar — appears only with unsaved changes */}
-      {(dirty || toast) && (
+      {/* Sticky save bar — unsaved changes, sync status, and toasts */}
+      {(dirty || toast || queued) && (
         <div className="sticky bottom-4 z-30 mt-4">
           <div className="mx-auto flex max-w-2xl flex-wrap items-center justify-between gap-3 rounded-full border border-gray-200 bg-white/95 px-5 py-3 shadow-xl backdrop-blur">
             {toast ? (
@@ -826,9 +922,14 @@ export default function SiteCopyEditor({ website, shop, onSaved }: SiteCopyEdito
                 {toast.kind === 'success' ? <CheckCircle2 size={15} /> : <X size={15} />}
                 {toast.message}
               </p>
-            ) : (
+            ) : dirty ? (
               <p className="text-sm font-medium text-gray-700">
                 Unsaved copy changes — save to update your live site.
+              </p>
+            ) : (
+              <p className="flex items-center gap-2 text-sm font-medium text-amber-800">
+                <CloudOff size={15} className="shrink-0 text-amber-600" />
+                Saved on this phone — syncing when you&apos;re back online.
               </p>
             )}
             <div className="flex items-center gap-2">
@@ -838,6 +939,15 @@ export default function SiteCopyEditor({ website, shop, onSaved }: SiteCopyEdito
                   className="rounded-full px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-gray-400 transition hover:text-gray-600"
                 >
                   Dismiss
+                </button>
+              )}
+              {queued && !dirty && (
+                <button
+                  onClick={attemptFlush}
+                  disabled={saving}
+                  className="flex items-center gap-1.5 rounded-full bg-gray-50 px-5 py-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-600 transition hover:bg-gray-100 disabled:opacity-50"
+                >
+                  <RefreshCw size={12} /> Sync now
                 </button>
               )}
               {dirty && (
