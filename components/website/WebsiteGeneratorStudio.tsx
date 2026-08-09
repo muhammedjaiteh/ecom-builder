@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { SITE_TEMPLATES, SiteConceptSchema, type ShopWebsiteRow, type SiteConcept } from '@/lib/siteTemplates';
 import { slugify } from '@/lib/slugify';
+import { fetchJSON, isTransportError } from '@/lib/transport';
 import ConceptCard from '@/components/website/ConceptCard';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -46,7 +47,17 @@ const WEBSITE_TIERS = ['advanced', 'flagship'];
 
 // Client-side ceiling for either AI step — the route's maxDuration (120s)
 // plus a small network margin, so a hung provider can never lock the UI.
+// Passed to fetchJSON as the per-call deadline override (the transport
+// default of 12s is for ordinary API calls, not generation).
 const STEP_TIMEOUT_MS = 125_000;
+
+// Loose response shape for /api/ai/generate-website — fields are validated
+// individually (SiteConceptSchema, syncShopSlug's typeof gate) before use.
+type GenerateWebsiteResponse = {
+  concepts?: unknown;
+  niche_reasoning?: unknown;
+  shop_slug?: unknown;
+};
 
 // Two-step premium flow:
 //   idle       → nothing in flight; consult button available
@@ -70,10 +81,22 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
   // warning opens, and Escape dismisses without firing anything.
   const warningCancelRef = useRef<HTMLButtonElement | null>(null);
 
-  // Controller for the in-flight AI step. Aborted with a reason string
-  // ('cancel' | 'timeout' | 'unmount' | 'superseded') so the catch blocks can
-  // tell a seller-initiated cancel from a timeout from navigation.
+  // Controller for the in-flight AI step — the EXTERNAL signal composed into
+  // fetchJSON ('cancel' | 'unmount' | 'superseded'). All three surface as the
+  // classified 'abort' kind and stay silent; deadlines are fetchJSON's job
+  // now ('timeout' kind).
   const abortRef = useRef<AbortController | null>(null);
+
+  // Offline auto-retry: when a step fails with the classified 'offline' kind,
+  // the failed step is parked here and re-fired on the window 'online' event
+  // — the error banner promises exactly that. Dispatch goes through a
+  // render-refreshed ref so the retry always sees current state (a first-
+  // render closure over handleBuild would read stale concepts).
+  const pendingRetryRef = useRef<'consult' | 'build' | null>(null);
+  const retryHandlersRef = useRef<{ consult: () => void; build: () => void }>({
+    consult: () => {},
+    build: () => {},
+  });
 
   const tier = (shop.subscription_tier ?? '').toLowerCase().trim();
   const hasAccess = WEBSITE_TIERS.includes(tier);
@@ -91,6 +114,18 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
   // requests, no setState on an unmounted component.
   useEffect(() => () => { abortRef.current?.abort('unmount'); }, []);
 
+  // Connectivity returned → fire the parked offline retry (if any).
+  useEffect(() => {
+    const onOnline = () => {
+      const pending = pendingRetryRef.current;
+      pendingRetryRef.current = null;
+      if (pending === 'consult') retryHandlersRef.current.consult();
+      else if (pending === 'build') retryHandlersRef.current.build();
+    };
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, []);
+
   // Overwrite-warning modal keyboard/focus wiring, active only while open.
   useEffect(() => {
     if (!isWarningModalOpen) return;
@@ -104,9 +139,17 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
 
   const beginStep = () => {
     abortRef.current?.abort('superseded');
+    pendingRetryRef.current = null; // a manual step supersedes a parked retry
     const controller = new AbortController();
     abortRef.current = controller;
     return controller;
+  };
+
+  // Dismissing the error banner also cancels a parked offline auto-retry —
+  // the banner is the promise; no banner, no surprise re-fire.
+  const dismissError = () => {
+    setError(null);
+    pendingRetryRef.current = null;
   };
 
   // Law 2 slug safety: /site links are minted ONLY from a slug that is
@@ -129,16 +172,17 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/api/ai/generate-website', {
+        const data = await fetchJSON<GenerateWebsiteResponse>('/api/ai/generate-website', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ step: 'repair-slug' }),
         });
-        const data = await res.json();
-        if (!cancelled && res.ok) syncShopSlug(data.shop_slug);
+        if (!cancelled) syncShopSlug(data.shop_slug);
       } catch {
-        // Non-fatal: the /site route's verified fallback still resolves
-        // legacy slugs; we simply don't mint a link until repair succeeds.
+        // Non-fatal (any transport kind): the /site route's verified fallback
+        // still resolves legacy slugs; we simply don't mint a link until
+        // repair succeeds. The 12s default deadline stops a dead socket from
+        // holding the request open.
       }
     })();
     return () => { cancelled = true; };
@@ -149,21 +193,18 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
     setError(null);
     setPhase('consulting');
     const controller = beginStep();
-    const timeout = setTimeout(() => controller.abort('timeout'), STEP_TIMEOUT_MS);
     try {
-      const res = await fetch('/api/ai/generate-website', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ step: 'concepts' }),
-        signal: controller.signal,
-      });
-      const data = await res.json();
+      const data = await fetchJSON<GenerateWebsiteResponse>(
+        '/api/ai/generate-website',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ step: 'concepts' }),
+          signal: controller.signal,
+        },
+        { timeoutMs: STEP_TIMEOUT_MS }
+      );
       if (controller.signal.aborted) return;
-      if (!res.ok) {
-        setError(data.error || 'Failed to prepare your design concepts.');
-        setPhase('idle');
-        return;
-      }
       // Defensive contract check: never enter 'choosing' without two
       // renderable concepts, or the panel has nothing to show and no way back.
       const received = Array.isArray(data.concepts)
@@ -179,20 +220,25 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
       setConceptReasoning(typeof data.niche_reasoning === 'string' ? data.niche_reasoning : null);
       setSelectedConcept(null);
       setPhase('choosing');
-    } catch {
-      if (controller.signal.aborted) {
-        // 'cancel' / 'unmount' / 'superseded' already left the UI where it
-        // belongs; only a timeout needs surfacing.
-        if (controller.signal.reason === 'timeout') {
+    } catch (err) {
+      if (isTransportError(err)) {
+        // 'abort' = cancel/unmount/superseded — the UI is already where it
+        // belongs; stay silent.
+        if (err.kind === 'abort') return;
+        if (err.kind === 'timeout') {
           setError('The design consultation timed out. Please try again.');
-          setPhase('idle');
+        } else if (err.kind === 'offline') {
+          pendingRetryRef.current = 'consult';
+          setError('You appear to be offline. We’ll retry the consultation automatically once your connection returns.');
+        } else {
+          setError(err.message || 'Failed to prepare your design concepts.');
         }
+        setPhase('idle');
         return;
       }
       setError('Network error preparing your design concepts. Please try again.');
       setPhase('idle');
     } finally {
-      clearTimeout(timeout);
       if (abortRef.current === controller) abortRef.current = null;
     }
   };
@@ -223,41 +269,50 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
     setError(null);
     setPhase('building');
     const controller = beginStep();
-    const timeout = setTimeout(() => controller.abort('timeout'), STEP_TIMEOUT_MS);
     try {
-      const res = await fetch('/api/ai/generate-website', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ step: 'execute', concept }),
-        signal: controller.signal,
-      });
-      const data = await res.json();
+      const data = await fetchJSON<ShopWebsiteRow & { shop_slug?: unknown }>(
+        '/api/ai/generate-website',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ step: 'execute', concept }),
+          signal: controller.signal,
+        },
+        { timeoutMs: STEP_TIMEOUT_MS }
+      );
       if (controller.signal.aborted) return;
-      if (!res.ok) {
-        setError(data.error || 'Failed to build the website.');
-        setPhase('choosing');
-        return;
-      }
       syncShopSlug(data.shop_slug);
       onWebsiteChange(data as ShopWebsiteRow);
       setConcepts(null);
       setConceptReasoning(null);
       setSelectedConcept(null);
       setPhase('idle');
-    } catch {
-      if (controller.signal.aborted) {
-        if (controller.signal.reason === 'timeout') {
+    } catch (err) {
+      if (isTransportError(err)) {
+        if (err.kind === 'abort') return; // cancel/unmount/superseded — silent
+        if (err.kind === 'timeout') {
           setError('Building the website timed out. Your concepts are saved — please try again.');
-          setPhase('choosing');
+        } else if (err.kind === 'offline') {
+          pendingRetryRef.current = 'build';
+          setError('You appear to be offline. We’ll retry the build automatically once your connection returns — your concepts are saved.');
+        } else {
+          setError(err.message || 'Failed to build the website.');
         }
+        setPhase('choosing');
         return;
       }
       setError('Network error building the website. Please try again.');
       setPhase('choosing');
     } finally {
-      clearTimeout(timeout);
       if (abortRef.current === controller) abortRef.current = null;
     }
+  };
+
+  // Keep the offline auto-retry dispatch pointed at the CURRENT closures
+  // (concepts/selectedConcept live in state) — assigned every render.
+  retryHandlersRef.current = {
+    consult: () => { void handleConsult(); },
+    build: () => { void handleBuild(); },
   };
 
   // Cancel an in-flight step: abort the request, land on the right phase.
@@ -284,20 +339,25 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
     setPublishing(true);
     try {
       const action = website.status === 'published' ? 'unpublish' : 'publish';
-      const res = await fetch('/api/websites/publish', {
+      const data = await fetchJSON<ShopWebsiteRow & { shop_slug?: unknown }>('/api/websites/publish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || 'Failed to update publish state.');
-        return;
-      }
       syncShopSlug(data.shop_slug);
       onWebsiteChange(data as ShopWebsiteRow);
-    } catch {
-      setError('Network error updating publish state.');
+    } catch (err) {
+      if (isTransportError(err) && err.kind === 'offline') {
+        // No auto-retry for publish: it TOGGLES — re-firing minutes later
+        // could silently unpublish a site the seller since decided to keep.
+        setError('You appear to be offline — the publish change was not applied. Try again once you’re connected.');
+      } else if (isTransportError(err) && err.kind === 'timeout') {
+        setError('Updating the publish state timed out. Please try again.');
+      } else if (isTransportError(err) && err.kind === 'server') {
+        setError(err.message || 'Failed to update publish state.');
+      } else {
+        setError('Network error updating publish state.');
+      }
     } finally {
       setPublishing(false);
     }
@@ -426,7 +486,7 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
               {error && (
                 <div className="mt-4 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3">
                   <p className="flex-1 text-sm font-medium text-red-800">{error}</p>
-                  <button onClick={() => setError(null)} className="text-[11px] font-bold text-red-400 hover:text-red-600">✕</button>
+                  <button onClick={dismissError} className="text-[11px] font-bold text-red-400 hover:text-red-600">✕</button>
                 </div>
               )}
             </div>
@@ -477,7 +537,7 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
                 {error && (
                   <div className="mt-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3">
                     <p className="flex-1 text-sm font-medium text-red-800">{error}</p>
-                    <button onClick={() => setError(null)} className="text-[11px] font-bold text-red-400 hover:text-red-600">✕</button>
+                    <button onClick={dismissError} className="text-[11px] font-bold text-red-400 hover:text-red-600">✕</button>
                   </div>
                 )}
 
