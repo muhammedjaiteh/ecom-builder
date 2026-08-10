@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import Broadcast from './broadcast';
+import { OnboardingInterceptor } from '@/components/onboarding/MagicStorefrontBuilder';
 import AnalyticsDashboard from '@/components/AnalyticsDashboard';
 import DiscountManager from '@/components/DiscountManager';
 import VideoManager from '@/components/VideoManager';
@@ -254,9 +255,16 @@ export default function Dashboard() {
     );
   }
 
+  // THE "AHA!" INTERCEPTOR — a definitive owner-channel 'no website' verdict
+  // (cached or fresh) swaps the entire command center for the Magic
+  // Storefront Builder; any other verdict (row exists, or still unknown)
+  // renders the dashboard below exactly as before. Props reuse this page's
+  // already-loaded state — no duplicate queries. userId is non-null here:
+  // the loading gate above only clears after auth resolves.
   return (
+    <OnboardingInterceptor userId={userId!} productsCount={products.length} tier={shop?.subscription_tier ?? null}>
     <div className="min-h-screen bg-[#F9F8F6] font-sans text-gray-900 selection:bg-gray-900 selection:text-white pb-24">
-      
+
       {/* 1. LUXURY HEADER */}
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-100 px-4 py-4 md:px-10">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -527,5 +535,6 @@ export default function Dashboard() {
 
       </main>
     </div>
+    </OnboardingInterceptor>
   );
 }
