@@ -202,10 +202,13 @@ export default function OnlineStoreThemesPage() {
     router.push('/dashboard/settings');
   };
 
-  if (loading) return <div className="flex min-h-screen items-center justify-center bg-[#F9F8F6]"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>;
+  // dvh (not vh): mobile browsers' collapsing URL bars and the virtual
+  // keyboard resize the DYNAMIC viewport — 100vh overshoots it (Step 3,
+  // virtual keyboard defense). Identical to 100vh on desktop.
+  if (loading) return <div className="flex min-h-dvh items-center justify-center bg-[#F9F8F6]"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>;
 
   return (
-    <div className="min-h-screen bg-[#F9F8F6] font-sans text-gray-900 selection:bg-gray-900 selection:text-white pb-24">
+    <div className="min-h-dvh bg-[#F9F8F6] font-sans text-gray-900 selection:bg-gray-900 selection:text-white pb-24">
 
       {/* HEADER */}
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-100 px-4 py-4 md:px-10">

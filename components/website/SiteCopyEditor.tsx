@@ -12,8 +12,11 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from 'react';
+import { AnimatePresence } from 'framer-motion';
 import {
+  Check,
   CheckCircle2,
+  ChevronRight,
   Clapperboard,
   CloudOff,
   Film,
@@ -21,6 +24,7 @@ import {
   LayoutGrid,
   Loader2,
   MousePointerClick,
+  Plus,
   RefreshCw,
   Rows3,
   Save,
@@ -37,7 +41,9 @@ import {
 } from '@/lib/offlineOutbox';
 import EditorialTemplate from '@/components/site-templates/EditorialTemplate';
 import RitualTemplate from '@/components/site-templates/RitualTemplate';
+import BottomSheet from '@/components/website/BottomSheet';
 import VideoHeroPicker, { type VideoHeroSelection } from '@/components/website/VideoHeroPicker';
+import { useIsMobileViewport } from '@/lib/useIsMobileViewport';
 import {
   SITE_COPY_LIMITS,
   blocksToLegacySite,
@@ -94,6 +100,24 @@ import {
 //   - "Add section" below the preview inserts video_hero (via the Ad Studio
 //     film picker) or product_tabs at sensible default positions. ONLY those
 //     two types are addable/removable — the classic five are fixed anatomy.
+//
+// Gambia Standard Step 3 — mobile (< 768px via SSR-safe matchMedia hook)
+// swaps the pointer affordances for a touch model; DESKTOP IS UNCHANGED:
+//   - No hover reveals: tapping a configurable section outlines it
+//     persistently and opens its settings as a bottom sheet; tapping a copy
+//     node opens a keyboard-safe bottom-sheet editor (the scaled preview
+//     never hosts an absolutely-positioned input on a phone). Interactive
+//     islands keep their routing: [role=tab] switches, [data-carousel-nav]
+//     pages — never swallowed by selection.
+//   - The copy sheet mirrors desktop commit semantics exactly: Save /
+//     backdrop / drag-dismiss commit (desktop's blur), Cancel / Escape
+//     restore the edit-start snapshot. While it is open the active node
+//     keeps a persistent highlight and is scrolled into view INSIDE the
+//     preview scroll container.
+//   - "Add a section" opens as a sheet listing the two seller-added types.
+//   - Sheets are sized against the visual viewport (keyboard-safe), the save
+//     bar carries safe-area padding, and preview/sheet scrolling is
+//     overscroll-contained so pull-to-refresh never fights a gesture.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Only the block-driven templates are editable surfaces. Vitality stays
@@ -221,6 +245,13 @@ function normalizeFieldPath(field: string): string {
   return field.replace(/\.\d+\./g, '.*.');
 }
 
+/** Escape a value for interpolation inside a CSS attribute selector
+ *  ([data-x="…"]) — block ids and field paths are config-provided strings,
+ *  so quotes/backslashes must never break the mobile highlight rules. */
+function cssAttrEscape(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
 type MutableRecord = Record<string, unknown>;
 
 function readBlockField(block: SiteBlock, path: string[]): string | undefined {
@@ -327,6 +358,17 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
   const [toast, setToast] = useState<ToastState | null>(null);
   const [scale, setScale] = useState(0.4);
   const [contentHeight, setContentHeight] = useState(2400);
+  // Mobile editor UX (< 768px): bottom sheets replace the floating chip, the
+  // overlay input, and the film-picker modal; taps replace hover. SSR-safe
+  // (server snapshot: false) — no hydration mismatch, flips live on
+  // breakpoint crossings.
+  const isMobile = useIsMobileViewport();
+  // Tap-to-select (mobile): the last-tapped configurable section keeps a
+  // persistent outline — hover affordances don't exist on touch. The outline
+  // survives closing the settings sheet; tapping the section again reopens it.
+  const [selectedSection, setSelectedSection] = useState<string | null>(null);
+  // Mobile "Add a section" bottom sheet.
+  const [addSheet, setAddSheet] = useState(false);
 
   const frameRef = useRef<HTMLDivElement | null>(null);
   const spacerRef = useRef<HTMLDivElement | null>(null);
@@ -423,6 +465,16 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
     inputRef.current?.select();
   }, [editing]);
 
+  // Mobile copy sheet: keep the node being edited visible while the sheet
+  // covers the lower viewport — scroll INSIDE the preview scroll container so
+  // the highlighted node sits near the top of the frame. editing.top is the
+  // node's post-transform offset within the spacer, i.e. exactly the frame's
+  // scroll coordinate space.
+  useEffect(() => {
+    if (!isMobile || !editing) return;
+    frameRef.current?.scrollTo({ top: Math.max(0, editing.top - 96), behavior: 'smooth' });
+  }, [isMobile, editing]);
+
   const previewConfig = useMemo<WebsiteConfig>(
     () => ({
       ...website.config,
@@ -475,6 +527,9 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
     const width = Math.min(Math.max(nodeRect.width, 280), containerWidth - left - 8);
 
     setChip(null);
+    // Mobile: exactly one highlight at a time — the copy sheet's active-node
+    // outline takes over from any section selection.
+    setSelectedSection(null);
     setEditing({
       blockId,
       path,
@@ -494,11 +549,18 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
     if (!spacer || !blockId) return;
     const block = blocks.find((b) => b.id === blockId);
     if (!block || !CHIP_LABELS[block.type]) return;
+    setEditing(null);
+    if (isMobile) {
+      // Tap-to-select: persistent outline + the settings bottom sheet.
+      // Coordinates are meaningless for a sheet — zeroed by convention.
+      setSelectedSection(blockId);
+      setChip({ blockId, left: 0, top: 0 });
+      return;
+    }
     const rect = sectionEl.getBoundingClientRect();
     const spacerRect = spacer.getBoundingClientRect();
     const left = Math.max(8, Math.min(rect.left - spacerRect.left + 12, Math.max(8, spacerRect.width - 380)));
     const top = Math.max(0, rect.top - spacerRect.top + 12);
-    setEditing(null);
     setChip({ blockId, left, top });
   };
 
@@ -522,6 +584,7 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
   const removeBlock = (blockId: string) => {
     setChip(null);
     setEditing(null);
+    setSelectedSection(null);
     setBlocks((prev) => prev.filter((b) => !(b.id === blockId && SELLER_ADDED_TYPES.has(b.type))));
   };
 
@@ -610,10 +673,15 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
     }
 
     // No copy node hit: a click inside a configurable section opens its
-    // settings chip; anywhere else dismisses an open one.
+    // settings chip (mobile: selects it + opens the settings sheet);
+    // anywhere else dismisses an open one and clears the tap-selection.
     const sectionNode = target.closest<HTMLElement>('[data-block-section]');
-    if (sectionNode) openChipForSection(sectionNode);
-    else setChip(null);
+    if (sectionNode) {
+      openChipForSection(sectionNode);
+    } else {
+      setChip(null);
+      setSelectedSection(null);
+    }
   };
 
   const handleDiscard = () => {
@@ -700,33 +768,61 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
 
   return (
     <div className="sndk-copy-editor">
-      {/* Hover affordances — scoped to the editor frame only; the public site
-          never loads this component. Copy nodes get the amber outline, the
-          configurable sections a subtler inset one, and the tab-title pencil
-          (display-hidden in public markup) is revealed here. */}
+      {/* Editing affordances — scoped to the editor frame only; the public
+          site never loads this component. Hover reveals are DESKTOP-ONLY
+          (≥768px, matching the isMobile hook): on touch there is no hover, so
+          mobile runs the tap-to-select model via the persistent-highlight
+          style tags below. The tab-title pencil (display-hidden in public
+          markup) is revealed here on every viewport — it is the always-visible
+          edit affordance on the active tab. */}
       <style>{`
+        .sndk-copy-editor {
+          -webkit-tap-highlight-color: transparent;
+        }
         .sndk-copy-editor [data-block-id][data-block-field] {
           cursor: pointer;
           outline: 2px dashed transparent;
           outline-offset: 6px;
           transition: outline-color .15s ease, background-color .15s ease;
         }
-        .sndk-copy-editor [data-block-id][data-block-field]:hover {
-          outline-color: rgba(240, 165, 0, .85);
-          background-color: rgba(240, 165, 0, .08);
-        }
         .sndk-copy-editor [data-block-section] {
           outline: 2px dashed transparent;
           outline-offset: -6px;
           transition: outline-color .15s ease;
         }
-        .sndk-copy-editor [data-block-section]:hover {
-          outline-color: rgba(240, 165, 0, .4);
-        }
         .sndk-copy-editor .sndk-tab-edit {
           display: inline-flex;
         }
+        @media (min-width: 768px) {
+          .sndk-copy-editor [data-block-id][data-block-field]:hover {
+            outline-color: rgba(240, 165, 0, .85);
+            background-color: rgba(240, 165, 0, .08);
+          }
+          .sndk-copy-editor [data-block-section]:hover {
+            outline-color: rgba(240, 165, 0, .4);
+          }
+        }
       `}</style>
+
+      {/* Mobile persistent highlights (tap-to-select replaces hover): the
+          selected section keeps its outline until the seller taps elsewhere;
+          the node being edited in the copy sheet stays highlighted so the
+          live preview visibly tracks every keystroke. */}
+      {isMobile && selectedSection && (
+        <style>{`
+          .sndk-copy-editor [data-block-section="${cssAttrEscape(selectedSection)}"] {
+            outline-color: rgba(240, 165, 0, .8);
+          }
+        `}</style>
+      )}
+      {isMobile && editing && (
+        <style>{`
+          .sndk-copy-editor [data-block-id="${cssAttrEscape(editing.blockId)}"][data-block-field="${cssAttrEscape(editing.path.join('.'))}"] {
+            outline-color: rgba(240, 165, 0, .95);
+            background-color: rgba(240, 165, 0, .12);
+          }
+        `}</style>
+      )}
 
       {/* Browser chrome bar — frames the preview as the seller's real page */}
       <div className="overflow-hidden rounded-[1.5rem] border border-gray-200 bg-white shadow-sm">
@@ -742,13 +838,17 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
           <span className="ml-3 hidden items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-gray-400 md:flex">
             <MousePointerClick size={12} /> Click any copy to rewrite it
           </span>
+          <span className="ml-3 flex shrink-0 items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-gray-400 md:hidden">
+            <MousePointerClick size={12} /> Tap text to edit
+          </span>
         </div>
 
-        {/* Scaled, scrollable live preview */}
+        {/* Scaled, scrollable live preview — overscroll-contained so reaching
+            its edge on a phone never chains into pull-to-refresh. */}
         <div
           ref={frameRef}
           onClickCapture={handlePreviewClickCapture}
-          className="relative h-[540px] w-full overflow-y-auto overflow-x-hidden bg-white md:h-[620px]"
+          className="relative h-[540px] w-full overflow-y-auto overflow-x-hidden overscroll-contain bg-white md:h-[620px]"
         >
           <div ref={spacerRef} className="relative" style={{ height: Math.max(1, contentHeight * scale) }}>
             <div
@@ -759,8 +859,11 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
               <Template shop={shop} products={products} config={previewConfig} heroMedia={heroMedia} />
             </div>
 
-            {/* Overlay editor — unscaled coordinate space, scrolls with the page */}
-            {editing && (
+            {/* Overlay editor — unscaled coordinate space, scrolls with the
+                page. DESKTOP ONLY: on mobile the copy sheet below replaces
+                it (an absolutely-positioned input over a scaled preview and a
+                virtual keyboard cannot coexist). */}
+            {editing && !isMobile && (
               <div
                 ref={overlayRef}
                 className="absolute z-40"
@@ -803,8 +906,8 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
 
             {/* Floating block-settings chip — unscaled coordinate space, same
                 as the overlay editor, so it scrolls with the section it
-                configures. */}
-            {chip && chipBlock && (
+                configures. DESKTOP ONLY: mobile renders the settings sheet. */}
+            {chip && chipBlock && !isMobile && (
               <div ref={chipRef} className="absolute z-40" style={{ left: chip.left, top: chip.top }}>
                 <div className="flex items-center gap-2 rounded-full bg-neutral-900/95 py-1.5 pl-4 pr-1.5 shadow-xl backdrop-blur">
                   <span className="text-[9px] font-bold uppercase tracking-widest text-white/60">
@@ -880,42 +983,245 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
               : 'New sections drop straight into the preview — click a section for its settings, then save to publish.'}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setPicker({ mode: 'add' })}
-          disabled={atBlockCapacity || saving}
-          className="flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-5 py-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:border-gray-900 hover:bg-white disabled:opacity-40"
-        >
-          <Clapperboard size={13} /> Brand film
-        </button>
-        <button
-          type="button"
-          onClick={addProductTabsBlock}
-          disabled={atBlockCapacity || saving}
-          className="flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-5 py-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:border-gray-900 hover:bg-white disabled:opacity-40"
-        >
-          <Rows3 size={13} /> Product tabs
-        </button>
+        {isMobile ? (
+          <button
+            type="button"
+            onClick={() => setAddSheet(true)}
+            disabled={atBlockCapacity || saving}
+            className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-5 py-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition active:bg-gray-100 disabled:opacity-40"
+          >
+            <Plus size={14} /> Add a section
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => setPicker({ mode: 'add' })}
+              disabled={atBlockCapacity || saving}
+              className="flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-5 py-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:border-gray-900 hover:bg-white disabled:opacity-40"
+            >
+              <Clapperboard size={13} /> Brand film
+            </button>
+            <button
+              type="button"
+              onClick={addProductTabsBlock}
+              disabled={atBlockCapacity || saving}
+              className="flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-5 py-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:border-gray-900 hover:bg-white disabled:opacity-40"
+            >
+              <Rows3 size={13} /> Product tabs
+            </button>
+          </>
+        )}
       </div>
 
       {/* Ad Studio film picker — add flow inserts a new video_hero block,
-          replace flow swaps the asset on an existing one. */}
-      {picker && (
-        <VideoHeroPicker
-          shopId={shop.id}
-          heading={picker.mode === 'add' ? 'Add a brand film' : 'Change the film'}
-          onClose={() => setPicker(null)}
-          onSelect={(selection) => {
-            if (picker.mode === 'add') addVideoHeroBlock(selection);
-            else replaceVideoHeroAsset(picker.blockId, selection);
-            setPicker(null);
-          }}
-        />
+          replace flow swaps the asset on an existing one. AnimatePresence
+          lets the mobile sheet play its exit slide; the desktop modal (no
+          motion children) unmounts instantly, exactly as before. */}
+      <AnimatePresence>
+        {picker && (
+          <VideoHeroPicker
+            key="film-picker"
+            shopId={shop.id}
+            heading={picker.mode === 'add' ? 'Add a brand film' : 'Change the film'}
+            onClose={() => setPicker(null)}
+            onSelect={(selection) => {
+              if (picker.mode === 'add') addVideoHeroBlock(selection);
+              else replaceVideoHeroAsset(picker.blockId, selection);
+              setPicker(null);
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* ── Mobile bottom sheets (Gambia Standard Step 3) ──────────────────
+          The touch counterparts of the floating chip, the add-section
+          buttons, and the overlay copy editor. Mutually exclusive by the
+          same state machine desktop uses; mounted only under 768px. */}
+      {isMobile && (
+        <AnimatePresence>
+          {chip && chipBlock && (
+            <BottomSheet
+              key={`settings-${chip.blockId}`}
+              label={CHIP_LABELS[chipBlock.type] ?? 'Section settings'}
+              onDismiss={() => setChip(null)}
+            >
+              <div className="space-y-1 px-3 pb-2">
+                {chipBlock.type === 'product_grid' && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setGridDisplayMode(chipBlock.id, 'grid')}
+                      className={`flex min-h-[48px] w-full items-center gap-3 rounded-2xl px-4 text-left text-sm font-semibold transition ${
+                        (chipBlock.displayMode ?? 'grid') === 'grid'
+                          ? 'bg-gray-900 text-white'
+                          : 'text-gray-700 active:bg-gray-100'
+                      }`}
+                    >
+                      <LayoutGrid size={16} className="shrink-0" />
+                      <span className="flex-1">Grid</span>
+                      {(chipBlock.displayMode ?? 'grid') === 'grid' && <Check size={16} className="shrink-0" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGridDisplayMode(chipBlock.id, 'carousel')}
+                      className={`flex min-h-[48px] w-full items-center gap-3 rounded-2xl px-4 text-left text-sm font-semibold transition ${
+                        chipBlock.displayMode === 'carousel'
+                          ? 'bg-gray-900 text-white'
+                          : 'text-gray-700 active:bg-gray-100'
+                      }`}
+                    >
+                      <GalleryHorizontal size={16} className="shrink-0" />
+                      <span className="flex-1">Carousel</span>
+                      {chipBlock.displayMode === 'carousel' && <Check size={16} className="shrink-0" />}
+                    </button>
+                  </>
+                )}
+                {chipBlock.type === 'video_hero' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // One sheet at a time on a phone: the settings sheet
+                      // hands off to the film-picker sheet.
+                      setChip(null);
+                      setPicker({ mode: 'replace', blockId: chipBlock.id });
+                    }}
+                    className="flex min-h-[48px] w-full items-center gap-3 rounded-2xl px-4 text-left text-sm font-semibold text-gray-700 transition active:bg-gray-100"
+                  >
+                    <Film size={16} className="shrink-0" />
+                    <span className="flex-1">Change film</span>
+                    <ChevronRight size={16} className="shrink-0 text-gray-300" />
+                  </button>
+                )}
+                {SELLER_ADDED_TYPES.has(chipBlock.type) && (
+                  <button
+                    type="button"
+                    onClick={() => removeBlock(chipBlock.id)}
+                    className="flex min-h-[48px] w-full items-center gap-3 rounded-2xl px-4 text-left text-sm font-semibold text-red-600 transition active:bg-red-50"
+                  >
+                    <Trash2 size={16} className="shrink-0" />
+                    <span className="flex-1">Remove section</span>
+                  </button>
+                )}
+              </div>
+            </BottomSheet>
+          )}
+
+          {editing && (
+            <BottomSheet
+              key="copy-sheet"
+              label={editing.meta.label}
+              // Same contract as the desktop overlay: dismissive gestures
+              // (backdrop, drag, ✕) COMMIT — the seller watched the preview
+              // update live while typing; Escape and Cancel restore the
+              // edit-start snapshot.
+              onDismiss={commitEdit}
+              onEscape={cancelEdit}
+              footer={
+                <div className="flex gap-3 px-5 pt-3">
+                  <button
+                    type="button"
+                    onClick={cancelEdit}
+                    className="flex min-h-[48px] flex-1 items-center justify-center gap-1.5 rounded-full bg-gray-100 text-[11px] font-bold uppercase tracking-widest text-gray-600 transition active:bg-gray-200"
+                  >
+                    <X size={13} /> Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={commitEdit}
+                    className="flex min-h-[48px] flex-1 items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-[#1a2e1a] to-gray-900 text-[11px] font-bold uppercase tracking-widest text-white shadow-md transition active:scale-95"
+                  >
+                    <Check size={13} /> Save
+                  </button>
+                </div>
+              }
+            >
+              <div className="px-5 pb-1 pt-1">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <span className="text-xs font-medium text-gray-500">Updates live in the preview above</span>
+                  <span className={`font-mono text-[11px] font-bold ${atBudget ? 'text-amber-600' : 'text-gray-400'}`}>
+                    {editingValue.length}/{editing.meta.max}
+                  </span>
+                </div>
+                {/* text-base (16px) keeps iOS from auto-zooming the sheet on
+                    focus; budgets and Enter/Escape semantics match desktop. */}
+                {editing.meta.multiline ? (
+                  <textarea
+                    ref={(el) => { inputRef.current = el; }}
+                    autoFocus
+                    value={editingValue}
+                    maxLength={editing.meta.max}
+                    rows={Math.min(8, Math.max(3, Math.ceil(editing.meta.max / 80)))}
+                    onChange={(e) => applyFieldValue(editing.blockId, editing.path, e.target.value.slice(0, editing.meta.max))}
+                    onKeyDown={handleOverlayKeyDown}
+                    className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50/60 px-4 py-3.5 font-sans text-base leading-relaxed text-gray-900 outline-none transition focus:border-[#f0a500] focus:bg-white focus:ring-1 focus:ring-[#f0a500]"
+                  />
+                ) : (
+                  <input
+                    ref={(el) => { inputRef.current = el; }}
+                    autoFocus
+                    type="text"
+                    value={editingValue}
+                    maxLength={editing.meta.max}
+                    onChange={(e) => applyFieldValue(editing.blockId, editing.path, e.target.value.slice(0, editing.meta.max))}
+                    onKeyDown={handleOverlayKeyDown}
+                    className="w-full rounded-2xl border border-gray-200 bg-gray-50/60 px-4 py-3.5 font-sans text-base text-gray-900 outline-none transition focus:border-[#f0a500] focus:bg-white focus:ring-1 focus:ring-[#f0a500]"
+                  />
+                )}
+              </div>
+            </BottomSheet>
+          )}
+
+          {addSheet && (
+            <BottomSheet key="add-sheet" label="Add a section" onDismiss={() => setAddSheet(false)}>
+              <div className="space-y-1 px-3 pb-2">
+                <button
+                  type="button"
+                  disabled={atBlockCapacity}
+                  onClick={() => {
+                    setAddSheet(false);
+                    setPicker({ mode: 'add' });
+                  }}
+                  className="flex min-h-[56px] w-full items-center gap-3 rounded-2xl px-4 text-left transition active:bg-gray-100 disabled:opacity-40"
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-900 text-white">
+                    <Clapperboard size={16} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-gray-900">Brand film</span>
+                    <span className="block truncate text-xs text-gray-500">A cinematic Ad Studio commercial on your page</span>
+                  </span>
+                  <ChevronRight size={16} className="shrink-0 text-gray-300" />
+                </button>
+                <button
+                  type="button"
+                  disabled={atBlockCapacity}
+                  onClick={() => {
+                    addProductTabsBlock();
+                    setAddSheet(false);
+                  }}
+                  className="flex min-h-[56px] w-full items-center gap-3 rounded-2xl px-4 text-left transition active:bg-gray-100 disabled:opacity-40"
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-700">
+                    <Rows3 size={16} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-gray-900">Product tabs</span>
+                    <span className="block truncate text-xs text-gray-500">Details, delivery and returns in tidy tabs</span>
+                  </span>
+                </button>
+              </div>
+            </BottomSheet>
+          )}
+        </AnimatePresence>
       )}
 
-      {/* Sticky save bar — unsaved changes, sync status, and toasts */}
+      {/* Sticky save bar — unsaved changes, sync status, and toasts.
+          bottom offset carries the safe-area inset so the bar clears the
+          home-indicator region on notched phones (env() is 0 on desktop —
+          identical to the historical bottom-4). */}
       {(dirty || toast || queued) && (
-        <div className="sticky bottom-4 z-30 mt-4">
+        <div className="sticky bottom-[calc(1rem_+_env(safe-area-inset-bottom))] z-30 mt-4">
           <div className="mx-auto flex max-w-2xl flex-wrap items-center justify-between gap-3 rounded-full border border-gray-200 bg-white/95 px-5 py-3 shadow-xl backdrop-blur">
             {toast ? (
               <p className={`flex items-center gap-2 text-sm font-medium ${toast.kind === 'success' ? 'text-emerald-700' : 'text-red-700'}`}>

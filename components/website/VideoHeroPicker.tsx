@@ -4,6 +4,8 @@ import { createBrowserClient } from '@supabase/ssr';
 import { useEffect, useState } from 'react';
 import { Clapperboard, Film, Link2, Loader2, X } from 'lucide-react';
 import SmartImage from '@/components/SmartImage';
+import BottomSheet from '@/components/website/BottomSheet';
+import { useIsMobileViewport } from '@/lib/useIsMobileViewport';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // VideoHeroPicker — asset picker for the video_hero block (Phase 4 Step 3).
@@ -14,6 +16,12 @@ import SmartImage from '@/components/SmartImage';
 // carries no poster (VideoHeroMedia degrades to the template gradient if the
 // asset fails). Law 4 by construction: every offered asset is a render the
 // seller already owns — nothing here generates or mutates product pixels.
+//
+// Presentation is viewport-adaptive (Gambia Standard, Step 3): under 768px
+// the picker renders as a drag-dismissable bottom sheet (manual-URL row
+// pinned as the safe-area-padded footer, ≥44px controls); at md+ it keeps
+// the exact centered modal it always had. State, reads, and the selection
+// contract are identical in both shells.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type VideoHeroSelection = { videoUrl: string; posterUrl: string | null };
@@ -41,6 +49,7 @@ function formatAdDate(iso: string | null): string | null {
 }
 
 export default function VideoHeroPicker({ shopId, heading, onSelect, onClose }: VideoHeroPickerProps) {
+  const isMobile = useIsMobileViewport();
   const [ads, setAds] = useState<PickerAd[]>([]);
   const [productNames, setProductNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -111,6 +120,108 @@ export default function VideoHeroPicker({ shopId, heading, onSelect, onClose }: 
     onSelect({ videoUrl: parsed.toString(), posterUrl: null });
   };
 
+  // Shared between both shells — loading spinner, empty state, or the grid of
+  // completed Ad Studio films. Cards are large tap targets by construction.
+  const filmsBody = loading ? (
+    <div className="flex h-40 items-center justify-center">
+      <Loader2 size={20} className="animate-spin text-gray-300" />
+    </div>
+  ) : ads.length === 0 ? (
+    <div className="flex h-40 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-gray-200 text-center">
+      <Film size={22} className="text-gray-300" />
+      <p className="text-sm font-medium text-gray-600">No completed Ad Studio films yet</p>
+      <p className="max-w-xs text-xs text-gray-400">
+        Render a commercial in the Ad Studio and it appears here — or paste a direct video URL below.
+      </p>
+    </div>
+  ) : (
+    <>
+      <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+        Your Ad Studio films
+      </p>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        {ads.map((ad) => {
+          const name = (ad.product_id && productNames[ad.product_id]) || 'Ad Studio commercial';
+          const date = formatAdDate(ad.created_at);
+          return (
+            <button
+              key={ad.id}
+              type="button"
+              onClick={() => onSelect({ videoUrl: ad.video_url, posterUrl: ad.hero_image_url })}
+              className="group text-left"
+            >
+              <div className="relative aspect-video overflow-hidden rounded-xl bg-neutral-100 ring-1 ring-gray-200 transition group-hover:ring-2 group-hover:ring-[#f0a500]">
+                {ad.hero_image_url ? (
+                  <SmartImage
+                    src={ad.hero_image_url}
+                    alt={name}
+                    fill
+                    sizes="(min-width: 640px) 213px, 45vw"
+                    className="object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center">
+                    <Film size={20} className="text-gray-300" />
+                  </div>
+                )}
+                <span className="absolute bottom-1.5 left-1.5 inline-flex items-center gap-1 rounded-full bg-neutral-950/80 px-2 py-0.5 text-[8px] font-bold uppercase tracking-widest text-white">
+                  <Clapperboard size={9} /> Film
+                </span>
+              </div>
+              <p className="mt-2 truncate text-xs font-semibold text-gray-800">{name}</p>
+              {date && <p className="text-[10px] text-gray-400">{date}</p>}
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+
+  // Manual-URL section — desktop keeps its historical classes exactly; the
+  // mobile variant lives in the sheet footer with ≥44px controls.
+  const manualSection = (mobile: boolean) => (
+    <div className={mobile ? 'px-5 pt-3' : 'border-t border-gray-100 bg-gray-50/60 px-6 py-4'}>
+      <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+        <Link2 size={11} /> Or paste a video URL
+      </p>
+      <div className="flex gap-2">
+        <input
+          type="url"
+          value={manualUrl}
+          onChange={(e) => {
+            setManualUrl(e.target.value);
+            setManualError(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              handleManualSubmit();
+            }
+          }}
+          placeholder="https://…/your-brand-film.mp4"
+          className={`min-w-0 flex-1 rounded-full border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none transition focus:border-gray-900 focus:ring-1 focus:ring-gray-900${mobile ? ' min-h-[44px] text-base' : ''}`}
+        />
+        <button
+          type="button"
+          onClick={handleManualSubmit}
+          disabled={manualUrl.trim().length === 0}
+          className={`shrink-0 rounded-full bg-gray-900 px-5 py-2.5 text-[10px] font-bold uppercase tracking-widest text-white transition hover:bg-black active:scale-95 disabled:opacity-40${mobile ? ' min-h-[44px]' : ''}`}
+        >
+          Use this film
+        </button>
+      </div>
+      {manualError && <p className="mt-2 text-xs font-medium text-red-600">{manualError}</p>}
+    </div>
+  );
+
+  if (isMobile) {
+    return (
+      <BottomSheet label={heading} onDismiss={onClose} footer={manualSection(true)}>
+        <div className="px-5 pb-4 pt-1">{filmsBody}</div>
+      </BottomSheet>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
@@ -123,7 +234,7 @@ export default function VideoHeroPicker({ shopId, heading, onSelect, onClose }: 
         role="dialog"
         aria-modal="true"
         aria-label={heading}
-        className="relative flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-[1.5rem] bg-white shadow-2xl"
+        className="relative flex max-h-[85dvh] w-full max-w-2xl flex-col overflow-hidden rounded-[1.5rem] bg-white shadow-2xl"
       >
         <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
           <div className="flex items-center gap-2.5">
@@ -140,95 +251,9 @@ export default function VideoHeroPicker({ shopId, heading, onSelect, onClose }: 
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-5">
-          {loading ? (
-            <div className="flex h-40 items-center justify-center">
-              <Loader2 size={20} className="animate-spin text-gray-300" />
-            </div>
-          ) : ads.length === 0 ? (
-            <div className="flex h-40 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-gray-200 text-center">
-              <Film size={22} className="text-gray-300" />
-              <p className="text-sm font-medium text-gray-600">No completed Ad Studio films yet</p>
-              <p className="max-w-xs text-xs text-gray-400">
-                Render a commercial in the Ad Studio and it appears here — or paste a direct video URL below.
-              </p>
-            </div>
-          ) : (
-            <>
-              <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">
-                Your Ad Studio films
-              </p>
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-                {ads.map((ad) => {
-                  const name = (ad.product_id && productNames[ad.product_id]) || 'Ad Studio commercial';
-                  const date = formatAdDate(ad.created_at);
-                  return (
-                    <button
-                      key={ad.id}
-                      type="button"
-                      onClick={() => onSelect({ videoUrl: ad.video_url, posterUrl: ad.hero_image_url })}
-                      className="group text-left"
-                    >
-                      <div className="relative aspect-video overflow-hidden rounded-xl bg-neutral-100 ring-1 ring-gray-200 transition group-hover:ring-2 group-hover:ring-[#f0a500]">
-                        {ad.hero_image_url ? (
-                          <SmartImage
-                            src={ad.hero_image_url}
-                            alt={name}
-                            fill
-                            sizes="(min-width: 640px) 213px, 45vw"
-                            className="object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-full items-center justify-center">
-                            <Film size={20} className="text-gray-300" />
-                          </div>
-                        )}
-                        <span className="absolute bottom-1.5 left-1.5 inline-flex items-center gap-1 rounded-full bg-neutral-950/80 px-2 py-0.5 text-[8px] font-bold uppercase tracking-widest text-white">
-                          <Clapperboard size={9} /> Film
-                        </span>
-                      </div>
-                      <p className="mt-2 truncate text-xs font-semibold text-gray-800">{name}</p>
-                      {date && <p className="text-[10px] text-gray-400">{date}</p>}
-                    </button>
-                  );
-                })}
-              </div>
-            </>
-          )}
-        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5">{filmsBody}</div>
 
-        <div className="border-t border-gray-100 bg-gray-50/60 px-6 py-4">
-          <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-400">
-            <Link2 size={11} /> Or paste a video URL
-          </p>
-          <div className="flex gap-2">
-            <input
-              type="url"
-              value={manualUrl}
-              onChange={(e) => {
-                setManualUrl(e.target.value);
-                setManualError(null);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  handleManualSubmit();
-                }
-              }}
-              placeholder="https://…/your-brand-film.mp4"
-              className="min-w-0 flex-1 rounded-full border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none transition focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
-            />
-            <button
-              type="button"
-              onClick={handleManualSubmit}
-              disabled={manualUrl.trim().length === 0}
-              className="shrink-0 rounded-full bg-gray-900 px-5 py-2.5 text-[10px] font-bold uppercase tracking-widest text-white transition hover:bg-black active:scale-95 disabled:opacity-40"
-            >
-              Use this film
-            </button>
-          </div>
-          {manualError && <p className="mt-2 text-xs font-medium text-red-600">{manualError}</p>}
-        </div>
+        {manualSection(false)}
       </div>
     </div>
   );
