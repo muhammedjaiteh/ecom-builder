@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import SmartImage from '@/components/SmartImage';
 import {
   resolveBlocks,
   siteCollectionsPath,
@@ -73,7 +74,15 @@ function RitualHero({ block, shop, heroMedia, collectionsHref }: {
           className="absolute inset-0 h-full w-full object-cover"
         />
       ) : heroMedia ? (
-        <img src={heroMedia.url} alt={shop.shop_name ?? 'Hero'} className="absolute inset-0 h-full w-full object-cover" />
+        <SmartImage
+          src={heroMedia.url}
+          alt={shop.shop_name ?? 'Hero'}
+          fill
+          priority
+          sizes="100vw"
+          blurTone="dark"
+          className="object-cover"
+        />
       ) : (
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(214,203,186,0.35),transparent_55%),linear-gradient(to_bottom_right,#292524,#1c1917,#3a352e)]" />
       )}

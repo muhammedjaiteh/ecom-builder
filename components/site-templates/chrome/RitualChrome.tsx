@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import SmartImage from '@/components/SmartImage';
 import {
   findBlock,
   resolveBlocks,
@@ -41,13 +42,21 @@ const FALLBACK_TILES = [
   'bg-gradient-to-br from-[#E7E2D8] via-white to-stone-200',
 ];
 
-export function RitualProductVisual({ src, alt, index }: { src: string | null; alt: string; index: number }) {
+export function RitualProductVisual({ src, alt, index, sizes }: {
+  src: string | null;
+  alt: string;
+  index: number;
+  /** Slot-tuned sizes; defaults to the shared 2/3/4-column grid breakpoints. */
+  sizes?: string;
+}) {
   if (src) {
     return (
-      <img
+      <SmartImage
         src={src}
         alt={alt}
-        className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.05]"
+        fill
+        sizes={sizes ?? '(min-width: 1024px) 25vw, (min-width: 768px) 33vw, 50vw'}
+        className="object-cover transition-transform duration-700 group-hover:scale-[1.05]"
       />
     );
   }
@@ -144,7 +153,14 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 md:h-20 md:px-10">
           <Link href={base ?? '#'} className="flex min-w-0 items-center gap-3">
             {shop.logo_url ? (
-              <img src={shop.logo_url} alt={shop.shop_name ?? 'Logo'} className="h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-stone-200" />
+              <SmartImage
+                src={shop.logo_url}
+                alt={shop.shop_name ?? 'Logo'}
+                width={36}
+                height={36}
+                blurTone="none"
+                className="h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-stone-200"
+              />
             ) : (
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-stone-900 font-serif text-sm font-bold text-[#FBFAF7]">
                 {monogram}
@@ -174,7 +190,14 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
           <div className="md:col-span-2">
             <div className="flex items-center gap-3">
               {shop.logo_url ? (
-                <img src={shop.logo_url} alt={shop.shop_name ?? 'Logo'} className="h-10 w-10 rounded-full object-cover ring-1 ring-stone-200" />
+                <SmartImage
+                  src={shop.logo_url}
+                  alt={shop.shop_name ?? 'Logo'}
+                  width={40}
+                  height={40}
+                  blurTone="none"
+                  className="h-10 w-10 rounded-full object-cover ring-1 ring-stone-200"
+                />
               ) : (
                 <span className="flex h-10 w-10 items-center justify-center rounded-full bg-stone-900 font-serif text-base font-bold text-[#FBFAF7]">
                   {monogram}

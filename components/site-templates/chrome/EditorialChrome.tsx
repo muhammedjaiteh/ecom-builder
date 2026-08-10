@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import SmartImage from '@/components/SmartImage';
 import {
   findBlock,
   resolveBlocks,
@@ -39,13 +40,21 @@ const FALLBACK_PLATES = [
   'bg-gradient-to-br from-[#DDD8CC] via-white to-neutral-200',
 ];
 
-export function EditorialProductPlate({ src, alt, index }: { src: string | null; alt: string; index: number }) {
+export function EditorialProductPlate({ src, alt, index, sizes }: {
+  src: string | null;
+  alt: string;
+  index: number;
+  /** Slot-tuned sizes; defaults to the hairline 2/4-column grid breakpoints. */
+  sizes?: string;
+}) {
   if (src) {
     return (
-      <img
+      <SmartImage
         src={src}
         alt={alt}
-        className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
+        fill
+        sizes={sizes ?? '(min-width: 768px) 25vw, 50vw'}
+        className="object-cover transition-transform duration-700 group-hover:scale-[1.04]"
       />
     );
   }

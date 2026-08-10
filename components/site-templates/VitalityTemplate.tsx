@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import SmartImage from '@/components/SmartImage';
 import type { SiteTemplateProps } from '@/lib/siteTemplates';
 
 // VITALITY — Health, Fitness & Bold General Brands.
@@ -51,7 +52,15 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
               className="h-full w-full object-cover opacity-40"
             />
           ) : heroMedia ? (
-            <img src={heroMedia.url} alt={shop.shop_name ?? 'Hero'} className="h-full w-full object-cover opacity-40" />
+            <SmartImage
+              src={heroMedia.url}
+              alt={shop.shop_name ?? 'Hero'}
+              fill
+              priority
+              sizes="100vw"
+              blurTone="dark"
+              className="object-cover opacity-40"
+            />
           ) : (
             <div className="h-full w-full bg-gradient-to-br from-[#141414] via-[#0C0C0C] to-amber-950/40" />
           )}
@@ -120,10 +129,13 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
             >
               <div className={`relative aspect-[4/3] overflow-hidden rounded-xl bg-black ${i % 2 === 1 ? 'md:order-2' : ''}`}>
                 {(p.ad_hero_image_url || p.image_url) ? (
-                  <img
+                  <SmartImage
                     src={p.ad_hero_image_url ?? p.image_url ?? ''}
                     alt={p.name}
-                    className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.05]"
+                    fill
+                    sizes="(min-width: 768px) 280px, 100vw"
+                    blurTone="dark"
+                    className="object-cover transition-transform duration-500 group-hover:scale-[1.05]"
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-white/20">—</div>

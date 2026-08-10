@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import SmartImage from '@/components/SmartImage';
 import type { SiteTone } from '@/components/site-templates/chrome';
 
 // Product media gallery for the on-site PDP. Server builds the ordered media
@@ -68,7 +69,16 @@ export default function SiteProductGallery({
             className="h-full w-full object-cover"
           />
         ) : (
-          <img key={current.url} src={current.url} alt={name} className="h-full w-full object-cover" />
+          <SmartImage
+            key={current.url}
+            src={current.url}
+            alt={name}
+            fill
+            priority
+            sizes="(min-width: 768px) 50vw, 100vw"
+            blurTone={tone === 'neutral' ? 'dark' : 'light'}
+            className="object-cover"
+          />
         )}
       </div>
 
@@ -85,7 +95,7 @@ export default function SiteProductGallery({
               {item.type === 'video' ? (
                 <>
                   {item.poster ? (
-                    <img src={item.poster} alt="" className="h-full w-full object-cover" />
+                    <SmartImage src={item.poster} alt="" fill sizes="64px" blurTone="none" className="object-cover" />
                   ) : (
                     <span className="block h-full w-full bg-black" />
                   )}
@@ -94,7 +104,7 @@ export default function SiteProductGallery({
                   </span>
                 </>
               ) : (
-                <img src={item.url} alt="" className="h-full w-full object-cover" />
+                <SmartImage src={item.url} alt="" fill sizes="64px" blurTone="none" className="object-cover" />
               )}
             </button>
           ))}

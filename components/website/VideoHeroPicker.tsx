@@ -3,6 +3,7 @@
 import { createBrowserClient } from '@supabase/ssr';
 import { useEffect, useState } from 'react';
 import { Clapperboard, Film, Link2, Loader2, X } from 'lucide-react';
+import SmartImage from '@/components/SmartImage';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // VideoHeroPicker — asset picker for the video_hero block (Phase 4 Step 3).
@@ -170,7 +171,13 @@ export default function VideoHeroPicker({ shopId, heading, onSelect, onClose }: 
                     >
                       <div className="relative aspect-video overflow-hidden rounded-xl bg-neutral-100 ring-1 ring-gray-200 transition group-hover:ring-2 group-hover:ring-[#f0a500]">
                         {ad.hero_image_url ? (
-                          <img src={ad.hero_image_url} alt={name} className="h-full w-full object-cover" />
+                          <SmartImage
+                            src={ad.hero_image_url}
+                            alt={name}
+                            fill
+                            sizes="(min-width: 640px) 213px, 45vw"
+                            className="object-cover"
+                          />
                         ) : (
                           <div className="flex h-full items-center justify-center">
                             <Film size={20} className="text-gray-300" />

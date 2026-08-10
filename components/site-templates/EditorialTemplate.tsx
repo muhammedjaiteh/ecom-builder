@@ -1,5 +1,6 @@
 import { Fragment } from 'react';
 import Link from 'next/link';
+import SmartImage from '@/components/SmartImage';
 import {
   findBlock,
   resolveBlocks,
@@ -86,7 +87,14 @@ function EditorialHero({ block, shop, heroMedia }: {
             className="absolute inset-0 h-full w-full object-cover"
           />
         ) : heroMedia ? (
-          <img src={heroMedia.url} alt={shop.shop_name ?? 'Hero'} className="absolute inset-0 h-full w-full object-cover" />
+          <SmartImage
+            src={heroMedia.url}
+            alt={shop.shop_name ?? 'Hero'}
+            fill
+            priority
+            sizes="(min-width: 768px) 58vw, 100vw"
+            className="object-cover"
+          />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-neutral-200 via-[#EDEAE2] to-neutral-300">
             <span className="font-serif text-[10rem] italic leading-none text-neutral-400/40 md:text-[16rem]">{initial}</span>
@@ -133,7 +141,12 @@ function EditorialFeatures({ shop, products }: { shop: SiteShop; products: SiteP
           >
             <div className={`group relative aspect-[4/3] overflow-hidden border-neutral-900 md:aspect-auto md:min-h-[500px] ${reversed ? 'md:order-2 md:border-l' : 'md:border-r'}`}>
               <div className="absolute inset-0">
-                <EditorialProductPlate src={p.ad_hero_image_url ?? p.image_url} alt={p.name} index={i} />
+                <EditorialProductPlate
+                  src={p.ad_hero_image_url ?? p.image_url}
+                  alt={p.name}
+                  index={i}
+                  sizes="(min-width: 768px) 50vw, 100vw"
+                />
               </div>
               {badge && (
                 <span className={`absolute left-4 top-4 px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.25em] ${

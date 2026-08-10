@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import SmartImage from '@/components/SmartImage';
 import {
   siteBasePath,
   siteCollectionsPath,
@@ -32,13 +33,22 @@ const FALLBACK_PANELS = [
   'bg-gradient-to-br from-[#222] via-[#161616] to-[#1c1c1c]',
 ];
 
-export function NeutralProductVisual({ src, alt, index }: { src: string | null; alt: string; index: number }) {
+export function NeutralProductVisual({ src, alt, index, sizes }: {
+  src: string | null;
+  alt: string;
+  index: number;
+  /** Slot-tuned sizes; defaults to the shared 2/3/4-column grid breakpoints. */
+  sizes?: string;
+}) {
   if (src) {
     return (
-      <img
+      <SmartImage
         src={src}
         alt={alt}
-        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.05]"
+        fill
+        sizes={sizes ?? '(min-width: 1024px) 25vw, (min-width: 768px) 33vw, 50vw'}
+        blurTone="dark"
+        className="object-cover transition-transform duration-500 group-hover:scale-[1.05]"
       />
     );
   }

@@ -13,6 +13,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import useSWR, { SWRConfig } from 'swr';
 import { ArrowLeft, Crown, Loader2, Save, Store, Image as ImageIcon, Camera, Palette, LayoutTemplate, Truck, MapPin, CheckCircle2, Lock, PenLine, WifiOff, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
+import SmartImage from '@/components/SmartImage';
 import WebsiteGeneratorStudio, { type StudioShop } from '@/components/website/WebsiteGeneratorStudio';
 import SiteCopyEditor, { EDITABLE_TEMPLATE_COMPONENTS } from '@/components/website/SiteCopyEditor';
 import { WebsiteConfigSchema, type ShopWebsiteRow, type SiteShop } from '@/lib/siteTemplates';
@@ -260,7 +261,13 @@ export default function OnlineStoreThemesPage() {
                 <label className="mb-3 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Store Banner (Landscape)</label>
                 <div className="relative h-32 md:h-48 w-full overflow-hidden rounded-[1.5rem] border-2 border-dashed border-gray-200 bg-gray-50 group">
                   {bannerUrl ? (
-                    <img src={bannerUrl} alt="Banner" className="h-full w-full object-cover" />
+                    <SmartImage
+                      src={bannerUrl}
+                      alt="Banner"
+                      fill
+                      sizes="(min-width: 768px) 640px, 100vw"
+                      className="object-cover"
+                    />
                   ) : (
                     <div className="flex h-full flex-col items-center justify-center text-gray-400">
                       <ImageIcon size={32} className="mb-2 opacity-50" />
@@ -283,7 +290,7 @@ export default function OnlineStoreThemesPage() {
                 <div className="flex items-center gap-6">
                   <div className="relative h-24 w-24 overflow-hidden rounded-full border-2 border-dashed border-gray-200 bg-gray-50 group shrink-0">
                     {logoUrl ? (
-                      <img src={logoUrl} alt="Logo" className="h-full w-full object-cover" />
+                      <SmartImage src={logoUrl} alt="Logo" fill sizes="96px" className="object-cover" />
                     ) : (
                       <div className="flex h-full items-center justify-center text-gray-400"><Store size={24} className="opacity-50" /></div>
                     )}
