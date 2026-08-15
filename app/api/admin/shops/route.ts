@@ -3,12 +3,12 @@ import { createClient } from '@supabase/supabase-js';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { slugifyWithFallback } from '@/lib/slugify';
+import { resolveAdmin } from '@/lib/adminGuard';
+import { classifyAdminAction, recordAdminAction } from '@/lib/adminAudit';
 
 // Force Next.js to always fetch fresh data
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
-
-const ADMIN_EMAIL = 'muhammedjaiteh419@gmail.com';
 
 // --- GET: Fetch Shops and Mapped Emails (SECURED) ---
 export async function GET() {
@@ -26,9 +26,11 @@ export async function GET() {
     );
 
     const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
-    
-    if (authError || !user || user.email?.toLowerCase().trim() !== ADMIN_EMAIL) {
-      console.error("🚨 GET AUTH ERROR:", authError || "User is not admin");
+
+    // CEO Vault — Wall 2 (AUTHORITATIVE): role AND pinned email, both
+    // required before the service-role client is even constructed.
+    if (authError || !user || !resolveAdmin(user).strict) {
+      console.error("🚨 GET AUTH ERROR:", authError || "User failed the strict admin check");
       return NextResponse.json({ error: 'Unauthorized access' }, { status: 403 });
     }
 
@@ -59,7 +61,7 @@ export async function GET() {
     });
 
     return NextResponse.json({ shops: combinedShops });
-  } catch (error: any) {
+  } catch (error) {
     console.error("GET Fatal Crash:", error);
     // Guarantee a valid JSON response even on fatal crash
     return NextResponse.json({ error: 'Failed to fetch. Server crashed.' }, { status: 500 });
@@ -94,9 +96,11 @@ export async function PATCH(request: Request) {
     );
 
     const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
-    
-    if (authError || !user || user.email?.toLowerCase().trim() !== ADMIN_EMAIL) {
-      console.error("🚨 PATCH AUTH ERROR:", authError || "User is not admin");
+
+    // CEO Vault — Wall 2 (AUTHORITATIVE): role AND pinned email, both
+    // required before any service-role touch.
+    if (authError || !user || !resolveAdmin(user).strict) {
+      console.error("🚨 PATCH AUTH ERROR:", authError || "User failed the strict admin check");
       return NextResponse.json({ error: 'Unauthorized access' }, { status: 403 });
     }
 
@@ -111,6 +115,21 @@ export async function PATCH(request: Request) {
     // and break /site routing (never store an empty slug either).
     if (typeof updates.shop_slug === 'string') {
       updates.shop_slug = slugifyWithFallback(updates.shop_slug, id);
+    }
+
+    // Audit prelude: capture the tier BEFORE the mutation (from_tier for
+    // admin_actions). maybeSingle never throws — a read failure degrades to a
+    // null from_tier, never blocks the update.
+    const touchesTierOrStatus =
+      typeof updates.subscription_tier === 'string' || typeof updates.status === 'string';
+    let priorTier: string | null = null;
+    if (touchesTierOrStatus) {
+      const { data: prior } = await supabaseAdmin
+        .from('shops')
+        .select('subscription_tier')
+        .eq('id', id)
+        .maybeSingle();
+      priorTier = prior?.subscription_tier ?? null;
     }
 
     const { data, error } = await supabaseAdmin
@@ -130,13 +149,34 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'Shop update succeeded but no data was returned' }, { status: 500 });
     }
 
+    // Audit trail (CEO Vault): one admin_actions row per tier/status mutation.
+    // recordAdminAction swallows its own failures — audit can never fail the
+    // approval of a seller who paid.
+    if (touchesTierOrStatus) {
+      const toTier =
+        typeof updates.subscription_tier === 'string' ? updates.subscription_tier : priorTier;
+      await recordAdminAction(supabaseAdmin, {
+        admin_id: user.id,
+        target_shop_id: id,
+        action: classifyAdminAction({
+          fromTier: priorTier,
+          toTier,
+          toStatus: typeof updates.status === 'string' ? updates.status : null,
+        }),
+        from_tier: priorTier,
+        to_tier: toTier,
+        notes: null,
+      });
+    }
+
     console.log("✅ UPDATE SUCCESS:", data);
     return NextResponse.json({ success: true, shop: data[0] });
 
-  } catch (e: any) {
+  } catch (e) {
     // 🛡️ THE SAFETY LOCK: If *anything* unexpected happens, capture it and return clean JSON.
     // This prevents the generic browser "can't load page" crash.
     console.error("🚨 PATCH FATAL SERVER CRASH:", e);
-    return NextResponse.json({ error: e.message || 'Server crashed during update' }, { status: 500 });
+    const message = e instanceof Error && e.message ? e.message : 'Server crashed during update';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
