@@ -1,17 +1,24 @@
 'use client';
 
 import { createBrowserClient } from '@supabase/ssr';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { Lock, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import AdRenderNotifier from '@/components/adstudio/AdRenderNotifier';
 import DashboardSidebar from '@/components/dashboard/DashboardSidebar';
+import VaultDoor from '@/components/dashboard/VaultDoor';
+import { fetchJSON } from '@/lib/transport';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<string | null>(null);
   const [shopName, setShopName] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [paymentLink, setPaymentLink] = useState('https://wa.me/447599710468');
+  // Loop guard: at most ONE heal attempt per layout mount — the ref persists
+  // across the pathname-keyed effect re-runs, so in-dashboard navigation can
+  // never re-fire the heal.
+  const healAttempted = useRef(false);
   
   const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -28,10 +35,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         router.push('/login');
         return;
       }
+      setUserId(user.id);
 
       // Fetch their exact subscription tier and shop name
-      const { data } = await supabase.from('shops').select('shop_name, subscription_tier').eq('id', user.id).single();
-      
+      let { data } = await supabase.from('shops').select('shop_name, subscription_tier').eq('id', user.id).single();
+
+      // ORPHAN HEAL: a NULL row here means the signup trigger never minted
+      // this account's shops row. Fire the heal API once, then refetch ONCE.
+      // Failures are swallowed into the existing null path — the vault door
+      // below already renders correctly for a missing row.
+      if (!data && !healAttempted.current) {
+        healAttempted.current = true;
+        try {
+          await fetchJSON('/api/shops/ensure', { method: 'POST' });
+          const refetch = await supabase.from('shops').select('shop_name, subscription_tier').eq('id', user.id).single();
+          data = refetch.data;
+        } catch {
+          // Heal unavailable (offline/timeout/server) — fall through to the
+          // vault door's existing missing-row behavior.
+        }
+      }
+
       if (data) {
         setStatus(data.subscription_tier);
         setShopName(data.shop_name ?? null);
@@ -66,43 +90,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     checkGlobalAccess();
   }, [router, supabase, pathname]);
 
+  // Real-time activation handoff: VaultDoor watched the shops row (realtime +
+  // 15s poll + wake/reconnect re-checks), played its "Payment Verified"
+  // interstitial, and now hands us the fresh active tier. Setting status swaps
+  // this layout to the activated branch — fresh sellers then hit the
+  // OnboardingInterceptor naturally (no shop_websites row → Magic Storefront
+  // Builder). VaultDoor unmounts, tearing down its channel and timers.
+  const handleUnlocked = useCallback((tier: string) => {
+    setStatus(tier);
+  }, []);
+
   if (loading) {
     return <div className="flex min-h-screen items-center justify-center bg-[#F9F8F6]"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>;
   }
 
-  // 🛑 THE GLOBAL VAULT DOOR
+  // 🛑 THE GLOBAL VAULT DOOR — lock screen + real-time unlock live in
+  // components/dashboard/VaultDoor.tsx. userId is guaranteed non-null here:
+  // the only setLoading(false) runs AFTER a successful auth check (the no-user
+  // path redirects and never clears loading). The unreachable null guard
+  // renders the same loader — no side effects in render.
   if (status === 'pending' || status === 'suspended' || status === null) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-[#F9F8F6] px-4 text-center selection:bg-gray-900 selection:text-white">
-        <div className="w-full max-w-md rounded-[2rem] bg-white p-10 shadow-2xl border border-red-100">
-          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-red-50 text-red-500">
-            <Lock size={32} />
-          </div>
-          <h1 className="mb-2 text-2xl font-black tracking-tight text-gray-900">Account Locked</h1>
-          <p className="mb-8 text-sm leading-relaxed text-gray-500">
-            Your boutique is currently <strong className="text-gray-900 uppercase">Pending Activation</strong>. 
-            To unlock your Command Center and start uploading products, please complete your subscription payment.
-          </p>
-          
-          <div className="space-y-3">
-            <a 
-              href={paymentLink} 
-              target="_blank"
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1a2e1a] py-4 text-xs font-bold uppercase tracking-widest text-white shadow-md transition hover:bg-black"
-            >
-              Contact Admin to Pay
-            </a>
-            
-            <button 
-              onClick={async () => { await supabase.auth.signOut(); router.push('/login'); }} 
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gray-50 py-4 text-xs font-bold uppercase tracking-widest text-gray-500 transition hover:bg-gray-100 hover:text-gray-900"
-            >
-              Sign Out
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+    if (!userId) {
+      return <div className="flex min-h-screen items-center justify-center bg-[#F9F8F6]"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>;
+    }
+    return <VaultDoor userId={userId} paymentLink={paymentLink} onUnlocked={handleUnlocked} />;
   }
 
   // Activated accounts get the persistent Shopify-standard sidebar plus the

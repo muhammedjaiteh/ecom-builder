@@ -66,7 +66,11 @@ function RegisterForm() {
         data: {
           shop_name: shopName,
           phone_number: phone,
-          subscription_tier: 'pending', 
+          subscription_tier: 'pending',
+          // Plan intent must survive the browser: the DB signup trigger and
+          // the heal API (/api/shops/ensure) both read requested_plan from
+          // auth metadata — localStorage alone dies with the device.
+          requested_plan: plan || 'starter',
         }
       },
     });

@@ -3,7 +3,7 @@
 import { createBrowserClient } from '@supabase/ssr';
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { CheckCircle2, Sparkles, Clock, Image as ImageIcon, PenTool, Loader2, CreditCard } from 'lucide-react';
+import { CheckCircle2, Sparkles, Loader2, CreditCard } from 'lucide-react';
 
 function CheckoutEngine() {
   const [shopName, setShopName] = useState<string>('my boutique');
@@ -44,6 +44,9 @@ function CheckoutEngine() {
   const handleFullCheckout = () => {
     // 🧠 BROWSER MEMORY: Remember they wanted the Done-For-You service
     localStorage.setItem('sanndikaa_concierge', 'yes');
+    // Durable copy in auth metadata (concierge choice happens post-signup, so
+    // it can't ride signUp metadata). Fire-and-forget — never blocks checkout.
+    supabase.auth.updateUser({ data: { concierge_choice: 'yes' } }).catch(() => {});
     const message = `✨ *Sanndikaa Store Activation & Setup*\n\nHello Admin! I just registered my store, *${shopName}*.\n\nI want to activate the *${planName} Plan* (D${planPrice}) AND I want the *Done-For-You Setup* (D${conciergePrice}).\n\n*Total Due: D${totalWithConcierge}*\n\nHow do I send my payment?`;
     window.open(`https://wa.me/${adminNumber}?text=${encodeURIComponent(message)}`, '_blank');
     router.replace('/dashboard');
@@ -52,6 +55,8 @@ function CheckoutEngine() {
   const handleBaseCheckout = () => {
     // 🧠 BROWSER MEMORY: Remember they declined the Done-For-You service
     localStorage.setItem('sanndikaa_concierge', 'no');
+    // Durable copy in auth metadata — mirrors handleFullCheckout.
+    supabase.auth.updateUser({ data: { concierge_choice: 'no' } }).catch(() => {});
     const message = `✨ *Sanndikaa Store Activation*\n\nHello Admin! I just registered my store, *${shopName}*.\n\nI am ready to activate my *${planName} Plan*.\n\n*Total Due: D${planPrice}*\n\nHow do I send my payment?`;
     window.open(`https://wa.me/${adminNumber}?text=${encodeURIComponent(message)}`, '_blank');
     router.replace('/dashboard'); 
