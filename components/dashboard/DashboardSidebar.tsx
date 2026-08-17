@@ -23,7 +23,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  BadgePercent, BarChart3, Boxes, FileText, Film, Home, ListTree,
+  BadgePercent, BarChart3, Boxes, FileText, Film, Globe, Home, ListTree,
   Megaphone, Menu, Package, Palette, Settings, ShoppingCart, Star,
   Store, Users, X,
 } from 'lucide-react';
@@ -83,6 +83,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Themes', href: '/dashboard/online-store/themes', icon: Palette },
       { label: 'Pages', href: '/dashboard/online-store/pages', icon: FileText },
       { label: 'Navigation', href: '/dashboard/online-store/navigation', icon: ListTree },
+      { label: 'Domain', href: '/dashboard/online-store/domains', icon: Globe },
     ],
   },
 ];

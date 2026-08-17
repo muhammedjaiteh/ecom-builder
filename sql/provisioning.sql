@@ -1,7 +1,8 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- SANNDIKAA PROVISIONING PACK — signup trigger, slug canonicalization, audit
--- table, shop_websites read policies, orphan backfill, and shops realtime
--- publication enrollment (vault-door instant unlock).
+-- table, shop_websites read policies, orphan backfill, shops realtime
+-- publication enrollment (vault-door instant unlock), and shop_websites
+-- custom-domain columns (BYOD).
 --
 -- Run this in the Supabase SQL Editor. The entire pack is IDEMPOTENT and
 -- RE-RUNNABLE: every statement is guarded (CREATE OR REPLACE / IF NOT EXISTS /
@@ -319,6 +320,50 @@ BEGIN
     ALTER PUBLICATION supabase_realtime ADD TABLE public.shops;
     RAISE NOTICE '[sanndikaa-provisioning] Added public.shops to supabase_realtime — vault unlock events now stream instantly.';
   END IF;
+END;
+$$;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- SECTION 9 · shop_websites custom-domain columns (BYOD custom domains)
+-- Adds the storage for seller-owned domains managed through the Vercel
+-- Domains API (app/api/domains/route.ts + lib/vercelDomains.ts):
+--
+--   custom_domain — the NORMALIZED hostname (the API always writes it
+--                   lowercased/punycoded), NULL when no domain is connected.
+--   domain_status — server-driven state machine value:
+--                   'pending_txt' | 'awaiting_dns' | 'active'
+--                   (NULL / absent row = not_connected).
+--
+-- UNIQUENESS: an EXPRESSION index on lower(custom_domain) — hostnames are
+-- case-insensitive per RFC 4343, and a bare UNIQUE column constraint cannot
+-- apply lower(), so 'Shop.com' and 'shop.com' would otherwise coexist.
+-- NULLs stay allowed and are IGNORED by Postgres unique indexes by design:
+-- most rows have no domain, and that must never collide.
+--
+-- Guarded like Section 6: skipped with a NOTICE when shop_websites does not
+-- exist yet. ADD COLUMN IF NOT EXISTS + CREATE UNIQUE INDEX IF NOT EXISTS
+-- keep every statement idempotent — re-running the pack is always safe.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+DO $$
+BEGIN
+  IF to_regclass('public.shop_websites') IS NULL THEN
+    RAISE NOTICE '[sanndikaa-provisioning] shop_websites table not found — skipping custom-domain columns.';
+    RETURN;
+  END IF;
+
+  EXECUTE 'ALTER TABLE public.shop_websites ADD COLUMN IF NOT EXISTS custom_domain text';
+  EXECUTE 'ALTER TABLE public.shop_websites ADD COLUMN IF NOT EXISTS domain_status text';
+
+  EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS shop_websites_custom_domain_lower_key
+             ON public.shop_websites (lower(custom_domain))';
+
+  EXECUTE $cmt$COMMENT ON COLUMN public.shop_websites.custom_domain IS
+    'BYOD custom domain (normalized lowercase hostname). Case-insensitive uniqueness enforced by the lower() expression index shop_websites_custom_domain_lower_key; NULL = not connected.'$cmt$;
+  EXECUTE $cmt$COMMENT ON COLUMN public.shop_websites.domain_status IS
+    'Custom-domain state machine: pending_txt | awaiting_dns | active (NULL = not connected). Written only by app/api/domains/route.ts via the service role.'$cmt$;
+
+  RAISE NOTICE '[sanndikaa-provisioning] shop_websites custom-domain columns + lower(custom_domain) unique index ensured.';
 END;
 $$;
 

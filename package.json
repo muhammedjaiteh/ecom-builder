@@ -16,6 +16,7 @@
     "@google/generative-ai": "^0.24.1",
     "@supabase/ssr": "^0.9.0",
     "@supabase/supabase-js": "^2.91.0",
+    "@vercel/global-config": "^1.5.1",
     "ai": "^6.0.197",
     "framer-motion": "^12.38.0",
     "html-to-image": "^1.11.13",
