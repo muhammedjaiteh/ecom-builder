@@ -1,19 +1,34 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { createClient } from '@supabase/supabase-js';
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
+// Product create API. AUTH + INSERT both ride the cookie-authed server client
+// (the publish-route pattern): the caller's JWT is attached to the PostgREST
+// insert, so the strict products_owner_insert policy (RLS_PRODUCTS_ORDERS_
+// SHOPS.sql) authorizes it as `authenticated`. The historical bare anon-key
+// client is gone — it sent NO JWT, which only ever worked because the live
+// DB's INSERT policy had drifted permissive (see sql/provisioning.sql
+// SECTION 10, which kills that drift).
 export async function POST(request: Request) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll: async () => (await cookies()).getAll(),
+          setAll: async (cookiesToSet) => {
+            const cookieStore = await cookies();
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            );
+          },
+        },
+      }
+    );
 
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    const token = authHeader.replace('Bearer ', '');
-    const verifyClient = createClient(supabaseUrl, supabaseAnonKey);
-    const { data: { user }, error: authError } = await verifyClient.auth.getUser(token);
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized: Invalid or expired token' }, { status: 401 });
     }
@@ -38,11 +53,14 @@ export async function POST(request: Request) {
     }
 
     // ── Insert product ────────────────────────────────────────────────────
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    // shop_id is written alongside user_id (shops are keyed on the owner's
+    // auth id, so they are the same value). Omitting shop_id minted "ghost"
+    // rows invisible to the legacy /shop page's FK embed on shop_id.
     const { data, error } = await supabase
       .from('products')
       .insert([{
         user_id: user.id,
+        shop_id: user.id,
         name,
         price,
         description,
@@ -59,8 +77,9 @@ export async function POST(request: Request) {
     if (error) throw error;
 
     return NextResponse.json({ success: true, product: data });
-  } catch (err: any) {
+  } catch (err) {
     console.error('[products] fatal error:', err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    const message = err instanceof Error ? err.message : 'Failed to save product.';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -3,6 +3,7 @@ import SmartImage from '@/components/SmartImage';
 import {
   findBlock,
   resolveBlocks,
+  resolveLogoUrl,
   siteBasePath,
   siteCollectionsPath,
   siteProductPath,
@@ -119,6 +120,10 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
   // stored slug, so encode it as-is — lowercasing a legacy value would 404.
   const shopUrl = shop.shop_slug ? `/shop/${encodeURIComponent(shop.shop_slug)}` : '/';
   const monogram = (shop.shop_name ?? 'S').trim().charAt(0).toUpperCase() || 'S';
+  // Logo slot fallback chain (Premium Visual Editor): generated/uploaded site
+  // logo → shop.logo_url → the monogram mark. Legacy rows (no assets) render
+  // byte-identically.
+  const logoUrl = resolveLogoUrl(config, shop);
 
   // Section anchors live on the home page; from sub-pages they route home
   // first. Slugless previews always render the home layout, so bare hashes
@@ -152,9 +157,9 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
       <nav className="sticky top-0 z-50 border-b border-stone-200/80 bg-[#FBFAF7]/90 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 md:h-20 md:px-10">
           <Link href={base ?? '#'} className="flex min-w-0 items-center gap-3">
-            {shop.logo_url ? (
+            {logoUrl ? (
               <SmartImage
-                src={shop.logo_url}
+                src={logoUrl}
                 alt={shop.shop_name ?? 'Logo'}
                 width={36}
                 height={36}
@@ -189,9 +194,9 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
         <div className="mx-auto grid max-w-7xl grid-cols-1 gap-12 px-5 py-16 md:grid-cols-4 md:gap-8 md:px-10 md:py-20">
           <div className="md:col-span-2">
             <div className="flex items-center gap-3">
-              {shop.logo_url ? (
+              {logoUrl ? (
                 <SmartImage
-                  src={shop.logo_url}
+                  src={logoUrl}
                   alt={shop.shop_name ?? 'Logo'}
                   width={40}
                   height={40}

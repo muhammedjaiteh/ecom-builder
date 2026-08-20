@@ -2,19 +2,24 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { createClient } from '@supabase/supabase-js';
+import { mintStorefrontLink, resolveAppOrigin } from '@/lib/storefrontUrl';
 
 const METERED_TIERS = ['starter', 'pro'];
-const UNLIMITED_TIERS = ['advanced', 'flagship'];
+
+type CampaignShop = { id: string; ai_credits: number | null };
 
 /**
  * Campaign generation handler
- * Generates WhatsApp broadcast messages using OpenAI API
+ * Generates WhatsApp broadcast messages using OpenAI API.
+ * `origin` — absolute base for the store link (PUBLIC_APP_URL ?? request
+ * host, resolved by the POST handler). The legacy client-provided shopSlug
+ * parameter is gone: the link mints from the authenticated shop's own row.
  */
 async function handleCampaignGeneration(
   userId: string,
   productNames: string[],
-  shopSlug: string,
-  shop: any,
+  origin: string,
+  shop: CampaignShop,
   tier: string
 ) {
   try {
@@ -110,20 +115,38 @@ async function handleCampaignGeneration(
       );
     }
 
-    // Append store link
-    const storeLink = `\n\nShop here: sanndikaa.com/shop/${shopSlug || 'store'}`;
+    // Append store link — minted through the shared storefront-URL core
+    // (active custom domain → published /site → encoded /shop) from a
+    // service-role read of THIS user's shop, absolute from the resolved
+    // origin. Flag sweep: the hardcoded sanndikaa.com/shop/{slug} is gone.
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+    const { data: shopRow } = await supabaseAdmin
+      .from('shops')
+      .select('id, shop_slug')
+      .eq('id', userId)
+      .maybeSingle();
+    const storeUrl = await mintStorefrontLink({
+      shop: { id: userId, shop_slug: shopRow?.shop_slug ?? null },
+      origin,
+      readWebsite: (shopId) =>
+        supabaseAdmin
+          .from('shop_websites')
+          .select('status, config, custom_domain, domain_status')
+          .eq('shop_id', shopId)
+          .maybeSingle(),
+    });
+    const storeLink = `\n\nShop here: ${storeUrl}`;
     const finalMessage = aiMessage + storeLink;
 
-    // Deduct credit for metered tiers
+    // Deduct credit for metered tiers (the credit gate above guarantees
+    // ai_credits > 0 on this path — the ?? 0 only satisfies the type).
     if (METERED_TIERS.includes(tier)) {
-      const supabaseAdmin = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-      );
-
       await supabaseAdmin
         .from('shops')
-        .update({ ai_credits: shop.ai_credits - 1 })
+        .update({ ai_credits: (shop.ai_credits ?? 0) - 1 })
         .eq('id', shop.id);
     }
 
@@ -131,7 +154,7 @@ async function handleCampaignGeneration(
       message: finalMessage,
       aiContent: aiMessage,
       storeLink,
-      creditsRemaining: METERED_TIERS.includes(tier) ? Math.max(0, shop.ai_credits - 1) : null,
+      creditsRemaining: METERED_TIERS.includes(tier) ? Math.max(0, (shop.ai_credits ?? 0) - 1) : null,
       tier,
       wordCount
     });
@@ -226,11 +249,19 @@ export async function POST(req: Request) {
     // 4. PARSE REQUEST INPUT & ROUTE TO HANDLER
     // ========================================
     const body = await req.json();
-    const { mode, prompt, productNames, shopSlug } = body;
+    // NOTE: legacy clients still send `shopSlug` here — deliberately ignored;
+    // the campaign store link mints from the authenticated shop's own row.
+    const { mode, prompt, productNames } = body;
 
     // Route to campaign generation handler if mode='campaign'
     if (mode === 'campaign') {
-      return handleCampaignGeneration(user.id, productNames, shopSlug, shop, tier);
+      return handleCampaignGeneration(
+        user.id,
+        productNames,
+        resolveAppOrigin(req.headers.get('host')),
+        shop,
+        tier
+      );
     }
 
     // Otherwise, handle product description generation

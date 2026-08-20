@@ -6,6 +6,7 @@ import { cookies } from 'next/headers';
 import { generateWithFallback } from '@/lib/llm';
 import { ELITE_COPY_RULES } from '@/lib/adCopy';
 import { repairShopSlug } from '@/lib/slugify';
+import { runSiteAssetPhase } from '@/lib/siteAssets';
 import {
   CONCEPT_TEMPLATE_KEYS,
   ConceptPairSchema,
@@ -355,6 +356,40 @@ ${templateConstraint}`;
       return NextResponse.json({ error: 'Failed to save the generated website.' }, { status: 500 });
     }
 
+    // ── Zero-click asset phase (EXECUTE step only — never for concepts) ────
+    // Runs AFTER the copy/config upsert succeeded and patches the row via a
+    // SECOND service-role update: a crash or timeout mid-assets can never
+    // lose the saved site. Every failure inside runSiteAssetPhase is a
+    // graceful skip (hero only when a real product photo exists; logo only
+    // when the OpenAI key is configured) — onboarding NEVER blocks on assets.
+    let finalWebsite = website;
+    try {
+      const assets = await runSiteAssetPhase({
+        admin,
+        shop: { id: shop.id, shop_name: shop.shop_name },
+        products,
+        config,
+      });
+      if (assets) {
+        const { data: patched, error: patchError } = await admin
+          .from('shop_websites')
+          .update({ config: { ...config, assets } })
+          .eq('shop_id', shop.id)
+          .select()
+          .single();
+        if (patchError || !patched) {
+          console.warn('[generate-website] Asset patch failed (site itself is saved):', patchError);
+        } else {
+          finalWebsite = patched;
+          console.log(`[generate-website] Assets attached for shop ${shop.id}: hero=${Boolean(assets.hero_image_url)} logo=${Boolean(assets.logo_url)}`);
+        }
+      }
+    } catch (assetError) {
+      // Belt-and-suspenders: the phase resolves-null by design, but even an
+      // unexpected throw must never fail a generation that already saved.
+      console.warn('[generate-website] Asset phase skipped:', assetError);
+    }
+
     // ── Cache bust: the live /site route must serve this config on the very
     // next request. Path revalidation covers the concrete URL (query strings
     // like ?preview=1 share the same path entry); the '/site/[slug]' page-level
@@ -380,8 +415,9 @@ ${templateConstraint}`;
     // equivalent to the legacy single-argument revalidateTag behavior.
     revalidateTag(`site:${shop.id}`, 'max');
 
-    // Full row (dashboard contract) + the canonical slug for link minting.
-    return NextResponse.json({ ...website, shop_slug: canonicalSlug });
+    // Full row (dashboard contract, asset-patched when the phase produced
+    // anything) + the canonical slug for link minting.
+    return NextResponse.json({ ...finalWebsite, shop_slug: canonicalSlug });
   } catch (error) {
     console.error('[generate-website] fatal:', error);
     const err = error as { status?: number; message?: string } | null;

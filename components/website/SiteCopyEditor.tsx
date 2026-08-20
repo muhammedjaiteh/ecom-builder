@@ -19,6 +19,7 @@ import {
   ChevronRight,
   Clapperboard,
   CloudOff,
+  Eye,
   Film,
   GalleryHorizontal,
   LayoutGrid,
@@ -28,6 +29,7 @@ import {
   RefreshCw,
   Rows3,
   Save,
+  SlidersHorizontal,
   Trash2,
   Undo2,
   X,
@@ -43,13 +45,36 @@ import EditorialTemplate from '@/components/site-templates/EditorialTemplate';
 import RitualTemplate from '@/components/site-templates/RitualTemplate';
 import BottomSheet from '@/components/website/BottomSheet';
 import VideoHeroPicker, { type VideoHeroSelection } from '@/components/website/VideoHeroPicker';
+import AssetSlots, { type AssetBusyState, type AssetSlotKind } from '@/components/website/editor/AssetSlots';
+import HeroImagePicker from '@/components/website/editor/HeroImagePicker';
+import SectionRail from '@/components/website/editor/SectionRail';
+import {
+  MAX_BLOCKS,
+  SELLER_ADDED_TYPES,
+  addTabToBlock,
+  blocksAreValid,
+  buildProductTabsBlock,
+  buildVideoHeroBlock,
+  commitValue,
+  cssAttrEscape,
+  fieldMetaFor,
+  insertAfterType,
+  isOptionalField,
+  mintBlockId,
+  moveBlock,
+  readBlockField,
+  removeTabFromBlock,
+  reorderBlocksByIds,
+  writeBlockField,
+  type FieldMeta,
+} from '@/components/website/editor/editorModel';
 import { useIsMobileViewport } from '@/lib/useIsMobileViewport';
 import {
-  SITE_COPY_LIMITS,
   blocksToLegacySite,
   resolveBlocks,
   resolveHeroMedia,
   type ShopWebsiteRow,
+  type SiteAssets,
   type SiteBlock,
   type SiteBlockType,
   type SiteProduct,
@@ -60,64 +85,50 @@ import {
 } from '@/lib/siteTemplates';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SiteCopyEditor — the inline text editor of the Site Editor section
-// (founder mandate: click "Skin Drinks Golden Light", type your own).
+// SiteCopyEditor — the Shopify-style SPLIT-SCREEN Site Editor.
 //
-// The seller's REAL home page renders inside a scaled, scrollable frame (same
-// scaling approach as MiniSitePreview, pointer events ON), fed entirely from
-// the local `blocks` state — every keystroke re-renders the actual template
-// component live. Clicking any node carrying data-block-id/data-block-field
-// opens an overlay input/textarea positioned over that node.
+// DESKTOP/TABLET (≥768px): a two-zone workspace —
+//   LEFT (~350px rail): the section tree (framer-motion Reorder drag on a
+//   dedicated grip writes block order straight to state) + the inspector for
+//   the focused section: inline copy inputs with live SITE_COPY_LIMITS
+//   budgets, the Grid|Carousel toggle, product-tab editing, film controls,
+//   and the hero section's asset slots (hero image upload / Ad Studio picker
+//   / Generate-with-AI, plus the logo slot).
+//   RIGHT: the live preview — the seller's REAL template component rendered
+//   scaled inside a scroll frame.
 //
-// WHY AN OVERLAY INPUT (not in-place contentEditable):
-//   1. Live preview requires re-rendering the template from state on every
-//      keystroke. A controlled contentEditable inside that re-render loses
-//      its caret each time React replaces the text node — the two models are
-//      fundamentally at odds. The overlay is a separate controlled input; the
-//      preview re-renders freely beneath it.
-//   2. The preview is scaled to ~0.3–0.6×. Text inside a scaled
-//      contentEditable is unreadably small and caret hit-testing inside CSS
-//      transforms is glitchy across browsers. The overlay lives in UNSCALED
-//      coordinate space (positioned via post-transform rects), so editing
-//      happens at a readable size.
-//   3. A plain <input>/<textarea> gives maxLength budgets, Enter/Escape
-//      semantics, and mobile keyboards for free.
+//   WHY THE PREVIEW IS A SCALED REAL-COMPONENT RENDER, NOT AN IFRAME:
+//   1. The rail and the canvas share ONE React state (`blocks` + `assets`) —
+//      every keystroke in an inspector input re-renders the actual template
+//      live with zero postMessage bridge, zero serialization, zero drift
+//      between "editor model" and "preview model".
+//   2. An iframe would need its own document served from a route; offline
+//      (Gambia Standard) that second navigation can fail while THIS bundle —
+//      already cached by the PWA shell — keeps rendering the preview from
+//      SWR-cached data.
+//   3. Same-tree rendering keeps the click-capture targeting
+//      (data-block-id/-field/-section) and the CSS outline affordances in the
+//      page's own coordinate space — post-transform rects, no cross-document
+//      hit-testing.
 //
-// Interaction contract (per spec): typing updates the block JSON in state →
-// preview updates live; Escape cancels (reverts to the value at edit start);
-// Enter or blur commits to local state. A sticky save bar appears when the
-// blocks differ from the last-saved state: Save PUTs to
-// /api/websites/content, Discard restores.
+//   Bidirectional selection: clicking a section (or any copy node) on the
+//   canvas focuses it in the rail (scroll + outline) and focuses the matching
+//   inspector input; clicking a tree row outlines the section on the canvas
+//   and scrolls the preview to it.
 //
-// Phase 4 Step 3 — block presentation editing rides the SAME dirty/save flow:
-//   - Clicking a configurable section (its wrapper carries data-block-section)
-//     opens a floating settings chip: Grid|Carousel toggle on product_grid,
-//     Remove (+ Change film for video_hero) on the two seller-added types.
-//   - Interactive islands stay live inside the preview: plain [role=tab]
-//     clicks switch tabs (the active tab's pencil is the explicit edit
-//     affordance for its title) and [data-carousel-nav] clicks page the
-//     carousel — the click-capture routes both through untouched.
-//   - "Add section" below the preview inserts video_hero (via the Ad Studio
-//     film picker) or product_tabs at sensible default positions. ONLY those
-//     two types are addable/removable — the classic five are fixed anatomy.
+// MOBILE (<768px): two-tab chrome (Preview | Controls, ≥44px tabs).
+//   Preview keeps the proven tap-to-select + bottom-sheet editing exactly as
+//   before (copy sheet with commit/cancel semantics, settings sheet, add
+//   sheet). Controls renders the section tree + inspector as a scrollable
+//   list — arrow-button reorder, sheet-based field editing — over the SAME
+//   state and the SAME save path.
 //
-// Gambia Standard Step 3 — mobile (< 768px via SSR-safe matchMedia hook)
-// swaps the pointer affordances for a touch model; DESKTOP IS UNCHANGED:
-//   - No hover reveals: tapping a configurable section outlines it
-//     persistently and opens its settings as a bottom sheet; tapping a copy
-//     node opens a keyboard-safe bottom-sheet editor (the scaled preview
-//     never hosts an absolutely-positioned input on a phone). Interactive
-//     islands keep their routing: [role=tab] switches, [data-carousel-nav]
-//     pages — never swallowed by selection.
-//   - The copy sheet mirrors desktop commit semantics exactly: Save /
-//     backdrop / drag-dismiss commit (desktop's blur), Cancel / Escape
-//     restore the edit-start snapshot. While it is open the active node
-//     keeps a persistent highlight and is scrolled into view INSIDE the
-//     preview scroll container.
-//   - "Add a section" opens as a sheet listing the two seller-added types.
-//   - Sheets are sized against the visual viewport (keyboard-safe), the save
-//     bar carries safe-area padding, and preview/sheet scrolling is
-//     overscroll-contained so pull-to-refresh never fights a gesture.
+// SAVE PATH (unchanged contract, now carrying assets): a sticky dirty bar
+// appears when blocks/assets differ from the last-saved state; Save PUTs
+// { blocks, assets } to /api/websites/content (optimistic, with the offline
+// outbox queueing connectivity failures exactly as before). Asset generation
+// ("Generate with AI") persists server-side immediately via POST
+// /api/websites/assets and reconciles both local and SWR state.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Only the block-driven templates are editable surfaces. Vitality stays
@@ -132,187 +143,32 @@ export const EDITABLE_TEMPLATE_COMPONENTS: Partial<Record<TemplateKey, Component
 // MiniSitePreview so both surfaces present identical typography).
 const DESIGN_WIDTH = 1366;
 
-type FieldMeta = { label: string; max: number; multiline: boolean };
+// Existing bucket the themes-page brand uploads use — the asset slots reuse
+// it (owner-authenticated browser upload, public read).
+const BRAND_BUCKET = 'brand';
 
-// Field paths normalized with `*` for array indices ("items.0.title" →
-// "items.*.title"). Budgets come from SITE_COPY_LIMITS — the same constants
-// the zod schemas are built from, so the counter can never disagree with the
-// validation gate.
-const FIELD_META: Record<string, FieldMeta> = {
-  'hero_banner:tagline': { label: 'Tagline', max: SITE_COPY_LIMITS.tagline, multiline: false },
-  'hero_banner:headline': { label: 'Hero headline', max: SITE_COPY_LIMITS.hero_headline, multiline: false },
-  'hero_banner:subheadline': { label: 'Hero subheadline', max: SITE_COPY_LIMITS.hero_subheadline, multiline: true },
-  'value_props:items.*.title': { label: 'Value prop title', max: SITE_COPY_LIMITS.value_title, multiline: false },
-  'value_props:items.*.body': { label: 'Value prop body', max: SITE_COPY_LIMITS.value_body, multiline: true },
-  'product_grid:title': { label: 'Collection title', max: SITE_COPY_LIMITS.collection_title, multiline: false },
-  'product_grid:intro': { label: 'Collection intro', max: SITE_COPY_LIMITS.collection_intro, multiline: true },
-  'story_text:body': { label: 'Brand story', max: SITE_COPY_LIMITS.brand_story, multiline: true },
-  'cta_banner:headline': { label: 'Banner headline', max: SITE_COPY_LIMITS.cta_headline, multiline: false },
-  'cta_banner:subtext': { label: 'Banner subtext', max: SITE_COPY_LIMITS.cta_subtext, multiline: true },
-  'cta_banner:button_label': { label: 'Button label', max: SITE_COPY_LIMITS.cta_button_label, multiline: false },
-  'product_tabs:title': { label: 'Tabs heading', max: SITE_COPY_LIMITS.tabs_heading, multiline: false },
-  'product_tabs:tabs.*.title': { label: 'Tab title', max: SITE_COPY_LIMITS.tab_title, multiline: false },
-  'product_tabs:tabs.*.content': { label: 'Tab content', max: SITE_COPY_LIMITS.tab_content, multiline: true },
-  'video_hero:headline': { label: 'Film headline', max: SITE_COPY_LIMITS.hero_headline, multiline: false },
-  'video_hero:subheadline': { label: 'Film subheadline', max: SITE_COPY_LIMITS.hero_subheadline, multiline: true },
-};
+// Generation can ride the same ceiling as the site generator (route
+// maxDuration 120s + margin) — the transport default of 12s is for ordinary
+// API calls, not diffusion pipelines.
+const ASSET_GENERATION_TIMEOUT_MS = 125_000;
+const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 
-// PUT /api/websites/content rejects payloads beyond 12 blocks — the add
-// buttons disable at the same ceiling so a save can never bounce on length.
-const MAX_BLOCKS = 12;
-
-// The ONLY block types the seller can add and remove (Phase 4 contract). The
-// classic five are fixed anatomy: every template anchors design slots and
-// chrome copy to them, so they are never offered for removal.
-const SELLER_ADDED_TYPES = new Set<SiteBlockType>(['product_tabs', 'video_hero']);
-
+// Mobile settings-sheet labels — the three types that carry section settings
+// on the preview tab (unchanged tap-to-select contract).
 const CHIP_LABELS: Partial<Record<SiteBlockType, string>> = {
   product_grid: 'Collection layout',
   product_tabs: 'Product tabs',
   video_hero: 'Brand film',
 };
 
-/** Readable unique id for a seller-added block ("film-1", "tabs-2", …) —
- *  collision-checked against the current array, so the PUT unique-ids gate
- *  passes by construction. */
-function mintBlockId(prefix: string, blocks: SiteBlock[]): string {
-  let n = 1;
-  while (blocks.some((b) => b.id === `${prefix}-${n}`)) n += 1;
-  return `${prefix}-${n}`;
-}
-
-/** Default insert positions: directly after the first block of the anchor
- *  type. video_hero anchors to hero_banner (the film follows the opening);
- *  product_tabs anchors to product_grid (the tabs elaborate on the
- *  collection). Fallbacks keep insertion sane on reordered configs. */
-function insertAfterType(
-  blocks: SiteBlock[],
-  block: SiteBlock,
-  anchor: SiteBlockType,
-  fallback: 'start' | 'before_cta'
-): SiteBlock[] {
-  const idx = blocks.findIndex((b) => b.type === anchor);
-  if (idx !== -1) return [...blocks.slice(0, idx + 1), block, ...blocks.slice(idx + 1)];
-  if (fallback === 'start') return [block, ...blocks];
-  const ctaIdx = blocks.findIndex((b) => b.type === 'cta_banner');
-  if (ctaIdx !== -1) return [...blocks.slice(0, ctaIdx), block, ...blocks.slice(ctaIdx)];
-  return [...blocks, block];
-}
-
-// Starter copy for a fresh tabs section — real, sellable defaults inside
-// every SITE_COPY_LIMITS budget; the seller rewrites them inline.
-function buildProductTabsBlock(id: string): SiteBlock {
-  return {
-    id,
-    type: 'product_tabs',
-    title: 'Good To Know',
-    tabs: [
-      {
-        title: 'Details',
-        content:
-          'Every piece in this collection is checked by hand before it ships. Materials, sizing, and finish are listed on each product page — and if you need more detail, message us and we will answer the same day.',
-      },
-      {
-        title: 'Delivery & Pickup',
-        content:
-          'Orders are confirmed on WhatsApp and prepared within 24 hours. Delivery timing and pickup options are shown at checkout, and we keep you updated at every step until your order reaches your hands.',
-      },
-      {
-        title: 'Returns',
-        content:
-          'If something is not right, contact us within 48 hours of delivery and we will make it right — an exchange, a repair, or a refund where it applies. Keep the original packaging to speed things up.',
-      },
-    ],
-  };
-}
-
-// Starter copy for a fresh film section. headline/subheadline are seeded
-// (not left absent) so the overlay editor always has nodes to target.
-function buildVideoHeroBlock(id: string, selection: VideoHeroSelection): SiteBlock {
-  const block: Extract<SiteBlock, { type: 'video_hero' }> = {
-    id,
-    type: 'video_hero',
-    videoUrl: selection.videoUrl,
-    headline: 'See The Collection In Motion',
-    subheadline:
-      'A closer look at the craft — real texture, real finish, and the way each piece moves in natural light.',
-  };
-  if (selection.posterUrl) block.posterUrl = selection.posterUrl;
-  return block;
-}
-
-function normalizeFieldPath(field: string): string {
-  return field.replace(/\.\d+\./g, '.*.');
-}
-
-/** Escape a value for interpolation inside a CSS attribute selector
- *  ([data-x="…"]) — block ids and field paths are config-provided strings,
- *  so quotes/backslashes must never break the mobile highlight rules. */
-function cssAttrEscape(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-}
-
-type MutableRecord = Record<string, unknown>;
-
-function readBlockField(block: SiteBlock, path: string[]): string | undefined {
-  let cursor: unknown = block;
-  for (const key of path) {
-    if (typeof cursor !== 'object' || cursor === null) return undefined;
-    cursor = (cursor as MutableRecord)[key];
-  }
-  return typeof cursor === 'string' ? cursor : undefined;
-}
-
-/** Immutable single-field write — returns a fresh block, inputs untouched.
- *  An empty string REMOVES the key: the only field that can legitimately end
- *  empty is the optional hero tagline (required fields always revert to their
- *  non-empty snapshot on commit), and `tagline: ''` would fail its min(1)
- *  where an absent key validates. */
-function writeBlockField(block: SiteBlock, path: string[], value: string): SiteBlock {
-  const next = structuredClone(block) as unknown as MutableRecord;
-  let cursor: unknown = next;
-  for (let i = 0; i < path.length - 1; i += 1) {
-    if (typeof cursor !== 'object' || cursor === null) return block;
-    cursor = (cursor as MutableRecord)[path[i]];
-  }
-  if (typeof cursor !== 'object' || cursor === null) return block;
-  const lastKey = path[path.length - 1];
-  if (value === '') {
-    delete (cursor as MutableRecord)[lastKey];
-  } else {
-    (cursor as MutableRecord)[lastKey] = value;
-  }
-  return next as unknown as SiteBlock;
-}
-
-/** Commit semantics shared by blur/Enter and the save-path sanitize: keep the
- *  trimmed value, or revert to the edit-start snapshot when emptied. */
-function commitValue(blocks: SiteBlock[], blockId: string, path: string[], snapshot: string): SiteBlock[] {
-  return blocks.map((b) => {
-    if (b.id !== blockId) return b;
-    const raw = readBlockField(b, path) ?? '';
-    const trimmed = raw.trim();
-    return writeBlockField(b, path, trimmed || snapshot);
-  });
-}
-
 type EditingState = {
   blockId: string;
   path: string[];
   meta: FieldMeta;
-  /** Value when the edit began — Escape restores it. */
+  /** Value when the edit began — Cancel/Escape restores it. */
   snapshot: string;
-  /** Overlay position inside the (unscaled) scroll-content wrapper. */
-  left: number;
-  top: number;
-  width: number;
-};
-
-/** Floating block-settings chip, anchored to a clicked section's
- *  post-transform rect (same coordinate space as the copy overlay). */
-type ChipState = {
-  blockId: string;
-  left: number;
+  /** Node's post-transform offset inside the preview spacer — the preview
+   *  scroll target while the sheet covers the lower viewport. */
   top: number;
 };
 
@@ -327,8 +183,7 @@ type SiteCopyEditorProps = {
   website: ShopWebsiteRow;
   shop: SiteShop;
   /** Receives the fresh row after a successful save (single source of truth
-   *  lives in the page's SWR cache — the studio's copy preview updates with
-   *  it, and the persisted cache with both). */
+   *  lives in the page's SWR cache). */
   onSaved: (row: ShopWebsiteRow) => void;
 };
 
@@ -348,34 +203,44 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
   const [savedBlocks, setSavedBlocks] = useState<SiteBlock[]>(() =>
     structuredClone(outboxSeed ? outboxSeed.blocks : resolveBlocks(website.config))
   );
+  const [assets, setAssets] = useState<SiteAssets | undefined>(() =>
+    structuredClone(outboxSeed?.assets !== undefined ? outboxSeed.assets : website.config.assets)
+  );
+  const [savedAssets, setSavedAssets] = useState<SiteAssets | undefined>(() =>
+    structuredClone(outboxSeed?.assets !== undefined ? outboxSeed.assets : website.config.assets)
+  );
   // 'queued' = the last save is stored on this device awaiting connectivity.
   const [syncState, setSyncState] = useState<'idle' | 'queued'>(outboxSeed ? 'queued' : 'idle');
   const [products, setProducts] = useState<SiteProduct[]>([]);
+  // Mobile copy sheet state (Preview tab taps AND Controls tab field rows).
   const [editing, setEditing] = useState<EditingState | null>(null);
-  const [chip, setChip] = useState<ChipState | null>(null);
+  // Mobile settings sheet (tap-to-select on the preview tab — untouched).
+  const [chip, setChip] = useState<{ blockId: string } | null>(null);
   const [picker, setPicker] = useState<PickerState | null>(null);
+  const [stillPicker, setStillPicker] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [scale, setScale] = useState(0.4);
   const [contentHeight, setContentHeight] = useState(2400);
-  // Mobile editor UX (< 768px): bottom sheets replace the floating chip, the
-  // overlay input, and the film-picker modal; taps replace hover. SSR-safe
-  // (server snapshot: false) — no hydration mismatch, flips live on
-  // breakpoint crossings.
   const isMobile = useIsMobileViewport();
-  // Tap-to-select (mobile): the last-tapped configurable section keeps a
-  // persistent outline — hover affordances don't exist on touch. The outline
-  // survives closing the settings sheet; tapping the section again reopens it.
-  const [selectedSection, setSelectedSection] = useState<string | null>(null);
+  // The focused section — outlined on the canvas, expanded in the rail.
+  const [focusedId, setFocusedId] = useState<string | null>(null);
   // Mobile "Add a section" bottom sheet.
   const [addSheet, setAddSheet] = useState(false);
+  // Mobile two-tab chrome.
+  const [mobileTab, setMobileTab] = useState<'preview' | 'controls'>('preview');
+  // Per-slot asset progress messages.
+  const [assetBusy, setAssetBusy] = useState<AssetBusyState>({});
 
   const frameRef = useRef<HTMLDivElement | null>(null);
   const spacerRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
-  const overlayRef = useRef<HTMLDivElement | null>(null);
-  const chipRef = useRef<HTMLDivElement | null>(null);
+  const railWrapRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  // Inspector focus snapshots — commit-on-blur mirrors the sheet semantics.
+  const inspectorSnapshots = useRef(new Map<string, string>());
+  const savedAssetsRef = useRef<SiteAssets | undefined>(savedAssets);
+  savedAssetsRef.current = savedAssets;
 
   // The seller's live inventory — products carry versioned PUBLIC-read RLS
   // (unlike shop_websites), so a browser read is correct here. Same columns
@@ -399,15 +264,12 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
   }, [shop.id]);
 
   // Outbox flush — on mount, on window 'online', and via the manual "Sync
-  // now" affordance. flushWebsiteOutbox dedupes in-flight runs (the page
-  // section flushes opportunistically too), re-checks the row's generated_at
-  // before PUTting, and reports how the entry resolved so the banner and the
-  // page cache reconcile truthfully.
+  // now" affordance. flushWebsiteOutbox dedupes in-flight runs, re-checks the
+  // row's generated_at before PUTting, and reports how the entry resolved so
+  // the banner and the page cache reconcile truthfully.
   const attemptFlush = useCallback(() => {
     const entry = readWebsiteOutbox(userId);
     if (!entry) {
-      // Nothing queued (another surface may have flushed it already) — a
-      // stale 'queued' banner must not survive.
       setSyncState('idle');
       return;
     }
@@ -434,6 +296,8 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
 
   // Scale to the frame width; track the unscaled content height so the
   // scroll spacer matches the VISUAL height (transforms don't affect layout).
+  // Re-bound on viewport/tab flips: the frame REMOUNTS when the mobile
+  // Controls tab hides it, so the observer must attach to the fresh nodes.
   useLayoutEffect(() => {
     const frame = frameRef.current;
     const content = contentRef.current;
@@ -447,7 +311,7 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
     observer.observe(frame);
     observer.observe(content);
     return () => observer.disconnect();
-  }, []);
+  }, [isMobile, mobileTab]);
 
   // Success toasts auto-dismiss; errors stay until dismissed or superseded.
   useEffect(() => {
@@ -456,47 +320,52 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
     return () => clearTimeout(t);
   }, [toast]);
 
-  // Focus + select the overlay input the moment an edit begins. `editing`
-  // only changes identity on open/close/retarget — never on keystrokes
-  // (typing mutates `blocks`), so this cannot steal the caret mid-edit.
+  // Focus + select the sheet input the moment an edit begins. `editing` only
+  // changes identity on open/close/retarget — never on keystrokes.
   useEffect(() => {
     if (!editing) return;
     inputRef.current?.focus();
     inputRef.current?.select();
   }, [editing]);
 
-  // Mobile copy sheet: keep the node being edited visible while the sheet
-  // covers the lower viewport — scroll INSIDE the preview scroll container so
-  // the highlighted node sits near the top of the frame. editing.top is the
-  // node's post-transform offset within the spacer, i.e. exactly the frame's
-  // scroll coordinate space.
+  // Mobile copy sheet (preview tab): keep the node being edited visible while
+  // the sheet covers the lower viewport — scroll INSIDE the preview frame.
   useEffect(() => {
-    if (!isMobile || !editing) return;
+    if (!isMobile || !editing || mobileTab !== 'preview') return;
     frameRef.current?.scrollTo({ top: Math.max(0, editing.top - 96), behavior: 'smooth' });
-  }, [isMobile, editing]);
+  }, [isMobile, editing, mobileTab]);
 
   const previewConfig = useMemo<WebsiteConfig>(
     () => ({
       ...website.config,
       site: blocksToLegacySite(blocks, website.config.site),
       blocks,
+      ...(assets !== undefined ? { assets } : {}),
     }),
-    [blocks, website.config]
+    [blocks, assets, website.config]
   );
 
-  const heroMedia = useMemo(() => resolveHeroMedia(products, shop), [products, shop]);
+  // Hero fallback chain with the LOCAL asset state — an uploaded/generated
+  // hero appears in the preview instantly, before any save.
+  const heroMedia = useMemo(
+    () => resolveHeroMedia(products, shop, { assets }),
+    [products, shop, assets]
+  );
 
   const dirty = useMemo(
-    () => JSON.stringify(blocks) !== JSON.stringify(savedBlocks),
-    [blocks, savedBlocks]
+    () =>
+      JSON.stringify(blocks) !== JSON.stringify(savedBlocks) ||
+      JSON.stringify(assets ?? null) !== JSON.stringify(savedAssets ?? null),
+    [blocks, savedBlocks, assets, savedAssets]
   );
 
-  const Template = EDITABLE_TEMPLATE_COMPONENTS[website.template_key];
-  if (!Template) return null;
+  const payloadValid = useMemo(() => blocksAreValid(blocks), [blocks]);
 
-  const applyFieldValue = (blockId: string, path: string[], value: string) => {
+  const Template = EDITABLE_TEMPLATE_COMPONENTS[website.template_key];
+
+  const applyFieldValue = useCallback((blockId: string, path: string[], value: string) => {
     setBlocks((prev) => prev.map((b) => (b.id === blockId ? writeBlockField(b, path, value) : b)));
-  };
+  }, []);
 
   const editingValue = (() => {
     if (!editing) return '';
@@ -504,65 +373,133 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
     return block ? readBlockField(block, editing.path) ?? '' : '';
   })();
 
-  const beginEdit = (node: HTMLElement) => {
-    const blockId = node.getAttribute('data-block-id');
-    const field = node.getAttribute('data-block-field');
-    const spacer = spacerRef.current;
-    if (!blockId || !field || !spacer) return;
+  // ── Bidirectional selection ────────────────────────────────────────────────
 
+  const scrollPreviewToBlock = useCallback((blockId: string) => {
+    const content = contentRef.current;
+    const spacer = spacerRef.current;
+    const frame = frameRef.current;
+    if (!content || !spacer || !frame) return;
+    const esc = cssAttrEscape(blockId);
+    const el =
+      content.querySelector(`[data-block-section="${esc}"]`) ??
+      content.querySelector(`[data-block-id="${esc}"]`);
+    if (!el) return;
+    const top = el.getBoundingClientRect().top - spacer.getBoundingClientRect().top;
+    frame.scrollTo({ top: Math.max(0, top - 24), behavior: 'smooth' });
+  }, []);
+
+  const scrollRailToBlock = useCallback((blockId: string) => {
+    requestAnimationFrame(() => {
+      railWrapRef.current
+        ?.querySelector(`[data-rail-item="${cssAttrEscape(blockId)}"]`)
+        ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    });
+  }, []);
+
+  /** Rail → canvas: outline + scroll the preview to the section. */
+  const focusFromRail = useCallback((blockId: string) => {
+    setChip(null);
+    setEditing(null);
+    setFocusedId(blockId);
+    scrollPreviewToBlock(blockId);
+  }, [scrollPreviewToBlock]);
+
+  /** Canvas → rail: outline + scroll the tree/inspector to the section. */
+  const focusFromCanvas = useCallback((blockId: string) => {
+    setFocusedId(blockId);
+    scrollRailToBlock(blockId);
+  }, [scrollRailToBlock]);
+
+  /** Canvas copy-node click (desktop): focus the section AND the exact
+   *  inspector input for that field. */
+  const focusInspectorField = useCallback((blockId: string, path: string[]) => {
+    focusFromCanvas(blockId);
+    // Two frames: the inspector for a newly focused section must mount first.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = railWrapRef.current?.querySelector<HTMLElement>(
+          `[data-inspector-input="${cssAttrEscape(`${blockId}:${path.join('.')}`)}"]`
+        );
+        if (!el) return;
+        el.focus({ preventScroll: true });
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      });
+    });
+  }, [focusFromCanvas]);
+
+  // ── Mobile copy sheet (identical commit semantics to the historical editor) ─
+
+  const beginEditSheet = useCallback((blockId: string, path: string[], top: number) => {
     const block = blocks.find((b) => b.id === blockId);
     if (!block) return;
-    const meta = FIELD_META[`${block.type}:${normalizeFieldPath(field)}`];
+    const meta = fieldMetaFor(block.type, path);
     if (!meta) return;
-
-    const path = field.split('.');
-    // Post-transform rects: the node's on-screen box relative to the scroll
-    // content wrapper. The overlay lives INSIDE that wrapper, so it scrolls
-    // with the page and never drifts.
-    const nodeRect = node.getBoundingClientRect();
-    const spacerRect = spacer.getBoundingClientRect();
-    const containerWidth = spacerRect.width;
-    const left = Math.max(8, Math.min(nodeRect.left - spacerRect.left, Math.max(8, containerWidth - 288)));
-    const top = Math.max(0, nodeRect.top - spacerRect.top);
-    const width = Math.min(Math.max(nodeRect.width, 280), containerWidth - left - 8);
-
     setChip(null);
-    // Mobile: exactly one highlight at a time — the copy sheet's active-node
-    // outline takes over from any section selection.
-    setSelectedSection(null);
+    // Preview-tab contract: exactly one highlight at a time (the copy sheet's
+    // node highlight takes over from any section selection). The Controls tab
+    // KEEPS its accordion focus — the sheet was opened from inside it.
+    if (mobileTab === 'preview') setFocusedId(null);
     setEditing({
       blockId,
       path,
       meta,
       snapshot: readBlockField(block, path) ?? '',
-      left,
       top,
-      width,
     });
-  };
+  }, [blocks, mobileTab]);
 
-  // ── Block-settings chip + section operations (Phase 4 Step 3) ─────────────
-
-  const openChipForSection = (sectionEl: HTMLElement) => {
-    const spacer = spacerRef.current;
-    const blockId = sectionEl.getAttribute('data-block-section');
-    if (!spacer || !blockId) return;
-    const block = blocks.find((b) => b.id === blockId);
-    if (!block || !CHIP_LABELS[block.type]) return;
+  const commitEdit = () => {
+    if (!editing) return;
+    // Empty copy can never save (required fields are zod min(1)) — an emptied
+    // node reverts to its value at edit start; optional fields (empty
+    // snapshot) delete their key instead.
+    setBlocks((prev) => commitValue(prev, editing.blockId, editing.path, editing.snapshot));
     setEditing(null);
-    if (isMobile) {
-      // Tap-to-select: persistent outline + the settings bottom sheet.
-      // Coordinates are meaningless for a sheet — zeroed by convention.
-      setSelectedSection(blockId);
-      setChip({ blockId, left: 0, top: 0 });
-      return;
-    }
-    const rect = sectionEl.getBoundingClientRect();
-    const spacerRect = spacer.getBoundingClientRect();
-    const left = Math.max(8, Math.min(rect.left - spacerRect.left + 12, Math.max(8, spacerRect.width - 380)));
-    const top = Math.max(0, rect.top - spacerRect.top + 12);
-    setChip({ blockId, left, top });
   };
+
+  const cancelEdit = () => {
+    if (!editing) return;
+    applyFieldValue(editing.blockId, editing.path, editing.snapshot);
+    setEditing(null);
+  };
+
+  const handleSheetKeyDown = (e: ReactKeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      commitEdit();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelEdit();
+    }
+  };
+
+  // ── Inspector field commit-on-blur (desktop rail) ─────────────────────────
+
+  const handleInspectorFocus = useCallback((blockId: string, path: string[]) => {
+    const key = `${blockId}:${path.join('.')}`;
+    if (inspectorSnapshots.current.has(key)) return;
+    const block = blocks.find((b) => b.id === blockId);
+    inspectorSnapshots.current.set(key, block ? readBlockField(block, path) ?? '' : '');
+  }, [blocks]);
+
+  const handleInspectorBlur = useCallback((blockId: string, path: string[], optional: boolean) => {
+    const key = `${blockId}:${path.join('.')}`;
+    const snap = inspectorSnapshots.current.get(key);
+    inspectorSnapshots.current.delete(key);
+    setBlocks((prev) => {
+      let fallback = snap ?? '';
+      if (!optional && !fallback) {
+        // Snapshot lost or was empty for a required field — restore the
+        // last-saved copy instead of committing an invalid empty value.
+        const saved = savedBlocks.find((b) => b.id === blockId);
+        fallback = saved ? readBlockField(saved, path) ?? '' : '';
+      }
+      return commitValue(prev, blockId, path, optional ? '' : fallback);
+    });
+  }, [savedBlocks]);
+
+  // ── Section operations ─────────────────────────────────────────────────────
 
   /** Grid|Carousel toggle. 'grid' REMOVES the key (absent means grid — the
    *  canonical stored form), so toggling away and back leaves the block
@@ -584,26 +521,34 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
   const removeBlock = (blockId: string) => {
     setChip(null);
     setEditing(null);
-    setSelectedSection(null);
+    setFocusedId((cur) => (cur === blockId ? null : cur));
     setBlocks((prev) => prev.filter((b) => !(b.id === blockId && SELLER_ADDED_TYPES.has(b.type))));
   };
 
   const addProductTabsBlock = () => {
     setChip(null);
     setEditing(null);
-    setBlocks((prev) => {
-      if (prev.length >= MAX_BLOCKS) return prev;
-      return insertAfterType(prev, buildProductTabsBlock(mintBlockId('tabs', prev)), 'product_grid', 'before_cta');
-    });
+    if (blocks.length >= MAX_BLOCKS) return;
+    const id = mintBlockId('tabs', blocks);
+    setBlocks((prev) =>
+      prev.length >= MAX_BLOCKS
+        ? prev
+        : insertAfterType(prev, buildProductTabsBlock(mintBlockId('tabs', prev)), 'product_grid', 'before_cta')
+    );
+    setFocusedId(id);
   };
 
   const addVideoHeroBlock = (selection: VideoHeroSelection) => {
     setChip(null);
     setEditing(null);
-    setBlocks((prev) => {
-      if (prev.length >= MAX_BLOCKS) return prev;
-      return insertAfterType(prev, buildVideoHeroBlock(mintBlockId('film', prev), selection), 'hero_banner', 'start');
-    });
+    if (blocks.length >= MAX_BLOCKS) return;
+    const id = mintBlockId('film', blocks);
+    setBlocks((prev) =>
+      prev.length >= MAX_BLOCKS
+        ? prev
+        : insertAfterType(prev, buildVideoHeroBlock(mintBlockId('film', prev), selection), 'hero_banner', 'start')
+    );
+    setFocusedId(id);
   };
 
   /** "Change film" on an existing video_hero: swaps the asset, replaces the
@@ -621,43 +566,114 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
     );
   };
 
-  const commitEdit = () => {
-    if (!editing) return;
-    // Empty copy can never save (every required field is zod min(1)) — an
-    // emptied node reverts to its value at edit start.
-    setBlocks((prev) => commitValue(prev, editing.blockId, editing.path, editing.snapshot));
-    setEditing(null);
+  // ── Asset slot operations ──────────────────────────────────────────────────
+
+  const setAssetSlot = useCallback((slot: AssetSlotKind, url: string | null) => {
+    setAssets((prev) => {
+      const next: SiteAssets = { ...(prev ?? {}) };
+      const key = slot === 'hero' ? 'hero_image_url' : 'logo_url';
+      if (url) next[key] = url;
+      else delete next[key];
+      return next;
+    });
+  }, []);
+
+  const setSlotBusy = (slot: AssetSlotKind, message: string | null) => {
+    setAssetBusy((prev) => {
+      const next = { ...prev };
+      if (message) next[slot] = message;
+      else delete next[slot];
+      return next;
+    });
   };
 
-  const cancelEdit = () => {
-    if (!editing) return;
-    applyFieldValue(editing.blockId, editing.path, editing.snapshot);
-    setEditing(null);
-  };
-
-  const handleOverlayKeyDown = (e: ReactKeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      commitEdit();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      cancelEdit();
+  /** Upload from the device — the exact themes-page 'brand' bucket idiom;
+   *  the URL patches local state optimistically and rides the normal save. */
+  const handleAssetUpload = async (slot: AssetSlotKind, file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setToast({ kind: 'error', message: 'Please choose an image file.' });
+      return;
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setToast({ kind: 'error', message: 'That image is over 8MB — please choose a smaller file.' });
+      return;
+    }
+    setSlotBusy(slot, 'Uploading…');
+    try {
+      const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      );
+      const ext = file.name.split('.').pop() || 'jpg';
+      const path = `${shop.id}/site-${slot}_${Date.now()}.${ext}`;
+      const { error } = await supabase.storage.from(BRAND_BUCKET).upload(path, file);
+      if (error) throw new Error(error.message || 'Upload failed.');
+      const { data: { publicUrl } } = supabase.storage.from(BRAND_BUCKET).getPublicUrl(path);
+      setAssetSlot(slot, publicUrl);
+      setToast({ kind: 'success', message: slot === 'hero' ? 'Hero image ready — save to publish it.' : 'Logo ready — save to publish it.' });
+    } catch (err) {
+      const message = err instanceof Error && err.message ? err.message : 'Upload failed. Please try again.';
+      setToast({ kind: 'error', message });
+    } finally {
+      setSlotBusy(slot, null);
     }
   };
 
-  // Capture-phase interception: the preview renders REAL <a>/<Link> markup —
-  // preventDefault + stopPropagation keeps every click on-page (Next's Link
-  // handler bails on defaultPrevented), then the nearest annotated copy node
-  // opens the editor. Clicks inside the overlay input and the settings chip
-  // pass through untouched. Two island routes stay LIVE inside the preview:
+  /** "Generate with AI" — the server engine persists the asset immediately
+   *  (service-role patch of config.assets); local + SWR state reconcile,
+   *  keeping any UNSAVED local edit to the other slot intact. */
+  const handleAssetGenerate = async (slot: AssetSlotKind) => {
+    setSlotBusy(slot, slot === 'hero' ? 'Composing your hero shot…' : 'Drafting your logo…');
+    try {
+      const row = await fetchJSON<ShopWebsiteRow>(
+        '/api/websites/assets',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ kind: slot }),
+        },
+        { timeoutMs: ASSET_GENERATION_TIMEOUT_MS }
+      );
+      const serverAssets: SiteAssets = row.config.assets ?? {};
+      setAssets((prev) => {
+        const next: SiteAssets = { ...serverAssets };
+        // Preserve an unsaved local edit to the OTHER slot.
+        const otherKey = slot === 'hero' ? ('logo_url' as const) : ('hero_image_url' as const);
+        const localOther = prev?.[otherKey];
+        const savedOther = savedAssetsRef.current?.[otherKey];
+        if (localOther !== savedOther) {
+          if (localOther) next[otherKey] = localOther;
+          else delete next[otherKey];
+        }
+        return next;
+      });
+      setSavedAssets(structuredClone(serverAssets));
+      onSaved(row);
+      setToast({
+        kind: 'success',
+        message: slot === 'hero' ? 'Hero shot composed and live on your site.' : 'Logo drafted and live on your site.',
+      });
+    } catch (err) {
+      const message = isTransportError(err)
+        ? err.kind === 'offline'
+          ? 'You appear to be offline — asset generation needs a connection.'
+          : err.message
+        : 'Failed to generate the asset. Please try again.';
+      setToast({ kind: 'error', message });
+    } finally {
+      setSlotBusy(slot, null);
+    }
+  };
+
+  // ── Preview click-capture ──────────────────────────────────────────────────
+  // The preview renders REAL <a>/<Link> markup — preventDefault +
+  // stopPropagation keeps every click on-page. Two island routes stay LIVE:
   // plain [role=tab] clicks switch tabs and [data-carousel-nav] clicks page
-  // the carousel (both are buttons — nothing to prevent). The active tab's
-  // pencil IS a copy node inside its [role=tab], so it takes the edit path
-  // with propagation stopped — title editing never triggers a switch.
+  // the carousel. Desktop routes copy/section clicks into the rail
+  // (bidirectional selection); mobile keeps the historical tap-to-select +
+  // bottom-sheet model untouched.
   const handlePreviewClickCapture = (e: ReactMouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
-    if (overlayRef.current?.contains(target)) return;
-    if (chipRef.current?.contains(target)) return;
 
     const copyNode = target.closest<HTMLElement>('[data-block-id][data-block-field]');
     if (!copyNode && (target.closest('[role="tab"]') || target.closest('[data-carousel-nav]'))) {
@@ -668,46 +684,95 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
     e.stopPropagation();
 
     if (copyNode) {
-      beginEdit(copyNode);
+      const blockId = copyNode.getAttribute('data-block-id');
+      const field = copyNode.getAttribute('data-block-field');
+      if (!blockId || !field) return;
+      const path = field.split('.');
+      if (isMobile) {
+        const spacer = spacerRef.current;
+        const top = spacer
+          ? Math.max(0, copyNode.getBoundingClientRect().top - spacer.getBoundingClientRect().top)
+          : 0;
+        beginEditSheet(blockId, path, top);
+      } else {
+        focusInspectorField(blockId, path);
+      }
       return;
     }
 
-    // No copy node hit: a click inside a configurable section opens its
-    // settings chip (mobile: selects it + opens the settings sheet);
-    // anywhere else dismisses an open one and clears the tap-selection.
     const sectionNode = target.closest<HTMLElement>('[data-block-section]');
-    if (sectionNode) {
-      openChipForSection(sectionNode);
-    } else {
-      setChip(null);
-      setSelectedSection(null);
+    const sectionId = sectionNode?.getAttribute('data-block-section') ?? null;
+    if (sectionId) {
+      if (isMobile) {
+        // Preview-tab contract (untouched): sections WITH settings select +
+        // open the settings sheet; others behave like empty space.
+        const block = blocks.find((b) => b.id === sectionId);
+        if (block && CHIP_LABELS[block.type]) {
+          setEditing(null);
+          setFocusedId(sectionId);
+          setChip({ blockId: sectionId });
+        } else {
+          setChip(null);
+          setFocusedId(null);
+        }
+      } else {
+        focusFromCanvas(sectionId);
+      }
+      return;
     }
+
+    setChip(null);
+    setFocusedId(null);
   };
+
+  // ── Save path ──────────────────────────────────────────────────────────────
 
   const handleDiscard = () => {
     setEditing(null);
     setChip(null);
     setPicker(null);
+    setStillPicker(false);
+    inspectorSnapshots.current.clear();
     setBlocks(structuredClone(savedBlocks));
+    setAssets(structuredClone(savedAssets));
     setToast(null);
   };
 
   const handleSave = async () => {
-    // Sanitize any in-flight edit into the payload SYNCHRONOUSLY. Clicking
-    // Save while an overlay is open fires blur (commit) before this handler,
-    // but this closure still sees the pre-commit state — recomputing the same
-    // commitValue here is idempotent with the blur path, so both orderings
-    // produce the identical payload.
+    // Sanitize every in-flight edit into the payload SYNCHRONOUSLY: the
+    // mobile sheet (if open) and any focused inspector fields. Blur handlers
+    // fire before this click, but this closure may still see pre-commit
+    // state — recomputing the same commitValue here is idempotent with the
+    // blur path, so both orderings produce the identical payload.
     let payload = blocks;
     if (editing) {
-      payload = commitValue(blocks, editing.blockId, editing.path, editing.snapshot);
-      setBlocks(payload);
+      payload = commitValue(payload, editing.blockId, editing.path, editing.snapshot);
       setEditing(null);
     }
+    for (const [key, snap] of inspectorSnapshots.current.entries()) {
+      const sep = key.indexOf(':');
+      const blockId = key.slice(0, sep);
+      const path = key.slice(sep + 1).split('.');
+      const block = payload.find((b) => b.id === blockId);
+      const optional = block ? isOptionalField(block.type, path) : false;
+      payload = commitValue(payload, blockId, path, optional ? '' : snap);
+    }
+    inspectorSnapshots.current.clear();
+    setBlocks(payload);
+
+    // Belt-and-suspenders: never send a payload the PUT will bounce.
+    if (!blocksAreValid(payload)) {
+      setToast({ kind: 'error', message: 'A required field is empty — finish it before saving.' });
+      return;
+    }
+
+    const assetsPayload = assets;
     // Optimistic: the UI settles clean immediately; the failure paths below
     // decide between queue (connectivity) and rollback (server verdict).
-    const rollback = savedBlocks;
+    const rollbackBlocks = savedBlocks;
+    const rollbackAssets = savedAssets;
     setSavedBlocks(structuredClone(payload));
+    setSavedAssets(structuredClone(assetsPayload));
     // Latest-wins: this save supersedes any queued older payload. Cleared
     // BEFORE the PUT so a concurrent outbox flush can never land stale
     // blocks on top of this newer write.
@@ -718,10 +783,13 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
       const row = await fetchJSON<ShopWebsiteRow>('/api/websites/content', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ blocks: payload }),
+        body: JSON.stringify({
+          blocks: payload,
+          ...(assetsPayload !== undefined ? { assets: assetsPayload } : {}),
+        }),
       });
       setSyncState('idle');
-      setToast({ kind: 'success', message: 'Copy saved — your site is updated.' });
+      setToast({ kind: 'success', message: 'Saved — your site is updated.' });
       onSaved(row);
     } catch (err) {
       if (isTransportError(err) && (err.kind === 'offline' || err.kind === 'timeout')) {
@@ -729,29 +797,32 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
         // this build's generated_at) and tell the truth in the save bar.
         const queued = queueWebsiteSave(userId, {
           blocks: payload,
+          ...(assetsPayload !== undefined ? { assets: assetsPayload } : {}),
           baseGeneratedAt: website.generated_at,
         });
         if (queued) {
           setSyncState('queued');
         } else {
-          // localStorage refused (quota/private mode) — stay dirty + honest.
-          setSavedBlocks(rollback);
+          setSavedBlocks(rollbackBlocks);
+          setSavedAssets(rollbackAssets);
           setToast({
             kind: 'error',
             message: 'You appear to be offline and this change could not be stored for later — please try again once connected.',
           });
         }
       } else if (isTransportError(err) && err.kind === 'server') {
-        // The API rejected the payload (validation/409) — NEVER queue a
-        // payload that cannot succeed. Roll back the saved marker so the
-        // dirty bar returns, but KEEP the seller's text in the editor.
-        setSavedBlocks(rollback);
+        // The API rejected the payload — NEVER queue a payload that cannot
+        // succeed. Roll back the saved marker so the dirty bar returns, but
+        // KEEP the seller's edits in the editor.
+        setSavedBlocks(rollbackBlocks);
+        setSavedAssets(rollbackAssets);
         setToast({ kind: 'error', message: err.message || 'Failed to save your changes.' });
       } else if (isTransportError(err) && err.kind === 'abort') {
-        // External abort — restore the dirty state silently.
-        setSavedBlocks(rollback);
+        setSavedBlocks(rollbackBlocks);
+        setSavedAssets(rollbackAssets);
       } else {
-        setSavedBlocks(rollback);
+        setSavedBlocks(rollbackBlocks);
+        setSavedAssets(rollbackAssets);
         setToast({ kind: 'error', message: 'Network error saving your changes. Please try again.' });
       }
     } finally {
@@ -759,22 +830,59 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
     }
   };
 
+  if (!Template) return null;
+
   const atBudget = editing ? editingValue.length >= editing.meta.max : false;
-  // Chip block resolved live from state: removal or discard unmounts the chip
-  // automatically, and the toggle reads the current displayMode each render.
+  // Chip block resolved live from state: removal or discard unmounts the
+  // sheet automatically, and the toggle reads the current displayMode.
   const chipBlock = chip ? blocks.find((b) => b.id === chip.blockId) : undefined;
   const atBlockCapacity = blocks.length >= MAX_BLOCKS;
   const queued = syncState === 'queued';
+  const showPreview = !isMobile || mobileTab === 'preview';
+
+  const assetSlotsNode = (
+    <AssetSlots
+      assets={assets}
+      heroFallback={resolveHeroMedia(products, shop)}
+      shopLogoUrl={shop.logo_url}
+      busy={assetBusy}
+      onUpload={(slot, file) => void handleAssetUpload(slot, file)}
+      onGenerate={(slot) => void handleAssetGenerate(slot)}
+      onPickAdStill={() => setStillPicker(true)}
+      onClear={(slot) => setAssetSlot(slot, null)}
+    />
+  );
+
+  const sectionRail = (
+    <SectionRail
+      blocks={blocks}
+      focusedId={focusedId}
+      isMobile={isMobile}
+      saving={saving}
+      atCapacity={atBlockCapacity}
+      onFocus={(id) => (isMobile ? setFocusedId((cur) => (cur === id ? null : id)) : focusFromRail(id))}
+      onReorderIds={(ids) => setBlocks((prev) => reorderBlocksByIds(prev, ids))}
+      onMove={(id, dir) => setBlocks((prev) => moveBlock(prev, id, dir))}
+      onRemove={removeBlock}
+      onAddTabsSection={addProductTabsBlock}
+      onAddFilmSection={() => setPicker({ mode: 'add' })}
+      onChangeFilm={(id) => setPicker({ mode: 'replace', blockId: id })}
+      onSetGridMode={setGridDisplayMode}
+      onAddTab={(id) => setBlocks((prev) => prev.map((b) => (b.id === id ? addTabToBlock(b) : b)))}
+      onRemoveTab={(id, i) => setBlocks((prev) => prev.map((b) => (b.id === id ? removeTabFromBlock(b, i) : b)))}
+      onFieldChange={applyFieldValue}
+      onFieldFocus={handleInspectorFocus}
+      onFieldBlur={handleInspectorBlur}
+      onEditFieldSheet={(blockId, path) => beginEditSheet(blockId, path, 0)}
+      assetSlots={assetSlotsNode}
+    />
+  );
 
   return (
     <div className="sndk-copy-editor">
       {/* Editing affordances — scoped to the editor frame only; the public
-          site never loads this component. Hover reveals are DESKTOP-ONLY
-          (≥768px, matching the isMobile hook): on touch there is no hover, so
-          mobile runs the tap-to-select model via the persistent-highlight
-          style tags below. The tab-title pencil (display-hidden in public
-          markup) is revealed here on every viewport — it is the always-visible
-          edit affordance on the active tab. */}
+          site never loads this component. Hover reveals are DESKTOP-ONLY:
+          on touch the tap-to-select model owns selection. */}
       <style>{`
         .sndk-copy-editor {
           -webkit-tap-highlight-color: transparent;
@@ -804,13 +912,11 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
         }
       `}</style>
 
-      {/* Mobile persistent highlights (tap-to-select replaces hover): the
-          selected section keeps its outline until the seller taps elsewhere;
-          the node being edited in the copy sheet stays highlighted so the
-          live preview visibly tracks every keystroke. */}
-      {isMobile && selectedSection && (
+      {/* Focused-section outline — canvas side of the bidirectional selection
+          (desktop rail focus AND mobile tap-to-select share it). */}
+      {focusedId && (
         <style>{`
-          .sndk-copy-editor [data-block-section="${cssAttrEscape(selectedSection)}"] {
+          .sndk-copy-editor [data-block-section="${cssAttrEscape(focusedId)}"] {
             outline-color: rgba(240, 165, 0, .8);
           }
         `}</style>
@@ -824,200 +930,119 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
         `}</style>
       )}
 
-      {/* Browser chrome bar — frames the preview as the seller's real page */}
-      <div className="overflow-hidden rounded-[1.5rem] border border-gray-200 bg-white shadow-sm">
-        <div className="flex items-center gap-1.5 border-b border-gray-100 bg-gray-50 px-4 py-2.5">
-          <span className="h-2 w-2 rounded-full bg-gray-300" />
-          <span className="h-2 w-2 rounded-full bg-gray-300" />
-          <span className="h-2 w-2 rounded-full bg-gray-300" />
-          <span className="ml-3 flex h-5 flex-1 items-center rounded-full bg-white px-3 ring-1 ring-gray-200">
-            <span className="truncate font-mono text-[10px] text-gray-400">
-              {shop.shop_slug ? `/site/${shop.shop_slug}` : 'your generated site'}
-            </span>
-          </span>
-          <span className="ml-3 hidden items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-gray-400 md:flex">
-            <MousePointerClick size={12} /> Click any copy to rewrite it
-          </span>
-          <span className="ml-3 flex shrink-0 items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-gray-400 md:hidden">
-            <MousePointerClick size={12} /> Tap text to edit
-          </span>
+      {/* Mobile two-tab chrome — Preview | Controls (≥44px tabs). */}
+      {isMobile && (
+        <div className="mb-3 grid grid-cols-2 gap-1 rounded-full border border-gray-200 bg-white p-1 shadow-sm">
+          <button
+            type="button"
+            onClick={() => setMobileTab('preview')}
+            className={`flex min-h-[44px] items-center justify-center gap-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition ${
+              mobileTab === 'preview' ? 'bg-gray-900 text-white' : 'text-gray-500 active:bg-gray-50'
+            }`}
+          >
+            <Eye size={13} /> Preview
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileTab('controls')}
+            className={`flex min-h-[44px] items-center justify-center gap-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition ${
+              mobileTab === 'controls' ? 'bg-gray-900 text-white' : 'text-gray-500 active:bg-gray-50'
+            }`}
+          >
+            <SlidersHorizontal size={13} /> Controls
+          </button>
         </div>
+      )}
 
-        {/* Scaled, scrollable live preview — overscroll-contained so reaching
-            its edge on a phone never chains into pull-to-refresh. */}
-        <div
-          ref={frameRef}
-          onClickCapture={handlePreviewClickCapture}
-          className="relative h-[540px] w-full overflow-y-auto overflow-x-hidden overscroll-contain bg-white md:h-[620px]"
-        >
-          <div ref={spacerRef} className="relative" style={{ height: Math.max(1, contentHeight * scale) }}>
-            <div
-              ref={contentRef}
-              className="absolute left-0 top-0 origin-top-left"
-              style={{ width: DESIGN_WIDTH, transform: `scale(${scale})` }}
-            >
-              <Template shop={shop} products={products} config={previewConfig} heroMedia={heroMedia} />
-            </div>
+      {/* ── The split workspace ─────────────────────────────────────────── */}
+      <div className="md:grid md:grid-cols-[350px_minmax(0,1fr)] md:items-start md:gap-4">
+        {/* LEFT — desktop rail (section tree + inspector). */}
+        {!isMobile && (
+          <div
+            ref={railWrapRef}
+            className="hidden overflow-hidden rounded-[1.5rem] border border-gray-200 bg-white p-4 shadow-sm md:block md:h-[665px]"
+          >
+            {sectionRail}
+          </div>
+        )}
 
-            {/* Overlay editor — unscaled coordinate space, scrolls with the
-                page. DESKTOP ONLY: on mobile the copy sheet below replaces
-                it (an absolutely-positioned input over a scaled preview and a
-                virtual keyboard cannot coexist). */}
-            {editing && !isMobile && (
+        {/* RIGHT — the live preview (see the header for the no-iframe note). */}
+        {showPreview && (
+          <div>
+            {/* Browser chrome bar — frames the preview as the seller's real page */}
+            <div className="overflow-hidden rounded-[1.5rem] border border-gray-200 bg-white shadow-sm">
+              <div className="flex items-center gap-1.5 border-b border-gray-100 bg-gray-50 px-4 py-2.5">
+                <span className="h-2 w-2 rounded-full bg-gray-300" />
+                <span className="h-2 w-2 rounded-full bg-gray-300" />
+                <span className="h-2 w-2 rounded-full bg-gray-300" />
+                <span className="ml-3 flex h-5 flex-1 items-center rounded-full bg-white px-3 ring-1 ring-gray-200">
+                  <span className="truncate font-mono text-[10px] text-gray-400">
+                    {shop.shop_slug ? `/site/${shop.shop_slug}` : 'your generated site'}
+                  </span>
+                </span>
+                <span className="ml-3 hidden items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-gray-400 md:flex">
+                  <MousePointerClick size={12} /> Click any section or copy to edit it
+                </span>
+                <span className="ml-3 flex shrink-0 items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-gray-400 md:hidden">
+                  <MousePointerClick size={12} /> Tap text to edit
+                </span>
+              </div>
+
+              {/* Scaled, scrollable live preview — overscroll-contained so
+                  reaching its edge on a phone never chains into
+                  pull-to-refresh. */}
               <div
-                ref={overlayRef}
-                className="absolute z-40"
-                style={{ left: editing.left, top: editing.top, width: editing.width }}
+                ref={frameRef}
+                onClickCapture={handlePreviewClickCapture}
+                className="relative h-[540px] w-full overflow-y-auto overflow-x-hidden overscroll-contain bg-white md:h-[620px]"
               >
-                {editing.meta.multiline ? (
-                  <textarea
-                    ref={(el) => { inputRef.current = el; }}
-                    value={editingValue}
-                    maxLength={editing.meta.max}
-                    rows={Math.min(6, Math.max(2, Math.ceil(editing.meta.max / 110)))}
-                    onChange={(e) => applyFieldValue(editing.blockId, editing.path, e.target.value.slice(0, editing.meta.max))}
-                    onKeyDown={handleOverlayKeyDown}
-                    onBlur={commitEdit}
-                    className="w-full resize-none rounded-xl border-0 bg-white px-3.5 py-3 font-sans text-sm leading-relaxed text-gray-900 shadow-2xl ring-2 ring-[#f0a500] outline-none"
-                  />
-                ) : (
-                  <input
-                    ref={(el) => { inputRef.current = el; }}
-                    type="text"
-                    value={editingValue}
-                    maxLength={editing.meta.max}
-                    onChange={(e) => applyFieldValue(editing.blockId, editing.path, e.target.value.slice(0, editing.meta.max))}
-                    onKeyDown={handleOverlayKeyDown}
-                    onBlur={commitEdit}
-                    className="w-full rounded-xl border-0 bg-white px-3.5 py-3 font-sans text-sm text-gray-900 shadow-2xl ring-2 ring-[#f0a500] outline-none"
-                  />
-                )}
-                <div className="mt-1.5 flex items-center justify-between gap-3 rounded-full bg-neutral-900/95 px-3.5 py-1.5 shadow-lg">
-                  <span className="text-[9px] font-bold uppercase tracking-widest text-white/70">{editing.meta.label}</span>
-                  <span className={`font-mono text-[10px] font-bold ${atBudget ? 'text-amber-400' : 'text-white/70'}`}>
-                    {editingValue.length}/{editing.meta.max}
-                  </span>
-                  <span className="hidden text-[9px] uppercase tracking-widest text-white/40 sm:block">
-                    Enter to apply · Esc to cancel
-                  </span>
+                <div ref={spacerRef} className="relative" style={{ height: Math.max(1, contentHeight * scale) }}>
+                  <div
+                    ref={contentRef}
+                    className="absolute left-0 top-0 origin-top-left"
+                    style={{ width: DESIGN_WIDTH, transform: `scale(${scale})` }}
+                  >
+                    <Template shop={shop} products={products} config={previewConfig} heroMedia={heroMedia} />
+                  </div>
                 </div>
               </div>
-            )}
+            </div>
 
-            {/* Floating block-settings chip — unscaled coordinate space, same
-                as the overlay editor, so it scrolls with the section it
-                configures. DESKTOP ONLY: mobile renders the settings sheet. */}
-            {chip && chipBlock && !isMobile && (
-              <div ref={chipRef} className="absolute z-40" style={{ left: chip.left, top: chip.top }}>
-                <div className="flex items-center gap-2 rounded-full bg-neutral-900/95 py-1.5 pl-4 pr-1.5 shadow-xl backdrop-blur">
-                  <span className="text-[9px] font-bold uppercase tracking-widest text-white/60">
-                    {CHIP_LABELS[chipBlock.type]}
-                  </span>
-                  {chipBlock.type === 'product_grid' && (
-                    <div className="flex items-center overflow-hidden rounded-full ring-1 ring-white/25">
-                      <button
-                        type="button"
-                        onClick={() => setGridDisplayMode(chipBlock.id, 'grid')}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition ${
-                          (chipBlock.displayMode ?? 'grid') === 'grid'
-                            ? 'bg-white text-neutral-900'
-                            : 'text-white/70 hover:text-white'
-                        }`}
-                      >
-                        <LayoutGrid size={11} /> Grid
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setGridDisplayMode(chipBlock.id, 'carousel')}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition ${
-                          chipBlock.displayMode === 'carousel'
-                            ? 'bg-white text-neutral-900'
-                            : 'text-white/70 hover:text-white'
-                        }`}
-                      >
-                        <GalleryHorizontal size={11} /> Carousel
-                      </button>
-                    </div>
-                  )}
-                  {chipBlock.type === 'video_hero' && (
-                    <button
-                      type="button"
-                      onClick={() => setPicker({ mode: 'replace', blockId: chipBlock.id })}
-                      className="flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-widest text-white/80 ring-1 ring-white/25 transition hover:bg-white/10 hover:text-white"
-                    >
-                      <Film size={11} /> Change film
-                    </button>
-                  )}
-                  {SELLER_ADDED_TYPES.has(chipBlock.type) && (
-                    <button
-                      type="button"
-                      onClick={() => removeBlock(chipBlock.id)}
-                      className="flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-widest text-red-300 ring-1 ring-red-400/40 transition hover:bg-red-500/20 hover:text-red-200"
-                    >
-                      <Trash2 size={11} /> Remove
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    aria-label="Close section settings"
-                    onClick={() => setChip(null)}
-                    className="rounded-full p-1.5 text-white/50 transition hover:bg-white/10 hover:text-white"
-                  >
-                    <X size={12} />
-                  </button>
+            {/* Mobile add-section bar (preview tab) — the historical entry
+                point stays; Controls carries its own add buttons. */}
+            {isMobile && (
+              <div className="mt-4 flex flex-wrap items-center gap-3 rounded-[1.5rem] border border-gray-200 bg-white px-5 py-4 shadow-sm">
+                <div className="mr-auto">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Add a section</p>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    {atBlockCapacity
+                      ? 'Your page is at its 12-section limit — remove a section to add another.'
+                      : 'New sections drop straight into the preview — tap a section for its settings, then save to publish.'}
+                  </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setAddSheet(true)}
+                  disabled={atBlockCapacity || saving}
+                  className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-5 py-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition active:bg-gray-100 disabled:opacity-40"
+                >
+                  <Plus size={14} /> Add a section
+                </button>
               </div>
             )}
           </div>
-        </div>
-      </div>
+        )}
 
-      {/* Add-section bar — the ONLY entry point for the two seller-added
-          block types (Phase 4 contract: the classic five stay fixed). */}
-      <div className="mt-4 flex flex-wrap items-center gap-3 rounded-[1.5rem] border border-gray-200 bg-white px-5 py-4 shadow-sm">
-        <div className="mr-auto">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Add a section</p>
-          <p className="mt-0.5 text-xs text-gray-500">
-            {atBlockCapacity
-              ? 'Your page is at its 12-section limit — remove a section to add another.'
-              : 'New sections drop straight into the preview — click a section for its settings, then save to publish.'}
-          </p>
-        </div>
-        {isMobile ? (
-          <button
-            type="button"
-            onClick={() => setAddSheet(true)}
-            disabled={atBlockCapacity || saving}
-            className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-5 py-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition active:bg-gray-100 disabled:opacity-40"
-          >
-            <Plus size={14} /> Add a section
-          </button>
-        ) : (
-          <>
-            <button
-              type="button"
-              onClick={() => setPicker({ mode: 'add' })}
-              disabled={atBlockCapacity || saving}
-              className="flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-5 py-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:border-gray-900 hover:bg-white disabled:opacity-40"
-            >
-              <Clapperboard size={13} /> Brand film
-            </button>
-            <button
-              type="button"
-              onClick={addProductTabsBlock}
-              disabled={atBlockCapacity || saving}
-              className="flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-5 py-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:border-gray-900 hover:bg-white disabled:opacity-40"
-            >
-              <Rows3 size={13} /> Product tabs
-            </button>
-          </>
+        {/* Mobile Controls tab — tree + inspector as a scrollable list. */}
+        {isMobile && mobileTab === 'controls' && (
+          <div ref={railWrapRef} className="rounded-[1.5rem] border border-gray-200 bg-white p-3.5 shadow-sm">
+            {sectionRail}
+          </div>
         )}
       </div>
 
       {/* Ad Studio film picker — add flow inserts a new video_hero block,
-          replace flow swaps the asset on an existing one. AnimatePresence
-          lets the mobile sheet play its exit slide; the desktop modal (no
-          motion children) unmounts instantly, exactly as before. */}
+          replace flow swaps the asset on an existing one. */}
       <AnimatePresence>
         {picker && (
           <VideoHeroPicker
@@ -1032,12 +1057,22 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
             }}
           />
         )}
+        {stillPicker && (
+          <HeroImagePicker
+            key="still-picker"
+            shopId={shop.id}
+            onClose={() => setStillPicker(false)}
+            onSelect={(url) => {
+              setAssetSlot('hero', url);
+              setStillPicker(false);
+              setToast({ kind: 'success', message: 'Hero image set — save to publish it.' });
+            }}
+          />
+        )}
       </AnimatePresence>
 
-      {/* ── Mobile bottom sheets (Gambia Standard Step 3) ──────────────────
-          The touch counterparts of the floating chip, the add-section
-          buttons, and the overlay copy editor. Mutually exclusive by the
-          same state machine desktop uses; mounted only under 768px. */}
+      {/* ── Mobile bottom sheets (Gambia Standard) — the touch counterparts
+          of the settings chip, the add buttons, and the copy editor. */}
       {isMobile && (
         <AnimatePresence>
           {chip && chipBlock && (
@@ -1111,10 +1146,9 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
             <BottomSheet
               key="copy-sheet"
               label={editing.meta.label}
-              // Same contract as the desktop overlay: dismissive gestures
-              // (backdrop, drag, ✕) COMMIT — the seller watched the preview
-              // update live while typing; Escape and Cancel restore the
-              // edit-start snapshot.
+              // Same contract as ever: dismissive gestures (backdrop, drag,
+              // ✕) COMMIT — the seller watched the preview update live while
+              // typing; Escape and Cancel restore the edit-start snapshot.
               onDismiss={commitEdit}
               onEscape={cancelEdit}
               footer={
@@ -1138,7 +1172,9 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
             >
               <div className="px-5 pb-1 pt-1">
                 <div className="mb-2 flex items-center justify-between gap-3">
-                  <span className="text-xs font-medium text-gray-500">Updates live in the preview above</span>
+                  <span className="text-xs font-medium text-gray-500">
+                    {mobileTab === 'preview' ? 'Updates live in the preview above' : 'Updates live on your page'}
+                  </span>
                   <span className={`font-mono text-[11px] font-bold ${atBudget ? 'text-amber-600' : 'text-gray-400'}`}>
                     {editingValue.length}/{editing.meta.max}
                   </span>
@@ -1153,7 +1189,7 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
                     maxLength={editing.meta.max}
                     rows={Math.min(8, Math.max(3, Math.ceil(editing.meta.max / 80)))}
                     onChange={(e) => applyFieldValue(editing.blockId, editing.path, e.target.value.slice(0, editing.meta.max))}
-                    onKeyDown={handleOverlayKeyDown}
+                    onKeyDown={handleSheetKeyDown}
                     className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50/60 px-4 py-3.5 font-sans text-base leading-relaxed text-gray-900 outline-none transition focus:border-[#f0a500] focus:bg-white focus:ring-1 focus:ring-[#f0a500]"
                   />
                 ) : (
@@ -1164,7 +1200,7 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
                     value={editingValue}
                     maxLength={editing.meta.max}
                     onChange={(e) => applyFieldValue(editing.blockId, editing.path, e.target.value.slice(0, editing.meta.max))}
-                    onKeyDown={handleOverlayKeyDown}
+                    onKeyDown={handleSheetKeyDown}
                     className="w-full rounded-2xl border border-gray-200 bg-gray-50/60 px-4 py-3.5 font-sans text-base text-gray-900 outline-none transition focus:border-[#f0a500] focus:bg-white focus:ring-1 focus:ring-[#f0a500]"
                   />
                 )}
@@ -1218,8 +1254,7 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
 
       {/* Sticky save bar — unsaved changes, sync status, and toasts.
           bottom offset carries the safe-area inset so the bar clears the
-          home-indicator region on notched phones (env() is 0 on desktop —
-          identical to the historical bottom-4). */}
+          home-indicator region on notched phones. */}
       {(dirty || toast || queued) && (
         <div className="sticky bottom-[calc(1rem_+_env(safe-area-inset-bottom))] z-30 mt-4">
           <div className="mx-auto flex max-w-2xl flex-wrap items-center justify-between gap-3 rounded-full border border-gray-200 bg-white/95 px-5 py-3 shadow-xl backdrop-blur">
@@ -1230,7 +1265,9 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
               </p>
             ) : dirty ? (
               <p className="text-sm font-medium text-gray-700">
-                Unsaved copy changes — save to update your live site.
+                {payloadValid
+                  ? 'Unsaved changes — save to update your live site.'
+                  : 'A required field is empty — finish it to save.'}
               </p>
             ) : (
               <p className="flex items-center gap-2 text-sm font-medium text-amber-800">
@@ -1242,7 +1279,7 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
               {toast?.kind === 'error' && (
                 <button
                   onClick={() => setToast(null)}
-                  className="rounded-full px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-gray-400 transition hover:text-gray-600"
+                  className="min-h-[44px] rounded-full px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-gray-400 transition hover:text-gray-600"
                 >
                   Dismiss
                 </button>
@@ -1251,7 +1288,7 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
                 <button
                   onClick={attemptFlush}
                   disabled={saving}
-                  className="flex items-center gap-1.5 rounded-full bg-gray-50 px-5 py-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-600 transition hover:bg-gray-100 disabled:opacity-50"
+                  className="flex min-h-[44px] items-center gap-1.5 rounded-full bg-gray-50 px-5 py-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-600 transition hover:bg-gray-100 disabled:opacity-50"
                 >
                   <RefreshCw size={12} /> Sync now
                 </button>
@@ -1261,14 +1298,14 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
                   <button
                     onClick={handleDiscard}
                     disabled={saving}
-                    className="flex items-center gap-1.5 rounded-full bg-gray-50 px-5 py-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-600 transition hover:bg-gray-100 disabled:opacity-50"
+                    className="flex min-h-[44px] items-center gap-1.5 rounded-full bg-gray-50 px-5 py-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-600 transition hover:bg-gray-100 disabled:opacity-50"
                   >
                     <Undo2 size={12} /> Discard
                   </button>
                   <button
                     onClick={handleSave}
-                    disabled={saving}
-                    className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#1a2e1a] to-gray-900 px-6 py-2.5 text-[10px] font-bold uppercase tracking-widest text-white shadow-md transition hover:opacity-90 active:scale-95 disabled:opacity-60"
+                    disabled={saving || !payloadValid}
+                    className="flex min-h-[44px] items-center gap-1.5 rounded-full bg-gradient-to-r from-[#1a2e1a] to-gray-900 px-6 py-2.5 text-[10px] font-bold uppercase tracking-widest text-white shadow-md transition hover:opacity-90 active:scale-95 disabled:opacity-60"
                   >
                     {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
                     {saving ? 'Saving…' : 'Save Changes'}

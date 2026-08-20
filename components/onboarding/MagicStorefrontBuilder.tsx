@@ -58,6 +58,10 @@ const GENERATION_MESSAGES = [
   'Designing your visual blocks…',
   'Composing your premium layout…',
   'Injecting your products…',
+  // Honest lines for the zero-click asset phase (hero via the Ad Studio
+  // IC-Light engine, AI logo draft) that now runs inside the same call.
+  'Composing your hero shot…',
+  'Drafting your logo…',
 ] as const;
 const MESSAGE_ROTATE_MS = 2_500;
 

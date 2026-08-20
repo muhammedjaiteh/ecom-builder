@@ -62,7 +62,7 @@ function RitualHero({ block, shop, heroMedia, collectionsHref }: {
   collectionsHref: string;
 }) {
   return (
-    <header className="relative flex h-[82vh] min-h-[560px] w-full items-end overflow-hidden bg-stone-900 md:items-center">
+    <header data-block-section={block.id} className="relative flex h-[82vh] min-h-[560px] w-full items-end overflow-hidden bg-stone-900 md:items-center">
       {heroMedia?.type === 'video' ? (
         <video
           src={heroMedia.url}
@@ -126,7 +126,7 @@ function RitualHero({ block, shop, heroMedia, collectionsHref }: {
 
 function RitualValueProps({ block }: { block: ValuePropsBlock }) {
   return (
-    <section className="border-b border-stone-200 bg-white">
+    <section data-block-section={block.id} className="border-b border-stone-200 bg-white">
       <div className="mx-auto grid max-w-7xl grid-cols-1 divide-y divide-stone-100 md:grid-cols-3 md:divide-x md:divide-y-0">
         {block.items.map((v, i) => (
           <div key={i} className="px-6 py-9 text-center md:px-10 md:py-12">
@@ -238,7 +238,7 @@ function RitualVideoHero({ block, shopName }: { block: VideoHeroBlock; shopName:
 
 function RitualStory({ block, shopName }: { block: StoryBlock; shopName: string | null }) {
   return (
-    <section id="story" className="border-y border-stone-200 bg-white py-20 md:py-28">
+    <section id="story" data-block-section={block.id} className="border-y border-stone-200 bg-white py-20 md:py-28">
       <div className="mx-auto grid max-w-6xl grid-cols-1 gap-8 px-5 md:grid-cols-[200px_1fr] md:gap-14 md:px-10">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-stone-400">Our Story</p>
@@ -257,7 +257,7 @@ function RitualStory({ block, shopName }: { block: StoryBlock; shopName: string 
 
 function RitualCta({ block, collectionsHref }: { block: CtaBlock; collectionsHref: string }) {
   return (
-    <section className="bg-stone-900 py-20 text-center md:py-28">
+    <section data-block-section={block.id} className="bg-stone-900 py-20 text-center md:py-28">
       <div className="mx-auto max-w-2xl px-5 md:px-10">
         <EditableText as="h2" blockId={block.id} field="headline" className="font-serif text-3xl font-bold tracking-tight text-white md:text-5xl">
           {block.headline}

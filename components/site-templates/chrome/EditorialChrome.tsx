@@ -157,6 +157,21 @@ export default function EditorialChrome({ shop, config, active, children }: Site
           </Link>
         </div>
         <div className="px-5 py-7 text-center md:py-11">
+          {/* Additive logo mark (Premium Visual Editor): renders ONLY when a
+              generated/uploaded site logo exists — legacy rows keep the pure
+              serif wordmark byte-identically. */}
+          {config.assets?.logo_url && (
+            <div className="mb-4 flex justify-center">
+              <SmartImage
+                src={config.assets.logo_url}
+                alt={shop.shop_name ?? 'Logo'}
+                width={56}
+                height={56}
+                blurTone="none"
+                className="h-12 w-12 rounded-full object-cover ring-1 ring-neutral-300 md:h-14 md:w-14"
+              />
+            </div>
+          )}
           <Link href={base ?? '#'} className="font-serif text-4xl font-black uppercase tracking-tight md:text-7xl">
             {shop.shop_name}
           </Link>
@@ -174,7 +189,12 @@ export default function EditorialChrome({ shop, config, active, children }: Site
           This is the cta_banner block's fixed design slot in the Editorial
           anatomy (the templates' body never renders it). */}
       <footer className="bg-[#141414] text-[#F7F5F0]">
-        <div className="mx-auto max-w-7xl px-5 py-20 text-center md:px-10 md:py-28">
+        {/* data-block-section: inert marker for the Site Editor's section
+            focus (the cta_banner block's fixed design slot lives here). */}
+        <div
+          data-block-section={ctaBlock?.id}
+          className="mx-auto max-w-7xl px-5 py-20 text-center md:px-10 md:py-28"
+        >
           {ctaBlock ? (
             <>
               <EditableText as="h2" blockId={ctaBlock.id} field="headline" className="font-serif text-4xl italic leading-tight md:text-6xl">

@@ -210,6 +210,27 @@ export type SiteBlockType = SiteBlock['type'];
 // app/site/[slug]/siteData.ts).
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Generated brand assets — Premium Visual Editor phase. Lives INSIDE config
+// (jsonb; no migration) as an OPTIONAL object: STRICT-SUPERSET LAW preserved,
+// every stored row (no assets key) keeps validating byte-for-byte. Every URL
+// is an asset the platform produced FOR this seller (IC-Light hero via the
+// Ad Studio engine, AI logo, or the seller's own upload) — never an external
+// placeholder. All keys optional: a partial object ({} included) validates.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const SiteAssetsSchema = z.object({
+  /** AI-drafted or uploaded brand logo — falls back to shop.logo_url → monogram. */
+  logo_url: z.string().url().optional(),
+  /** Dedicated hero shot (IC-Light composite of the seller's product, or an
+   *  upload / Ad Studio still) — first link of the hero media fallback chain. */
+  hero_image_url: z.string().url().optional(),
+  /** ISO timestamp of the last AI asset generation run. */
+  generated_at: z.string().optional(),
+});
+
+export type SiteAssets = z.infer<typeof SiteAssetsSchema>;
+
 export const WebsiteConfigSchema = z.object({
   template_key: z.enum(TEMPLATE_KEYS),
   niche_reasoning: z.string().min(1),
@@ -235,6 +256,8 @@ export const WebsiteConfigSchema = z.object({
     }),
   }),
   blocks: z.array(SiteBlockSchema).optional(),
+  /** Optional generated/uploaded brand assets — see SiteAssetsSchema above. */
+  assets: SiteAssetsSchema.optional(),
 });
 
 export type WebsiteConfig = z.infer<typeof WebsiteConfigSchema>;
@@ -567,8 +590,18 @@ export function siteProductPath(shop: Pick<SiteShop, 'shop_slug'>, productId: st
 }
 
 // Best-available hero media, in fidelity order. Every input is an asset the
-// seller already owns — Ad Studio video first, then stills, then originals.
-export function resolveHeroMedia(products: SiteProduct[], shop: SiteShop): HeroMedia {
+// seller already owns — the dedicated generated/uploaded hero shot first
+// (config.assets.hero_image_url, when the caller passes its config), then
+// Ad Studio video, then stills, then originals. The config parameter is
+// OPTIONAL/additive: legacy callers keep their exact historical resolution.
+export function resolveHeroMedia(
+  products: SiteProduct[],
+  shop: SiteShop,
+  config?: Pick<WebsiteConfig, 'assets'> | null
+): HeroMedia {
+  if (config?.assets?.hero_image_url) {
+    return { type: 'image', url: config.assets.hero_image_url };
+  }
   const withVideo = products.find((p) => p.ad_video_url);
   if (withVideo?.ad_video_url) {
     return { type: 'video', url: withVideo.ad_video_url, poster: withVideo.ad_hero_image_url ?? withVideo.image_url };
@@ -581,4 +614,14 @@ export function resolveHeroMedia(products: SiteProduct[], shop: SiteShop): HeroM
   const withImage = products.find((p) => p.image_url);
   if (withImage?.image_url) return { type: 'image', url: withImage.image_url };
   return null;
+}
+
+/** Logo slot fallback chain: generated/uploaded site logo → the shop's own
+ *  logo → null (chrome renders the monogram/initial mark). One resolver so
+ *  every chrome agrees on the same priority. */
+export function resolveLogoUrl(
+  config: Pick<WebsiteConfig, 'assets'>,
+  shop: Pick<SiteShop, 'logo_url'>
+): string | null {
+  return config.assets?.logo_url ?? shop.logo_url ?? null;
 }

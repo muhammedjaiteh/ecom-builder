@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse, NextRequest } from 'next/server';
+import { mintStorefrontLink, resolveAppOrigin } from '@/lib/storefrontUrl';
 
 const METERED_TIERS = ['starter', 'pro'];
 
@@ -76,7 +77,10 @@ export async function POST(request: NextRequest) {
     // 2. PARSE REQUEST & VALIDATE INPUT
     // ========================================
     const body = await request.json();
-    const { productNames, shopSlug } = body;
+    // NOTE: legacy clients still send `shopSlug` in this body — deliberately
+    // ignored now. The store link is minted from the authenticated shop's own
+    // row (a client-provided slug could point the campaign at another shop).
+    const { productNames } = body;
 
     if (!productNames || !Array.isArray(productNames) || productNames.length === 0) {
       return NextResponse.json(
@@ -228,7 +232,21 @@ export async function POST(request: NextRequest) {
     // ========================================
     // 8. BUILD FINAL MESSAGE & RETURN
     // ========================================
-    const storeLink = `\n\nShop here: sanndikaa.com/shop/${shopSlug || shop.shop_slug || 'store'}`;
+    // Flag sweep: marketing links mint through the shared storefront-URL core
+    // (active custom domain → published /site → encoded /shop), from a
+    // service-role read of THIS shop's website row — never a client-provided
+    // slug, never a hardcoded domain. Absolute via PUBLIC_APP_URL ?? host.
+    const storeUrl = await mintStorefrontLink({
+      shop: { id: shop.id, shop_slug: shop.shop_slug ?? null },
+      origin: resolveAppOrigin(request.headers.get('host')),
+      readWebsite: (shopId) =>
+        supabase
+          .from('shop_websites')
+          .select('status, config, custom_domain, domain_status')
+          .eq('shop_id', shopId)
+          .maybeSingle(),
+    });
+    const storeLink = `\n\nShop here: ${storeUrl}`;
     const finalMessage = aiMessage + storeLink;
 
     return NextResponse.json({

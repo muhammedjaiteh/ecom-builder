@@ -1,8 +1,9 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- SANNDIKAA PROVISIONING PACK — signup trigger, slug canonicalization, audit
 -- table, shop_websites read policies, orphan backfill, shops realtime
--- publication enrollment (vault-door instant unlock), and shop_websites
--- custom-domain columns (BYOD).
+-- publication enrollment (vault-door instant unlock), shop_websites
+-- custom-domain columns (BYOD), and products ghost-row backfill + RLS
+-- policy-drift kill (SECTION 10).
 --
 -- Run this in the Supabase SQL Editor. The entire pack is IDEMPOTENT and
 -- RE-RUNNABLE: every statement is guarded (CREATE OR REPLACE / IF NOT EXISTS /
@@ -364,6 +365,166 @@ BEGIN
     'Custom-domain state machine: pending_txt | awaiting_dns | active (NULL = not connected). Written only by app/api/domains/route.ts via the service role.'$cmt$;
 
   RAISE NOTICE '[sanndikaa-provisioning] shop_websites custom-domain columns + lower(custom_domain) unique index ensured.';
+END;
+$$;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- SECTION 10 · products GHOST-ROW BACKFILL + RLS POLICY-DRIFT KILL
+--
+-- THE DRIFT FINDING (2026-08 forensic audit): app/api/products/route.ts
+-- inserted product rows with ONLY user_id (never shop_id) through a BARE
+-- anon-key client — the caller's JWT never reached PostgREST, so the insert
+-- ran as role `anon`. Those inserts SUCCEEDED in production, which is only
+-- possible if the live DB's products INSERT policy is MORE PERMISSIVE than
+-- the versioned truth in RLS_PRODUCTS_ORDERS_SHOPS.sql (products_owner_insert
+-- is TO authenticated with an ownership CHECK): live policy drift. The
+-- resulting shop_id-NULL "ghost" rows are invisible to the legacy /shop
+-- page's FK embed on shop_id (app/shop/[slug]/page.tsx). The route is fixed
+-- app-side (cookie-authed client, shop_id written alongside user_id); this
+-- section heals the historical data and re-imposes the versioned policies.
+--
+--   10a. Backfill shop_id = user_id where shop_id IS NULL (shops are keyed on
+--        the owner's auth id, so user_id IS the shop id). NOTICE reports the
+--        healed count. Re-runs heal 0 rows — idempotent.
+--   10b. Enable RLS on products, recreate the four VERSIONED policies BY NAME
+--        (drop-if-exists + create, so every re-run re-imposes the versioned
+--        definition even if a policy body was hand-edited in the SQL studio),
+--        then iterate pg_policies and DROP any OTHER INSERT/UPDATE/DELETE/ALL
+--        policy on public.products with a NOTICE naming it — this is the
+--        drift kill. Stray SELECT policies outside the versioned set are
+--        NOTICEd but left untouched: this pack never silently alters a read
+--        path (storefronts depend on public reads).
+--
+-- SIGNUP/INSERT SAFETY: nothing here touches the auth.users trigger or the
+-- shops table; product inserts continue to work through the fixed
+-- cookie-authed route (JWT attached → products_owner_insert authorizes it).
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- 10a. Ghost-row backfill.
+
+DO $$
+DECLARE
+  v_healed integer := 0;
+BEGIN
+  IF to_regclass('public.products') IS NULL THEN
+    RAISE NOTICE '[sanndikaa-provisioning] products table not found — skipping ghost-row backfill.';
+    RETURN;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'products' AND column_name = 'shop_id'
+  ) THEN
+    RAISE NOTICE '[sanndikaa-provisioning] products.shop_id column not found — skipping ghost-row backfill.';
+    RETURN;
+  END IF;
+
+  UPDATE public.products
+  SET shop_id = user_id
+  WHERE shop_id IS NULL
+    AND user_id IS NOT NULL;
+
+  GET DIAGNOSTICS v_healed = ROW_COUNT;
+  RAISE NOTICE '[sanndikaa-provisioning] Ghost-product backfill: % row(s) healed (shop_id <- user_id).', v_healed;
+END;
+$$;
+
+-- 10b. Versioned-policy restore + drift kill.
+
+DO $$
+DECLARE
+  p record;
+  v_versioned constant text[] := ARRAY[
+    'products_public_read',
+    'products_owner_insert',
+    'products_owner_update',
+    'products_owner_delete'
+  ];
+BEGIN
+  IF to_regclass('public.products') IS NULL THEN
+    RAISE NOTICE '[sanndikaa-provisioning] products table not found — skipping policy restore.';
+    RETURN;
+  END IF;
+
+  EXECUTE 'ALTER TABLE public.products ENABLE ROW LEVEL SECURITY';
+
+  -- (i) Recreate the versioned strict policies (exact definitions from
+  -- RLS_PRODUCTS_ORDERS_SHOPS.sql §3) — drop-if-exists + create, so
+  -- re-running the pack always enforces the versioned truth.
+
+  EXECUTE 'DROP POLICY IF EXISTS "products_public_read" ON public.products';
+  EXECUTE $pol$
+    CREATE POLICY "products_public_read"
+    ON public.products
+    FOR SELECT
+    TO anon, authenticated
+    USING (true)
+  $pol$;
+
+  EXECUTE 'DROP POLICY IF EXISTS "products_owner_insert" ON public.products';
+  EXECUTE $pol$
+    CREATE POLICY "products_owner_insert"
+    ON public.products
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (
+      (user_id = auth.uid())
+      OR
+      (shop_id = auth.uid())
+    )
+  $pol$;
+
+  EXECUTE 'DROP POLICY IF EXISTS "products_owner_update" ON public.products';
+  EXECUTE $pol$
+    CREATE POLICY "products_owner_update"
+    ON public.products
+    FOR UPDATE
+    TO authenticated
+    USING (
+      (user_id = auth.uid())
+      OR
+      (shop_id = auth.uid())
+    )
+    WITH CHECK (
+      (user_id = auth.uid())
+      OR
+      (shop_id = auth.uid())
+    )
+  $pol$;
+
+  EXECUTE 'DROP POLICY IF EXISTS "products_owner_delete" ON public.products';
+  EXECUTE $pol$
+    CREATE POLICY "products_owner_delete"
+    ON public.products
+    FOR DELETE
+    TO authenticated
+    USING (
+      (user_id = auth.uid())
+      OR
+      (shop_id = auth.uid())
+    )
+  $pol$;
+
+  RAISE NOTICE '[sanndikaa-provisioning] Versioned products policies re-imposed (RLS_PRODUCTS_ORDERS_SHOPS.sql §3).';
+
+  -- (ii) THE DRIFT KILL: any write-capable policy (INSERT/UPDATE/DELETE/ALL —
+  -- ALL grants writes too) outside the versioned set is live-DB drift and is
+  -- dropped with a NOTICE naming it. Stray SELECT policies are reported only.
+
+  FOR p IN
+    SELECT policyname, cmd
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'products'
+      AND NOT (policyname = ANY (v_versioned))
+  LOOP
+    IF p.cmd IN ('INSERT', 'UPDATE', 'DELETE', 'ALL') THEN
+      EXECUTE format('DROP POLICY IF EXISTS %I ON public.products', p.policyname);
+      RAISE NOTICE '[sanndikaa-provisioning] DRIFT KILL: dropped non-versioned % policy "%" on public.products.', p.cmd, p.policyname;
+    ELSE
+      RAISE NOTICE '[sanndikaa-provisioning] Non-versioned SELECT policy "%" on public.products left untouched — review manually.', p.policyname;
+    END IF;
+  END LOOP;
 END;
 $$;
 

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { MessageCircle, CheckCircle2, Sparkles, Send, Copy } from 'lucide-react';
+import { toAbsoluteStorefrontUrl, useStorefrontUrl, type StorefrontShop } from '@/lib/useStorefrontUrl';
 
 type Product = {
   id: string;
@@ -11,11 +12,20 @@ type Product = {
 
 type WhatsAppEngineProps = {
   shopName: string;
-  shopSlug: string;
+  /** The seller's shops row (id + shop_slug + subscription_tier) — feeds the
+   *  site-aware boutique link customers receive (custom domain → /site →
+   *  /shop, lib/useStorefrontUrl priority). */
+  shop: StorefrontShop;
   products: Product[];
 };
 
-export default function WhatsAppEngine({ shopName, shopSlug, products }: WhatsAppEngineProps) {
+export default function WhatsAppEngine({ shopName, shop, products }: WhatsAppEngineProps) {
+  // ONE hook call per engine instance (SWR-deduped) — never per message row.
+  // Customers previously got a raw, un-encoded sanndikaa.com/shop/{slug}
+  // even when the seller's premium /site or custom domain was live.
+  const storefrontUrl = useStorefrontUrl(shop);
+  const boutiqueLink = storefrontUrl ? toAbsoluteStorefrontUrl(storefrontUrl) : null;
+
   // By default, select the first 3 products for the broadcast
   const [selectedProducts, setSelectedProducts] = useState<string[]>(
     products.slice(0, 3).map(p => p.id)
@@ -45,8 +55,12 @@ export default function WhatsAppEngine({ shopName, shopSlug, products }: WhatsAp
       msg += `🔗 https://sanndikaa.com/product/${p.id}\n\n`;
     });
 
-    msg += `🌐 *Visit our full boutique:*\n`;
-    msg += `https://sanndikaa.com/shop/${shopSlug}\n\n`;
+    // Never a broken link: the boutique block only appears once the
+    // storefront URL resolved (null = shop row/slug still loading).
+    if (boutiqueLink) {
+      msg += `🌐 *Visit our full boutique:*\n`;
+      msg += `${boutiqueLink}\n\n`;
+    }
     msg += `_Powered by Sanndikaa District_ 🦅`;
 
     return msg;

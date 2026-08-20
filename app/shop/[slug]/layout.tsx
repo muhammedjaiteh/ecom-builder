@@ -1,5 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
+import { headers } from 'next/headers';
 import type { Metadata } from 'next';
+import { resolveAppOrigin } from '@/lib/storefrontUrl';
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
@@ -15,9 +17,11 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
   const shopName = shop?.shop_name ?? 'Shop';
   const description = shop?.bio ?? `Welcome to ${shopName} on Sanndikaa`;
-  
-  // FIX: Pointing to your live Vercel domain instead of the future .com
-  const shopUrl = `https://sanndikaa-vip.vercel.app/shop/${slug}`;
+
+  // Flag sweep: PUBLIC_APP_URL ?? the request host — never a hardcoded
+  // deployment domain. The slug is re-encoded (legacy slugs carry spaces).
+  const origin = resolveAppOrigin((await headers()).get('host'));
+  const shopUrl = `${origin}/shop/${encodeURIComponent(slug)}`;
 
   const images = [];
   if (shop?.banner_url) images.push(shop.banner_url);

@@ -6,6 +6,7 @@ import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { repairShopSlug } from '@/lib/slugify';
 import {
+  SiteAssetsSchema,
   SiteBlockSchema,
   WebsiteConfigSchema,
   blocksToLegacySite,
@@ -30,14 +31,19 @@ import {
 
 const WEBSITE_TIERS = ['advanced', 'flagship'];
 
-// v1 editor always sends the full block array. Unique ids protect the
-// editor's node targeting and any future reorder tooling; the length ceiling
-// bounds a hand-crafted payload.
+// The editor always sends the full block array — reordered arrays are valid
+// by construction (the schema is order-agnostic and every renderer respects
+// stored order). Unique ids protect the editor's node targeting; the length
+// ceiling bounds a hand-crafted payload. `assets` is OPTIONAL and additive:
+// when present it replaces config.assets wholesale (the editor owns the full
+// slot state); when absent (legacy clients, pre-assets outbox entries) the
+// stored assets survive untouched.
 const BlocksPayloadSchema = z.object({
   blocks: z.array(SiteBlockSchema).min(1).max(12).refine(
     (blocks) => new Set(blocks.map((b) => b.id)).size === blocks.length,
     { message: 'Block ids must be unique.' }
   ),
+  assets: SiteAssetsSchema.optional(),
 });
 
 type OwnerGate =
@@ -139,7 +145,7 @@ export async function PUT(req: Request) {
         { status: 400 }
       );
     }
-    const { blocks } = parsedPayload.data;
+    const { blocks, assets } = parsedPayload.data;
 
     const admin = getAdmin();
 
@@ -175,10 +181,12 @@ export async function PUT(req: Request) {
 
     // Both representations updated in ONE jsonb write: blocks are the source
     // of truth, site.* is the mirror (seo.* preserved by the adapter).
+    // assets replaces wholesale only when the payload carried it.
     const config: WebsiteConfig = {
       ...parsedConfig.data,
       site: blocksToLegacySite(blocks, parsedConfig.data.site),
       blocks,
+      ...(assets !== undefined ? { assets } : {}),
     };
 
     const { data: updated, error: updateError } = await admin

@@ -17,9 +17,34 @@ import DiscountManager from '@/components/DiscountManager';
 import VideoManager from '@/components/VideoManager';
 import ReviewForm from '@/components/ReviewForm';
 import ReviewList from '@/components/ReviewList';
+import { useStorefrontUrl } from '@/lib/useStorefrontUrl';
 import type { Product, Shop, Order, CustomerCRM } from '@/lib/types';
 
 type DashboardTab = 'overview' | 'analytics' | 'orders' | 'customers' | 'discounts' | 'videos' | 'reviews' | 'inventory' | 'broadcast';
+
+// Site-aware "View Shop": custom domain → premium /site → classic /shop
+// (lib/useStorefrontUrl priority). Rendered INSIDE OnboardingInterceptor's
+// SWR scope, so the website-row read is a pure cache dedupe with the
+// interceptor's own fetch. Disabled until the shop row (and its slug) loads —
+// the raw `/shop/${shop?.shop_slug}` link this replaces minted
+// /shop/undefined pre-load and never URL-encoded legacy slugs.
+function ViewShopButton({ shop }: { shop: Shop | null }) {
+  const url = useStorefrontUrl(shop);
+  const className =
+    'flex shrink-0 items-center gap-1.5 rounded-full bg-gray-50 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:bg-gray-100';
+  if (!url) {
+    return (
+      <span aria-disabled="true" className={`${className} cursor-not-allowed opacity-50`}>
+        <Eye size={14} /> View Shop
+      </span>
+    );
+  }
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" className={className}>
+      <Eye size={14} /> View Shop
+    </a>
+  );
+}
 
 function sanitizePhoneNumber(rawNumber?: string | null) {
   if (!rawNumber) return null;
@@ -274,9 +299,7 @@ export default function Dashboard() {
           </div>
           
           <div className="flex items-center gap-2 md:gap-3 overflow-x-auto hide-scrollbar pb-1 md:pb-0">
-            <Link href={`/shop/${shop?.shop_slug}`} target="_blank" className="flex shrink-0 items-center gap-1.5 rounded-full bg-gray-50 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:bg-gray-100">
-              <Eye size={14} /> View Shop
-            </Link>
+            <ViewShopButton shop={shop} />
 
             <Link href="/dashboard/online-store/themes" className="flex shrink-0 items-center gap-1.5 rounded-full bg-gray-50 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:bg-gray-100">
               <Palette size={14} /> Customize

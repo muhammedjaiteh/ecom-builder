@@ -74,7 +74,7 @@ function EditorialHero({ block, shop, heroMedia }: {
 }) {
   const initial = (shop.shop_name ?? 'S').trim().charAt(0).toUpperCase() || 'S';
   return (
-    <section className="grid grid-cols-1 border-b border-neutral-900 md:grid-cols-12">
+    <section data-block-section={block.id} className="grid grid-cols-1 border-b border-neutral-900 md:grid-cols-12">
       <div className="relative min-h-[340px] border-neutral-900 md:col-span-7 md:min-h-[580px] md:border-r">
         {heroMedia?.type === 'video' ? (
           <video
@@ -276,7 +276,7 @@ function EditorialVideoHero({ block, shopName }: { block: VideoHeroBlock; shopNa
 
 function EditorialStory({ block, shopName }: { block: StoryBlock; shopName: string | null }) {
   return (
-    <section id="story" className="border-b border-neutral-900 px-5 py-20 md:px-10 md:py-32">
+    <section id="story" data-block-section={block.id} className="border-b border-neutral-900 px-5 py-20 md:px-10 md:py-32">
       <div className="relative mx-auto max-w-4xl">
         <span aria-hidden className="pointer-events-none absolute -top-10 left-0 select-none font-serif text-[8rem] leading-none text-neutral-300 md:-top-16 md:text-[12rem]">
           &ldquo;
@@ -297,7 +297,7 @@ function EditorialStory({ block, shopName }: { block: StoryBlock; shopName: stri
 
 function EditorialIndexRow({ block }: { block: ValuePropsBlock }) {
   return (
-    <section className="grid grid-cols-1 border-b border-neutral-900 md:grid-cols-3">
+    <section data-block-section={block.id} className="grid grid-cols-1 border-b border-neutral-900 md:grid-cols-3">
       {block.items.map((v, i) => (
         <div key={i} className={`px-5 py-10 md:px-10 md:py-14 ${i > 0 ? 'border-t border-neutral-900 md:border-l md:border-t-0' : ''}`}>
           <p className="font-serif text-4xl italic text-neutral-300">0{i + 1}</p>

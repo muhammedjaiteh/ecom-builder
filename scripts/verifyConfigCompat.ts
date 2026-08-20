@@ -126,6 +126,42 @@ if (legacyResult.success && newResult.success) {
     ),
   };
   check('over-budget block field is rejected', !WebsiteConfigSchema.safeParse(oversized).success);
+
+  // ── Premium Visual Editor: config.assets superset checks ─────────────────
+  console.log('Assets superset checks:');
+
+  // A row carrying the new OPTIONAL assets object must validate…
+  const assetsConfig = {
+    ...newConfig,
+    assets: {
+      logo_url: 'https://cdn.example.com/brand/site-assets/shop-1/logo-1700000000000.png',
+      hero_image_url: 'https://cdn.example.com/brand/site-assets/shop-1/hero-1700000000000.jpg',
+      generated_at: '2026-08-20T12:00:00.000Z',
+    },
+  };
+  const assetsResult = WebsiteConfigSchema.safeParse(assetsConfig);
+  check('config with assets validates', assetsResult.success,
+    assetsResult.success ? undefined : JSON.stringify(assetsResult.error.issues));
+
+  // …a PARTIAL assets object validates (every key optional; {} is the
+  // editor's cleared-slots form)…
+  check('partial assets object validates',
+    WebsiteConfigSchema.safeParse({ ...newConfig, assets: { hero_image_url: 'https://cdn.example.com/h.jpg' } }).success);
+  check('empty assets object validates',
+    WebsiteConfigSchema.safeParse({ ...newConfig, assets: {} }).success);
+
+  // …and assets never leak into the block/site model: resolveBlocks output is
+  // identical with or without the key.
+  if (assetsResult.success) {
+    check(
+      'assets do not perturb resolveBlocks',
+      JSON.stringify(resolveBlocks(assetsResult.data)) === JSON.stringify(resolveBlocks(newResult.data))
+    );
+  }
+
+  // Negative control: a non-URL asset value must FAIL.
+  check('non-URL asset value is rejected',
+    !WebsiteConfigSchema.safeParse({ ...newConfig, assets: { logo_url: 'not-a-url' } }).success);
 }
 
 if (failures > 0) {

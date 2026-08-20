@@ -23,7 +23,13 @@
 
 import { z } from 'zod';
 import { fetchJSON, isTransportError } from '@/lib/transport';
-import { SiteBlockSchema, type ShopWebsiteRow, type SiteBlock } from '@/lib/siteTemplates';
+import {
+  SiteAssetsSchema,
+  SiteBlockSchema,
+  type ShopWebsiteRow,
+  type SiteAssets,
+  type SiteBlock,
+} from '@/lib/siteTemplates';
 
 const OUTBOX_PREFIX = 'sndk:outbox:website:v1:';
 
@@ -33,6 +39,9 @@ const storageKey = (userId: string) => `${OUTBOX_PREFIX}${userId}`;
 // parses to null and is discarded rather than sent to the API.
 const OutboxEntrySchema = z.object({
   blocks: z.array(SiteBlockSchema).min(1).max(12),
+  /** Optional asset-slot state — additive: entries queued before the visual
+   *  editor (no key) still parse and flush exactly as before. */
+  assets: SiteAssetsSchema.optional(),
   /** generated_at of the site build this edit was made against. */
   baseGeneratedAt: z.string().min(1),
   queuedAt: z.number(),
@@ -40,6 +49,7 @@ const OutboxEntrySchema = z.object({
 
 export type WebsiteOutboxEntry = {
   blocks: SiteBlock[];
+  assets?: SiteAssets;
   baseGeneratedAt: string;
   queuedAt: number;
 };
@@ -63,7 +73,7 @@ export function readWebsiteOutbox(userId: string): WebsiteOutboxEntry | null {
 /** Latest-wins: replaces any existing entry for this user's site. */
 export function queueWebsiteSave(
   userId: string,
-  entry: { blocks: SiteBlock[]; baseGeneratedAt: string }
+  entry: { blocks: SiteBlock[]; assets?: SiteAssets; baseGeneratedAt: string }
 ): WebsiteOutboxEntry | null {
   if (typeof window === 'undefined') return null;
   const record: WebsiteOutboxEntry = { ...entry, queuedAt: Date.now() };
@@ -131,7 +141,12 @@ async function doFlush(userId: string): Promise<FlushResult> {
     const row = await fetchJSON<ShopWebsiteRow>('/api/websites/content', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ blocks: entry.blocks }),
+      body: JSON.stringify({
+        blocks: entry.blocks,
+        // Only entries that carried asset state send it — the PUT preserves
+        // stored assets when the key is absent (pre-assets entries).
+        ...(entry.assets !== undefined ? { assets: entry.assets } : {}),
+      }),
     });
 
     // Only clear if the entry wasn't replaced mid-flight by a newer queue.

@@ -23,13 +23,21 @@ export async function DELETE(
 
     const { id } = await params; // We wait for the ID
 
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    // The caller's JWT rides the PostgREST call so the strict
+    // products_owner_delete policy authorizes it as `authenticated` — the
+    // previous bare anon-key client sent no JWT and would silently delete
+    // zero rows under the versioned RLS. The explicit owner filter is
+    // defense-in-depth on top of the policy.
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+    });
 
-    // Delete the product where the ID matches
+    // Delete the product where the ID matches AND the caller owns it
     const { error } = await supabase
       .from("products")
       .delete()
-      .eq("id", id);
+      .eq("id", id)
+      .eq("user_id", user.id);
 
     if (error) {
       console.error("Delete error:", error);
@@ -38,6 +46,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (err) {
+    console.error("[products/:id] fatal error:", err);
     return NextResponse.json({ error: "Server Error" }, { status: 500 });
   }
 }

@@ -3,16 +3,15 @@ import { createServerClient } from '@supabase/ssr';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
-import { fal } from '@/lib/fal';
 import { generateWithFallback } from '@/lib/llm';
 import { ELITE_COPY_RULES } from '@/lib/adCopy';
+import { extractFalImageUrl, falSubscribeWithLogging, logFalFailure } from '@/lib/falImaging';
 import {
   AdPipelineError,
   createAdProgressStream,
   describeFalQueueUpdate,
   SSE_HEADERS,
   type AdProgressEvent,
-  type FalQueueUpdate,
 } from '@/lib/adProgress';
 
 // Unified director schema — under the BiRefNet → IC-Light architecture, apparel and
@@ -39,99 +38,10 @@ export const maxDuration = 300;
 const CATEGORIES = ['apparel', 'cosmetics', 'electronics', 'food', 'other'] as const;
 type Category = (typeof CATEGORIES)[number];
 
-// Bulletproof URL extraction — Fal models return image URLs under several
-// different keys depending on the model (image.url, images[0].url, image_url, url, etc.).
-// The Fal client wraps everything in { data, requestId }; older shims hand back the raw payload,
-// so we check both.
-function extractFalImageUrl(result: any): string | null {
-  if (!result) return null;
-  const data = result.data ?? result;
-  if (!data) return null;
-  if (typeof data === 'string') return data;
-
-  return (
-    data.image?.url ||
-    data.images?.[0]?.url ||
-    data.image_url ||
-    data.url ||
-    data.output?.url ||
-    data.output?.[0]?.url ||
-    (typeof data.output === 'string' ? data.output : null) ||
-    null
-  );
-}
-
-function logFalFailure(stage: string, result: any) {
-  console.error(
-    `[generate-still] ${stage} — could not extract image URL. Full Fal response:`,
-    JSON.stringify(result, null, 2)
-  );
-}
-
-// Wraps fal.subscribe so 422/4xx failures surface the actual FastAPI `detail`
-// array instead of opaque "[Object]" output. Re-throws so existing error flow is unchanged.
-// The optional onQueueUpdate hook feeds the SSE progress stream — it never
-// changes model inputs or outputs.
-async function falSubscribeWithLogging<T = any>(
-  modelId: string,
-  input: Record<string, unknown>,
-  stageLabel: string,
-  onQueueUpdate?: (update: FalQueueUpdate) => void,
-): Promise<T> {
-  try {
-    const result = (await fal.subscribe(modelId, { input, logs: false, onQueueUpdate })) as T;
-
-    // ── Silent-failure detection (apparent-success responses with bad payloads) ──
-    // Some Fal models return HTTP 200 + a valid URL pointing at a blank/black PNG
-    // when their content filter triggers. We catch two signals before returning so
-    // the UI sees a clean error instead of rendering a black image.
-    const data = (result as any)?.data ?? result;
-
-    // NSFW / content-filter trigger — Flux endpoints expose this on success.
-    const nsfwFlagged =
-      data?.has_nsfw_concepts?.[0] === true ||
-      data?.has_nsfw_concepts === true ||
-      data?.nsfw_detected === true ||
-      data?.is_nsfw === true;
-    if (nsfwFlagged) {
-      console.error(
-        `[generate-still] Fal ${modelId} (${stageLabel}) was content-filtered. Full response:`,
-        JSON.stringify(data, null, 2)
-      );
-      // AdPipelineError carries this crafted copy all the way to the seller
-      // instead of collapsing into the generic catch-all message.
-      throw new AdPipelineError(
-        `${stageLabel} output was blocked by the provider's content filter. Please retry or use a different photo.`,
-        500
-      );
-    }
-
-    // Suspiciously small file size = likely blank / near-empty image.
-    // Real images are consistently >50KB; blank PNGs of any size compress to <2KB.
-    // Check is defensive — only fires if the model exposes file_size at all.
-    const imageField = data?.image ?? data?.images?.[0];
-    const fileSize = imageField?.file_size;
-    if (typeof fileSize === 'number' && fileSize < 2000) {
-      console.error(
-        `[generate-still] Fal ${modelId} (${stageLabel}) returned suspiciously small file (${fileSize} bytes) — likely blank/black. Full response:`,
-        JSON.stringify(data, null, 2)
-      );
-      throw new AdPipelineError(
-        `${stageLabel} returned an empty image. The model may have failed silently. Please retry.`,
-        500
-      );
-    }
-
-    return result;
-  } catch (err: any) {
-    const status = err?.status ?? err?.response?.status ?? 'unknown';
-    const body = err?.body ?? err?.response?.body ?? err?.responseBody;
-    console.error(`[generate-still] Fal ${modelId} (${stageLabel}) failed — HTTP ${status}`);
-    console.error(`[generate-still] Fal error body:`, JSON.stringify(body ?? err, null, 2));
-    if (err?.message) console.error(`[generate-still] Fal error message:`, err.message);
-    throw err;
-  }
-}
+// URL extraction + fal.subscribe silent-failure wrapper now live in
+// lib/falImaging.ts (shared with the website asset engine) — behavior is
+// byte-identical; this route passes its historical '[generate-still]' prefix.
+const FAL_CALLER = 'generate-still';
 
 function buildDirectorPrompt(
   product: { name: string; description: string | null },
@@ -262,9 +172,12 @@ async function executeStillPipeline(
     // the subject pixels at any point in the pipeline.
     falSubscribeWithLogging('fal-ai/birefnet', {
       image_url: product.image_url,
-    }, 'BiRefNet', (update) => {
-      const message = describeFalQueueUpdate(update, 'Foreground extraction');
-      if (message) emit({ t: 'detail', key: 'extracting', message });
+    }, 'BiRefNet', {
+      caller: FAL_CALLER,
+      onQueueUpdate: (update) => {
+        const message = describeFalQueueUpdate(update, 'Foreground extraction');
+        if (message) emit({ t: 'detail', key: 'extracting', message });
+      },
     }).then((r) => {
       emit({ t: 'stage-done', key: 'extracting' });
       emit({ t: 'detail', key: 'extracting', message: 'Product isolated — original pixels untouched.' });
@@ -275,7 +188,7 @@ async function executeStillPipeline(
 
   const cutoutUrl = extractFalImageUrl(isolateResult);
   if (!cutoutUrl) {
-    logFalFailure('BiRefNet', isolateResult);
+    logFalFailure(FAL_CALLER, 'BiRefNet', isolateResult);
     throw new AdPipelineError(
       'Background removal failed. Please retry with a clearer product photo.',
       500
@@ -321,13 +234,16 @@ async function executeStillPipeline(
     prompt: director.scene_prompt,
     // Law 3: 25 steps optimizes render latency while holding luxury asset quality.
     num_inference_steps: 25,
-  }, 'IC-Light v2', (update) => {
-    const message = describeFalQueueUpdate(update, 'Scene composition');
-    if (message) emit({ t: 'detail', key: 'composing', message });
+  }, 'IC-Light v2', {
+    caller: FAL_CALLER,
+    onQueueUpdate: (update) => {
+      const message = describeFalQueueUpdate(update, 'Scene composition');
+      if (message) emit({ t: 'detail', key: 'composing', message });
+    },
   });
   const heroImageUrl = extractFalImageUrl(iclResult);
   if (!heroImageUrl) {
-    logFalFailure('IC-Light v2', iclResult);
+    logFalFailure(FAL_CALLER, 'IC-Light v2', iclResult);
     throw new Error('Scene composition failed: no image URL in IC-Light response.');
   }
   console.log('[generate-still] IC-Light hero URL:', heroImageUrl);

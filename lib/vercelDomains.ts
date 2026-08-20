@@ -24,8 +24,11 @@
 // Every network call carries a hard 10s deadline (AbortController) and returns
 // a discriminated union mirroring lib/transport.ts's classification vocabulary
 // ('timeout' → upstream_timeout, network-layer failure → upstream_unreachable,
-// HTTP >= 400 → Vercel's own error code/message). Raw upstream bodies and the
-// token are never surfaced to callers.
+// HTTP >= 400 → Vercel's own error CODE with a seller-safe message: only
+// deliberately-handled codes keep their upstream wording — everything else is
+// masked to DOMAIN_AUTOMATION_UNAVAILABLE_MESSAGE and the raw code+message is
+// console.error'd server-side). Raw upstream bodies and the token are never
+// surfaced to callers.
 // ═════════════════════════════════════════════════════════════════════════════
 
 if (typeof window !== 'undefined') {
@@ -204,6 +207,27 @@ const TRANSPORT_FAILURE = {
   network: { code: 'upstream_unreachable', message: 'Could not reach the Vercel API.' },
 } as const;
 
+// ─── Seller-facing message sanitization ──────────────────────────────────────
+// Upstream codes whose messages are DELIBERATELY handled downstream and may
+// flow to the caller (the route overrides domain_already_in_use with its own
+// TXT-ownership copy; 409-idempotent and not_configured never reach here).
+// Every OTHER upstream 4xx/5xx (forbidden, rate_limited, http_5xx, …) must
+// never leak Vercel's raw wording ("Not authorized" etc.) to a seller — the
+// raw code+message is logged server-side (never the token) and the seller
+// gets one honest, actionable line.
+const PASSTHROUGH_UPSTREAM_CODES = new Set(['domain_already_in_use']);
+
+export const DOMAIN_AUTOMATION_UNAVAILABLE_MESSAGE =
+  "Domain automation is temporarily unavailable — please contact support and we'll connect it for you.";
+
+function sellerSafeError<T extends { code: string; message: string }>(context: string, parsed: T): T {
+  if (PASSTHROUGH_UPSTREAM_CODES.has(parsed.code)) return parsed;
+  console.error(
+    `[vercelDomains] ${context}: masked upstream error from seller — code=${parsed.code} message="${parsed.message}"`
+  );
+  return { ...parsed, message: DOMAIN_AUTOMATION_UNAVAILABLE_MESSAGE };
+}
+
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 /**
@@ -238,7 +262,7 @@ export async function attachDomain(domain: string): Promise<AttachDomainResult> 
     // no-op, not an error (idempotent re-attach contract).
     return { ok: true, alreadyAttached: true, verification: parsed.verification };
   }
-  return { ok: false, ...parsed };
+  return { ok: false, ...sellerSafeError('attachDomain', parsed) };
 }
 
 /**
@@ -267,7 +291,7 @@ export async function getDomainStatus(domain: string): Promise<DomainStatusResul
     return { ok: true, verdict: { found: false, verified: false, misconfigured: true, verification: [] } };
   }
   if (domainRes.status >= 400) {
-    const parsed = parseVercelError(domainRes.status, domainRes.body);
+    const parsed = sellerSafeError('getDomainStatus', parseVercelError(domainRes.status, domainRes.body));
     return { ok: false, code: parsed.code, message: parsed.message };
   }
 
@@ -302,7 +326,7 @@ export async function removeDomain(domain: string): Promise<RemoveDomainResult> 
   if (!res.ok) return { ok: false, ...TRANSPORT_FAILURE[res.kind] };
   if ((res.status >= 200 && res.status < 300) || res.status === 404) return { ok: true };
 
-  const parsed = parseVercelError(res.status, res.body);
+  const parsed = sellerSafeError('removeDomain', parseVercelError(res.status, res.body));
   return { ok: false, code: parsed.code, message: parsed.message };
 }
 

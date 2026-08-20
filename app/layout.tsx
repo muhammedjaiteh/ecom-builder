@@ -14,6 +14,13 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// Flag sweep: env-driven origin (PUBLIC_APP_URL ?? NEXT_PUBLIC_APP_URL)
+// instead of the hardcoded preview deployment domain. Resolved at BUILD time
+// (this metadata is static — no request headers here); the deployment-domain
+// fallback keeps existing environments byte-identical until the env is set.
+const APP_ORIGIN =
+  process.env.PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? 'https://sanndikaa-vip.vercel.app';
+
 export const metadata: Metadata = {
   title: 'Sanndikaa - The Ultimate E-commerce Platform',
   description: 'Discover authentic Gambian products. Buy and sell on The Gambian Marketplace.',
@@ -26,11 +33,11 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Sanndikaa - The Ultimate E-commerce Platform',
     description: 'Discover authentic Gambian products. Buy and sell on The Gambian Marketplace.',
-    url: 'https://sanndikaa-vip.vercel.app',
+    url: APP_ORIGIN,
     type: 'website',
     images: [
       {
-        url: 'https://sanndikaa-vip.vercel.app/og-image.png', 
+        url: `${APP_ORIGIN}/og-image.png`,
         width: 1200,
         height: 630,
         alt: 'Sanndikaa E-commerce Platform',
@@ -41,7 +48,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'Sanndikaa - The Ultimate E-commerce Platform',
     description: 'Discover authentic Gambian products. Buy and sell on The Gambian Marketplace.',
-    images: ['https://sanndikaa-vip.vercel.app/og-image.png'],
+    images: [`${APP_ORIGIN}/og-image.png`],
   },
 };
 
