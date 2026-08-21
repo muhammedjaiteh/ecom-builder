@@ -2,6 +2,7 @@
 
 import { useLayoutEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import EditorialTemplate from '@/components/site-templates/EditorialTemplate';
+import { GatedVideoPreviewScope } from '@/components/site-templates/GatedVideo';
 import RitualTemplate from '@/components/site-templates/RitualTemplate';
 import VitalityTemplate from '@/components/site-templates/VitalityTemplate';
 import type {
@@ -125,7 +126,11 @@ export default function MiniSitePreview({ concept, shopName }: MiniSitePreviewPr
         className="absolute left-0 top-0 origin-top-left"
         style={{ width: DESIGN_WIDTH, transform: `scale(${scale})` }}
       >
-        <Template shop={previewShop} products={PREVIEW_PRODUCTS} config={previewConfig} heroMedia={null} />
+        {/* GatedVideoPreviewScope: heroMedia is null here today, but any
+            future video block in a miniature stays a static poster. */}
+        <GatedVideoPreviewScope>
+          <Template shop={previewShop} products={PREVIEW_PRODUCTS} config={previewConfig} heroMedia={null} />
+        </GatedVideoPreviewScope>
       </div>
       {/* Soft edge fade — signals the page continues below the crop. */}
       <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-black/15 to-transparent" />

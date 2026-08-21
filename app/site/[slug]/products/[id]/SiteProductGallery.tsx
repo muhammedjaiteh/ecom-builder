@@ -2,11 +2,15 @@
 
 import { useState } from 'react';
 import SmartImage from '@/components/SmartImage';
+import GatedVideo from '@/components/site-templates/GatedVideo';
 import type { SiteTone } from '@/components/site-templates/chrome';
 
 // Product media gallery for the on-site PDP. Server builds the ordered media
 // list (Ad Studio video → AI hero still → seller originals — always the
 // seller's real pixels, Law 4); this island only handles selection state.
+// The video slide runs through the shared 2G gate (GatedVideo): constrained
+// networks get the poster + a ≥44px tap-to-play instead of autoplay, and
+// native controls appear once playback is live.
 
 export type GalleryMedia =
   | { type: 'video'; url: string; poster: string | null }
@@ -57,16 +61,20 @@ export default function SiteProductGallery({
             <span className={styles.fallbackInitial}>{name.charAt(0).toUpperCase()}</span>
           </div>
         ) : current.type === 'video' ? (
-          <video
+          <GatedVideo
             key={current.url}
             src={current.url}
-            poster={current.poster ?? undefined}
-            autoPlay
-            loop
-            muted
-            playsInline
-            controls
+            poster={current.poster}
+            alt={name}
             className="h-full w-full object-cover"
+            posterSizes="(min-width: 768px) 50vw, 100vw"
+            posterBlurTone={tone === 'neutral' ? 'dark' : 'light'}
+            controlsWhenPlaying
+            fallback={
+              <div className={styles.fallback}>
+                <span className={styles.fallbackInitial}>{name.charAt(0).toUpperCase()}</span>
+              </div>
+            }
           />
         ) : (
           <SmartImage

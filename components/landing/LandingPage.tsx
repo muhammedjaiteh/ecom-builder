@@ -79,7 +79,7 @@ const TIERS = [
     name: 'Advanced',
     price: 'D2,500',
     blurb: 'The enterprise suite — including your AI-built website.',
-    features: ['Unlimited AI generation', 'AI Website Generator', 'Priority placement + escrow'],
+    features: ['Unlimited AI generation', 'AI Website Generator', 'Priority placement + custom domain'],
     dark: true,
   },
 ];
@@ -269,7 +269,7 @@ export default function LandingPage() {
         <div className="mx-auto grid max-w-7xl grid-cols-2 gap-6 px-4 py-8 md:grid-cols-4 md:px-10">
           {[
             { icon: Store, label: 'Boutiques Across West Africa' },
-            { icon: ShieldCheck, label: 'Escrow Buyer Protection' },
+            { icon: ShieldCheck, label: 'Secure WhatsApp Checkout' },
             { icon: Smartphone, label: 'Mobile Money Ready' },
             { icon: Clapperboard, label: 'AI Ad Studio Built In' },
           ].map((item) => (

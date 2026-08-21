@@ -42,6 +42,7 @@ import {
   readWebsiteOutbox,
 } from '@/lib/offlineOutbox';
 import EditorialTemplate from '@/components/site-templates/EditorialTemplate';
+import { GatedVideoPreviewScope } from '@/components/site-templates/GatedVideo';
 import RitualTemplate from '@/components/site-templates/RitualTemplate';
 import BottomSheet from '@/components/website/BottomSheet';
 import VideoHeroPicker, { type VideoHeroSelection } from '@/components/website/VideoHeroPicker';
@@ -1002,7 +1003,13 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
                     className="absolute left-0 top-0 origin-top-left"
                     style={{ width: DESIGN_WIDTH, transform: `scale(${scale})` }}
                   >
-                    <Template shop={shop} products={products} config={previewConfig} heroMedia={heroMedia} />
+                    {/* GatedVideoPreviewScope: every hero/gallery video in the
+                        scaled preview renders its static poster state — no
+                        autoplay storm, no dead play button under the editor's
+                        click-capture. */}
+                    <GatedVideoPreviewScope>
+                      <Template shop={shop} products={products} config={previewConfig} heroMedia={heroMedia} />
+                    </GatedVideoPreviewScope>
                   </div>
                 </div>
               </div>

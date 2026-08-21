@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { SITE_CHROMES, type SiteTone } from '@/components/site-templates/chrome';
+import { EditorialGridFillers } from '@/components/site-templates/chrome/EditorialChrome';
 import {
   WebsiteConfigSchema,
   siteCollectionsPath,
@@ -159,6 +160,9 @@ function EditorialCatalogBody({ site, catalog, basePath, productHref }: CatalogB
           {catalog.products.map((p, i) => (
             <ProductCard key={p.id} product={p} index={i} href={productHref(p)} />
           ))}
+          {/* Paper plates complete the last hairline row — the gutter
+              background never shows through as black voids. */}
+          <EditorialGridFillers itemCount={catalog.products.length} />
         </div>
       )}
 

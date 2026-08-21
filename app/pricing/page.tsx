@@ -129,7 +129,7 @@ export default function PricingPage() {
                     <li className="flex gap-x-3"><Check className="h-5 w-5 flex-none text-yellow-500" /> <strong className="text-white">Top-of-Search Priority Placement</strong></li>
                     <li className="flex gap-x-3"><Check className="h-5 w-5 flex-none text-yellow-500" /> <strong className="text-white">Custom Domain (.com / .sn)</strong></li>
                     <li className="flex gap-x-3"><Check className="h-5 w-5 flex-none text-yellow-500" /> Advanced Analytics to track growth</li>
-                    <li className="flex gap-x-3"><Check className="h-5 w-5 flex-none text-yellow-500" /> Escrow Safe-Trade to close high-ticket sales</li>
+                    <li className="flex gap-x-3"><Check className="h-5 w-5 flex-none text-yellow-500" /> AI Website Generator for your own branded site</li>
                     <li className="flex gap-x-3"><Check className="h-5 w-5 flex-none text-yellow-500" /> <strong className="text-white">Unlimited</strong> AI Photo & Ad Copy Generation</li>
                   </ul>
                 </div>

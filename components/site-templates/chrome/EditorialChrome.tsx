@@ -70,6 +70,34 @@ export function EditorialProductPlate({ src, alt, index, sizes }: {
 export const EDITORIAL_COLLECTION_GRID =
   'grid grid-cols-2 gap-px border-t border-neutral-900 bg-neutral-900 md:grid-cols-4';
 
+/**
+ * Paper-colored cells that complete the hairline grid's last row. The grid
+ * paints its neutral-900 background through the gap-px gutters to draw the
+ * hairlines — but a partial last row would expose that same background as
+ * card-sized black voids. These blank plates fill the remainder for ANY item
+ * count at BOTH breakpoints: the grid is 2-col mobile / 4-col desktop, so we
+ * render desktopNeed = (4 - n % 4) % 4 fillers and show only the first
+ * mobileNeed = (2 - n % 2) % 2 of them below md (parity guarantees
+ * mobileNeed <= desktopNeed, and desktopNeed = 0 implies mobileNeed = 0).
+ * Render alongside the product cards inside EDITORIAL_COLLECTION_GRID.
+ */
+export function EditorialGridFillers({ itemCount }: { itemCount: number }) {
+  const desktopNeed = (4 - (itemCount % 4)) % 4;
+  const mobileNeed = (2 - (itemCount % 2)) % 2;
+  if (desktopNeed === 0) return null;
+  return (
+    <>
+      {Array.from({ length: desktopNeed }, (_, i) => (
+        <div
+          key={i}
+          aria-hidden
+          className={`bg-[#F7F5F0] ${i < mobileNeed ? '' : 'hidden md:block'}`}
+        />
+      ))}
+    </>
+  );
+}
+
 /** One plate of the hairline grid — shared by home and /collections. */
 export function EditorialProductCard({ product, index, href }: { product: SiteProduct; index: number; href: string }) {
   const badge = editorialStockBadge(product.stock_quantity);
@@ -125,8 +153,10 @@ export default function EditorialChrome({ shop, config, active, children }: Site
   // remain correct there.
   const homeAnchor = (hash: string) => (active === 'home' || !base ? hash : `${base}${hash}`);
 
+  // ≥44px tap targets: the anchor itself carries the interactive box
+  // (min-h-11 + centering) — the container's padding is not a tap area.
   const navLink = (isActive: boolean) =>
-    `text-[9px] font-bold uppercase tracking-[0.3em] transition hover:text-neutral-900 md:text-[10px] ${
+    `inline-flex min-h-11 items-center text-[9px] font-bold uppercase tracking-[0.3em] transition hover:text-neutral-900 md:text-[10px] ${
       isActive ? 'text-neutral-900' : 'text-neutral-500'
     }`;
 
@@ -154,7 +184,7 @@ export default function EditorialChrome({ shop, config, active, children }: Site
             <p className="truncate text-[9px] font-bold uppercase tracking-[0.3em] text-neutral-500">{tagline}</p>
           )}
           <div className="flex shrink-0 items-center gap-3 md:gap-4">
-            <Link href={collectionsHref} className="shrink-0 text-[9px] font-bold uppercase tracking-[0.3em] text-neutral-900 underline underline-offset-4 transition hover:text-[#1a2e1a]">
+            <Link href={collectionsHref} className="inline-flex min-h-11 shrink-0 items-center text-[9px] font-bold uppercase tracking-[0.3em] text-neutral-900 underline underline-offset-4 transition hover:text-[#1a2e1a]">
               Shop The Collection
             </Link>
             {/* Client island: live cart trigger in the utility bar — the
@@ -178,11 +208,13 @@ export default function EditorialChrome({ shop, config, active, children }: Site
               />
             </div>
           )}
-          <Link href={base ?? '#'} className="font-serif text-4xl font-black uppercase tracking-tight md:text-7xl">
+          <Link href={base ?? '#'} className="inline-block py-1 font-serif text-4xl font-black uppercase tracking-tight md:text-7xl">
             {shop.shop_name}
           </Link>
         </div>
-        <nav className="flex items-center justify-center gap-7 border-t border-neutral-300 px-5 py-3 md:gap-12">
+        {/* py moved off the container onto the min-h-11 anchors (navLink) so
+            the tap boxes themselves are ≥44px. */}
+        <nav className="flex items-center justify-center gap-7 border-t border-neutral-300 px-5 md:gap-12">
           <a href={homeAnchor('#features')} className={navLink(false)}>Features</a>
           <Link href={collectionsHref} className={navLink(active === 'collections')}>The Collection</Link>
           <a href={homeAnchor('#story')} className={navLink(false)}>Story</a>
@@ -239,7 +271,7 @@ export default function EditorialChrome({ shop, config, active, children }: Site
               {fulfillment.map((line) => (
                 <p key={line} className="text-xs text-white/50">{line}</p>
               ))}
-              <Link href={shopUrl} className="text-[10px] font-bold uppercase tracking-[0.25em] text-white/50 underline underline-offset-4 transition hover:text-white">
+              <Link href={shopUrl} className="inline-flex min-h-11 items-center text-[10px] font-bold uppercase tracking-[0.25em] text-white/50 underline underline-offset-4 transition hover:text-white">
                 View classic boutique
               </Link>
               <p className="mt-1 text-[9px] uppercase tracking-widest text-white/30">Site generated by Sanndikaa AI</p>

@@ -12,10 +12,12 @@ import {
 } from '@/lib/siteTemplates';
 import CarouselTrack from './CarouselTrack';
 import EditableText from './EditableText';
+import GatedVideo from './GatedVideo';
 import ProductTabsIsland from './ProductTabsIsland';
 import VideoHeroMedia from './VideoHeroMedia';
 import EditorialChrome, {
   EDITORIAL_COLLECTION_GRID,
+  EditorialGridFillers,
   EditorialProductCard,
   EditorialProductPlate,
   editorialPrice,
@@ -77,14 +79,23 @@ function EditorialHero({ block, shop, heroMedia }: {
     <section data-block-section={block.id} className="grid grid-cols-1 border-b border-neutral-900 md:grid-cols-12">
       <div className="relative min-h-[340px] border-neutral-900 md:col-span-7 md:min-h-[580px] md:border-r">
         {heroMedia?.type === 'video' ? (
-          <video
+          // 2G media gate: unconstrained networks autoplay exactly as before;
+          // save-data/2g/3g/reduced-motion get the ad poster (or the monogram
+          // plate) with a ≥44px hairline tap-to-play in the print dialect.
+          <GatedVideo
             src={heroMedia.url}
-            poster={heroMedia.poster ?? undefined}
-            autoPlay
-            loop
-            muted
-            playsInline
+            poster={heroMedia.poster}
+            alt={shop.shop_name ?? 'Hero'}
             className="absolute inset-0 h-full w-full object-cover"
+            posterSizes="(min-width: 768px) 58vw, 100vw"
+            posterBlurTone="light"
+            posterPriority
+            fallback={
+              <div aria-hidden className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-neutral-200 via-[#EDEAE2] to-neutral-300">
+                <span className="font-serif text-[10rem] italic leading-none text-neutral-400/40 md:text-[16rem]">{initial}</span>
+              </div>
+            }
+            playButtonClassName="absolute left-1/2 top-1/2 z-10 flex min-h-11 -translate-x-1/2 -translate-y-1/2 items-center gap-2.5 border border-neutral-900 bg-[#F7F5F0]/95 px-7 py-3.5 text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-900 backdrop-blur-sm transition hover:bg-neutral-900 hover:text-[#F7F5F0] active:scale-95"
           />
         ) : heroMedia ? (
           <SmartImage
@@ -128,7 +139,17 @@ function EditorialHero({ block, shop, heroMedia }: {
 
 function EditorialFeatures({ shop, products }: { shop: SiteShop; products: SiteProduct[] }) {
   const featured = products.slice(0, 2);
-  if (featured.length === 0) return null;
+  if (featured.length === 0) {
+    // Keep the #features anchor alive (the masthead nav always links to it)
+    // with a minimal section header instead of a dead jump — the cleaner of
+    // the two options for an empty catalog.
+    return (
+      <section id="features" className="border-b border-neutral-900 px-5 py-12 text-center md:px-10 md:py-16">
+        <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-neutral-400">Features</p>
+        <p className="mt-3 font-serif text-2xl italic text-neutral-900">The first features are being prepared.</p>
+      </section>
+    );
+  }
   return (
     <section id="features" className="border-b border-neutral-900">
       {featured.map((p, i) => {
@@ -192,7 +213,14 @@ function EditorialGrid({ block, shop, products }: {
           {block.intro}
         </EditableText>
       </div>
-      {block.displayMode === 'carousel' ? (
+      {products.length === 0 ? (
+        // Branded empty state (mirrors /collections): the hero's
+        // "Read The Collection" anchor lands on something dignified.
+        <div className="border-t border-neutral-900 px-5 py-20 text-center md:px-10">
+          <p className="font-serif text-2xl italic text-neutral-900">The collection is being prepared.</p>
+          <p className="mt-3 text-sm leading-relaxed text-neutral-500">New pieces are on their way — check back soon.</p>
+        </div>
+      ) : block.displayMode === 'carousel' ? (
         <CarouselTrack
           ariaLabel={block.title}
           trackClassName="gap-px border-t border-neutral-900 bg-neutral-900"
@@ -208,6 +236,7 @@ function EditorialGrid({ block, shop, products }: {
           {products.slice(0, 12).map((p, i) => (
             <EditorialProductCard key={p.id} product={p} index={i} href={editorialProductHref(shop, p.id)} />
           ))}
+          <EditorialGridFillers itemCount={Math.min(products.length, 12)} />
         </div>
       )}
     </section>

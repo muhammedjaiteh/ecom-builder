@@ -131,8 +131,10 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
   // remain correct there.
   const homeAnchor = (hash: string) => (active === 'home' || !base ? hash : `${base}${hash}`);
 
+  // ≥44px tap targets: the anchor itself carries the interactive box
+  // (min-h-11 + centering) — inside the h-16/h-20 nav row nothing grows.
   const navLink = (isActive: boolean) =>
-    `text-[10px] font-bold uppercase tracking-[0.25em] transition hover:text-stone-900 ${
+    `inline-flex min-h-11 items-center text-[10px] font-bold uppercase tracking-[0.25em] transition hover:text-stone-900 ${
       isActive ? 'text-stone-900' : 'text-stone-500'
     }`;
 
@@ -185,7 +187,7 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
             <CartBagButton tone="ritual" />
             <Link
               href={collectionsHref}
-              className="shrink-0 rounded-full bg-stone-900 px-6 py-2.5 text-[10px] font-bold uppercase tracking-[0.2em] text-white shadow-sm transition hover:bg-stone-700 active:scale-95"
+              className="inline-flex min-h-11 shrink-0 items-center rounded-full bg-stone-900 px-6 text-[10px] font-bold uppercase tracking-[0.2em] text-white shadow-sm transition hover:bg-stone-700 active:scale-95"
             >
               Shop Now
             </Link>
@@ -231,10 +233,12 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
 
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-stone-400">Shop</p>
-            <div className="mt-5 flex flex-col gap-3">
-              <Link href={collectionsHref} className="text-sm text-stone-600 transition hover:text-stone-900">The Collection</Link>
-              <a href={homeAnchor('#story')} className="text-sm text-stone-600 transition hover:text-stone-900">Our Story</a>
-              <Link href={shopUrl} className="text-xs text-stone-400 underline-offset-4 transition hover:text-stone-600 hover:underline">
+            {/* ≥44px rows: each link IS its tap box (min-h-11), so the column
+                gap shrinks to keep the printed rhythm. */}
+            <div className="mt-3 flex flex-col gap-1">
+              <Link href={collectionsHref} className="flex min-h-11 items-center text-sm text-stone-600 transition hover:text-stone-900">The Collection</Link>
+              <a href={homeAnchor('#story')} className="flex min-h-11 items-center text-sm text-stone-600 transition hover:text-stone-900">Our Story</a>
+              <Link href={shopUrl} className="flex min-h-11 items-center text-xs text-stone-400 underline-offset-4 transition hover:text-stone-600 hover:underline">
                 View classic boutique
               </Link>
             </div>
@@ -252,7 +256,7 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
                   href={whatsAppHref}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-sm font-medium text-stone-900 underline underline-offset-4 transition hover:text-stone-600"
+                  className="flex min-h-11 items-center text-sm font-medium text-stone-900 underline underline-offset-4 transition hover:text-stone-600"
                 >
                   Message the boutique on WhatsApp
                 </a>

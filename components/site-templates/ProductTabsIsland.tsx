@@ -43,7 +43,8 @@ const VARIANT_STYLES: Record<TabsVariant, {
   ritual: {
     list: 'flex flex-wrap items-center justify-center gap-x-8 gap-y-3 border-b border-stone-200 pb-px',
     tab: (active) =>
-      `relative -mb-px inline-flex items-center gap-2 border-b-2 pb-3 text-[10px] font-bold uppercase tracking-[0.25em] transition ${
+      // min-h-11 = the ≥44px tap mandate; typography untouched.
+      `relative -mb-px inline-flex min-h-11 items-center gap-2 border-b-2 pb-3 text-[10px] font-bold uppercase tracking-[0.25em] transition ${
         active ? 'border-stone-900 text-stone-900' : 'border-transparent text-stone-400 hover:text-stone-600'
       }`,
     panel: 'mx-auto mt-8 max-w-2xl text-center text-sm leading-relaxed text-stone-600 md:text-base',
@@ -52,7 +53,7 @@ const VARIANT_STYLES: Record<TabsVariant, {
   editorial: {
     list: 'flex flex-wrap items-stretch border border-neutral-900',
     tab: (active) =>
-      `inline-flex flex-1 items-center justify-center gap-2 border-neutral-900 px-4 py-3.5 font-serif text-sm italic transition first:border-l-0 [&:not(:first-child)]:border-l md:text-base ${
+      `inline-flex min-h-11 flex-1 items-center justify-center gap-2 border-neutral-900 px-4 py-3.5 font-serif text-sm italic transition first:border-l-0 [&:not(:first-child)]:border-l md:text-base ${
         active ? 'bg-neutral-900 text-[#F7F5F0]' : 'bg-transparent text-neutral-900 hover:bg-neutral-900/5'
       }`,
     panel: 'mt-7 max-w-3xl text-sm leading-relaxed text-neutral-600 md:text-base',

@@ -168,7 +168,7 @@ export default function SettingsPaywall() {
               <li className="flex items-start gap-3"><Star size={18} className="text-yellow-500 shrink-0 mt-0.5" fill="currentColor" /> <strong className="text-white">Priority #1 Search Placement</strong> globally</li>
               <li className="flex items-start gap-3"><Star size={18} className="text-yellow-500 shrink-0 mt-0.5" fill="currentColor" /> <strong className="text-white">Flagship Gold Crown</strong> badge status</li>
               <li className="flex items-start gap-3"><CheckCircle2 size={18} className="text-yellow-500 shrink-0 mt-0.5" /> Your own Custom Domain Name (.com)</li>
-              <li className="flex items-start gap-3"><CheckCircle2 size={18} className="text-yellow-500 shrink-0 mt-0.5" /> Escrow Safe-Trade features</li>
+              <li className="flex items-start gap-3"><CheckCircle2 size={18} className="text-yellow-500 shrink-0 mt-0.5" /> AI Website Generator with live Site Editor</li>
               <li className="flex items-start gap-3"><CheckCircle2 size={18} className="text-yellow-500 shrink-0 mt-0.5" /> Unlimited AI Image Edits & Copywriting</li>
             </ul>
 

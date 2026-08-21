@@ -11,6 +11,7 @@ import {
 } from '@/lib/siteTemplates';
 import CarouselTrack from './CarouselTrack';
 import EditableText from './EditableText';
+import GatedVideo from './GatedVideo';
 import ProductTabsIsland from './ProductTabsIsland';
 import VideoHeroMedia from './VideoHeroMedia';
 import RitualChrome, {
@@ -64,14 +65,19 @@ function RitualHero({ block, shop, heroMedia, collectionsHref }: {
   return (
     <header data-block-section={block.id} className="relative flex h-[82vh] min-h-[560px] w-full items-end overflow-hidden bg-stone-900 md:items-center">
       {heroMedia?.type === 'video' ? (
-        <video
+        // 2G media gate: unconstrained networks autoplay exactly as before;
+        // save-data/2g/3g/reduced-motion get the ad poster (or the template
+        // gradient) with a ≥44px tap-to-play in the ritual dialect.
+        <GatedVideo
           src={heroMedia.url}
-          poster={heroMedia.poster ?? undefined}
-          autoPlay
-          loop
-          muted
-          playsInline
+          poster={heroMedia.poster}
+          alt={shop.shop_name ?? 'Hero'}
           className="absolute inset-0 h-full w-full object-cover"
+          posterSizes="100vw"
+          posterBlurTone="dark"
+          posterPriority
+          fallback={<div aria-hidden className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(214,203,186,0.35),transparent_55%),linear-gradient(to_bottom_right,#292524,#1c1917,#3a352e)]" />}
+          playButtonClassName="absolute left-1/2 top-1/2 z-10 flex min-h-11 -translate-x-1/2 -translate-y-1/2 items-center gap-2.5 rounded-full bg-white/95 px-7 py-3.5 text-[10px] font-bold uppercase tracking-[0.25em] text-stone-900 shadow-lg backdrop-blur transition hover:bg-white active:scale-95"
         />
       ) : heroMedia ? (
         <SmartImage
@@ -160,7 +166,14 @@ function RitualProductGrid({ block, shop, products }: {
         </EditableText>
       </div>
 
-      {block.displayMode === 'carousel' ? (
+      {products.length === 0 ? (
+        // Branded empty state (mirrors /collections): the hero's
+        // "Shop The Collection" anchor lands on something dignified.
+        <div className="mx-auto mt-14 max-w-md rounded-2xl border border-dashed border-stone-300 px-8 py-14 text-center md:mt-20">
+          <p className="font-serif text-xl font-bold text-stone-900">The collection is being prepared.</p>
+          <p className="mt-3 text-sm leading-relaxed text-stone-500">New pieces are on their way — check back soon.</p>
+        </div>
+      ) : block.displayMode === 'carousel' ? (
         <div className="mt-14 md:mt-20">
           <CarouselTrack
             ariaLabel={block.title}
