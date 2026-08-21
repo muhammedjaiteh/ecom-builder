@@ -52,7 +52,13 @@ export function buildDirectOrderMessage(opts: {
 }): string {
   const { shopName, productName, price, method, sellerPhone, quantity, variant } = opts;
 
-  let message = `👋 Hello ${shopName || 'Seller'}! \n\nI want to buy: *${productName}* \n💰 Price: D${price}`;
+  // Null-safe money line: a priceless product must never read "Price: Dnull",
+  // and real amounts always carry thousands separators (D12,500 not D12500).
+  const priceLine = price == null
+    ? '💰 Price on request'
+    : `💰 Price: D${Number(price).toLocaleString()}`;
+
+  let message = `👋 Hello ${shopName || 'Seller'}! \n\nI want to buy: *${productName}* \n${priceLine}`;
 
   if (variant && variant !== 'None') {
     message += ` \n🎨 Options: ${variant}`;
@@ -71,6 +77,79 @@ export function buildDirectOrderMessage(opts: {
   }
 
   return message;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Popup-safe WhatsApp handoff (client-only).
+//
+// The cart checkout awaits several database writes BEFORE opening WhatsApp.
+// On slow networks the browser's transient user activation expires during
+// those awaits, so a later window.open() is popup-blocked — the order row
+// exists but the buyer never reaches the seller. The fix: open the window
+// SYNCHRONOUSLY inside the click handler (while activation is alive) with a
+// tiny branded interstitial, run the writes, then point the already-open
+// window at wa.me. On failure the tab closes and the caller shows an honest
+// error. If even the synchronous open is blocked (some in-app webviews),
+// navigate() falls back to a same-tab redirect — same-tab navigation never
+// needs activation.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type OrderHandoff = {
+  /** Point the handoff window (or, as a fallback, the current tab) at the wa.me link. */
+  navigate: (url: string) => void;
+  /** Abort: close the interstitial tab after a failed write. */
+  close: () => void;
+};
+
+const HANDOFF_INTERSTITIAL = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Preparing your order… · Sanndikaa</title>
+<style>
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#1a2e1a;color:#F9F8F6;font-family:Georgia,'Times New Roman',serif;text-align:center}
+  .card{padding:32px}
+  .ring{width:44px;height:44px;margin:0 auto 20px;border-radius:50%;border:3px solid rgba(249,248,246,.2);border-top-color:#F9F8F6;animation:spin 0.9s linear infinite}
+  h1{font-size:20px;font-weight:600;margin:0 0 8px;letter-spacing:.02em}
+  p{font-size:13px;margin:0;color:rgba(249,248,246,.65);font-family:-apple-system,'Segoe UI',sans-serif}
+  .brand{margin-top:28px;font-size:10px;letter-spacing:.3em;text-transform:uppercase;color:rgba(249,248,246,.4);font-family:-apple-system,'Segoe UI',sans-serif}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style></head>
+<body><div class="card"><div class="ring"></div><h1>Preparing your order…</h1><p>You&rsquo;ll be taken to WhatsApp in a moment.</p><div class="brand">Sanndikaa Secure</div></div></body></html>`;
+
+/**
+ * MUST be called synchronously inside the click handler, BEFORE any await.
+ * Returns a handle whose navigate/close are safe to call after async work.
+ */
+export function openOrderHandoff(): OrderHandoff {
+  let win: Window | null = null;
+  try {
+    win = window.open('about:blank', '_blank');
+    if (win) {
+      win.document.write(HANDOFF_INTERSTITIAL);
+      win.document.close();
+    }
+  } catch {
+    win = null;
+  }
+
+  return {
+    navigate: (url: string) => {
+      if (win && !win.closed) {
+        win.location.href = url;
+        win.focus();
+      } else {
+        // Popup denied even synchronously (strict in-app webviews): same-tab
+        // navigation needs no user activation and still reaches WhatsApp.
+        window.location.href = url;
+      }
+    },
+    close: () => {
+      try {
+        win?.close();
+      } catch {
+        // Already closed / cross-origin — nothing to clean up.
+      }
+    },
+  };
 }
 
 /**

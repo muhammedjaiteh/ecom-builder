@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Phone, ArrowLeft, ShoppingBag, X, Smartphone, Banknote, Copy, Check, ShieldCheck, Truck, HomeIcon } from 'lucide-react';
 import Link from 'next/link';
-import { useCart } from '@/components/CartProvider';
+import { buildCartLineId, useCart } from '@/components/CartProvider';
 import ReviewForm from '@/components/ReviewForm';
 import ReviewList from '@/components/ReviewList';
 import {
@@ -244,7 +244,7 @@ export default function ProductClient({ product: initialProduct }: { product?: M
             <div>
               <h1 className="text-4xl md:text-5xl font-serif font-medium leading-tight mb-6 text-[#1a2e1a]">{product.name}</h1>
               <div className="flex items-center gap-6">
-                  <p className="text-3xl font-light text-[#2C3E2C]">D{product.price}</p>
+                  <p className="text-3xl font-light text-[#2C3E2C]">{product.price == null ? 'Price on request' : `D${Number(product.price).toLocaleString()}`}</p>
                   <span className="text-[10px] font-bold border border-green-800/30 text-green-800 px-3 py-1 rounded-full uppercase tracking-wider">{isOutOfStock ? 'Out of Stock' : 'In Stock'}</span>
               </div>
             </div>
@@ -322,7 +322,9 @@ export default function ProductClient({ product: initialProduct }: { product?: M
                       if (hasSizes && !selectedSize) { alert('Please select a size.'); return; }
                       const variantParts = [selectedColor, selectedSize].filter(Boolean);
                       addToCart({
-                        id: product.id,
+                        // Composite line id: each color/size combination is its
+                        // own cart line (variantless → bare id, legacy-compatible).
+                        id: buildCartLineId(product.id, { color: selectedColor, size: selectedSize }),
                         productId: product.id,
                         name: product.name,
                         price: product.price,
@@ -439,7 +441,7 @@ export default function ProductClient({ product: initialProduct }: { product?: M
                        </div>
                        
                        <p className="text-xs text-gray-500 mb-6 px-2">
-                          Send <span className="font-bold text-black">D{product.price}</span> to this verified number:
+                          Send <span className="font-bold text-black">{product.price == null ? 'the agreed amount' : `D${Number(product.price).toLocaleString()}`}</span> to this verified number:
                        </p>
                        
                        {/* 💳 The Premium Card */}

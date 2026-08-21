@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidateTag } from 'next/cache';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
@@ -99,6 +100,11 @@ export async function POST(req: Request) {
       `[add-ad-video] Linked video_ad ${videoAdId} → product ${productId} ` +
       `(video_url=${updated.ad_video_url?.slice(0, 60)}…, hero_image_url=${updated.ad_hero_image_url?.slice(0, 60)}…)`
     );
+
+    // Cache bust: the /site catalog + PDP serve product rows (including the
+    // ad video/hero URLs written above) from the Data Cache under this exact
+    // tag (app/site/[slug]/siteData.ts). user.id IS the shop id.
+    revalidateTag(`site:${user.id}`, 'max');
 
     return NextResponse.json({ ok: true, product: updated, videoAdId });
   } catch (error: any) {

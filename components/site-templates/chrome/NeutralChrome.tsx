@@ -6,6 +6,7 @@ import {
   type SiteChromeProps,
   type SiteProduct,
 } from '@/lib/siteTemplates';
+import CartBagButton from '../CartBagButton';
 
 // NEUTRAL chrome — the graceful fallback wrapping the NEW nested routes
 // (/collections, /products/[id]) for legacy 'vitality' sites, whose home
@@ -106,13 +107,15 @@ export default function NeutralChrome({ shop, active, children }: SiteChromeProp
           <Link href={base ?? '#'} className="truncate text-lg font-black uppercase tracking-tight">
             {shop.shop_name}
           </Link>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-3 md:gap-6">
             <Link
               href={base ?? '#'}
               className="hidden text-[10px] font-black uppercase tracking-[0.25em] text-white/50 transition hover:text-white md:block"
             >
               Home
             </Link>
+            {/* Client island: live cart trigger — simple ghost icon, gold badge. */}
+            <CartBagButton tone="neutral" />
             <Link
               href={collectionsHref}
               className={`rounded-full px-6 py-2.5 text-[10px] font-black uppercase tracking-[0.2em] transition active:scale-95 ${

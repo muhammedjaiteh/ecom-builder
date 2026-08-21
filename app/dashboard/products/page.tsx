@@ -85,7 +85,11 @@ export default function ProductsPage() {
     if (error) {
       alert('Failed to delete the product. Please try again.');
       setProducts(previous);
+      return;
     }
+    // Fire-and-forget: browser-client delete — bust the owner's cached /site
+    // catalog (cookie-authed endpoint, scope locked to this shop).
+    fetch('/api/site-revalidate', { method: 'POST' }).catch(() => {});
   };
 
   if (loading) {

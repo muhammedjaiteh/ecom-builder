@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 
 export async function DELETE(
@@ -43,6 +44,11 @@ export async function DELETE(
       console.error("Delete error:", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    // Cache bust: the /site routes serve this shop's catalog from the Data
+    // Cache under this exact tag (app/site/[slug]/siteData.ts) — a deleted
+    // product must disappear immediately. user.id IS the shop id.
+    revalidateTag(`site:${user.id}`, 'max');
 
     return NextResponse.json({ success: true });
   } catch (err) {

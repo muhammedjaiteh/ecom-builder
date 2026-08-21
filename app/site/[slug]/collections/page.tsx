@@ -18,6 +18,10 @@ import SiteDraftBadge from '../SiteDraftBadge';
 // erroring. Same visibility rules and '[site-route]' telemetry as home, via
 // the shared cached requireSite.
 
+// CACHED DATA, DYNAMIC SHELL: force-dynamic stays — this page is inherently
+// per-request anyway (searchParams pagination + the owner-draft cookie gate in
+// requireSite). The catalog count and every served page slice are cached in
+// siteData.ts under `site:{shopId}` with the 300s backstop.
 export const dynamic = 'force-dynamic';
 
 type PageProps = {

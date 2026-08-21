@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { generateWithFallback } from '@/lib/llm';
 import { ELITE_COPY_RULES } from '@/lib/adCopy';
-import { repairShopSlug } from '@/lib/slugify';
+import { repairShopSlug, slugify } from '@/lib/slugify';
 import { runSiteAssetPhase } from '@/lib/siteAssets';
 import {
   CONCEPT_TEMPLATE_KEYS,
@@ -393,11 +393,9 @@ ${templateConstraint}`;
     // ── Cache bust: the live /site route must serve this config on the very
     // next request. Path revalidation covers the concrete URL (query strings
     // like ?preview=1 share the same path entry); the '/site/[slug]' page-level
-    // call clears the dynamic segment's route cache, since the site page reads
-    // via supabase-js rather than tagged fetch. The per-shop tag is inert
-    // today for the same reason — kept for when those reads gain fetch tags.
-    // The omnichannel router's nested pages (collections, product detail)
-    // render the same config through the same chrome, so they bust together.
+    // call clears the dynamic segment's route cache. The omnichannel router's
+    // nested pages (collections, product detail) render the same config
+    // through the same chrome, so they bust together.
     revalidatePath(`/site/${canonicalSlug}`);
     revalidatePath(`/site/${canonicalSlug}/collections`);
     if (shop.shop_slug && shop.shop_slug !== canonicalSlug) {
@@ -411,9 +409,19 @@ ${templateConstraint}`;
     // Per-product pages cannot be enumerated here — the page-level call
     // clears the whole dynamic PDP segment.
     revalidatePath('/site/[slug]/products/[id]', 'page');
-    // Next 16 signature: the 'max' profile expires the tag immediately —
-    // equivalent to the legacy single-argument revalidateTag behavior.
+    // LIVE tag: the /site Data Cache (app/site/[slug]/siteData.ts) keys its
+    // website-row/products entries on exactly this tag — the fresh config
+    // lands on the very next request. Next 16 signature: the 'max' profile
+    // expires the tag immediately.
     revalidateTag(`site:${shop.id}`, 'max');
+    // The slug→shop lookup caches under the NORMALIZED slug (shop id is the
+    // lookup's result, so it can't carry the per-shop tag) — bust the
+    // canonical entry and, after a mid-request repair, the pre-repair one.
+    revalidateTag(`site:slug:${canonicalSlug}`, 'max');
+    const preRepairSlug = slugify(shop.shop_slug);
+    if (preRepairSlug && preRepairSlug !== canonicalSlug) {
+      revalidateTag(`site:slug:${preRepairSlug}`, 'max');
+    }
 
     // Full row (dashboard contract, asset-patched when the phase produced
     // anything) + the canonical slug for link minting.

@@ -214,6 +214,10 @@ export default function Dashboard() {
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this product?')) return;
     await supabase.from('products').delete().eq('id', id);
+    // Bust the owner's cached /site catalog before the reload (browser-client
+    // delete has no server route to fire the tag itself). keepalive lets the
+    // request survive the immediate navigation.
+    fetch('/api/site-revalidate', { method: 'POST', keepalive: true }).catch(() => {});
     window.location.reload();
   };
 

@@ -6,7 +6,9 @@ import { useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 // Shared order-flow helpers (lib/orderFlow) — one phone sanitizer + wa.me
 // builder across the cart, the marketplace PDP, and the /site storefront PDP.
-import { buildWhatsAppLink as generateWhatsAppLink } from '@/lib/orderFlow';
+// openOrderHandoff: popup-safe WhatsApp handoff (window opened synchronously
+// inside the click, BEFORE the awaited database writes — see lib/orderFlow).
+import { buildWhatsAppLink as generateWhatsAppLink, openOrderHandoff } from '@/lib/orderFlow';
 
 export default function Cart() {
   const { cartItems, isCartOpen, setIsCartOpen, updateQuantity, removeFromCart } = useCart();
@@ -32,17 +34,33 @@ export default function Cart() {
     return acc;
   }, {} as Record<string, { shopName: string, shopWhatsapp: string, items: CartItem[], total: number }>);
 
+  // Compensation for the stock-first checkout: re-credit units already
+  // deducted when a later step fails. Best-effort — a failed compensation is
+  // logged for the seller-support trail, never surfaced to the buyer twice.
+  const rollbackStock = async (items: CartItem[]) => {
+    for (const item of items) {
+      const { error } = await supabase.rpc('increment_stock', {
+        product_id_param: item.productId,
+        quantity_param: item.quantity,
+      });
+      if (error) {
+        console.error(`[checkout] stock compensation failed for product ${item.productId}:`, error.message);
+      }
+    }
+  };
+
   // 🛡️ RESTORED FUNCTION DECLARATION WITH STRICT TYPES
   const handleProcessCheckout = async (shopId: string, shopData: { shopName: string, shopWhatsapp: string, items: CartItem[], total: number }) => {
     if (!customerName.trim() || !customerPhone.trim()) return alert('Please enter your Name and Phone/WhatsApp Number.');
     if (fulfillmentMethod === 'delivery' && !deliveryAddress.trim()) return alert('Please provide a delivery address.');
 
-    setIsProcessing(true);
+    // Hoisted so the outer catch can always close the interstitial tab.
+    let handoff: ReturnType<typeof openOrderHandoff> | null = null;
 
     try {
       // 1. GENERATE A RANDOM ORDER REF FOR THE RECEIPT
-      const orderRef = Math.random().toString(36).substring(2, 8).toUpperCase(); 
-      
+      const orderRef = Math.random().toString(36).substring(2, 8).toUpperCase();
+
       // 2. BUILD THE LUXURY DIGITAL RECEIPT
       let message = `🛍️ *NEW ORDER via SANNDIKAA*\n`;
       message += `Order Ref: #${orderRef}\n`;
@@ -71,75 +89,113 @@ export default function Cart() {
       message += `\n*Please let me know how to pay and confirm this order!*`;
 
       const whatsappLink = generateWhatsAppLink(shopData.shopWhatsapp, message);
-      if (!whatsappLink) { 
-        alert(`Sorry, ${shopData.shopName} has not provided a valid WhatsApp number.`); 
-        return; 
+      if (!whatsappLink) {
+        alert(`Sorry, ${shopData.shopName} has not provided a valid WhatsApp number.`);
+        return;
       }
 
-      // 3. STRICT DATABASE INSERT + INVENTORY DEDUCTION
-      const { data: customerData, error: customerError } = await supabase
-        .from('customers')
-        .insert({
-          name: customerName,
-          phone_number: customerPhone,
-          location: fulfillmentMethod === 'delivery' ? deliveryAddress : 'Pickup'
-        })
-        .select()
-        .single();
+      // 3. OPEN THE HANDOFF WINDOW *SYNCHRONOUSLY* — no await has run yet, so
+      // the browser's transient activation is still alive and the tab opens
+      // popup-block-free. It shows a branded "Preparing your order…"
+      // interstitial while the writes below run; only after they succeed does
+      // it navigate to WhatsApp. The old flow awaited four writes first, and
+      // on slow networks the delayed window.open was silently blocked: the
+      // order row existed but the buyer never reached the seller.
+      handoff = openOrderHandoff();
+      setIsProcessing(true);
 
-      if (customerError || !customerData) {
-        throw new Error('Failed to create customer record.');
-      }
-
-      const { data: orderData, error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          shop_id: shopId,
-          customer_id: customerData.id,
-          total_amount: shopData.total,
-          fulfillment_method: fulfillmentMethod,
-          status: 'pending'
-        })
-        .select()
-        .single();
-
-      if (orderError || !orderData) {
-        throw new Error('Failed to create order record.');
-      }
-
-      const orderItemsToInsert = shopData.items.map((item) => ({
-        order_id: orderData.id,
-        product_id: item.productId,
-        quantity: item.quantity,
-        price_at_time: item.price,
-        variant_details: item.variant_details
-      }));
-
-      const { error: orderItemsError } = await supabase.from('order_items').insert(orderItemsToInsert);
-      if (orderItemsError) {
-        throw new Error('Failed to create order items.');
-      }
-
-      // 🚀 INVENTORY DEDUCTION: Decrement stock for each product
+      // 4. INVENTORY FIRST (atomic, honest): decrement_stock rejects when the
+      // remaining stock cannot cover the line, so an oversell is caught BEFORE
+      // any customer/order rows exist. On rejection, re-credit what this
+      // checkout already deducted and fail with the real reason.
+      const deducted: CartItem[] = [];
       for (const item of shopData.items) {
-        const { error: stockError } = await supabase.rpc('decrement_stock', {
+        const { data: stockOk, error: stockError } = await supabase.rpc('decrement_stock', {
           product_id_param: item.productId,
           quantity_param: item.quantity,
         });
-        if (stockError) {
-          throw new Error('Inventory update failed.');
+        if (stockError || stockOk === false) {
+          await rollbackStock(deducted);
+          handoff.close();
+          alert(
+            stockError
+              ? 'Unable to reserve your items right now. Your order was not sent. Please try again.'
+              : `Stock changed while you were checking out: "${item.name}" no longer has ${item.quantity} unit${item.quantity > 1 ? 's' : ''} available. Please adjust the quantity and try again.`
+          );
+          return;
         }
+        deducted.push(item);
       }
 
-      // 4. CLEAR CART AND REDIRECT TO WHATSAPP
+      // 5. STRICT DATABASE INSERTS — any failure re-credits the reserved
+      // stock, closes the interstitial, and surfaces an honest error. The
+      // invariant: an order write never completes without the buyer reaching
+      // WhatsApp or seeing an explicit failure state.
+      try {
+        const { data: customerData, error: customerError } = await supabase
+          .from('customers')
+          .insert({
+            name: customerName,
+            phone_number: customerPhone,
+            location: fulfillmentMethod === 'delivery' ? deliveryAddress : 'Pickup'
+          })
+          .select()
+          .single();
+
+        if (customerError || !customerData) {
+          throw new Error('Failed to create customer record.');
+        }
+
+        const { data: orderData, error: orderError } = await supabase
+          .from('orders')
+          .insert({
+            shop_id: shopId,
+            customer_id: customerData.id,
+            total_amount: shopData.total,
+            fulfillment_method: fulfillmentMethod,
+            status: 'pending'
+          })
+          .select()
+          .single();
+
+        if (orderError || !orderData) {
+          throw new Error('Failed to create order record.');
+        }
+
+        const orderItemsToInsert = shopData.items.map((item) => ({
+          order_id: orderData.id,
+          product_id: item.productId,
+          quantity: item.quantity,
+          price_at_time: item.price,
+          variant_details: item.variant_details
+        }));
+
+        const { error: orderItemsError } = await supabase.from('order_items').insert(orderItemsToInsert);
+        if (orderItemsError) {
+          throw new Error('Failed to create order items.');
+        }
+      } catch (writeError) {
+        await rollbackStock(deducted);
+        throw writeError;
+      }
+
+      // 6. HANDOFF: the order is fully recorded — point the already-open tab
+      // at WhatsApp, then clear this shop's lines and close the drawer.
+      handoff.navigate(whatsappLink);
       shopData.items.forEach(item => removeFromCart(item.id));
       setActiveCheckoutShop(null);
       setIsCartOpen(false);
-      
-      // Open WhatsApp in a new tab/window
-      window.open(whatsappLink, '_blank');
+
+      // 7. Fire-and-forget: bust the shop's cached /site catalog so stock
+      // badges reflect this purchase before the 5-minute backstop.
+      fetch('/api/site-revalidate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shopId }),
+      }).catch(() => {});
 
     } catch (error) {
+      handoff?.close();
       console.error("Checkout Error:", error);
       alert("Unable to process checkout right now. Your order was not sent. Please try again.");
     } finally {

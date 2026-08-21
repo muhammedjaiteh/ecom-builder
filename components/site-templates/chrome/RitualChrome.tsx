@@ -11,6 +11,7 @@ import {
   type SiteProduct,
 } from '@/lib/siteTemplates';
 import { buildWhatsAppLink } from '@/lib/orderFlow';
+import CartBagButton from '../CartBagButton';
 import EditableText from '../EditableText';
 
 // MINIMAL (template_key 'ritual') chrome — the sticky logo nav and structured
@@ -178,12 +179,17 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
             <a href={homeAnchor('#story')} className={navLink(false)}>Story</a>
             <a href="#contact" className={navLink(false)}>Contact</a>
           </div>
-          <Link
-            href={collectionsHref}
-            className="shrink-0 rounded-full bg-stone-900 px-6 py-2.5 text-[10px] font-bold uppercase tracking-[0.2em] text-white shadow-sm transition hover:bg-stone-700 active:scale-95"
-          >
-            Shop Now
-          </Link>
+          <div className="flex shrink-0 items-center gap-1 md:gap-2">
+            {/* Client island: live cart trigger — the drawer is mounted once
+                in the root layout, so the context reaches every /site page. */}
+            <CartBagButton tone="ritual" />
+            <Link
+              href={collectionsHref}
+              className="shrink-0 rounded-full bg-stone-900 px-6 py-2.5 text-[10px] font-bold uppercase tracking-[0.2em] text-white shadow-sm transition hover:bg-stone-700 active:scale-95"
+            >
+              Shop Now
+            </Link>
+          </div>
         </div>
       </nav>
 

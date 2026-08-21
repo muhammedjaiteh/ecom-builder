@@ -47,7 +47,11 @@ const PROTECTED_PREFIXES = ['/dashboard', '/admin'];
 const CANONICAL_HOSTS = new Set(['sanndikaa.com', 'www.sanndikaa.com', 'localhost', '127.0.0.1', '::1', '[::1]']);
 const TENANT_PAGE_PREFIXES = ['/collections', '/products'];
 // Same-origin /api routes the storefront actually calls (see tree item 5).
-const TENANT_API_ALLOWLIST: string[] = [];
+// EVIDENCE: components/Cart.tsx fires POST /api/site-revalidate after a
+// successful checkout (anonymous buyer path — validated shopId only) so the
+// tenant's cached /site catalog reflects the stock deduction immediately.
+// Every other storefront write goes straight to Supabase, not same-origin.
+const TENANT_API_ALLOWLIST: string[] = ['/api/site-revalidate'];
 const RESOLVE_DEADLINE_MS = 5_000;
 const FALLBACK_CANONICAL_ORIGIN = 'https://sanndikaa.com';
 

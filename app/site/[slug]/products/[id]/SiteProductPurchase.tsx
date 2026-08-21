@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { Banknote, Check, Copy, Minus, Plus, ShoppingBag, Smartphone, X } from 'lucide-react';
-import { useCart } from '@/components/CartProvider';
+import { buildCartLineId, useCart } from '@/components/CartProvider';
 import {
   DEFAULT_ORDER_PHONE,
   buildDirectOrderMessage,
@@ -121,9 +121,35 @@ export default function SiteProductPurchase({
   const [paymentStep, setPaymentStep] = useState<'SELECT' | 'WAVE_INFO'>('SELECT');
   const [copied, setCopied] = useState(false);
 
+  // OVERSELL GUARD: the /site PDP is served from the 5-minute data cache, so
+  // the server-rendered stock figure can be stale. Refresh it on mount via
+  // the anon browser client (products has a public read policy) and re-clamp
+  // the stepper — cached catalog, live purchase truth. The atomic
+  // decrement_stock RPC remains the final authority at checkout.
+  const [liveStock, setLiveStock] = useState<number | null>(product.stock_quantity);
+  useEffect(() => {
+    let cancelled = false;
+    supabase
+      .from('products')
+      .select('stock_quantity')
+      .eq('id', product.id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled || error || !data) return;
+        const fresh = typeof data.stock_quantity === 'number' ? data.stock_quantity : null;
+        setLiveStock(fresh);
+        if (fresh != null && fresh > 0) {
+          setQuantity((q) => Math.min(q, Math.min(fresh, 99)));
+        }
+      });
+    return () => { cancelled = true; };
+    // supabase is a per-render client instance; product.id is the real dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product.id]);
+
   const colors = Array.isArray(product.colors) ? product.colors : [];
   const sizes = Array.isArray(product.sizes) ? product.sizes : [];
-  const stock = product.stock_quantity;
+  const stock = liveStock;
   const isOutOfStock = stock != null && stock <= 0;
   const maxQuantity = stock != null && stock > 0 ? Math.min(stock, 99) : 99;
   const sellerPhone = shopPhone?.trim() || DEFAULT_ORDER_PHONE;
@@ -147,7 +173,9 @@ export default function SiteProductPurchase({
   const handleAddToBag = () => {
     if (!requireVariants()) return;
     addToCart({
-      id: product.id,
+      // Composite line id: each color/size combination is its own cart line
+      // (variantless products keep the bare product id — legacy-compatible).
+      id: buildCartLineId(product.id, { color: selectedColor, size: selectedSize }),
       productId: product.id,
       name: product.name,
       price: product.price ?? 0,
@@ -341,7 +369,7 @@ export default function SiteProductPurchase({
                     <Smartphone size={24} />
                   </span>
                   <p className="mt-4 px-2 text-xs text-gray-500">
-                    Send <span className="font-bold text-black">D{((product.price ?? 0) * quantity).toLocaleString()}</span> to this verified number:
+                    Send <span className="font-bold text-black">{product.price == null ? 'the agreed amount' : `D${(product.price * quantity).toLocaleString()}`}</span> to this verified number:
                   </p>
                   <div className="relative mt-5 overflow-hidden rounded-xl bg-gradient-to-br from-[#2C3E2C] to-[#1a2e1a] p-6 text-white shadow-lg">
                     <div className="flex items-end justify-between">

@@ -326,6 +326,12 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
         if (variantError) console.error("Variants failed to update:", variantError);
       }
 
+      // Fire-and-forget: this write is a browser-client update (no server
+      // route), so bust the owner's cached /site data via the cookie-authed
+      // revalidate endpoint — the generated storefront must reflect the edit
+      // immediately, not after the 5-minute backstop.
+      fetch('/api/site-revalidate', { method: 'POST' }).catch(() => {});
+
       router.push('/dashboard');
       router.refresh();
     } catch (error) {

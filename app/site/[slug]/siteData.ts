@@ -1,4 +1,5 @@
 import { cache } from 'react';
+import { unstable_cache } from 'next/cache';
 import { createClient } from '@supabase/supabase-js';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
@@ -18,7 +19,50 @@ import { slugify } from '@/lib/slugify';
 // generateMetadata functions. cache() dedupes per request ONLY when all
 // callers share this module-level instance, which is why this lives here
 // instead of inside a page file.
+//
+// CACHING ARCHITECTURE — "cached data, dynamic shell" (the 307-saga-safe
+// maximum): the /site routes stay force-dynamic because owner-draft
+// visibility is decided per request from cookies, so full-route ISR would
+// cache/leak the wrong visibility state. Instead every ANON read below (shop
+// by slug, website row, home products, catalog pages, PDP product) runs
+// through unstable_cache in Next's Data Cache:
+//   - keys:  the slug / shopId / page / productId identifying the entry
+//   - tags:  `site:{shopId}` — the EXACT tag the generate/publish/content
+//            routes already fire — plus `site:slug:{slug}` on the slug lookup
+//            (shopId is unknowable before that lookup resolves)
+//   - revalidate: 300s backstop for writes with no tag coverage (e.g. shop
+//            settings edits from other dashboards)
+// The cookie-authed owner-draft branch stays UNCACHED and only runs on the
+// published-miss path — cookies are never touched inside a cached scope.
+// Fetchers THROW on query errors so a transient DB failure is never frozen
+// into the cache as "no website"/"empty catalog" for 5 minutes; callers retry
+// once uncached and then degrade exactly as the historical code did.
 // ─────────────────────────────────────────────────────────────────────────────
+
+const SITE_CACHE_REVALIDATE = 300;
+
+// Per-call unstable_cache wrapper: the standard pattern for per-entry dynamic
+// tags (the options object cannot vary per argument on a module-level
+// wrapper). keyParts carry every varying identifier the closure captures.
+async function readThroughSiteCache<T>(
+  label: string,
+  keyParts: string[],
+  tags: string[],
+  read: () => Promise<T>
+): Promise<T> {
+  try {
+    return await unstable_cache(read, keyParts, { revalidate: SITE_CACHE_REVALIDATE, tags })();
+  } catch (error) {
+    // Cache layer or first read failed — retry ONCE uncached so a transient
+    // error is never served (or stored) as a false empty state. A second
+    // failure propagates to the call site's own degradation path.
+    console.error(
+      `[site-cache] ${label} read failed, retrying uncached:`,
+      error instanceof Error ? error.message : error
+    );
+    return read();
+  }
+}
 
 function getSupabase() {
   return createClient(
@@ -73,21 +117,16 @@ const SHOP_COLUMNS = 'id, shop_name, shop_slug, logo_url, banner_url, bio, offer
 // ("Jambaba Boutique09") until a generate/publish write-repairs them — the
 // fallback matches those case-insensitively with separators wildcarded, then
 // VERIFIES the candidate slugifies to exactly the requested slug.
-async function findShopBySlug(supabase: ReturnType<typeof getSupabase>, slug: string) {
-  let decoded = slug;
-  try {
-    decoded = decodeURIComponent(slug);
-  } catch {
-    // Malformed escape sequence — fall back to the raw param.
-  }
-  const cleanSlug = slugify(decoded);
-  if (!cleanSlug) return null;
+// THROWS on query errors (never cache a transient failure as a slug miss).
+async function readShopBySlug(cleanSlug: string) {
+  const supabase = getSupabase();
 
-  const { data: exact } = await supabase
+  const { data: exact, error: exactError } = await supabase
     .from('shops')
     .select(SHOP_COLUMNS)
     .eq('shop_slug', cleanSlug)
     .maybeSingle();
+  if (exactError) throw new Error(`shops exact lookup failed: ${exactError.message}`);
   if (exact) return exact;
 
   // Legacy candidates: match ANY stored value that slugifies to exactly
@@ -99,14 +138,72 @@ async function findShopBySlug(supabase: ReturnType<typeof getSupabase>, slug: st
   // folds case both in the tokens and inside the negated classes. cleanSlug
   // is [a-z0-9-] only, so its tokens need no regex escaping.
   const pattern = `^[^a-z0-9]*${cleanSlug.split('-').join('[^a-z0-9]+')}[^a-z0-9]*$`;
-  const { data: candidates } = await supabase
+  const { data: candidates, error: legacyError } = await supabase
     .from('shops')
     .select(SHOP_COLUMNS)
     .filter('shop_slug', 'imatch', pattern)
     .order('id', { ascending: true })
     .limit(10);
+  if (legacyError) throw new Error(`shops legacy lookup failed: ${legacyError.message}`);
 
   return candidates?.find((c) => slugify(c.shop_slug) === cleanSlug) ?? null;
+}
+
+// Cached slug → shop resolution. Keyed on the NORMALIZED slug so every encoded
+// variant of the same URL shares one entry. Tagged `site:slug:{slug}` (the
+// shop id is the RESULT of this lookup, so the per-shop tag cannot key it) —
+// the generate/publish/content routes fire that tag alongside `site:{shopId}`.
+// Shop-settings edits from other dashboards ride the 300s backstop.
+async function findShopBySlug(slug: string) {
+  let decoded = slug;
+  try {
+    decoded = decodeURIComponent(slug);
+  } catch {
+    // Malformed escape sequence — fall back to the raw param.
+  }
+  const cleanSlug = slugify(decoded);
+  if (!cleanSlug) return null;
+
+  try {
+    return await readThroughSiteCache(
+      `shop-by-slug ${cleanSlug}`,
+      ['site-shop-by-slug', cleanSlug],
+      [`site:slug:${cleanSlug}`],
+      () => readShopBySlug(cleanSlug)
+    );
+  } catch (error) {
+    // Both attempts failed — same observable behavior as the historical
+    // error-ignoring code: treat as a miss (redirect home), never a 500.
+    console.error(`[site-cache] shop-by-slug ${cleanSlug} unavailable:`, error instanceof Error ? error.message : error);
+    return null;
+  }
+}
+
+// Cached shop_websites read (service client — see getServiceClient). Row
+// content is viewer-agnostic (visibility is decided per request in loadSite),
+// so caching it is safe; every write route (generate/content/publish) busts
+// `site:{shopId}` the moment the row changes. THROWS on error.
+async function readWebsiteRow(shopId: string): Promise<SiteWebsite | null> {
+  const { data, error } = await getServiceClient()
+    .from('shop_websites')
+    .select('template_key, config, status')
+    .eq('shop_id', shopId)
+    .maybeSingle();
+  if (error) throw new Error(`shop_websites read failed: ${error.message}`);
+  return (data as SiteWebsite | null) ?? null;
+}
+
+// Cached anon home-products read (12 newest — the home page's slice). THROWS
+// on error so an outage degrades per-request instead of caching as "empty".
+async function readHomeProducts(shopId: string): Promise<SiteProduct[]> {
+  const { data, error } = await getSupabase()
+    .from('products')
+    .select('id, name, price, description, image_url, ad_video_url, ad_hero_image_url, category, stock_quantity')
+    .or(`shop_id.eq.${shopId},user_id.eq.${shopId}`)
+    .order('created_at', { ascending: false })
+    .limit(12);
+  if (error) throw new Error(`home products read failed: ${error.message}`);
+  return (data ?? []) as SiteProduct[];
 }
 
 // Per-redirect telemetry payload: which viewer the auth gate resolved. The
@@ -123,9 +220,11 @@ export type SiteViewer = {
 
 // cache(): generateMetadata and the page body both resolve the site; without
 // request-level deduplication every hit paid TWO full sets of DB round trips.
+// Cross-request, the anon reads inside are served from the Data Cache (see
+// the architecture note at the top of this file); the viewer/owner-draft
+// decision below stays strictly per-request.
 export const loadSite = cache(async (slug: string) => {
-  const supabase = getSupabase();
-  const shop = await findShopBySlug(supabase, slug);
+  const shop = await findShopBySlug(slug);
 
   const viewer: SiteViewer = { checked: false, userId: null, isOwner: false, hasAuthCookie: false, authNote: null };
 
@@ -133,17 +232,21 @@ export const loadSite = cache(async (slug: string) => {
 
   // Single website read via the service client (see getServiceClient). One
   // row per shop (shop_id is the upsert conflict key) — visibility is decided
-  // in code below, never left to unversioned RLS.
-  const { data: row, error: websiteError } = await getServiceClient()
-    .from('shop_websites')
-    .select('template_key, config, status')
-    .eq('shop_id', shop.id)
-    .maybeSingle();
-  if (websiteError) {
-    console.error(`[site-route] slug=${slug} shop_websites read failed: ${websiteError.message}`);
+  // in code below, never left to unversioned RLS. Cached under the per-shop
+  // tag; a failure degrades to the historical "no website" redirect without
+  // ever being stored in the cache.
+  let stored: SiteWebsite | null = null;
+  try {
+    stored = await readThroughSiteCache(
+      `website-row ${shop.id}`,
+      ['site-website-row', shop.id],
+      [`site:${shop.id}`],
+      () => readWebsiteRow(shop.id)
+    );
+  } catch (error) {
+    console.error(`[site-route] slug=${slug} shop_websites read failed: ${error instanceof Error ? error.message : error}`);
   }
 
-  const stored = (row as SiteWebsite | null) ?? null;
   const storedStatus = stored?.status ?? 'none';
 
   // Strict public rule: anonymous traffic only ever sees published sites.
@@ -185,18 +288,25 @@ export const loadSite = cache(async (slug: string) => {
   // products.user_id — which equals the shop's id, since shops are keyed on
   // the owner's auth id — while older rows may carry shop_id instead. Match
   // either column so app-added inventory always renders on the generated site.
-  const { data: products } = await supabase
-    .from('products')
-    .select('id, name, price, description, image_url, ad_video_url, ad_hero_image_url, category, stock_quantity')
-    .or(`shop_id.eq.${shop.id},user_id.eq.${shop.id}`)
-    .order('created_at', { ascending: false })
-    .limit(12);
+  // Cached under `site:{shopId}` — busted by every product write path (see
+  // app/api/products, add-ad-video, /api/site-revalidate).
+  let products: SiteProduct[] = [];
+  try {
+    products = await readThroughSiteCache(
+      `home-products ${shop.id}`,
+      ['site-home-products', shop.id],
+      [`site:${shop.id}`],
+      () => readHomeProducts(shop.id)
+    );
+  } catch (error) {
+    console.error(`[site-route] slug=${slug} home products read failed: ${error instanceof Error ? error.message : error}`);
+  }
 
   return {
     shop: shop as SiteShop,
     website,
     storedStatus,
-    products: (products ?? []) as SiteProduct[],
+    products,
     isOwnerPreview,
     viewer,
   };
@@ -288,21 +398,48 @@ export type SiteCatalogPage = {
   to: number;
 };
 
-// Count first, then a clamped range read: PostgREST rejects out-of-range
-// offsets outright, so an over-large ?page must clamp BEFORE the range query
-// rather than error. cache() keys on (shopId, page) — metadata + body share.
-export const loadSiteCatalog = cache(async (shopId: string, requestedPage: number): Promise<SiteCatalogPage> => {
-  const supabase = getSupabase();
-
-  const { count, error: countError } = await supabase
+// THROWS on error — never cached as a phantom-empty catalog.
+async function readCatalogCount(shopId: string): Promise<number> {
+  const { count, error } = await getSupabase()
     .from('products')
     .select('id', { count: 'exact', head: true })
     .or(`shop_id.eq.${shopId},user_id.eq.${shopId}`);
-  if (countError) {
-    console.error(`[site-route] catalog count failed for shop ${shopId}: ${countError.message}`);
+  if (error) throw new Error(`catalog count failed: ${error.message}`);
+  return count ?? 0;
+}
+
+// THROWS on error. `rangeFrom/rangeTo` are derived from the CLAMPED page, so
+// the cache key space below is bounded to real pages.
+async function readCatalogSlice(shopId: string, rangeFrom: number, rangeTo: number): Promise<SiteProduct[]> {
+  const { data, error } = await getSupabase()
+    .from('products')
+    .select('id, name, price, description, image_url, ad_video_url, ad_hero_image_url, category, stock_quantity')
+    .or(`shop_id.eq.${shopId},user_id.eq.${shopId}`)
+    .order('created_at', { ascending: false })
+    .range(rangeFrom, rangeTo);
+  if (error) throw new Error(`catalog slice failed: ${error.message}`);
+  return (data ?? []) as SiteProduct[];
+}
+
+// Count first, then a clamped range read: PostgREST rejects out-of-range
+// offsets outright, so an over-large ?page must clamp BEFORE the range query
+// rather than error. cache() keys on (shopId, page) — metadata + body share.
+// Data Cache: the count and each SERVED page cache as separate `site:{shopId}`
+// entries — clamping before the slice key means ?page=999999 spam cannot mint
+// unbounded cache entries, and both bust together on any product write.
+export const loadSiteCatalog = cache(async (shopId: string, requestedPage: number): Promise<SiteCatalogPage> => {
+  let total = 0;
+  try {
+    total = await readThroughSiteCache(
+      `catalog-count ${shopId}`,
+      ['site-catalog-count', shopId],
+      [`site:${shopId}`],
+      () => readCatalogCount(shopId)
+    );
+  } catch (error) {
+    console.error(`[site-route] catalog count failed for shop ${shopId}: ${error instanceof Error ? error.message : error}`);
   }
 
-  const total = count ?? 0;
   const pageCount = Math.max(1, Math.ceil(total / CATALOG_PAGE_SIZE));
   const page = Math.min(Math.max(1, requestedPage), pageCount);
 
@@ -313,17 +450,18 @@ export const loadSiteCatalog = cache(async (shopId: string, requestedPage: numbe
   const rangeFrom = (page - 1) * CATALOG_PAGE_SIZE;
   const rangeTo = Math.min(page * CATALOG_PAGE_SIZE, total) - 1;
 
-  const { data, error } = await supabase
-    .from('products')
-    .select('id, name, price, description, image_url, ad_video_url, ad_hero_image_url, category, stock_quantity')
-    .or(`shop_id.eq.${shopId},user_id.eq.${shopId}`)
-    .order('created_at', { ascending: false })
-    .range(rangeFrom, rangeTo);
-  if (error) {
-    console.error(`[site-route] catalog read failed for shop ${shopId}: ${error.message}`);
+  let products: SiteProduct[] = [];
+  try {
+    products = await readThroughSiteCache(
+      `catalog-slice ${shopId} p${page}`,
+      ['site-catalog-slice', shopId, String(page)],
+      [`site:${shopId}`],
+      () => readCatalogSlice(shopId, rangeFrom, rangeTo)
+    );
+  } catch (error) {
+    console.error(`[site-route] catalog read failed for shop ${shopId}: ${error instanceof Error ? error.message : error}`);
   }
 
-  const products = (data ?? []) as SiteProduct[];
   return {
     products,
     total,
@@ -351,20 +489,38 @@ export function sanitizeProductId(rawId: string): string {
   return String(rawId).replace(/[^a-zA-Z0-9-]/g, '');
 }
 
-export const loadSiteProduct = cache(async (rawId: string): Promise<SitePdpProduct | null> => {
-  const cleanId = sanitizeProductId(rawId);
-  if (!cleanId) return null;
-
+// THROWS on error — never cached as a phantom product miss.
+async function readSiteProduct(cleanId: string): Promise<SitePdpProduct | null> {
   const { data, error } = await getSupabase()
     .from('products')
     .select('id, name, price, description, image_url, image_urls, ad_video_url, ad_hero_image_url, category, stock_quantity, colors, sizes, user_id, shop_id')
     .eq('id', cleanId)
     .maybeSingle();
-  if (error) {
-    console.error(`[site-route] product read failed for id ${cleanId}: ${error.message}`);
-  }
-
+  if (error) throw new Error(`product read failed: ${error.message}`);
   return (data as SitePdpProduct | null) ?? null;
+}
+
+// `shopId` is the RESOLVED site's shop (both call sites hold it before this
+// runs) — it keys and tags the cache entry so the shop's product writes bust
+// their own PDP data. A foreign product cached under the wrong shop's tag is
+// harmless: the ownership gate below the read rejects it every request, and
+// the entry expires on the 300s backstop. Live stock truth on this page comes
+// from the purchase island's on-mount refresh + the atomic decrement RPC.
+export const loadSiteProduct = cache(async (rawId: string, shopId: string): Promise<SitePdpProduct | null> => {
+  const cleanId = sanitizeProductId(rawId);
+  if (!cleanId) return null;
+
+  try {
+    return await readThroughSiteCache(
+      `pdp-product ${cleanId}`,
+      ['site-pdp-product', cleanId, shopId],
+      [`site:${shopId}`],
+      () => readSiteProduct(cleanId)
+    );
+  } catch (error) {
+    console.error(`[site-route] product read failed for id ${cleanId}: ${error instanceof Error ? error.message : error}`);
+    return null;
+  }
 });
 
 /** Ownership gate for the PDP: a /site page must never present another

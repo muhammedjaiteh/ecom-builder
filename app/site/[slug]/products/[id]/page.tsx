@@ -28,6 +28,10 @@ import SiteProductPurchase from './SiteProductPurchase';
 // Ownership gate: a product that does not belong to this shop redirects to
 // the site's own collections page (never render another seller's product).
 
+// CACHED DATA, DYNAMIC SHELL: force-dynamic stays (owner-draft cookie gate +
+// per-viewer redirect outcomes in requireSite). The product row and the site
+// resolution are cached in siteData.ts under `site:{shopId}`; live stock truth
+// comes from SiteProductPurchase's on-mount refresh + the atomic decrement RPC.
 export const dynamic = 'force-dynamic';
 
 type PageProps = {
@@ -163,7 +167,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const parsed = WebsiteConfigSchema.safeParse(data.website.config);
   if (!parsed.success) return { title: data.shop.shop_name ?? 'Sanndikaa Boutique' };
 
-  const product = await loadSiteProduct(id);
+  const product = await loadSiteProduct(id, data.shop.id);
   // Never leak a foreign product's name into this site's metadata — the page
   // body redirects those requests to the site's collections.
   if (!product || !productBelongsToShop(product, data.shop.id)) {
@@ -197,7 +201,7 @@ export default async function SiteProductPage({ params }: PageProps) {
   const basePath = siteBasePath(site.shop) ?? `/site/${slug}`;
   const collectionsPath = siteCollectionsPath(site.shop) ?? `/site/${slug}/collections`;
 
-  const product = cleanId ? await loadSiteProduct(cleanId) : null;
+  const product = cleanId ? await loadSiteProduct(cleanId, site.shop.id) : null;
   if (!product || !productBelongsToShop(product, site.shop.id)) {
     console.log(`[site-route] slug=${slug} route=${route} product=${product ? 'foreign' : 'miss'} → redirect:collections`);
     redirect(collectionsPath);

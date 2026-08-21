@@ -21,10 +21,14 @@ const TEMPLATE_COMPONENTS: Record<TemplateKey, typeof EditorialTemplate> = {
   vitality: VitalityTemplate,
 };
 
-// The live storefront must always reflect the current publish state and the
-// latest generated config. Previously this page was implicitly dynamic via its
-// searchParams read; now that ?preview=1 is no longer load-bearing, pin it
-// explicitly so the route is never served from the full route cache.
+// CACHED DATA, DYNAMIC SHELL: this route stays force-dynamic on purpose. The
+// owner-draft branch reads cookies per request (the 307-saga fix), and the
+// redirect outcomes (no website → /shop, unknown slug → /) are viewer-derived
+// — letting the full route cache capture ANY of those states would leak the
+// wrong one to the next visitor. What IS cached is every anon data read
+// underneath (siteData.ts → unstable_cache, tags site:{shopId} +
+// site:slug:{slug}, 300s backstop), so the per-request work is just the
+// (cheap) shell render + the cookie check when a draft gate is needed.
 export const dynamic = 'force-dynamic';
 
 // ?preview=1 is still accepted on the URL (legacy dashboard links) but ignored:

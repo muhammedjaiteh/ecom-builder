@@ -9,6 +9,7 @@ import {
   type SiteChromeProps,
   type SiteProduct,
 } from '@/lib/siteTemplates';
+import CartBagButton from '../CartBagButton';
 import EditableText from '../EditableText';
 
 // EDITORIAL (template_key 'editorial') chrome — the serif masthead and dark
@@ -152,9 +153,14 @@ export default function EditorialChrome({ shop, config, active, children }: Site
           ) : (
             <p className="truncate text-[9px] font-bold uppercase tracking-[0.3em] text-neutral-500">{tagline}</p>
           )}
-          <Link href={collectionsHref} className="shrink-0 text-[9px] font-bold uppercase tracking-[0.3em] text-neutral-900 underline underline-offset-4 transition hover:text-[#1a2e1a]">
-            Shop The Collection
-          </Link>
+          <div className="flex shrink-0 items-center gap-3 md:gap-4">
+            <Link href={collectionsHref} className="shrink-0 text-[9px] font-bold uppercase tracking-[0.3em] text-neutral-900 underline underline-offset-4 transition hover:text-[#1a2e1a]">
+              Shop The Collection
+            </Link>
+            {/* Client island: live cart trigger in the utility bar — the
+                hairline square sits with the masthead's print rules. */}
+            <CartBagButton tone="editorial" />
+          </div>
         </div>
         <div className="px-5 py-7 text-center md:py-11">
           {/* Additive logo mark (Premium Visual Editor): renders ONLY when a

@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { revalidateTag } from 'next/cache';
 import { NextResponse } from 'next/server';
 
 // Product create API. AUTH + INSERT both ride the cookie-authed server client
@@ -75,6 +76,12 @@ export async function POST(request: Request) {
       .select();
 
     if (error) throw error;
+
+    // Cache bust: the /site routes serve catalog/home products from the Data
+    // Cache under this exact tag (app/site/[slug]/siteData.ts) — a new product
+    // must appear on the generated site immediately, not after the backstop.
+    // shops are keyed on the owner's auth id, so user.id IS the shop id.
+    revalidateTag(`site:${user.id}`, 'max');
 
     return NextResponse.json({ success: true, product: data });
   } catch (err) {
