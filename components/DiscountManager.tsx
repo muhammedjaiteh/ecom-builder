@@ -242,7 +242,7 @@ export default function DiscountManager({ userId, products }: Props) {
                     value={manualCode}
                     onChange={(e) => setManualCode(e.target.value.toUpperCase())}
                     placeholder="e.g. WELCOME10"
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 font-mono text-sm font-medium text-gray-900 outline-none transition focus:border-gray-900 focus:bg-white"
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 font-mono text-base font-medium text-gray-900 outline-none transition focus:border-gray-900 focus:bg-white"
                   />
                 </div>
                 <div>
@@ -257,7 +257,7 @@ export default function DiscountManager({ userId, products }: Props) {
                       value={manualPercent}
                       onChange={(e) => setManualPercent(e.target.value)}
                       placeholder="15"
-                      className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pr-10 text-sm font-medium text-gray-900 outline-none transition focus:border-gray-900 focus:bg-white"
+                      className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pr-10 text-base font-medium text-gray-900 outline-none transition focus:border-gray-900 focus:bg-white"
                     />
                     <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-xs font-bold text-gray-400">%</span>
                   </div>

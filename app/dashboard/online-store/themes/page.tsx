@@ -320,7 +320,7 @@ export default function OnlineStoreThemesPage() {
                   onChange={(e) => setBio(e.target.value)}
                   rows={4}
                   placeholder="Tell the story of your brand. What makes your products special?"
-                  className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900 resize-none"
+                  className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-base font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900 resize-none"
                 />
               </div>
 

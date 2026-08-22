@@ -10,6 +10,10 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  /* Brand display serif (Playfair Display via next/font in app/layout.tsx).
+     Mapping it here makes every `font-serif` utility across the templates,
+     chromes, cart, and PDPs resolve to it — no per-component edits. */
+  --font-serif: var(--font-display-serif), ui-serif, Georgia, Cambria, "Times New Roman", serif;
 }
 
 @media (prefers-color-scheme: dark) {

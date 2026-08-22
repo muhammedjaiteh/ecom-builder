@@ -125,7 +125,7 @@ export default function ProductsPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search by name or category"
-              className="w-full rounded-full border border-gray-200 bg-white py-3 pl-11 pr-4 text-sm font-medium text-gray-900 shadow-sm outline-none transition focus:border-gray-900"
+              className="w-full rounded-full border border-gray-200 bg-white py-3 pl-11 pr-4 text-base font-medium text-gray-900 shadow-sm outline-none transition focus:border-gray-900"
             />
           </label>
         </div>

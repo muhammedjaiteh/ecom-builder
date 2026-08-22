@@ -230,7 +230,7 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={`Search ${shop.shop_name}...`}
-                className="w-full bg-transparent px-2 text-xs font-medium text-gray-900 outline-none placeholder:text-gray-400"
+                className="w-full bg-transparent px-2 text-base font-medium text-gray-900 outline-none placeholder:text-gray-400"
               />
               {searchQuery && <button onClick={() => setSearchQuery('')} className="text-gray-400 hover:text-gray-900"><X size={14} /></button>}
             </div>

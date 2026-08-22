@@ -516,14 +516,14 @@ export default function AddProductPage() {
                       onChange={(e) => setStockQuantity(Math.max(0, Number(e.target.value) || 0))}
                       placeholder="0"
                       min="0"
-                      className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
+                      className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-base font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
                     />
                     <p className="mt-1 text-[9px] text-gray-400">How many units are available for sale?</p>
                   </div>
 
                   <div>
                     <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Product Name</label>
-                    <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Midnight Leather Boots" className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900" />
+                    <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Midnight Leather Boots" className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-base font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900" />
                   </div>
                   
                   <div className="grid grid-cols-2 gap-5">
@@ -531,12 +531,12 @@ export default function AddProductPage() {
                       <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Price (GMD)</label>
                       <div className="relative">
                         <span className="absolute left-5 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-400">D</span>
-                        <input type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0.00" className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 pl-10 pr-5 py-4 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900" />
+                        <input type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0.00" className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 pl-10 pr-5 py-4 text-base font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900" />
                       </div>
                     </div>
                     <div>
                       <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Category</label>
-                      <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full appearance-none rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-sm font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900">
+                      <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full appearance-none rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-base font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900">
                         {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                       </select>
                     </div>
@@ -597,7 +597,7 @@ export default function AddProductPage() {
                       </div>
                     )}
                     
-                    <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={6} placeholder="Describe the product, material, and fit..." className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-sm font-medium text-gray-900 outline-none transition-all focus:border-purple-500 focus:bg-white focus:ring-1 focus:ring-purple-500" />
+                    <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={6} placeholder="Describe the product, material, and fit..." className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-base font-medium text-gray-900 outline-none transition-all focus:border-purple-500 focus:bg-white focus:ring-1 focus:ring-purple-500" />
                   </div>
                 </div>
               </div>
@@ -687,7 +687,7 @@ export default function AddProductPage() {
                     {colors.map(color => <span key={color} className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 pl-3 pr-1.5 py-1 text-xs font-bold text-gray-700">{color}<button onClick={() => removeColor(color)} className="rounded-full p-1 hover:bg-gray-200 text-gray-400 hover:text-red-500"><X size={12} /></button></span>)}
                   </div>
                   <div className="flex gap-2">
-                    <input type="text" value={colorInput} onChange={(e) => setColorInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addColor())} placeholder="e.g. Midnight Black" className="flex-1 rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-2.5 text-xs font-medium outline-none focus:border-gray-900 focus:bg-white" />
+                    <input type="text" value={colorInput} onChange={(e) => setColorInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addColor())} placeholder="e.g. Midnight Black" className="flex-1 rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-2.5 text-base font-medium outline-none focus:border-gray-900 focus:bg-white" />
                     <button type="button" onClick={addColor} className="rounded-xl bg-gray-100 px-4 py-2.5 text-xs font-bold text-gray-600 hover:bg-gray-200">Add</button>
                   </div>
                 </div>
@@ -698,7 +698,7 @@ export default function AddProductPage() {
                     {sizes.map(size => <span key={size} className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 pl-3 pr-1.5 py-1 text-xs font-bold text-gray-700">{size}<button onClick={() => removeSize(size)} className="rounded-full p-1 hover:bg-gray-200 text-gray-400 hover:text-red-500"><X size={12} /></button></span>)}
                   </div>
                   <div className="flex gap-2">
-                    <input type="text" value={sizeInput} onChange={(e) => setSizeInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addSize())} placeholder="e.g. XL, 42" className="flex-1 rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-2.5 text-xs font-medium outline-none focus:border-gray-900 focus:bg-white" />
+                    <input type="text" value={sizeInput} onChange={(e) => setSizeInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addSize())} placeholder="e.g. XL, 42" className="flex-1 rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-2.5 text-base font-medium outline-none focus:border-gray-900 focus:bg-white" />
                     <button type="button" onClick={addSize} className="rounded-xl bg-gray-100 px-4 py-2.5 text-xs font-bold text-gray-600 hover:bg-gray-200">Add</button>
                   </div>
                 </div>

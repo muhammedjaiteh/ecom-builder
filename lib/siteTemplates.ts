@@ -125,10 +125,13 @@ export const HeroBannerBlockSchema = z.object({
 export const ValuePropsBlockSchema = z.object({
   id: z.string().min(1),
   type: z.literal('value_props'),
+  /** 2–4 items (Phase 8 relaxation from exactly-3). STRICT SUPERSET: every
+   *  stored row holds exactly 3, which stays valid; templates render 2/3/4
+   *  responsively and the editor adds/removes rows within these bounds. */
   items: z.array(z.object({
     title: copy(SITE_COPY_LIMITS.value_title),
     body: copy(SITE_COPY_LIMITS.value_body),
-  })).length(3),
+  })).min(2).max(4),
 });
 
 export const ProductGridBlockSchema = z.object({
@@ -239,10 +242,12 @@ export const WebsiteConfigSchema = z.object({
     hero_headline: copy(SITE_COPY_LIMITS.hero_headline),
     hero_subheadline: copy(SITE_COPY_LIMITS.hero_subheadline),
     brand_story: copy(SITE_COPY_LIMITS.brand_story),
+    // 2–4 (Phase 8): mirrors ValuePropsBlockSchema exactly, so the block ⇄
+    // legacy adapters stay total over the whole window.
     value_props: z.array(z.object({
       title: copy(SITE_COPY_LIMITS.value_title),
       body: copy(SITE_COPY_LIMITS.value_body),
-    })).length(3),
+    })).min(2).max(4),
     collection_title: copy(SITE_COPY_LIMITS.collection_title),
     collection_intro: copy(SITE_COPY_LIMITS.collection_intro),
     cta_banner: z.object({
@@ -379,10 +384,11 @@ export const WebsiteGenerationSchema = z.object({
     headline: copy(SITE_COPY_LIMITS.hero_headline),
     subheadline: copy(SITE_COPY_LIMITS.hero_subheadline),
   }),
+  // 2–4 (Phase 8): the generation schema follows the stored-config window.
   value_props: z.array(z.object({
     title: copy(SITE_COPY_LIMITS.value_title),
     body: copy(SITE_COPY_LIMITS.value_body),
-  })).length(3),
+  })).min(2).max(4),
   product_grid: z.object({
     title: copy(SITE_COPY_LIMITS.collection_title),
     intro: copy(SITE_COPY_LIMITS.collection_intro),

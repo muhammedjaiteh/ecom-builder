@@ -663,7 +663,7 @@ export default function VideoManager({ userId: _userId, products }: Props) {
                   setLinkSuccess(false);
                 }}
                 disabled={isGenerating}
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-medium text-gray-900 outline-none transition focus:border-gray-900 focus:bg-white disabled:opacity-60"
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base font-medium text-gray-900 outline-none transition focus:border-gray-900 focus:bg-white disabled:opacity-60"
               >
                 {products.map((p) => (
                   <option key={p.id} value={p.id}>{p.name}</option>
@@ -680,7 +680,7 @@ export default function VideoManager({ userId: _userId, products }: Props) {
               value={category}
               onChange={(e) => setCategory(e.target.value as Category)}
               disabled={isGenerating}
-              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-medium text-gray-900 outline-none transition focus:border-gray-900 focus:bg-white disabled:opacity-60"
+              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base font-medium text-gray-900 outline-none transition focus:border-gray-900 focus:bg-white disabled:opacity-60"
             >
               {CATEGORY_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>

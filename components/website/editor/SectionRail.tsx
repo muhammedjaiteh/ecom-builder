@@ -63,6 +63,9 @@ export type SectionRailProps = {
   onSetGridMode: (blockId: string, mode: 'grid' | 'carousel') => void;
   onAddTab: (blockId: string) => void;
   onRemoveTab: (blockId: string, index: number) => void;
+  /** value_props rows within the 2–4 schema window (Phase 8). */
+  onAddValueProp: (blockId: string) => void;
+  onRemoveValueProp: (blockId: string, index: number) => void;
   /** Desktop inline input events — the parent owns snapshot/commit. */
   onFieldChange: (blockId: string, path: string[], value: string) => void;
   onFieldFocus: (blockId: string, path: string[]) => void;
@@ -92,8 +95,10 @@ function InspectorField({
 }) {
   const value = readBlockField(block, field.path) ?? '';
   const atBudget = value.length >= field.meta.max;
+  // text-base (16px): the rail renders on ≥768px viewports, which includes
+  // touch iPads — anything smaller triggers iOS auto-zoom on focus.
   const shared =
-    'w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 font-sans text-sm text-gray-900 outline-none transition focus:border-[#f0a500] focus:ring-1 focus:ring-[#f0a500]';
+    'w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 font-sans text-base text-gray-900 outline-none transition focus:border-[#f0a500] focus:ring-1 focus:ring-[#f0a500]';
   return (
     <label className="block">
       <span className="flex items-baseline justify-between gap-3">
@@ -204,6 +209,31 @@ function InspectorBody(props: SectionRailProps & { block: SiteBlock }) {
               <GalleryHorizontal size={13} /> Carousel
             </button>
           </div>
+        </div>
+      )}
+
+      {/* value_props: add/remove rows inside the 2–4 schema window (Phase 8) */}
+      {block.type === 'value_props' && (
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={block.items.length >= 4}
+            onClick={() => props.onAddValueProp(block.id)}
+            className="flex min-h-[44px] items-center gap-1.5 rounded-full border border-gray-200 bg-white px-4 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:border-gray-900 disabled:opacity-40"
+          >
+            <Plus size={12} /> Add value prop
+          </button>
+          {block.items.length > 2 &&
+            block.items.map((item, i) => (
+              <button
+                key={`remove-vp-${i}`}
+                type="button"
+                onClick={() => props.onRemoveValueProp(block.id, i)}
+                className="flex min-h-[44px] items-center gap-1.5 rounded-full border border-red-200 bg-white px-4 text-[10px] font-bold uppercase tracking-widest text-red-600 transition hover:bg-red-50"
+              >
+                <Trash2 size={11} /> {item.title.slice(0, 14) || `Prop ${i + 1}`}
+              </button>
+            ))}
         </div>
       )}
 

@@ -276,6 +276,27 @@ export function removeTabFromBlock(block: SiteBlock, index: number): SiteBlock {
   return { ...block, tabs: block.tabs.filter((_, i) => i !== index).map((t) => ({ ...t })) };
 }
 
+/** Starter copy for a newly added value prop (schema allows 2–4, Phase 8) —
+ *  real, sellable defaults inside the SITE_COPY_LIMITS budgets. */
+export function buildStarterValueProp(): { title: string; body: string } {
+  return {
+    title: 'Why It Matters',
+    body: 'Name the benefit, ingredient, or craft detail your customers ask about most — one short line.',
+  };
+}
+
+/** Add a value prop to a value_props block (no-op at the 4-item ceiling). */
+export function addValuePropToBlock(block: SiteBlock): SiteBlock {
+  if (block.type !== 'value_props' || block.items.length >= 4) return block;
+  return { ...block, items: [...block.items.map((i) => ({ ...i })), buildStarterValueProp()] };
+}
+
+/** Remove a value prop from a value_props block (no-op at the 2-item floor). */
+export function removeValuePropFromBlock(block: SiteBlock, index: number): SiteBlock {
+  if (block.type !== 'value_props' || block.items.length <= 2) return block;
+  return { ...block, items: block.items.filter((_, i) => i !== index).map((i) => ({ ...i })) };
+}
+
 /** Reorder blocks to a new id order (ids not present are dropped — cannot
  *  happen through the Reorder UI, guarded anyway; ids missing from the new
  *  order keep the array intact by falling back to identity). */

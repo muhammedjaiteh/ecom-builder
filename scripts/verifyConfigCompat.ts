@@ -162,6 +162,44 @@ if (legacyResult.success && newResult.success) {
   // Negative control: a non-URL asset value must FAIL.
   check('non-URL asset value is rejected',
     !WebsiteConfigSchema.safeParse({ ...newConfig, assets: { logo_url: 'not-a-url' } }).success);
+
+  // ── Phase 8: value_props 2–4 window (relaxed from exactly-3) ─────────────
+  console.log('value_props 2-4 window checks:');
+
+  const withProps = (n: number) => ({
+    ...legacyConfig,
+    site: {
+      ...legacyConfig.site,
+      value_props: Array.from({ length: n }, (_, i) => ({
+        title: `Signal ${i + 1}`,
+        body: `Benefit ${i + 1}, stated in one tight sentence well under the field budget.`,
+      })),
+    },
+  });
+
+  // The stored population holds exactly 3 — the superset law demands it stays
+  // valid; the new window admits 2 and 4 and rejects everything outside.
+  check('legacy exactly-3 row still validates', WebsiteConfigSchema.safeParse(withProps(3)).success);
+  check('2-prop config validates', WebsiteConfigSchema.safeParse(withProps(2)).success);
+  check('4-prop config validates', WebsiteConfigSchema.safeParse(withProps(4)).success);
+  check('1-prop config is rejected', !WebsiteConfigSchema.safeParse(withProps(1)).success);
+  check('5-prop config is rejected', !WebsiteConfigSchema.safeParse(withProps(5)).success);
+
+  // Block-carrying rows across the window validate, and the adapters stay
+  // TOTAL: site → blocks → site round-trips identically for 2, 3, and 4.
+  for (const n of [2, 3, 4]) {
+    const parsedN = WebsiteConfigSchema.parse(withProps(n));
+    const blocksN = legacySiteToBlocks(parsedN.site);
+    check(
+      `${n}-prop blocks validate`,
+      WebsiteConfigSchema.safeParse({ ...withProps(n), blocks: blocksN }).success
+    );
+    const roundN = blocksToLegacySite(blocksN, parsedN.site);
+    check(
+      `${n}-prop mirrors round-trip identically`,
+      JSON.stringify(roundN) === JSON.stringify(parsedN.site)
+    );
+  }
 }
 
 if (failures > 0) {

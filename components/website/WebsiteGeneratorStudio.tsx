@@ -674,7 +674,8 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
                     <p className="mt-3 max-w-2xl leading-relaxed text-gray-600">{site.hero_subheadline}</p>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  {/* 2–4 value props (Phase 8): 4 folds to a clean 2×2 */}
+                  <div className={`grid grid-cols-1 gap-4 ${site.value_props.length === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
                     {site.value_props.map((v, i) => (
                       <div key={i} className="rounded-2xl bg-gray-50 p-5">
                         <p className="font-serif text-base font-bold">{v.title}</p>

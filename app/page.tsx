@@ -387,7 +387,7 @@ export default function GlobalHomepage() {
                 onChange={(e) => handleSearchChange(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearchSubmit()}
                 placeholder="Search 'summer wedding outfit' or 'glowing skin'..."
-                className="flex-1 bg-transparent px-2 text-sm text-gray-900 outline-none placeholder:text-gray-400"
+                className="flex-1 bg-transparent px-2 text-base text-gray-900 outline-none placeholder:text-gray-400"
               />
               {searchQuery ? (
                 <button
@@ -440,7 +440,7 @@ export default function GlobalHomepage() {
                 onChange={(e) => handleSearchChange(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearchSubmit()}
                 placeholder="Search 'summer wedding outfit' or 'glowing skin'..."
-                className="w-full bg-transparent px-3 text-sm text-gray-900 outline-none placeholder:text-gray-400"
+                className="w-full bg-transparent px-3 text-base text-gray-900 outline-none placeholder:text-gray-400"
               />
               {searchQuery ? (
                 <button onClick={clearSearch} className="flex-shrink-0 text-gray-400 transition hover:text-gray-900">
@@ -849,7 +849,7 @@ export default function GlobalHomepage() {
                   onChange={(e) => setNewsletterEmail(e.target.value)}
                   placeholder="Enter your email address"
                   required
-                  className="w-full rounded-full border border-white/10 bg-white/10 px-5 py-3 text-sm font-medium text-white outline-none placeholder:text-white/40 transition focus:border-white/30"
+                  className="w-full rounded-full border border-white/10 bg-white/10 px-5 py-3 text-base font-medium text-white outline-none placeholder:text-white/40 transition focus:border-white/30"
                 />
                 <button
                   type="submit"

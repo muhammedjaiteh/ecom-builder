@@ -303,7 +303,14 @@ function EditorialVideoHero({ block, shopName }: { block: VideoHeroBlock; shopNa
   );
 }
 
+// Pull-quote scale guard (Phase 8): brand_story is budgeted to 600 chars but
+// md:text-5xl only reads as a pull-quote for SHORT copy. Beyond 220 chars
+// (~3 display lines at 5xl on a 4xl-max column) the quote steps down to a
+// long-read scale — still serif-italic print, but readable instead of a wall.
+const STORY_LONG_THRESHOLD = 220;
+
 function EditorialStory({ block, shopName }: { block: StoryBlock; shopName: string | null }) {
+  const isLong = block.body.length > STORY_LONG_THRESHOLD;
   return (
     <section id="story" data-block-section={block.id} className="border-b border-neutral-900 px-5 py-20 md:px-10 md:py-32">
       <div className="relative mx-auto max-w-4xl">
@@ -314,7 +321,9 @@ function EditorialStory({ block, shopName }: { block: StoryBlock; shopName: stri
           as="blockquote"
           blockId={block.id}
           field="body"
-          className="relative pt-14 font-serif text-3xl italic leading-[1.2] text-neutral-900 md:pt-20 md:text-5xl"
+          className={`relative pt-14 font-serif italic text-neutral-900 md:pt-20 ${
+            isLong ? 'text-2xl leading-[1.35] md:text-3xl' : 'text-3xl leading-[1.2] md:text-5xl'
+          }`}
         >
           {block.body}
         </EditableText>
@@ -324,9 +333,17 @@ function EditorialStory({ block, shopName }: { block: StoryBlock; shopName: stri
   );
 }
 
+// 2–4 index entries (Phase 8): one column per item at md+ — the hairline
+// border logic below is already per-item, so every count keeps the print grid.
+const EDITORIAL_INDEX_COLS: Record<number, string> = {
+  2: 'md:grid-cols-2',
+  3: 'md:grid-cols-3',
+  4: 'md:grid-cols-4',
+};
+
 function EditorialIndexRow({ block }: { block: ValuePropsBlock }) {
   return (
-    <section data-block-section={block.id} className="grid grid-cols-1 border-b border-neutral-900 md:grid-cols-3">
+    <section data-block-section={block.id} className={`grid grid-cols-1 border-b border-neutral-900 ${EDITORIAL_INDEX_COLS[block.items.length] ?? 'md:grid-cols-3'}`}>
       {block.items.map((v, i) => (
         <div key={i} className={`px-5 py-10 md:px-10 md:py-14 ${i > 0 ? 'border-t border-neutral-900 md:border-l md:border-t-0' : ''}`}>
           <p className="font-serif text-4xl italic text-neutral-300">0{i + 1}</p>

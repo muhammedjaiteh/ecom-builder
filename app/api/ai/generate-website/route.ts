@@ -266,8 +266,10 @@ APPROVED CREATIVE DIRECTION — honor it precisely, refine and expand it into th
     // all requests — role, template catalog (built from SITE_TEMPLATES
     // constants), elite copy rules, and the full output field spec. This is
     // the massive stable prefix the ephemeral cache keys on. Changed ONCE for
-    // the Phase-3 block model (the site is now written as content blocks) and
-    // byte-stable again from here — no per-request data inside.
+    // the Phase-3 block model, ONCE more for the Phase-8 brevity mandate
+    // (terseness exemption deleted; targets well under every cap; value_props
+    // window 2-4), and byte-stable again from here — no per-request data
+    // inside.
     // DYNAMIC block (prompt): shop identity, inventory, and the per-request
     // template constraint / approved concept — anything here in the cached
     // block would silently kill every cache hit.
@@ -280,24 +282,28 @@ Write every copy field in the elite voice. The site must read like a brand that 
 
 ${ELITE_COPY_RULES}
 
-(The 3-5 word limit above applies ONLY to cta.button_label. Other fields follow their own length limits below.)
+BREVITY MANDATE — BINDING FOR EVERY FIELD:
+- Extreme brevity is the luxury register. Aim well under every cap below; whitespace is the product.
+- No conversational filler, no marketing throat-clearing, no lead-ins ("Welcome to", "Discover our", "At [shop], we"). Open on the substance.
+- Every field has a hard cap AND a TARGET well under it. Write to the target; the cap is a ceiling, never a goal.
+- One idea per field. If a sentence can lose a clause and keep its meaning, lose the clause.
 
 Return a JSON object:
 - "template_key"     : one of ${TEMPLATE_KEYS.map((k) => `"${k}"`).join(' | ')}
 - "niche_reasoning"  : 1-2 sentences on why this template fits this inventory
 - "hero"             : the opening banner block — {
-    "tagline"     : 3-8 word brand essence line (max 80 chars)
-    "headline"    : 4-10 word headline (max 90 chars) — sensory, not salesy
-    "subheadline" : 1-2 sentence supporting line (max 200 chars)
+    "tagline"     : 3-6 word brand essence line (target ~30 chars, max 80)
+    "headline"    : 4-8 word headline (target ~45 chars, max 90) — sensory, not salesy
+    "subheadline" : ONE short sentence (target ~110 chars, max 200)
   }
-- "value_props"      : the trust band block — EXACTLY 3 items, each { "title": max 60 chars, "body": one sentence max 200 chars }
+- "value_props"      : the trust band block — 2 to 4 items (3 when unsure), each { "title": 2-4 words (target ~25 chars, max 60), "body": one tight sentence (target ~90 chars, max 200) }
 - "product_grid"     : the collection section block — {
-    "title" : 2-5 word collection heading (max 60 chars)
-    "intro" : one sentence introducing the products (max 240 chars)
+    "title" : 2-4 word collection heading (target ~20 chars, max 60)
+    "intro" : one sentence introducing the products (target ~110 chars, max 240)
   }
-- "story"            : the brand-story block — { "body": 2-3 sentence origin/craft story in the brand's voice (max 600 chars) }
-- "cta"              : the closing banner block — { "headline": max 90 chars, "subtext": max 200 chars, "button_label": 2-5 words }
-- "seo"              : { "title": max 70 chars including the shop name, "description": max 170 chars }`;
+- "story"            : the brand-story block — { "body": 2-3 short sentences of origin/craft in the brand's voice (target ~280 chars, max 600) }
+- "cta"              : the closing banner block — { "headline": target ~40 chars, max 90; "subtext": one sentence, target ~90 chars, max 200; "button_label": 2-5 words }
+- "seo"              : { "title": max 70 chars including the shop name, "description": target ~140 chars, max 170 }`;
 
     const prompt = `SHOP:
 - Name: ${shop.shop_name}

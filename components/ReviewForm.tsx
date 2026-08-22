@@ -114,7 +114,7 @@ export default function ReviewForm({ productId, onReviewSubmitted }: ReviewFormP
                     value={externalAuthor}
                     onChange={(e) => setExternalAuthor(e.target.value)}
                     required={isExternal}
-                    className="w-full rounded-xl border border-black/10 px-4 py-3 text-sm focus:border-black focus:ring-1 focus:ring-black outline-none transition-all placeholder:text-neutral-400 bg-neutral-50"
+                    className="w-full rounded-xl border border-black/10 px-4 py-3 text-base focus:border-black focus:ring-1 focus:ring-black outline-none transition-all placeholder:text-neutral-400 bg-neutral-50"
                     placeholder="e.g. John Doe (WhatsApp)"
                   />
                 </div>
@@ -167,7 +167,7 @@ export default function ReviewForm({ productId, onReviewSubmitted }: ReviewFormP
             onChange={(e) => setComment(e.target.value)}
             required
             rows={4}
-            className="w-full rounded-xl border border-black/10 px-4 py-3 text-sm focus:border-black focus:ring-1 focus:ring-black outline-none transition-all placeholder:text-neutral-400 bg-neutral-50"
+            className="w-full rounded-xl border border-black/10 px-4 py-3 text-base focus:border-black focus:ring-1 focus:ring-black outline-none transition-all placeholder:text-neutral-400 bg-neutral-50"
             placeholder="Share your experience with this product..."
           />
         </div>

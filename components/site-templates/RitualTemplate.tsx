@@ -130,10 +130,18 @@ function RitualHero({ block, shop, heroMedia, collectionsHref }: {
   );
 }
 
+// 2–4 value props (Phase 8): one column per item at md+ so the divide-x
+// hairlines always sit between columns of a single row.
+const RITUAL_VALUE_COLS: Record<number, string> = {
+  2: 'md:grid-cols-2',
+  3: 'md:grid-cols-3',
+  4: 'md:grid-cols-4',
+};
+
 function RitualValueProps({ block }: { block: ValuePropsBlock }) {
   return (
     <section data-block-section={block.id} className="border-b border-stone-200 bg-white">
-      <div className="mx-auto grid max-w-7xl grid-cols-1 divide-y divide-stone-100 md:grid-cols-3 md:divide-x md:divide-y-0">
+      <div className={`mx-auto grid max-w-7xl grid-cols-1 divide-y divide-stone-100 md:divide-x md:divide-y-0 ${RITUAL_VALUE_COLS[block.items.length] ?? 'md:grid-cols-3'}`}>
         {block.items.map((v, i) => (
           <div key={i} className="px-6 py-9 text-center md:px-10 md:py-12">
             <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-stone-400">0{i + 1}</p>

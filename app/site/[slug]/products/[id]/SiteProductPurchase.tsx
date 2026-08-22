@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Banknote, Check, Copy, Minus, Plus, ShoppingBag, Smartphone, X } from 'lucide-react';
 import { buildCartLineId, useCart } from '@/components/CartProvider';
 import {
@@ -46,6 +47,10 @@ type PurchaseStyles = {
   soldOut: string;
   soldOutTitle: string;
   soldOutBody: string;
+  /** Sticky mobile buy bar (Phase 5) — tone-matched shell + CTA. */
+  buyBar: string;
+  buyBarPrice: string;
+  buyBarButton: string;
 };
 
 const PURCHASE_STYLES: Record<SiteTone, PurchaseStyles> = {
@@ -62,6 +67,9 @@ const PURCHASE_STYLES: Record<SiteTone, PurchaseStyles> = {
     soldOut: 'rounded-2xl border border-stone-300 bg-white px-6 py-5 text-center',
     soldOutTitle: 'text-sm font-bold uppercase tracking-widest text-stone-900',
     soldOutBody: 'mt-1 text-xs text-stone-500',
+    buyBar: 'border-t border-stone-200 bg-white/95 backdrop-blur',
+    buyBarPrice: 'text-lg font-light text-stone-900',
+    buyBarButton: 'flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-full bg-stone-900 px-6 text-[10px] font-bold uppercase tracking-[0.25em] text-white shadow-lg transition active:scale-95',
   },
   editorial: {
     label: 'text-[10px] font-bold uppercase tracking-[0.35em] text-neutral-400',
@@ -76,6 +84,9 @@ const PURCHASE_STYLES: Record<SiteTone, PurchaseStyles> = {
     soldOut: 'border border-neutral-900 bg-[#F7F5F0] px-6 py-5 text-center',
     soldOutTitle: 'font-serif text-lg italic text-neutral-900',
     soldOutBody: 'mt-1 text-xs text-neutral-500',
+    buyBar: 'border-t border-neutral-900 bg-[#F7F5F0]/95 backdrop-blur',
+    buyBarPrice: 'font-serif text-lg italic text-neutral-900',
+    buyBarButton: 'flex min-h-[48px] flex-1 items-center justify-center gap-2 bg-neutral-900 px-6 text-[10px] font-bold uppercase tracking-[0.3em] text-[#F7F5F0] transition active:scale-95',
   },
   neutral: {
     label: 'text-[10px] font-black uppercase tracking-[0.25em] text-white/50',
@@ -90,6 +101,9 @@ const PURCHASE_STYLES: Record<SiteTone, PurchaseStyles> = {
     soldOut: 'rounded-2xl border border-white/15 bg-[#111] px-6 py-5 text-center',
     soldOutTitle: 'text-sm font-black uppercase tracking-widest text-white',
     soldOutBody: 'mt-1 text-xs text-white/50',
+    buyBar: 'border-t border-white/10 bg-[#0C0C0C]/95 backdrop-blur',
+    buyBarPrice: 'text-lg font-black text-[#f0a500]',
+    buyBarButton: 'flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-full bg-[#f0a500] px-6 text-[10px] font-black uppercase tracking-[0.2em] text-black shadow-lg transition active:scale-95',
   },
 };
 
@@ -120,6 +134,23 @@ export default function SiteProductPurchase({
   const [showTerminal, setShowTerminal] = useState(false);
   const [paymentStep, setPaymentStep] = useState<'SELECT' | 'WAVE_INFO'>('SELECT');
   const [copied, setCopied] = useState(false);
+
+  // STICKY MOBILE BUY BAR (Phase 5): observe the primary CTA row — when it
+  // scrolls out of view the bottom bar slides in. Rendering is gated to
+  // <768px via md:hidden; the observer itself is viewport-agnostic and cheap.
+  const purchaseRootRef = useRef<HTMLDivElement | null>(null);
+  const ctaRowRef = useRef<HTMLDivElement | null>(null);
+  const [ctaInView, setCtaInView] = useState(true);
+  useEffect(() => {
+    const el = ctaRowRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setCtaInView(entry.isIntersecting),
+      { threshold: 0 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   // OVERSELL GUARD: the /site PDP is served from the 5-minute data cache, so
   // the server-rendered stock figure can be stale. Refresh it on mount via
@@ -229,6 +260,18 @@ export default function SiteProductPurchase({
     setShowTerminal(true);
   };
 
+  /** Buy-bar CTA — the SAME purchase flow as the in-page button (no forked
+   *  order logic): requireVariants gates it identically, and when a variant
+   *  is still unpicked we scroll the purchase block back into view so the
+   *  hint and the pills are visible instead of opening a doomed terminal. */
+  const orderFromBuyBar = () => {
+    if (!requireVariants()) {
+      purchaseRootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    setShowTerminal(true);
+  };
+
   if (isOutOfStock) {
     return (
       <div className={styles.soldOut}>
@@ -238,8 +281,14 @@ export default function SiteProductPurchase({
     );
   }
 
+  const priceLabel =
+    product.price == null ? 'Price on request' : `D${(product.price * quantity).toLocaleString()}`;
+  // Slide the bar in only while the real CTA row is off-screen and no
+  // checkout terminal is up (the terminal carries its own WhatsApp buttons).
+  const showBuyBar = !ctaInView && !showTerminal;
+
   return (
-    <div className="space-y-7">
+    <div ref={purchaseRootRef} className="space-y-7">
       {colors.length > 0 && (
         <div>
           <p className={styles.label}>Color</p>
@@ -308,7 +357,7 @@ export default function SiteProductPurchase({
 
       {variantHint && <p className={styles.hint}>{variantHint}</p>}
 
-      <div className="flex flex-col gap-3 pt-1 sm:flex-row">
+      <div ref={ctaRowRef} className="flex flex-col gap-3 pt-1 sm:flex-row">
         <button type="button" onClick={handleAddToBag} className={styles.secondaryButton}>
           <ShoppingBag size={16} />
           Add to Bag
@@ -318,6 +367,38 @@ export default function SiteProductPurchase({
           Order via WhatsApp
         </button>
       </div>
+
+      {/* STICKY MOBILE BUY BAR — mobile only (md:hidden), slides in when the
+          CTA row above leaves the viewport. Z-ORDER CONTRACT: z-[60] sits
+          BELOW the checkout terminal (z-[70], which carries the WhatsApp
+          payment buttons — the bar also unmounts while it is open) and BELOW
+          the global cart drawer + overlay (z-[110]/z-[100] in
+          components/Cart.tsx), so it can never overlap either. Safe-area
+          padded for home-indicator phones; CTA ≥48px. */}
+      <AnimatePresence>
+        {showBuyBar && (
+          <motion.div
+            initial={{ y: '110%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '110%' }}
+            transition={{ type: 'tween', duration: 0.25, ease: 'easeOut' }}
+            className={`fixed inset-x-0 bottom-0 z-[60] px-4 pt-3 pb-[calc(0.75rem_+_env(safe-area-inset-bottom))] md:hidden ${styles.buyBar}`}
+          >
+            <div className="mx-auto flex max-w-md items-center gap-4">
+              <div className="min-w-0">
+                <p className={`truncate ${styles.buyBarPrice}`}>{priceLabel}</p>
+                {quantity > 1 && product.price != null && (
+                  <p className={styles.label}>{quantity} × D{Number(product.price).toLocaleString()}</p>
+                )}
+              </div>
+              <button type="button" onClick={orderFromBuyBar} className={styles.buyBarButton}>
+                <Smartphone size={15} />
+                Order Now
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Secure order terminal — same Cash / Wave mechanics as the marketplace */}
       {showTerminal && (

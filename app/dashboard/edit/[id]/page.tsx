@@ -510,7 +510,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                   type="text"
                   value={colorsInput}
                   onChange={(event) => setColorsInput(event.target.value)}
-                  className="w-full rounded-xl bg-[#F9F8F6] p-4 text-sm text-gray-700 focus:ring-2 focus:ring-[#2C3E2C]"
+                  className="w-full rounded-xl bg-[#F9F8F6] p-4 text-base text-gray-700 focus:ring-2 focus:ring-[#2C3E2C]"
                   placeholder="Red, Blue, Green"
                 />
                 <p className="mt-1 text-xs text-gray-400">Example: Red, Blue, Green</p>
@@ -522,7 +522,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                   type="text"
                   value={sizesInput}
                   onChange={(event) => setSizesInput(event.target.value)}
-                  className="w-full rounded-xl bg-[#F9F8F6] p-4 text-sm text-gray-700 focus:ring-2 focus:ring-[#2C3E2C]"
+                  className="w-full rounded-xl bg-[#F9F8F6] p-4 text-base text-gray-700 focus:ring-2 focus:ring-[#2C3E2C]"
                   placeholder="2 Metres, 5 Metres"
                 />
                 <p className="mt-1 text-xs text-gray-400">Example: 2 Metres, 5 Metres</p>

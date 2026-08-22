@@ -82,7 +82,7 @@ function ReviewsPanel({ products }: { products: Product[] }) {
             <select
               value={selectedProduct.id}
               onChange={(event) => setSelectedProductId(event.target.value)}
-              className="w-full min-w-[260px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-medium text-gray-900 outline-none transition focus:border-gray-900"
+              className="w-full min-w-[260px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base font-medium text-gray-900 outline-none transition focus:border-gray-900"
             >
               {products.map((product) => (
                 <option key={product.id} value={product.id}>

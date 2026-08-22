@@ -291,11 +291,12 @@ export default function Cart() {
                       <div className="space-y-3">
                         <div className="relative">
                           <User size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                          <input type="text" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Full Name" className="w-full rounded-xl border border-black/10 bg-gray-50/50 py-3 pl-10 pr-4 text-xs font-medium outline-none focus:border-gray-900 focus:bg-white transition-all" />
+                          {/* text-base (16px): anything smaller triggers iOS auto-zoom on focus */}
+                          <input type="text" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Full Name" className="w-full rounded-xl border border-black/10 bg-gray-50/50 py-3 pl-10 pr-4 text-base font-medium outline-none focus:border-gray-900 focus:bg-white transition-all" />
                         </div>
                         <div className="relative">
                           <Phone size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                          <input type="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="Phone / WhatsApp Number" className="w-full rounded-xl border border-black/10 bg-gray-50/50 py-3 pl-10 pr-4 text-xs font-medium outline-none focus:border-gray-900 focus:bg-white transition-all" />
+                          <input type="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="Phone / WhatsApp Number" className="w-full rounded-xl border border-black/10 bg-gray-50/50 py-3 pl-10 pr-4 text-base font-medium outline-none focus:border-gray-900 focus:bg-white transition-all" />
                         </div>
                         
                         <div className="grid grid-cols-2 gap-2 pt-1">
@@ -304,7 +305,7 @@ export default function Cart() {
                         </div>
                         
                         {fulfillmentMethod === 'delivery' && (
-                          <textarea value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} rows={2} placeholder="Full Delivery Address (Street, Neighborhood)" className="w-full rounded-xl border border-black/10 bg-gray-50/50 p-3.5 text-xs font-medium outline-none focus:border-gray-900 focus:bg-white transition-all mt-1" />
+                          <textarea value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} rows={2} placeholder="Full Delivery Address (Street, Neighborhood)" className="w-full rounded-xl border border-black/10 bg-gray-50/50 p-3.5 text-base font-medium outline-none focus:border-gray-900 focus:bg-white transition-all mt-1" />
                         )}
                         
                         <button 

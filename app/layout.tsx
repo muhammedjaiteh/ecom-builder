@@ -1,7 +1,7 @@
 import { CartProvider } from "../components/CartProvider";
 import Cart from "../components/Cart"; // 🚀 Added the Cart UI
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -12,6 +12,21 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+// Brand display serif — Playfair Display (variable, 400–900 + true italics).
+// Chosen over Fraunces: the Editorial template is literally a print-magazine
+// anatomy (900-weight uppercase masthead, italic pull-quotes, italic prices)
+// and Playfair's high-contrast transitional forms hold that luxury register
+// at masthead sizes where Fraunces' soft "wonky" forms read artisanal instead.
+// Wired as a CSS variable and mapped to --font-serif in globals.css @theme,
+// so every existing `font-serif` utility (templates, chromes, cart, PDP)
+// resolves to it with zero per-component edits.
+const playfair = Playfair_Display({
+  variable: "--font-display-serif",
+  subsets: ["latin"],
+  style: ["normal", "italic"],
+  display: "swap",
 });
 
 // Flag sweep: env-driven origin (PUBLIC_APP_URL ?? NEXT_PUBLIC_APP_URL)
@@ -54,11 +69,12 @@ export const metadata: Metadata = {
 
 // viewportFit 'cover' is required so env(safe-area-inset-*) resolves to
 // non-zero values in standalone iOS — the editor Save bar depends on it.
+// Pinch-zoom is a buyer accessibility right: maximumScale/userScalable were
+// removed (WCAG 1.4.4) — iOS input auto-zoom is prevented the correct way,
+// with ≥16px (text-base) font-size on every focusable field instead.
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
   viewportFit: 'cover',
   themeColor: '#1a2e1a',
 };
@@ -71,7 +87,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} antialiased`}
       >
         <CartProvider>
           {children}

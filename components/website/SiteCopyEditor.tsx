@@ -53,6 +53,8 @@ import {
   MAX_BLOCKS,
   SELLER_ADDED_TYPES,
   addTabToBlock,
+  addValuePropToBlock,
+  removeValuePropFromBlock,
   blocksAreValid,
   buildProductTabsBlock,
   buildVideoHeroBlock,
@@ -871,6 +873,8 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
       onSetGridMode={setGridDisplayMode}
       onAddTab={(id) => setBlocks((prev) => prev.map((b) => (b.id === id ? addTabToBlock(b) : b)))}
       onRemoveTab={(id, i) => setBlocks((prev) => prev.map((b) => (b.id === id ? removeTabFromBlock(b, i) : b)))}
+      onAddValueProp={(id) => setBlocks((prev) => prev.map((b) => (b.id === id ? addValuePropToBlock(b) : b)))}
+      onRemoveValueProp={(id, i) => setBlocks((prev) => prev.map((b) => (b.id === id ? removeValuePropFromBlock(b, i) : b)))}
       onFieldChange={applyFieldValue}
       onFieldFocus={handleInspectorFocus}
       onFieldBlur={handleInspectorBlur}
