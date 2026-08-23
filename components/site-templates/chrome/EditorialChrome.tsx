@@ -11,6 +11,7 @@ import {
 } from '@/lib/siteTemplates';
 import CartBagButton from '../CartBagButton';
 import EditableText from '../EditableText';
+import SiteSearch from '../SiteSearch';
 
 // EDITORIAL (template_key 'editorial') chrome — the serif masthead and dark
 // sign-off footer every /site page of an editorial shop shares (home,
@@ -187,8 +188,10 @@ export default function EditorialChrome({ shop, config, active, children }: Site
             <Link href={collectionsHref} className="inline-flex min-h-11 shrink-0 items-center text-[9px] font-bold uppercase tracking-[0.3em] text-neutral-900 underline underline-offset-4 transition hover:text-[#1a2e1a]">
               Shop The Collection
             </Link>
-            {/* Client island: live cart trigger in the utility bar — the
-                hairline square sits with the masthead's print rules. */}
+            {/* Client islands: shop-scoped search + live cart trigger in the
+                utility bar — hairline squares that sit with the masthead's
+                print rules. */}
+            <SiteSearch tone="editorial" shopId={shop.id} basePath={base} shopName={shop.shop_name} />
             <CartBagButton tone="editorial" />
           </div>
         </div>
@@ -208,7 +211,10 @@ export default function EditorialChrome({ shop, config, active, children }: Site
               />
             </div>
           )}
-          <Link href={base ?? '#'} className="inline-block py-1 font-serif text-4xl font-black uppercase tracking-tight md:text-7xl">
+          {/* Quiet-luxury type cap (Beta QA pass): md:text-7xl → md:text-6xl,
+              mobile 4xl → 3xl — long shop names stay one confident line at
+              360px instead of a shouting wrap. */}
+          <Link href={base ?? '#'} className="inline-block py-1 font-serif text-3xl font-black uppercase tracking-tight md:text-6xl">
             {shop.shop_name}
           </Link>
         </div>

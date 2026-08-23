@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import Link from 'next/link';
 import SmartImage from '@/components/SmartImage';
 import {
@@ -13,6 +14,7 @@ import CarouselTrack from './CarouselTrack';
 import EditableText from './EditableText';
 import GatedVideo from './GatedVideo';
 import ProductTabsIsland from './ProductTabsIsland';
+import Reveal from './Reveal';
 import VideoHeroMedia from './VideoHeroMedia';
 import RitualChrome, {
   RITUAL_COLLECTION_GRID,
@@ -63,7 +65,9 @@ function RitualHero({ block, shop, heroMedia, collectionsHref }: {
   collectionsHref: string;
 }) {
   return (
-    <header data-block-section={block.id} className="relative flex h-[82vh] min-h-[560px] w-full items-end overflow-hidden bg-stone-900 md:items-center">
+    // min-h (not fixed h): budget-length copy at 360px can outgrow 82vh — the
+    // hero grows with it instead of clipping against overflow-hidden.
+    <header data-block-section={block.id} className="relative flex min-h-[max(560px,82vh)] w-full items-end overflow-hidden bg-stone-900 md:items-center">
       {heroMedia?.type === 'video' ? (
         // 2G media gate: unconstrained networks autoplay exactly as before;
         // save-data/2g/3g/reduced-motion get the ad poster (or the template
@@ -104,7 +108,7 @@ function RitualHero({ block, shop, heroMedia, collectionsHref }: {
           as="h1"
           blockId={block.id}
           field="headline"
-          className="mt-5 max-w-2xl font-serif text-4xl font-bold leading-[1.05] tracking-tight text-white md:text-6xl lg:text-7xl"
+          className="mt-6 max-w-2xl font-serif text-4xl font-bold leading-[1.1] tracking-tight text-white md:text-5xl lg:text-6xl"
         >
           {block.headline}
         </EditableText>
@@ -227,7 +231,7 @@ function RitualProductTabs({ block }: { block: ProductTabsBlock }) {
 
 function RitualVideoHero({ block, shopName }: { block: VideoHeroBlock; shopName: string | null }) {
   return (
-    <section data-block-section={block.id} className="relative flex h-[72vh] min-h-[480px] w-full items-end overflow-hidden bg-stone-900">
+    <section data-block-section={block.id} className="relative flex min-h-[max(480px,72vh)] w-full items-end overflow-hidden bg-stone-900">
       <VideoHeroMedia
         src={block.videoUrl}
         poster={block.posterUrl ?? null}
@@ -307,25 +311,37 @@ export default function RitualTemplate({ shop, products, config, heroMedia }: Si
 
   return (
     <RitualChrome shop={shop} config={config} active="home">
-      {blocks.map((block) => {
-        switch (block.type) {
-          case 'hero_banner':
-            return <RitualHero key={block.id} block={block} shop={shop} heroMedia={heroMedia} collectionsHref={collectionsHref} />;
-          case 'value_props':
-            return <RitualValueProps key={block.id} block={block} />;
-          case 'product_grid':
-            return <RitualProductGrid key={block.id} block={block} shop={shop} products={products} />;
-          case 'story_text':
-            return <RitualStory key={block.id} block={block} shopName={shop.shop_name} />;
-          case 'cta_banner':
-            return <RitualCta key={block.id} block={block} collectionsHref={collectionsHref} />;
-          case 'product_tabs':
-            return <RitualProductTabs key={block.id} block={block} />;
-          case 'video_hero':
-            return <RitualVideoHero key={block.id} block={block} shopName={shop.shop_name} />;
-          default:
-            return null;
-        }
+      {blocks.map((block, i) => {
+        // The hero (LCP) never animates; every other section rides the Reveal
+        // island (fade-in-up on scroll, static in editor previews / reduced
+        // motion — see Reveal.tsx). Small index-based sibling stagger.
+        const section = (() => {
+          switch (block.type) {
+            case 'hero_banner':
+              return <RitualHero block={block} shop={shop} heroMedia={heroMedia} collectionsHref={collectionsHref} />;
+            case 'value_props':
+              return <RitualValueProps block={block} />;
+            case 'product_grid':
+              return <RitualProductGrid block={block} shop={shop} products={products} />;
+            case 'story_text':
+              return <RitualStory block={block} shopName={shop.shop_name} />;
+            case 'cta_banner':
+              return <RitualCta block={block} collectionsHref={collectionsHref} />;
+            case 'product_tabs':
+              return <RitualProductTabs block={block} />;
+            case 'video_hero':
+              return <RitualVideoHero block={block} shopName={shop.shop_name} />;
+            default:
+              return null;
+          }
+        })();
+        if (!section) return null;
+        if (block.type === 'hero_banner') return <Fragment key={block.id}>{section}</Fragment>;
+        return (
+          <Reveal key={block.id} delay={Math.min(i * 0.05, 0.15)}>
+            {section}
+          </Reveal>
+        );
       })}
     </RitualChrome>
   );

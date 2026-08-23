@@ -7,7 +7,7 @@ import {
   Package, DollarSign, TrendingUp, Plus, Edit, Trash2, ExternalLink,
   BarChart3, Eye, Truck, LogOut, Lock,
   ShoppingCart, Clock, CheckCircle2, Phone, User, Users, MessageCircle,
-  LayoutDashboard, Settings, Loader2, Palette, Megaphone, BadgePercent, Star, Film, Globe
+  Settings, Loader2, Palette, Star, Globe
 } from 'lucide-react';
 import Link from 'next/link';
 import Broadcast from './broadcast';
@@ -326,36 +326,17 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* 2. THE APP TABS */}
-        <div className="max-w-7xl mx-auto mt-6 flex gap-1 overflow-x-auto hide-scrollbar">
-          {[
-            { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
-            { id: 'analytics', icon: BarChart3, label: 'Analytics' },
-            { id: 'orders', icon: ShoppingCart, label: `Orders (${orders.filter(o => o.status === 'pending').length})` },
-            { id: 'customers', icon: Users, label: 'Customers' },
-            { id: 'reviews', icon: Star, label: 'Reviews' },
-            { id: 'discounts', icon: BadgePercent, label: 'Discounts' },
-            { id: 'videos', icon: Film, label: 'Ad Studio' },
-            { id: 'broadcast', icon: Megaphone, label: 'Broadcast' },
-            { id: 'inventory', icon: Package, label: 'Inventory' }
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as DashboardTab)}
-              className={`flex shrink-0 items-center gap-2 rounded-full px-5 py-2.5 text-[11px] font-bold uppercase tracking-widest transition-all duration-200 ${
-                activeTab === tab.id 
-                  ? 'bg-gray-900 text-white shadow-md' 
-                  : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
-              }`}
-            >
-              <tab.icon size={14} /> {tab.label}
-            </button>
-          ))}
-        </div>
+        {/* The horizontal tab-button strip that lived here is retired (Beta QA
+            pass): DashboardSidebar (rail + mobile drawer) carries every
+            DashboardTab destination — overview (Home), customers, discounts,
+            videos (Ad Studio), reviews, inventory, broadcast via ?tab= deep
+            links; orders and analytics via their richer dedicated pages. The
+            DashboardTab state machine and the ?tab= URL-sync contract below
+            (AD_STUDIO_PATH, notifier jumps, sidebar deep links) are untouched. */}
       </header>
 
-      {/* 3. DYNAMIC TAB CONTENT */}
-      <main className="max-w-7xl mx-auto px-4 py-8 md:px-10">
+      {/* 2. DYNAMIC TAB CONTENT — freed of the strip, the active pane breathes. */}
+      <main className="max-w-7xl mx-auto px-4 py-8 md:px-10 md:py-12">
         
         {/* OVERVIEW TAB */}
         {activeTab === 'overview' && (

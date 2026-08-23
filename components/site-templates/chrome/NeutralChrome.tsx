@@ -7,6 +7,7 @@ import {
   type SiteProduct,
 } from '@/lib/siteTemplates';
 import CartBagButton from '../CartBagButton';
+import SiteSearch from '../SiteSearch';
 
 // NEUTRAL chrome — the graceful fallback wrapping the NEW nested routes
 // (/collections, /products/[id]) for legacy 'vitality' sites, whose home
@@ -114,7 +115,9 @@ export default function NeutralChrome({ shop, active, children }: SiteChromeProp
             >
               Home
             </Link>
-            {/* Client island: live cart trigger — simple ghost icon, gold badge. */}
+            {/* Client islands: shop-scoped search + live cart trigger —
+                simple ghost icons, gold badge. */}
+            <SiteSearch tone="neutral" shopId={shop.id} basePath={base} shopName={shop.shop_name} />
             <CartBagButton tone="neutral" />
             <Link
               href={collectionsHref}

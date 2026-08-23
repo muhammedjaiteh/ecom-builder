@@ -14,6 +14,7 @@ import CarouselTrack from './CarouselTrack';
 import EditableText from './EditableText';
 import GatedVideo from './GatedVideo';
 import ProductTabsIsland from './ProductTabsIsland';
+import Reveal from './Reveal';
 import VideoHeroMedia from './VideoHeroMedia';
 import EditorialChrome, {
   EDITORIAL_COLLECTION_GRID,
@@ -118,7 +119,7 @@ function EditorialHero({ block, shop, heroMedia }: {
           as="h1"
           blockId={block.id}
           field="headline"
-          className="font-serif text-4xl italic leading-[1.08] tracking-tight md:text-5xl lg:text-6xl"
+          className="font-serif text-4xl italic leading-[1.12] tracking-tight md:text-5xl lg:text-6xl"
         >
           {block.headline}
         </EditableText>
@@ -206,7 +207,7 @@ function EditorialGrid({ block, shop, products }: {
   return (
     <section id="collection" data-block-section={block.id} className="border-b border-neutral-900">
       <div className="flex flex-col items-start justify-between gap-4 px-5 py-10 md:flex-row md:items-baseline md:px-10 md:py-14">
-        <EditableText as="h2" blockId={block.id} field="title" className="font-serif text-4xl font-black tracking-tight md:text-6xl">
+        <EditableText as="h2" blockId={block.id} field="title" className="font-serif text-4xl font-black tracking-tight md:text-5xl">
           {block.title}
         </EditableText>
         <EditableText as="p" blockId={block.id} field="intro" className="max-w-md text-sm leading-relaxed text-neutral-500">
@@ -369,28 +370,53 @@ export default function EditorialTemplate({ shop, products, config, heroMedia }:
 
   return (
     <EditorialChrome shop={shop} config={config} active="home">
-      {flowBlocks.map((block) => {
+      {flowBlocks.map((block, i) => {
+        // The hero (LCP) stays static; the welded features spread and every
+        // other body section ride the Reveal island (fade-in-up on scroll,
+        // static in editor previews / reduced motion — see Reveal.tsx).
         switch (block.type) {
           case 'hero_banner':
             return (
               <Fragment key={block.id}>
                 <EditorialHero block={block} shop={shop} heroMedia={heroMedia} />
-                <EditorialFeatures shop={shop} products={products} />
+                <Reveal>
+                  <EditorialFeatures shop={shop} products={products} />
+                </Reveal>
               </Fragment>
             );
           case 'product_grid':
-            return <EditorialGrid key={block.id} block={block} shop={shop} products={products} />;
+            return (
+              <Reveal key={block.id} delay={Math.min(i * 0.05, 0.15)}>
+                <EditorialGrid block={block} shop={shop} products={products} />
+              </Reveal>
+            );
           case 'story_text':
-            return <EditorialStory key={block.id} block={block} shopName={shop.shop_name} />;
+            return (
+              <Reveal key={block.id} delay={Math.min(i * 0.05, 0.15)}>
+                <EditorialStory block={block} shopName={shop.shop_name} />
+              </Reveal>
+            );
           case 'product_tabs':
-            return <EditorialProductTabs key={block.id} block={block} />;
+            return (
+              <Reveal key={block.id} delay={Math.min(i * 0.05, 0.15)}>
+                <EditorialProductTabs block={block} />
+              </Reveal>
+            );
           case 'video_hero':
-            return <EditorialVideoHero key={block.id} block={block} shopName={shop.shop_name} />;
+            return (
+              <Reveal key={block.id} delay={Math.min(i * 0.05, 0.15)}>
+                <EditorialVideoHero block={block} shopName={shop.shop_name} />
+              </Reveal>
+            );
           default:
             return null;
         }
       })}
-      {indexRow && <EditorialIndexRow block={indexRow} />}
+      {indexRow && (
+        <Reveal>
+          <EditorialIndexRow block={indexRow} />
+        </Reveal>
+      )}
     </EditorialChrome>
   );
 }

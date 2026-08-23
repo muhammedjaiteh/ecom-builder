@@ -13,6 +13,7 @@ import {
 import { buildWhatsAppLink } from '@/lib/orderFlow';
 import CartBagButton from '../CartBagButton';
 import EditableText from '../EditableText';
+import SiteSearch from '../SiteSearch';
 
 // MINIMAL (template_key 'ritual') chrome — the sticky logo nav and structured
 // footer every /site page of a ritual shop shares (home, collections, product
@@ -182,8 +183,10 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
             <a href="#contact" className={navLink(false)}>Contact</a>
           </div>
           <div className="flex shrink-0 items-center gap-1 md:gap-2">
-            {/* Client island: live cart trigger — the drawer is mounted once
-                in the root layout, so the context reaches every /site page. */}
+            {/* Client islands: shop-scoped search + live cart trigger — the
+                drawer is mounted once in the root layout, so the context
+                reaches every /site page. */}
+            <SiteSearch tone="ritual" shopId={shop.id} basePath={base} shopName={shop.shop_name} />
             <CartBagButton tone="ritual" />
             <Link
               href={collectionsHref}

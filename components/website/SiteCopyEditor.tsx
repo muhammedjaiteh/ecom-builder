@@ -43,6 +43,7 @@ import {
 } from '@/lib/offlineOutbox';
 import EditorialTemplate from '@/components/site-templates/EditorialTemplate';
 import { GatedVideoPreviewScope } from '@/components/site-templates/GatedVideo';
+import { RevealPreviewScope } from '@/components/site-templates/Reveal';
 import RitualTemplate from '@/components/site-templates/RitualTemplate';
 import BottomSheet from '@/components/website/BottomSheet';
 import VideoHeroPicker, { type VideoHeroSelection } from '@/components/website/VideoHeroPicker';
@@ -1010,9 +1011,15 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
                     {/* GatedVideoPreviewScope: every hero/gallery video in the
                         scaled preview renders its static poster state — no
                         autoplay storm, no dead play button under the editor's
-                        click-capture. */}
+                        click-capture.
+                        RevealPreviewScope: entrance animations render static —
+                        the click-overlay and scroll targeting measure
+                        post-transform DOM rects, and a mid-animation translateY
+                        would corrupt every measurement. */}
                     <GatedVideoPreviewScope>
-                      <Template shop={shop} products={products} config={previewConfig} heroMedia={heroMedia} />
+                      <RevealPreviewScope>
+                        <Template shop={shop} products={products} config={previewConfig} heroMedia={heroMedia} />
+                      </RevealPreviewScope>
                     </GatedVideoPreviewScope>
                   </div>
                 </div>

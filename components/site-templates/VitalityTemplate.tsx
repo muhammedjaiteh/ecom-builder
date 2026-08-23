@@ -1,7 +1,9 @@
 import Link from 'next/link';
 import SmartImage from '@/components/SmartImage';
 import GatedVideo from '@/components/site-templates/GatedVideo';
-import { siteCollectionsPath, siteProductPath, type SiteTemplateProps } from '@/lib/siteTemplates';
+import Reveal from '@/components/site-templates/Reveal';
+import SiteSearch from '@/components/site-templates/SiteSearch';
+import { siteBasePath, siteCollectionsPath, siteProductPath, type SiteTemplateProps } from '@/lib/siteTemplates';
 
 // VITALITY — Health, Fitness & Bold General Brands.
 // Structure: bold nav with pill CTA → dark full-width hero with condensed
@@ -34,8 +36,10 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
       <nav className="sticky top-0 z-50 border-b border-white/10 bg-[#0C0C0C]/90 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 md:px-10">
           <span className="text-lg font-black uppercase tracking-tight">{shop.shop_name}</span>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-3 md:gap-6">
             <a href="#lineup" className="hidden min-h-11 items-center text-[10px] font-black uppercase tracking-[0.25em] text-white/50 transition hover:text-white md:inline-flex">The Lineup</a>
+            {/* Client island: shop-scoped search (neutral/dark dialect). */}
+            <SiteSearch tone="neutral" shopId={shop.id} basePath={siteBasePath(shop)} shopName={shop.shop_name} />
             <Link
               href={collectionsHref}
               className="inline-flex min-h-11 items-center rounded-full bg-[#f0a500] px-6 text-[10px] font-black uppercase tracking-[0.2em] text-black transition hover:bg-amber-400 active:scale-95"
@@ -84,7 +88,10 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
           <p className="inline-block rounded-sm bg-[#f0a500] px-3 py-1 text-[10px] font-black uppercase tracking-[0.3em] text-black">
             {site.tagline}
           </p>
-          <h1 className="mt-6 max-w-4xl text-6xl font-black uppercase leading-[0.95] tracking-tighter md:text-8xl">
+          {/* Quiet-luxury type cap (Beta QA pass): 6xl/8xl → 5xl/6xl with
+              breathing leading — the condensed dialect survives, the shout
+              does not. */}
+          <h1 className="mt-6 max-w-4xl text-5xl font-black uppercase leading-[1.02] tracking-tight md:text-6xl">
             {site.hero_headline}
           </h1>
           <p className="mt-6 max-w-xl text-lg leading-relaxed text-white/70">{site.hero_subheadline}</p>
@@ -97,9 +104,10 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
         </div>
       </header>
 
-      {/* Stats band */}
+      {/* Stats band — fade-in-up on scroll (static under reduced motion
+          and in editor previews — see Reveal.tsx). */}
       <section className="mx-auto max-w-7xl px-5 py-16 md:px-10">
-        <div className="grid grid-cols-3 divide-x divide-white/10 text-center">
+        <Reveal className="grid grid-cols-3 divide-x divide-white/10 text-center">
           {[
             { n: `${products.length}`, label: 'Products In The Lineup' },
             { n: `${categoryCount}`, label: categoryCount === 1 ? 'Focused Category' : 'Categories Covered' },
@@ -109,37 +117,40 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
             { n: '1:1', label: 'Direct WhatsApp Checkout' },
           ].map((s) => (
             <div key={s.label} className="px-4">
-              <p className="text-5xl font-black tracking-tighter text-[#f0a500] md:text-6xl">{s.n}</p>
+              <p className="text-4xl font-black tracking-tighter text-[#f0a500] md:text-5xl">{s.n}</p>
               <p className="mt-2 text-[10px] font-black uppercase tracking-[0.25em] text-white/50">{s.label}</p>
             </div>
           ))}
-        </div>
+        </Reveal>
       </section>
 
-      {/* Gold value-prop stripes */}
+      {/* Gold value-prop stripes — sibling stagger as they co-enter the fold */}
       <section className="space-y-3 py-8">
         {site.value_props.map((v, i) => (
-          <div
-            key={v.title}
-            className={`flex flex-col gap-1 border-y border-white/10 px-5 py-6 md:flex-row md:items-center md:gap-10 md:px-10 ${i === 1 ? 'bg-[#f0a500] text-black' : 'bg-[#111]'}`}
-          >
-            <p className={`w-full shrink-0 text-2xl font-black uppercase tracking-tight md:w-96 ${i === 1 ? 'text-black' : 'text-white'}`}>
-              {v.title}
-            </p>
-            <p className={`text-sm leading-relaxed ${i === 1 ? 'text-black/70' : 'text-white/60'}`}>{v.body}</p>
-          </div>
+          <Reveal key={v.title} delay={i * 0.08}>
+            <div
+              className={`flex flex-col gap-1 border-y border-white/10 px-5 py-6 md:flex-row md:items-center md:gap-10 md:px-10 ${i === 1 ? 'bg-[#f0a500] text-black' : 'bg-[#111]'}`}
+            >
+              <p className={`w-full shrink-0 text-2xl font-black uppercase tracking-tight md:w-96 ${i === 1 ? 'text-black' : 'text-white'}`}>
+                {v.title}
+              </p>
+              <p className={`text-sm leading-relaxed ${i === 1 ? 'text-black/70' : 'text-white/60'}`}>{v.body}</p>
+            </div>
+          </Reveal>
         ))}
       </section>
 
       {/* Benefit-led product rows */}
-      <section id="lineup" className="mx-auto max-w-7xl px-5 py-20 md:px-10">
-        <h2 className="text-4xl font-black uppercase tracking-tighter md:text-6xl">{site.collection_title}</h2>
-        <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/60">{site.collection_intro}</p>
+      <section id="lineup" className="mx-auto max-w-7xl px-5 py-20 md:px-10 md:py-24">
+        <Reveal>
+          <h2 className="text-4xl font-black uppercase tracking-tight md:text-5xl">{site.collection_title}</h2>
+          <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/60">{site.collection_intro}</p>
+        </Reveal>
 
         <div className="mt-14 space-y-8">
           {products.slice(0, 6).map((p, i) => (
+            <Reveal key={p.id} delay={Math.min(i, 2) * 0.06}>
             <Link
-              key={p.id}
               href={productHref(p.id)}
               className={`group grid grid-cols-1 items-center gap-6 rounded-2xl border border-white/10 bg-[#111] p-5 transition-all duration-300 hover:border-[#f0a500]/50 hover:bg-[#151515] md:grid-cols-[280px_1fr_auto] ${i % 2 === 1 ? 'md:grid-cols-[1fr_280px_auto]' : ''}`}
             >
@@ -168,22 +179,23 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
                 View
               </span>
             </Link>
+            </Reveal>
           ))}
         </div>
       </section>
 
       {/* Brand story */}
-      <section className="border-y border-white/10 bg-[#111] py-20">
-        <div className="mx-auto max-w-3xl px-5 md:px-10">
+      <section className="border-y border-white/10 bg-[#111] py-20 md:py-24">
+        <Reveal className="mx-auto max-w-3xl px-5 md:px-10">
           <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#f0a500]">The Mission</p>
           <p className="mt-6 text-2xl font-bold leading-relaxed text-white/90 md:text-3xl">{site.brand_story}</p>
-        </div>
+        </Reveal>
       </section>
 
       {/* CTA */}
       <section className="py-24 text-center">
-        <div className="mx-auto max-w-2xl px-5 md:px-10">
-          <h2 className="text-4xl font-black uppercase tracking-tighter md:text-6xl">{site.cta_banner.headline}</h2>
+        <Reveal className="mx-auto max-w-2xl px-5 md:px-10">
+          <h2 className="text-4xl font-black uppercase tracking-tight md:text-5xl">{site.cta_banner.headline}</h2>
           <p className="mx-auto mt-4 max-w-lg text-base leading-relaxed text-white/60">{site.cta_banner.subtext}</p>
           <Link
             href={collectionsHref}
@@ -191,7 +203,7 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
           >
             <span className="inline-block skew-x-[6deg]">{site.cta_banner.button_label}</span>
           </Link>
-        </div>
+        </Reveal>
       </section>
 
       <footer className="border-t border-white/10 py-10">

@@ -3,6 +3,7 @@
 import { useLayoutEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import EditorialTemplate from '@/components/site-templates/EditorialTemplate';
 import { GatedVideoPreviewScope } from '@/components/site-templates/GatedVideo';
+import { RevealPreviewScope } from '@/components/site-templates/Reveal';
 import RitualTemplate from '@/components/site-templates/RitualTemplate';
 import VitalityTemplate from '@/components/site-templates/VitalityTemplate';
 import type {
@@ -127,9 +128,13 @@ export default function MiniSitePreview({ concept, shopName }: MiniSitePreviewPr
         style={{ width: DESIGN_WIDTH, transform: `scale(${scale})` }}
       >
         {/* GatedVideoPreviewScope: heroMedia is null here today, but any
-            future video block in a miniature stays a static poster. */}
+            future video block in a miniature stays a static poster.
+            RevealPreviewScope: entrance animations render static — the scaled
+            miniature must never carry mid-animation transforms. */}
         <GatedVideoPreviewScope>
-          <Template shop={previewShop} products={PREVIEW_PRODUCTS} config={previewConfig} heroMedia={null} />
+          <RevealPreviewScope>
+            <Template shop={previewShop} products={PREVIEW_PRODUCTS} config={previewConfig} heroMedia={null} />
+          </RevealPreviewScope>
         </GatedVideoPreviewScope>
       </div>
       {/* Soft edge fade — signals the page continues below the crop. */}
