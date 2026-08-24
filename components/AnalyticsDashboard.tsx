@@ -1,160 +1,296 @@
 'use client';
 
-import { useMemo } from 'react';
-import { DollarSign, ShoppingCart, TrendingUp, Package, ArrowUpRight } from 'lucide-react';
+import { useMemo, type ReactNode } from 'react';
+import { Package, ShoppingCart, WifiOff } from 'lucide-react';
+import { orderStatusLabel, orderTotal } from '@/lib/orderMetrics';
 
-type OrderItem = { 
-  quantity: number; 
-  products: { name: string; image_url: string | null } 
+// ─────────────────────────────────────────────────────────────────────────────
+// AnalyticsDashboard — the shared closed-loop WhatsApp analytics surface,
+// mounted by BOTH the command center (?tab=analytics) and /dashboard/analytics.
+//
+// THE THREE HERO METRICS (vocabulary: sql/analytics.sql — 'completed' is the
+// terminal paid state, labelled Paid; 'cancelled' the terminal flake state):
+//   · Gross Revenue      = Σ total_amount over 'completed' orders, with the
+//                          order_items (qty × price_at_time) fallback for
+//                          pre-backfill rows whose total_amount is NULL.
+//   · Paid Orders        = count('completed').
+//   · WhatsApp Conversion = completed / (completed + pending + cancelled),
+//                          one decimal, with the honest denominator subline.
+//     Legacy 'new'/'processing'/'shipped' rows predate the WhatsApp checkout
+//     funnel and are excluded from the conversion denominator by design.
+//
+// Each card carries a muted 30-day delta vs the PRIOR 30-day window — hidden
+// (fixed-height slot stays, zero CLS) whenever the prior window has no
+// baseline, because a trend against nothing is a fabricated trend. The Gross
+// Revenue card closes with a single pure-SVG 30-day sparkline: no axes, no
+// gridlines, muted brand stroke, aria-labelled. No chart library.
+//
+// Gambia standard: fixed-height cards (h-48) with structurally identical
+// skeletons (zero CLS), and an honest load-failure chip — a failed read must
+// never render as "D0 revenue".
+// ─────────────────────────────────────────────────────────────────────────────
+
+type AnalyticsOrderItem = {
+  quantity: number;
+  price_at_time?: number | null;
+  products: { name: string; image_url: string | null };
 };
 
-type Order = { 
-  id: string; 
-  total_amount: number; 
-  status: string; 
-  created_at: string; 
-  customers: { name: string }; 
-  order_items: OrderItem[] 
+type AnalyticsOrder = {
+  id: string;
+  total_amount: number | null;
+  status: string;
+  created_at: string;
+  customers: { name: string };
+  order_items: AnalyticsOrderItem[];
 };
 
-type Product = { 
-  id: string; 
-  name: string; 
-  price: number; 
-  image_url: string | null 
+type AnalyticsProduct = {
+  id: string;
+  name: string;
+  price: number;
+  image_url: string | null;
 };
 
 interface AnalyticsDashboardProps {
-  orders: Order[];
-  products: Product[];
+  orders: AnalyticsOrder[];
+  /** Accepted for surface parity; the current metric set is order-derived. */
+  products: AnalyticsProduct[];
+  /** Renders fixed-height skeletons in place of every section. */
+  loading?: boolean;
+  /** The orders read failed — show the honest chip, never zeros-as-data. */
+  loadError?: boolean;
 }
 
-export default function AnalyticsDashboard({ orders, products }: AnalyticsDashboardProps) {
-  
-  // Calculate analytics metrics
-  const analytics = useMemo(() => {
-    const totalRevenue = orders.reduce((acc, order) => acc + Number(order.total_amount), 0);
-    const totalOrders = orders.length;
-    const averageOrderValue = totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0;
-    const totalProductsSold = orders.reduce((acc, order) => 
-      acc + order.order_items.reduce((itemAcc, item) => itemAcc + item.quantity, 0), 0
-    );
+const DAY_MS = 86_400_000;
+const FUNNEL_STATUSES = new Set(['completed', 'pending', 'cancelled']);
 
-    // Calculate top performing products
-    const productSales: Record<string, { name: string; quantity: number; image_url: string | null }> = {};
-    orders.forEach((order) => {
+// Time anchor at MODULE scope: reading the clock during render violates
+// react-hooks/purity (unstable results across re-renders). Both dashboard
+// surfaces fetch orders on mount, so a page-load anchor is exactly aligned
+// with the data it windows.
+const NOW_MS = Date.now();
+const TODAY_START_MS = (() => {
+  const d = new Date(NOW_MS);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+})();
+
+/** Relative % change against a prior-window baseline; null = no honest baseline. */
+function relativeDelta(current: number, prior: number): number | null {
+  if (prior <= 0) return null;
+  return ((current - prior) / prior) * 100;
+}
+
+/** Muted ▲/▼ delta row. The slot keeps its height when hidden — zero CLS. */
+function TrendDelta({ delta }: { delta: number | null }) {
+  return (
+    <div className="flex h-4 items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest">
+      {delta !== null && (
+        <>
+          <span className={delta >= 0 ? 'text-emerald-600/80' : 'text-red-400'}>
+            {delta >= 0 ? '▲' : '▼'} {Math.abs(delta).toFixed(1)}%
+          </span>
+          <span className="font-medium normal-case tracking-normal text-gray-300">vs prior 30 days</span>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Pure-SVG sparkline — one muted brand-stroke path, no axes, no gridlines. */
+function RevenueSparkline({ values }: { values: number[] }) {
+  const W = 100;
+  const H = 32;
+  const PAD = 2;
+  const max = Math.max(...values, 1);
+  const step = values.length > 1 ? W / (values.length - 1) : W;
+  const d = `M${values
+    .map((v, i) => `${(i * step).toFixed(2)},${(H - PAD - (v / max) * (H - PAD * 2)).toFixed(2)}`)
+    .join(' L')}`;
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      preserveAspectRatio="none"
+      className="h-9 w-full"
+      role="img"
+      aria-label="Daily paid revenue over the last 30 days"
+    >
+      <path
+        d={d}
+        fill="none"
+        stroke="#1a2e1a"
+        strokeOpacity={0.32}
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        vectorEffect="non-scaling-stroke"
+      />
+    </svg>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  sub,
+  delta,
+  footer,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  delta: number | null;
+  footer?: ReactNode;
+}) {
+  return (
+    <div className="flex h-48 flex-col rounded-[2rem] border border-gray-100 bg-white p-6 shadow-sm">
+      <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">{label}</p>
+      <p className="mt-2 truncate font-serif text-3xl font-medium tabular-nums text-gray-900 md:text-4xl">{value}</p>
+      <p className="mt-1 h-4 truncate text-xs text-gray-400">{sub}</p>
+      <div className="mt-1.5">
+        <TrendDelta delta={delta} />
+      </div>
+      <div className="mt-auto h-9">{footer}</div>
+    </div>
+  );
+}
+
+function SkeletonState() {
+  return (
+    <div className="space-y-8">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="h-48 animate-pulse rounded-[2rem] border border-gray-100 bg-white p-6 shadow-sm">
+            <div className="h-3 w-24 rounded-full bg-gray-100" />
+            <div className="mt-4 h-9 w-32 rounded-xl bg-gray-100" />
+            <div className="mt-3 h-3 w-40 rounded-full bg-gray-50" />
+          </div>
+        ))}
+      </div>
+      <div className="h-64 animate-pulse rounded-[2rem] border border-gray-100 bg-white shadow-sm" />
+      <div className="h-64 animate-pulse rounded-[2rem] border border-gray-100 bg-white shadow-sm" />
+    </div>
+  );
+}
+
+export default function AnalyticsDashboard({ orders, loading = false, loadError = false }: AnalyticsDashboardProps) {
+  const analytics = useMemo(() => {
+    const now = NOW_MS;
+    const cutCurrent = now - 30 * DAY_MS;
+    const cutPrior = now - 60 * DAY_MS;
+    const createdAt = (o: AnalyticsOrder) => new Date(o.created_at).getTime();
+
+    const completed = orders.filter((o) => o.status === 'completed');
+    const funnel = orders.filter((o) => FUNNEL_STATUSES.has(o.status));
+
+    // Hero metrics — all-time.
+    const grossRevenue = completed.reduce((acc, o) => acc + orderTotal(o), 0);
+    const paidCount = completed.length;
+    const funnelCount = funnel.length;
+    const conversion = funnelCount > 0 ? (paidCount / funnelCount) * 100 : null;
+
+    // 30-day windows for the trend deltas.
+    const curCompleted = completed.filter((o) => createdAt(o) >= cutCurrent);
+    const priorCompleted = completed.filter((o) => { const t = createdAt(o); return t >= cutPrior && t < cutCurrent; });
+    const curFunnel = funnel.filter((o) => createdAt(o) >= cutCurrent);
+    const priorFunnel = funnel.filter((o) => { const t = createdAt(o); return t >= cutPrior && t < cutCurrent; });
+
+    const revenueDelta = relativeDelta(
+      curCompleted.reduce((acc, o) => acc + orderTotal(o), 0),
+      priorCompleted.reduce((acc, o) => acc + orderTotal(o), 0)
+    );
+    const paidDelta = relativeDelta(curCompleted.length, priorCompleted.length);
+    const curConversion = curFunnel.length > 0 ? (curCompleted.length / curFunnel.length) * 100 : null;
+    const priorConversion = priorFunnel.length > 0 ? (priorCompleted.length / priorFunnel.length) * 100 : null;
+    const conversionDelta = curConversion !== null && priorConversion !== null
+      ? relativeDelta(curConversion, priorConversion)
+      : null;
+
+    // 30-day daily paid-revenue buckets for the sparkline.
+    const spark = new Array<number>(30).fill(0);
+    for (const o of completed) {
+      const d = new Date(o.created_at);
+      if (Number.isNaN(d.getTime())) continue;
+      d.setHours(0, 0, 0, 0);
+      const daysAgo = Math.round((TODAY_START_MS - d.getTime()) / DAY_MS);
+      if (daysAgo >= 0 && daysAgo < 30) spark[29 - daysAgo] += orderTotal(o);
+    }
+
+    // Top products + recent activity — cancelled orders are excluded from
+    // sales counts (their stock was returned); the activity log keeps every
+    // status and lets the badge tell the truth.
+    const activeOrders = orders.filter((o) => o.status !== 'cancelled');
+    const productSales: Record<string, { name: string; quantity: number }> = {};
+    activeOrders.forEach((order) => {
       order.order_items.forEach((item) => {
-        const productName = item.products?.name || 'Unknown';
-        if (!productSales[productName]) {
-          productSales[productName] = { name: productName, quantity: 0, image_url: item.products?.image_url || null };
-        }
-        productSales[productName].quantity += item.quantity;
+        const name = item.products?.name || 'Unknown';
+        if (!productSales[name]) productSales[name] = { name, quantity: 0 };
+        productSales[name].quantity += item.quantity;
       });
     });
-
     const topProducts = Object.values(productSales)
       .sort((a, b) => b.quantity - a.quantity)
       .slice(0, 5);
 
-    // Calculate recent activity (last 7 days)
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const recentOrders = orders.filter(order => new Date(order.created_at) > sevenDaysAgo).slice(0, 5);
+    const sevenDaysAgo = now - 7 * DAY_MS;
+    const recentOrders = orders.filter((o) => createdAt(o) > sevenDaysAgo).slice(0, 5);
 
     return {
-      totalRevenue,
-      totalOrders,
-      averageOrderValue,
-      totalProductsSold,
-      topProducts,
-      recentOrders,
+      grossRevenue, paidCount, funnelCount, conversion,
+      revenueDelta, paidDelta, conversionDelta,
+      spark, topProducts, recentOrders,
     };
   }, [orders]);
 
-  // Calculate max quantity for bar chart scaling
-  const maxQuantity = Math.max(...analytics.topProducts.map(p => p.quantity), 1);
+  if (loading) return <SkeletonState />;
+
+  const maxQuantity = Math.max(...analytics.topProducts.map((p) => p.quantity), 1);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
-      
-      {/* STAT CARDS */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-4 md:gap-6">
-        
-        {/* Total Revenue Card */}
-        <div className="rounded-2xl bg-gradient-to-br from-emerald-50 to-green-50 border border-emerald-100 p-6 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-emerald-600 mb-2">Total Revenue</p>
-              <p className="text-3xl font-black text-emerald-900">D{analytics.totalRevenue.toLocaleString()}</p>
-            </div>
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
-              <DollarSign size={24} />
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700">
-            <ArrowUpRight size={14} />
-            <span>All time earnings</span>
-          </div>
-        </div>
 
-        {/* Total Orders Card */}
-        <div className="rounded-2xl bg-gradient-to-br from-blue-50 to-cyan-50 border border-blue-100 p-6 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-blue-600 mb-2">Total Orders</p>
-              <p className="text-3xl font-black text-blue-900">{analytics.totalOrders}</p>
-            </div>
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-blue-600">
-              <ShoppingCart size={24} />
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5 text-xs font-bold text-blue-700">
-            <ArrowUpRight size={14} />
-            <span>{analytics.recentOrders.length} in last 7 days</span>
-          </div>
+      {/* Honest failure chip — cards below show em-dashes, never fake zeros */}
+      {loadError && (
+        <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-amber-800">
+          <WifiOff size={12} /> Sales data could not load — check your connection and refresh
         </div>
+      )}
 
-        {/* Average Order Value Card */}
-        <div className="rounded-2xl bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100 p-6 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-purple-600 mb-2">Avg Order Value</p>
-              <p className="text-3xl font-black text-purple-900">D{analytics.averageOrderValue.toLocaleString()}</p>
-            </div>
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-purple-100 text-purple-600">
-              <TrendingUp size={24} />
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5 text-xs font-bold text-purple-700">
-            <ArrowUpRight size={14} />
-            <span>Per transaction</span>
-          </div>
-        </div>
-
-        {/* Total Products Sold Card */}
-        <div className="rounded-2xl bg-gradient-to-br from-orange-50 to-amber-50 border border-orange-100 p-6 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-orange-600 mb-2">Items Sold</p>
-              <p className="text-3xl font-black text-orange-900">{analytics.totalProductsSold}</p>
-            </div>
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-orange-100 text-orange-600">
-              <Package size={24} />
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5 text-xs font-bold text-orange-700">
-            <ArrowUpRight size={14} />
-            <span>Units shipped</span>
-          </div>
-        </div>
-
+      {/* THE THREE HERO METRICS */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
+        <MetricCard
+          label="Gross Revenue"
+          value={loadError ? '—' : `D${analytics.grossRevenue.toLocaleString()}`}
+          sub="Paid orders only, all time"
+          delta={loadError ? null : analytics.revenueDelta}
+          footer={loadError ? undefined : <RevenueSparkline values={analytics.spark} />}
+        />
+        <MetricCard
+          label="Paid Orders"
+          value={loadError ? '—' : analytics.paidCount.toLocaleString()}
+          sub="Marked paid by you, all time"
+          delta={loadError ? null : analytics.paidDelta}
+        />
+        <MetricCard
+          label="WhatsApp Conversion"
+          value={loadError || analytics.conversion === null ? '—' : `${analytics.conversion.toFixed(1)}%`}
+          sub={
+            loadError
+              ? 'Unavailable'
+              : analytics.funnelCount > 0
+                ? `of ${analytics.funnelCount.toLocaleString()} WhatsApp checkout${analytics.funnelCount === 1 ? '' : 's'}`
+                : 'No WhatsApp checkouts yet'
+          }
+          delta={loadError ? null : analytics.conversionDelta}
+        />
       </div>
 
       {/* TOP PERFORMING PRODUCTS */}
-      <div className="rounded-2xl bg-white border border-gray-100 shadow-sm p-6 md:p-8">
+      <div className="rounded-[2rem] border border-gray-100 bg-white p-6 shadow-sm md:p-8">
         <div className="mb-6">
           <h3 className="text-lg font-bold text-gray-900 mb-1">Top Performing Products</h3>
-          <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Based on quantity sold</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Units ordered, cancelled orders excluded</p>
         </div>
 
         {analytics.topProducts.length === 0 ? (
@@ -168,27 +304,20 @@ export default function AnalyticsDashboard({ orders, products }: AnalyticsDashbo
               const percentage = (product.quantity / maxQuantity) * 100;
               return (
                 <div key={idx} className="space-y-2">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <div className="mb-2 flex items-center justify-between">
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
                       <span className="text-xs font-bold uppercase tracking-widest text-gray-400">#{idx + 1}</span>
-                      <p className="text-sm font-bold text-gray-900 truncate">{product.name}</p>
+                      <p className="truncate text-sm font-bold text-gray-900">{product.name}</p>
                     </div>
-                    <span className="ml-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold whitespace-nowrap">
+                    <span className="ml-2 whitespace-nowrap rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold tabular-nums text-emerald-700">
                       {product.quantity} sold
                     </span>
                   </div>
-                  
-                  {/* Tailwind CSS Bar Chart */}
-                  <div className="relative h-8 bg-gray-100 rounded-lg overflow-hidden">
-                    <div 
-                      className="absolute inset-y-0 left-0 bg-gradient-to-r from-emerald-400 to-green-500 rounded-lg transition-all duration-500"
+                  <div className="relative h-2 overflow-hidden rounded-full bg-gray-100">
+                    <div
+                      className="absolute inset-y-0 left-0 rounded-full bg-[#1a2e1a]/70 transition-all duration-500"
                       style={{ width: `${percentage}%` }}
                     />
-                    <div className="absolute inset-0 flex items-center px-3">
-                      <span className="text-xs font-bold text-gray-700" style={{ opacity: percentage > 30 ? 1 : 0 }}>
-                        {percentage > 30 && `${Math.round(percentage)}%`}
-                      </span>
-                    </div>
                   </div>
                 </div>
               );
@@ -198,10 +327,10 @@ export default function AnalyticsDashboard({ orders, products }: AnalyticsDashbo
       </div>
 
       {/* RECENT ACTIVITY */}
-      <div className="rounded-2xl bg-white border border-gray-100 shadow-sm overflow-hidden">
-        <div className="border-b border-gray-100 px-6 md:px-8 py-6 md:py-8">
+      <div className="overflow-hidden rounded-[2rem] border border-gray-100 bg-white shadow-sm">
+        <div className="border-b border-gray-100 px-6 py-6 md:px-8 md:py-8">
           <h3 className="text-lg font-bold text-gray-900 mb-1">Recent Activity</h3>
-          <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Last 7 days</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Last 7 days</p>
         </div>
 
         {analytics.recentOrders.length === 0 ? (
@@ -216,7 +345,7 @@ export default function AnalyticsDashboard({ orders, products }: AnalyticsDashbo
               const today = new Date();
               const yesterday = new Date(today);
               yesterday.setDate(yesterday.getDate() - 1);
-              
+
               let dateLabel = orderDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
               if (orderDate.toDateString() === today.toDateString()) {
                 dateLabel = 'Today';
@@ -224,27 +353,32 @@ export default function AnalyticsDashboard({ orders, products }: AnalyticsDashbo
                 dateLabel = 'Yesterday';
               }
 
+              const itemCount = order.order_items.reduce((acc, item) => acc + item.quantity, 0);
               return (
-                <div key={order.id} className="p-5 md:p-6 hover:bg-gray-50 transition-colors">
+                <div key={order.id} className="p-5 transition-colors hover:bg-gray-50 md:p-6">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="mb-2 flex items-center gap-2">
                         <h4 className="text-sm font-bold text-gray-900">{order.customers.name}</h4>
-                        <span className={`px-2 py-1 text-[9px] font-bold uppercase tracking-widest rounded-full ${
-                          order.status === 'completed' ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-700'
+                        <span className={`rounded-full px-2 py-1 text-[9px] font-bold uppercase tracking-widest ${
+                          order.status === 'completed'
+                            ? 'bg-green-50 text-green-700'
+                            : order.status === 'cancelled'
+                              ? 'bg-gray-100 text-gray-500'
+                              : 'bg-orange-50 text-orange-700'
                         }`}>
-                          {order.status}
+                          {orderStatusLabel(order.status)}
                         </span>
                       </div>
-                      <p className="text-xs text-gray-500 mb-2">
+                      <p className="mb-2 text-xs text-gray-500">
                         {order.order_items.map((item) => item.products?.name || 'Unknown').join(', ')}
                       </p>
                       <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">{dateLabel}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-lg font-black text-gray-900">D{order.total_amount.toLocaleString()}</p>
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mt-1">
-                        {order.order_items.reduce((acc, item) => acc + item.quantity, 0)} item{order.order_items.reduce((acc, item) => acc + item.quantity, 0) !== 1 ? 's' : ''}
+                      <p className="text-lg font-black tabular-nums text-gray-900">D{orderTotal(order).toLocaleString()}</p>
+                      <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                        {itemCount} item{itemCount !== 1 ? 's' : ''}
                       </p>
                     </div>
                   </div>

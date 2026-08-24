@@ -36,6 +36,10 @@ export type OrderItem = {
   id?: string;
   quantity: number;
   price?: number;
+  /** FK to products — required by the Cancel & Restock loop (increment_stock RPC). */
+  product_id?: string | null;
+  /** Unit price frozen at checkout (Cart.tsx) — the total_amount fallback source. */
+  price_at_time?: number | null;
   variant_details?: string;
   products?: {
     id?: string;
@@ -47,7 +51,8 @@ export type OrderItem = {
 export type Order = {
   id: string;
   shop_id: string;
-  total_amount: number;
+  /** NULL on pre-backfill legacy rows — always render via lib/orderMetrics orderTotal(). */
+  total_amount: number | null;
   status: 'new' | 'processing' | 'shipped' | 'completed' | 'cancelled' | 'pending';
   fulfillment_method?: 'delivery' | 'pickup';
   created_at: string;

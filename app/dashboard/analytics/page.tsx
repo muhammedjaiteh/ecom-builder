@@ -4,17 +4,21 @@
 // Analytics — the dedicated analytics surface.
 //
 // Upgraded from the legacy leads-only page: it now mounts the shared
-// AnalyticsDashboard (revenue, AOV, top products, recent activity — the same
-// component the command center's Analytics tab renders) on top, and preserves
-// the WhatsApp interest data below (the `leads` table is written by the
-// product page's order buttons and is shown nowhere else).
+// AnalyticsDashboard (Gross Revenue / Paid Orders / WhatsApp Conversion — the
+// same component the command center's Analytics tab renders) on top, and
+// preserves the WhatsApp interest data below (the `leads` table is written by
+// the product page's order buttons and is shown nowhere else).
+//
+// Gambia standard: no blank-screen spinner — the shell renders immediately
+// with fixed-height skeletons (AnalyticsDashboard owns its own), and a failed
+// orders read surfaces as an honest chip instead of zeros-as-data.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { createBrowserClient } from '@supabase/ssr';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, DollarSign, Loader2, MessageCircle, Users } from 'lucide-react';
+import { ArrowLeft, DollarSign, MessageCircle, Users } from 'lucide-react';
 import AnalyticsDashboard from '@/components/AnalyticsDashboard';
 import type { Order, Product } from '@/lib/types';
 
@@ -33,6 +37,7 @@ export default function AnalyticsPage() {
   );
 
   const [loading, setLoading] = useState(true);
+  const [ordersLoadError, setOrdersLoadError] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -46,7 +51,7 @@ export default function AnalyticsPage() {
       const [ordersRes, productsRes, leadsRes] = await Promise.all([
         supabase
           .from('orders')
-          .select(`id, total_amount, status, fulfillment_method, created_at, customers (name, phone_number, location), order_items (quantity, variant_details, products (name, image_url))`)
+          .select(`id, total_amount, status, fulfillment_method, created_at, customers (name, phone_number, location), order_items (quantity, product_id, price_at_time, variant_details, products (name, image_url))`)
           .eq('shop_id', user.id)
           .order('created_at', { ascending: false }),
         supabase
@@ -63,6 +68,8 @@ export default function AnalyticsPage() {
       ]);
       if (cancelled) return;
 
+      // Honest failure: a silent-empty orders read must never render as zeros.
+      setOrdersLoadError(Boolean(ordersRes.error));
       setOrders((ordersRes.data as unknown as Order[]) ?? []);
       setProducts((productsRes.data as Product[]) ?? []);
       setLeads((leadsRes.data as Lead[]) ?? []);
@@ -72,12 +79,9 @@ export default function AnalyticsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
-  if (loading) {
-    return <div className="flex min-h-screen items-center justify-center bg-[#F9F8F6]"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>;
-  }
-
   // Shape adapters for the shared AnalyticsDashboard (same mapping the
-  // command center performs before mounting it).
+  // command center performs before mounting it). price_at_time rides along
+  // for the pre-backfill total_amount fallback (lib/orderMetrics).
   const analyticsOrders = orders.map((order) => ({
     id: order.id,
     total_amount: order.total_amount,
@@ -86,6 +90,7 @@ export default function AnalyticsPage() {
     customers: { name: order.customers.name },
     order_items: order.order_items.map((item) => ({
       quantity: item.quantity,
+      price_at_time: item.price_at_time ?? null,
       products: {
         name: item.products?.name || 'Unknown Item',
         image_url: item.products?.image_url ?? null,
@@ -119,26 +124,37 @@ export default function AnalyticsPage() {
           <p className="mt-2 text-sm text-gray-500">Sales performance, best sellers, and WhatsApp buying interest.</p>
         </div>
 
-        <AnalyticsDashboard orders={analyticsOrders} products={analyticsProducts} />
+        <AnalyticsDashboard orders={analyticsOrders} products={analyticsProducts} loading={loading} loadError={ordersLoadError} />
 
         {/* WhatsApp interest — unique to this page: written by the product
-            page's order buttons before the WhatsApp handoff. */}
+            page's order buttons before the WhatsApp handoff. Skeletons keep
+            the section heights while the parallel reads land. */}
         <section className="mt-10">
           <h2 className="mb-4 text-sm font-bold uppercase tracking-widest text-gray-900">WhatsApp Interest</h2>
 
+          {loading ? (
+            <>
+              <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+                <div className="h-[132px] animate-pulse rounded-[2rem] border border-gray-100 bg-white shadow-sm" />
+                <div className="h-[132px] animate-pulse rounded-[2rem] border border-gray-100 bg-white shadow-sm" />
+              </div>
+              <div className="h-64 animate-pulse rounded-[2rem] border border-gray-100 bg-white shadow-sm" />
+            </>
+          ) : (
+          <>
           <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
-            <div className="rounded-[2rem] border border-gray-100 bg-white p-6 shadow-sm">
+            <div className="min-h-[132px] rounded-[2rem] border border-gray-100 bg-white p-6 shadow-sm">
               <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-400">
                 <Users size={14} className="text-blue-600" /> Total Leads
               </p>
-              <div className="font-serif text-3xl font-medium text-gray-900">{totalLeads}</div>
+              <div className="font-serif text-3xl font-medium tabular-nums text-gray-900">{totalLeads}</div>
               <p className="mt-2 text-xs text-gray-400">Taps on order buttons across your product pages</p>
             </div>
-            <div className="rounded-[2rem] border border-gray-100 bg-white p-6 shadow-sm">
+            <div className="min-h-[132px] rounded-[2rem] border border-gray-100 bg-white p-6 shadow-sm">
               <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-400">
                 <DollarSign size={14} className="text-green-600" /> Potential Revenue
               </p>
-              <div className="font-serif text-3xl font-medium text-gray-900">D{potentialRevenue.toLocaleString()}</div>
+              <div className="font-serif text-3xl font-medium tabular-nums text-gray-900">D{potentialRevenue.toLocaleString()}</div>
               <p className="mt-2 text-xs text-gray-400">Combined value of the products customers asked about</p>
             </div>
           </div>
@@ -166,6 +182,8 @@ export default function AnalyticsPage() {
               </div>
             )}
           </div>
+          </>
+          )}
         </section>
       </main>
     </div>

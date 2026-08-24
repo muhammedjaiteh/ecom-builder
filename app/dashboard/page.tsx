@@ -5,10 +5,12 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Package, DollarSign, TrendingUp, Plus, Edit, Trash2, ExternalLink,
-  BarChart3, Eye, Truck, LogOut, Lock,
+  BarChart3, Eye, Truck, LogOut, Lock, Ban,
   ShoppingCart, Clock, CheckCircle2, Phone, User, Users, MessageCircle,
   Settings, Loader2, Palette, Star, Globe
 } from 'lucide-react';
+import OrderActions, { OrderActionToast, useOrderToast } from '@/components/orders/OrderActions';
+import { orderStatusLabel, orderTotal } from '@/lib/orderMetrics';
 import Link from 'next/link';
 import Broadcast from './broadcast';
 import { OnboardingInterceptor } from '@/components/onboarding/MagicStorefrontBuilder';
@@ -136,6 +138,8 @@ export default function Dashboard() {
   const [totalOrders, setTotalOrders] = useState(0);
   const [totalRevenue, setTotalRevenue] = useState(0);
   const [topProduct, setTopProduct] = useState('None');
+  const [ordersLoadError, setOrdersLoadError] = useState(false);
+  const { toast, showToast } = useOrderToast();
 
   const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -160,27 +164,40 @@ export default function Dashboard() {
       const { data: productData } = await supabase.from('products').select('id, image_url, name, price, category').eq('user_id', user.id).order('created_at', { ascending: false });
       setProducts((productData as Product[]) || []);
 
-      const { data: ordersData } = await supabase.from('orders').select(`id, total_amount, status, fulfillment_method, created_at, customers (name, phone_number, location), order_items (quantity, variant_details, products (name, image_url))`).eq('shop_id', user.id).order('created_at', { ascending: false });
+      const { data: ordersData, error: ordersError } = await supabase.from('orders').select(`id, total_amount, status, fulfillment_method, created_at, customers (name, phone_number, location), order_items (quantity, product_id, price_at_time, variant_details, products (name, image_url))`).eq('shop_id', user.id).order('created_at', { ascending: false });
+
+      // Honest failure: a silent-empty read must never render as "D0 revenue".
+      setOrdersLoadError(Boolean(ordersError));
 
       if (ordersData) {
         const fetchedOrders = ordersData as unknown as Order[];
         setOrders(fetchedOrders);
-        setTotalOrders(fetchedOrders.length);
-        const revenue = fetchedOrders.reduce((acc, order) => acc + Number(order.total_amount), 0);
+
+        // Vocabulary-aware headline metrics (sql/analytics.sql): cancelled
+        // orders are not sales, and Gross Revenue counts PAID ('completed')
+        // orders only — matching the shared AnalyticsDashboard so the same
+        // label can never show two different numbers. orderTotal() covers
+        // pre-backfill rows whose total_amount is still NULL.
+        const activeOrders = fetchedOrders.filter((o) => o.status !== 'cancelled');
+        setTotalOrders(activeOrders.length);
+        const revenue = fetchedOrders
+          .filter((o) => o.status === 'completed')
+          .reduce((acc, order) => acc + orderTotal(order), 0);
         setTotalRevenue(revenue);
 
-        if (fetchedOrders.length > 0) {
+        if (activeOrders.length > 0) {
           const counts: Record<string, number> = {};
-          fetchedOrders.forEach((o) => o.order_items.forEach((i) => { const pName = i.products?.name || 'Unknown Item'; counts[pName] = (counts[pName] || 0) + i.quantity; }));
+          activeOrders.forEach((o) => o.order_items.forEach((i) => { const pName = i.products?.name || 'Unknown Item'; counts[pName] = (counts[pName] || 0) + i.quantity; }));
           setTopProduct(Object.keys(counts).reduce((a, b) => (counts[a] > counts[b] ? a : b), 'None'));
         }
 
+        // CRM spend: cancelled orders never count toward Total Spent.
         const crmMap = new Map<string, CustomerCRM>();
-        fetchedOrders.forEach((order) => {
+        activeOrders.forEach((order) => {
           const phone = order.customers.phone_number;
           if (!crmMap.has(phone)) crmMap.set(phone, { phone, name: order.customers.name, location: order.customers.location, totalSpent: 0, orderCount: 0, lastOrderDate: order.created_at });
           const c = crmMap.get(phone)!;
-          c.totalSpent += Number(order.total_amount);
+          c.totalSpent += orderTotal(order);
           c.orderCount += 1;
           if (new Date(order.created_at) > new Date(c.lastOrderDate)) c.lastOrderDate = order.created_at;
         });
@@ -191,24 +208,11 @@ export default function Dashboard() {
     loadDashboard();
   }, [router, supabase]);
 
-  const handleUpdateOrderStatus = async (orderId: string, newStatus: Order['status']) => {
-    if (!userId) {
-      alert('You must be logged in to update orders.');
-      return;
-    }
-
-    const previousOrders = orders;
-    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o)));
-    const { error } = await supabase
-      .from('orders')
-      .update({ status: newStatus })
-      .eq('id', orderId)
-      .eq('shop_id', userId);
-
-    if (error) {
-      alert("Failed to update status.");
-      setOrders(previousOrders);
-    }
+  // Status writes live in the shared OrderActions component (owner-scoped
+  // browser-client updates under orders_owner_update RLS, race-guarded);
+  // this applies its optimistic flips / resyncs to the local list.
+  const applyOrderStatus = (orderId: string, status: Order['status']) => {
+    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status } : o)));
   };
 
   const handleDelete = async (id: string) => {
@@ -229,6 +233,7 @@ export default function Dashboard() {
     customers: { name: order.customers.name },
     order_items: order.order_items.map((item) => ({
       quantity: item.quantity,
+      price_at_time: item.price_at_time ?? null,
       products: {
         name: item.products?.name || 'Unknown Item',
         image_url: item.products?.image_url ?? null,
@@ -293,6 +298,7 @@ export default function Dashboard() {
   return (
     <OnboardingInterceptor userId={userId!} productsCount={products.length} tier={shop?.subscription_tier ?? null}>
     <div className="min-h-screen bg-[#F9F8F6] font-sans text-gray-900 selection:bg-gray-900 selection:text-white pb-24">
+      <OrderActionToast toast={toast} />
 
       {/* 1. LUXURY HEADER */}
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-100 px-4 py-4 md:px-10">
@@ -366,12 +372,12 @@ export default function Dashboard() {
               {orders.slice(0, 3).map((order) => (
                 <div key={order.id} className="flex items-center justify-between p-5 border-b border-gray-50 last:border-0">
                   <div className="flex items-center gap-4">
-                    <div className={`flex h-10 w-10 items-center justify-center rounded-full ${order.status === 'pending' ? 'bg-orange-50 text-orange-500' : 'bg-green-50 text-green-500'}`}>
-                      {order.status === 'pending' ? <Clock size={16} /> : <CheckCircle2 size={16} />}
+                    <div className={`flex h-10 w-10 items-center justify-center rounded-full ${order.status === 'pending' ? 'bg-orange-50 text-orange-500' : order.status === 'cancelled' ? 'bg-gray-100 text-gray-400' : 'bg-green-50 text-green-500'}`}>
+                      {order.status === 'pending' ? <Clock size={16} /> : order.status === 'cancelled' ? <Ban size={16} /> : <CheckCircle2 size={16} />}
                     </div>
                     <div>
                       <p className="text-sm font-bold text-gray-900">{order.customers.name}</p>
-                      <p className="text-xs text-gray-500">D{order.total_amount.toLocaleString()}</p>
+                      <p className="text-xs tabular-nums text-gray-500">D{orderTotal(order).toLocaleString()}</p>
                     </div>
                   </div>
                   <button onClick={() => setActiveTab('orders')} className="text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-gray-900">View</button>
@@ -384,7 +390,7 @@ export default function Dashboard() {
 
         {/* ANALYTICS TAB */}
         {activeTab === 'analytics' && (
-          <AnalyticsDashboard orders={analyticsOrders} products={analyticsProducts} />
+          <AnalyticsDashboard orders={analyticsOrders} products={analyticsProducts} loadError={ordersLoadError} />
         )}
 
         {/* ORDERS TAB */}
@@ -401,8 +407,8 @@ export default function Dashboard() {
                   <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
                     <div>
                       <div className="flex items-center gap-2 mb-2">
-                        <span className={`px-2.5 py-1 text-[9px] font-bold uppercase tracking-widest rounded-full ${order.status === 'pending' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
-                          {order.status}
+                        <span className={`px-2.5 py-1 text-[9px] font-bold uppercase tracking-widest rounded-full ${order.status === 'pending' ? 'bg-orange-100 text-orange-700' : order.status === 'cancelled' ? 'bg-gray-100 text-gray-500' : 'bg-green-100 text-green-700'}`}>
+                          {orderStatusLabel(order.status)}
                         </span>
                         <span className="text-[10px] font-bold text-gray-400 uppercase">#{order.id.split('-')[0]}</span>
                       </div>
@@ -430,15 +436,15 @@ export default function Dashboard() {
                     </div>
 
                     <div className="flex items-center justify-between md:flex-col md:items-end md:justify-center gap-3">
-                      <div className="text-lg font-black text-gray-900">D{order.total_amount.toLocaleString()}</div>
-                      {order.status === 'pending' ? (
-                        <button onClick={() => handleUpdateOrderStatus(order.id, 'completed')} className="flex items-center gap-1.5 rounded-full bg-gray-900 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-white transition hover:bg-black">
-                          <CheckCircle2 size={14} /> Mark Paid
-                        </button>
-                      ) : (
-                        <button onClick={() => handleUpdateOrderStatus(order.id, 'pending')} className="flex items-center gap-1.5 rounded-full bg-gray-100 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-gray-600 transition hover:bg-gray-200">
-                          Undo
-                        </button>
+                      <div className="text-lg font-black tabular-nums text-gray-900">D{orderTotal(order).toLocaleString()}</div>
+                      {userId && (
+                        <OrderActions
+                          order={order}
+                          userId={userId}
+                          supabase={supabase}
+                          applyStatus={applyOrderStatus}
+                          onToast={showToast}
+                        />
                       )}
                     </div>
                   </div>

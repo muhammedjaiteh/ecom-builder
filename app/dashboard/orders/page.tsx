@@ -6,8 +6,11 @@
 // Rebuilt from the legacy page, which read flat columns the live schema does
 // not carry (orders.product_name / orders.price → rendered empty cells). This
 // page uses the exact relational query the command center's orders tab is
-// verified on — customers + order_items + products joins — and the same
-// optimistic pending/completed status flow, shop_id-scoped.
+// verified on — customers + order_items + products joins — and mounts the
+// shared OrderActions loop (components/orders/OrderActions.tsx): optimistic
+// race-guarded Mark-Paid, and the pending-only Cancel & Restock flow.
+// Vocabulary: 'completed' = terminal paid (labelled Paid), 'cancelled' =
+// terminal flake — see sql/analytics.sql.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { createBrowserClient } from '@supabase/ssr';
@@ -15,23 +18,27 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
-  ArrowLeft, CheckCircle2, Loader2, MessageCircle, Package,
+  ArrowLeft, Loader2, MessageCircle, Package,
   Phone, ShoppingCart, Truck, User,
 } from 'lucide-react';
+import OrderActions, { OrderActionToast, useOrderToast } from '@/components/orders/OrderActions';
+import { orderStatusLabel, orderTotal } from '@/lib/orderMetrics';
 import type { Order } from '@/lib/types';
 
 // Full status vocabulary seen across the platform (legacy checkout wrote
-// 'new'; the current flow writes 'pending' → 'completed').
+// 'new'; the current flow writes 'pending' → 'completed' [labelled 'Paid'] or
+// 'pending' → 'cancelled' — see sql/analytics.sql). 'cancelled' is the muted
+// TERMINAL badge: immutable in the UI, its stock already restored.
 const STATUS_STYLES: Record<string, string> = {
   pending: 'bg-orange-100 text-orange-700',
   new: 'bg-blue-100 text-blue-700',
   processing: 'bg-indigo-100 text-indigo-700',
   shipped: 'bg-purple-100 text-purple-700',
   completed: 'bg-green-100 text-green-700',
-  cancelled: 'bg-red-100 text-red-700',
+  cancelled: 'bg-gray-100 text-gray-500',
 };
 
-type StatusFilter = 'all' | 'pending' | 'completed';
+type StatusFilter = 'all' | 'pending' | 'completed' | 'cancelled';
 
 function sanitizePhoneNumber(rawNumber?: string | null) {
   if (!rawNumber) return null;
@@ -53,6 +60,7 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<StatusFilter>('all');
   const [error, setError] = useState<string | null>(null);
+  const { toast, showToast } = useOrderToast();
 
   useEffect(() => {
     let cancelled = false;
@@ -64,7 +72,7 @@ export default function OrdersPage() {
 
       const { data, error: fetchError } = await supabase
         .from('orders')
-        .select(`id, total_amount, status, fulfillment_method, created_at, customers (name, phone_number, location), order_items (quantity, variant_details, products (name, image_url))`)
+        .select(`id, total_amount, status, fulfillment_method, created_at, customers (name, phone_number, location), order_items (quantity, product_id, price_at_time, variant_details, products (name, image_url))`)
         .eq('shop_id', user.id)
         .order('created_at', { ascending: false });
       if (cancelled) return;
@@ -83,6 +91,7 @@ export default function OrdersPage() {
     all: orders.length,
     pending: orders.filter((o) => o.status === 'pending').length,
     completed: orders.filter((o) => o.status === 'completed').length,
+    cancelled: orders.filter((o) => o.status === 'cancelled').length,
   }), [orders]);
 
   const visibleOrders = useMemo(
@@ -90,20 +99,19 @@ export default function OrdersPage() {
     [orders, filter]
   );
 
-  const handleUpdateStatus = async (orderId: string, newStatus: Order['status']) => {
-    if (!userId) return;
-    setError(null);
-    const previous = orders;
-    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o)));
-    const { error: updateError } = await supabase
-      .from('orders')
-      .update({ status: newStatus })
-      .eq('id', orderId)
-      .eq('shop_id', userId);
-    if (updateError) {
-      setError('Failed to update the order status.');
-      setOrders(previous);
-    }
+  // Lifetime value = money that is real or plausibly incoming: cancelled
+  // orders are excluded, and pre-backfill NULL totals fall back to the
+  // order_items computation (lib/orderMetrics).
+  const lifetimeValue = useMemo(
+    () => orders.filter((o) => o.status !== 'cancelled').reduce((acc, o) => acc + orderTotal(o), 0),
+    [orders]
+  );
+
+  // Status writes live in the shared OrderActions component (owner-scoped
+  // browser-client updates under orders_owner_update RLS, race-guarded).
+  // This applies its optimistic flips / resyncs to the local list.
+  const applyStatus = (orderId: string, status: Order['status']) => {
+    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status } : o)));
   };
 
   if (loading) {
@@ -112,6 +120,7 @@ export default function OrdersPage() {
 
   return (
     <div className="min-h-screen bg-[#F9F8F6] font-sans text-gray-900 selection:bg-gray-900 selection:text-white pb-24">
+      <OrderActionToast toast={toast} />
       <header className="sticky top-0 z-40 border-b border-gray-100 bg-white/95 px-4 py-4 backdrop-blur-md md:px-10">
         <div className="mx-auto flex max-w-6xl items-center justify-between">
           <Link href="/dashboard" className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-gray-400 transition hover:text-gray-900">
@@ -129,16 +138,17 @@ export default function OrdersPage() {
           <p className="mt-2 text-sm text-gray-500">
             {counts.all === 0
               ? 'No orders yet — they land here the moment a customer checks out.'
-              : `${counts.all} ${counts.all === 1 ? 'order' : 'orders'} · D${orders.reduce((acc, o) => acc + Number(o.total_amount), 0).toLocaleString()} lifetime value.`}
+              : `${counts.all} ${counts.all === 1 ? 'order' : 'orders'} · D${lifetimeValue.toLocaleString()} lifetime value.`}
           </p>
         </div>
 
-        {/* Status filter */}
+        {/* Status filter — 'completed' is labelled Paid (vocabulary: sql/analytics.sql) */}
         <div className="mb-6 flex gap-1 overflow-x-auto hide-scrollbar">
           {([
             { id: 'all', label: `All (${counts.all})` },
             { id: 'pending', label: `Pending (${counts.pending})` },
-            { id: 'completed', label: `Completed (${counts.completed})` },
+            { id: 'completed', label: `Paid (${counts.completed})` },
+            { id: 'cancelled', label: `Cancelled (${counts.cancelled})` },
           ] as { id: StatusFilter; label: string }[]).map((tab) => (
             <button
               key={tab.id}
@@ -175,7 +185,7 @@ export default function OrdersPage() {
                     <div>
                       <div className="mb-2 flex items-center gap-2">
                         <span className={`rounded-full px-2.5 py-1 text-[9px] font-bold uppercase tracking-widest ${STATUS_STYLES[order.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                          {order.status}
+                          {orderStatusLabel(order.status)}
                         </span>
                         <span className="text-[10px] font-bold uppercase text-gray-400">#{order.id.split('-')[0]}</span>
                         <span className="text-[10px] text-gray-400">{new Date(order.created_at).toLocaleDateString()}</span>
@@ -219,21 +229,15 @@ export default function OrdersPage() {
                     </div>
 
                     <div className="flex items-center justify-between gap-3 md:flex-col md:items-end md:justify-center">
-                      <div className="text-lg font-black text-gray-900">D{Number(order.total_amount).toLocaleString()}</div>
-                      {order.status === 'completed' ? (
-                        <button
-                          onClick={() => handleUpdateStatus(order.id, 'pending')}
-                          className="flex items-center gap-1.5 rounded-full bg-gray-100 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-gray-600 transition hover:bg-gray-200"
-                        >
-                          Undo
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleUpdateStatus(order.id, 'completed')}
-                          className="flex items-center gap-1.5 rounded-full bg-gray-900 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-white transition hover:bg-black"
-                        >
-                          <CheckCircle2 size={14} /> Mark Paid
-                        </button>
+                      <div className="text-lg font-black tabular-nums text-gray-900">D{orderTotal(order).toLocaleString()}</div>
+                      {userId && (
+                        <OrderActions
+                          order={order}
+                          userId={userId}
+                          supabase={supabase}
+                          applyStatus={applyStatus}
+                          onToast={showToast}
+                        />
                       )}
                     </div>
                   </div>
