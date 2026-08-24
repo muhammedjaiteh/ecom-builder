@@ -23,11 +23,16 @@ import {
 //
 // LOGO: the installed Vercel AI SDK ('ai' v6) ships a stable generateImage()
 // surface with @ai-sdk/openai's provider.image() factory (the deprecated
-// experimental_generateImage alias points at the same function) — so the
-// direct-REST fallback the spec allowed is unnecessary. dall-e-3 is used for
-// its latency profile (the 30s deadline below is a hard abort). Any failure
-// (missing key, moderation, timeout) is a graceful skip in the onboarding
-// phase — the monogram mark remains.
+// experimental_generateImage alias points at the same function). The model is
+// gpt-image-2: the Images API retired dall-e-3 outright (probed 2026-08-24 —
+// "The model 'dall-e-3' does not exist.") and rejects the `response_format`
+// param the SDK hardcodes for dall-e IDs ("Unknown parameter:
+// 'response_format'."). For gpt-image-* models the installed
+// @ai-sdk/openai@3.0.68 omits response_format entirely
+// (hasDefaultResponseFormat, dist/index.mjs:2010) and the b64_json default
+// matches its response schema — so the SDK path stays valid with zero
+// patching. Any failure (missing key, moderation, the 30s hard abort) is a
+// graceful skip in the onboarding phase — the monogram mark remains.
 //
 // STORAGE: results are copied into the platform's existing 'brand' bucket
 // (the exact bucket the themes-page logo/banner uploads use), service-role,
@@ -201,11 +206,17 @@ export async function generateLogoAsset(args: {
     throw new Error('OPENAI_API_KEY not configured — logo generation unavailable.');
   }
 
-  console.log(`[${CALLER}] Logo: dall-e-3 draft for shop ${shopId}`);
+  console.log(`[${CALLER}] Logo: gpt-image-2 draft for shop ${shopId}`);
   const { image } = await generateImage({
-    model: openai.image('dall-e-3'),
+    model: openai.image('gpt-image-2'),
     prompt: buildLogoPrompt(shopName ?? 'Sanndikaa Boutique', config),
     size: '1024x1024',
+    providerOptions: {
+      // 'medium' keeps a flat two-tone monogram crisp while staying inside
+      // the 30s abort — validated against the installed provider's
+      // openaiImageModelGenerationOptions schema.
+      openai: { quality: 'medium' },
+    },
     // A logo draft is a bonus, never a blocker — hard 30s abort.
     abortSignal: AbortSignal.timeout(LOGO_DEADLINE_MS),
     maxRetries: 0,

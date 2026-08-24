@@ -32,8 +32,16 @@ const SUPABASE_OBJECT_PATH = '/storage/v1/object/public/';
 const SUPABASE_RENDER_PATH = '/storage/v1/render/image/public/';
 
 /** Hosts the default Vercel optimizer accepts — mirror of next.config.ts
- *  images.remotePatterns. Keep the two lists in lockstep. */
-const OPTIMIZED_EXACT_HOSTS = new Set(['fal.media', 'creatomate.com', 'cdn.creatomate.com']);
+ *  images.remotePatterns. Keep the two lists in lockstep. (The '.fal.media'
+ *  suffix already covers the explicit v2/v3/v3b entries in the config.) */
+const OPTIMIZED_EXACT_HOSTS = new Set([
+  'fal.media',
+  'creatomate.com',
+  'cdn.creatomate.com',
+  // Legacy DALL-E transient URLs in old rows; expired ones fail identically
+  // on either path, live ones now pass the allowlist.
+  'oaidalleapiprodscus.blob.core.windows.net',
+]);
 const OPTIMIZED_HOST_SUFFIXES = ['.fal.media'];
 
 export type ImageStrategy = 'supabase' | 'optimized' | 'unoptimized';
