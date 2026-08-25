@@ -9,6 +9,7 @@ import {
   type SiteChromeProps,
   type SiteProduct,
 } from '@/lib/siteTemplates';
+import { siteThemeStyle } from '@/lib/siteTheme';
 import CartBagButton from '../CartBagButton';
 import EditableText from '../EditableText';
 import SiteSearch from '../SiteSearch';
@@ -167,7 +168,10 @@ export default function EditorialChrome({ shop, config, active, children }: Site
   if (fulfillment.length === 0) fulfillment.push('Fulfillment arranged when you order');
 
   return (
-    <div className="min-h-screen bg-[#F7F5F0] font-sans text-neutral-900">
+    // THEME SEAM: a themed config sets --site-accent/--site-serif here (the
+    // one root every editorial /site page shares); absent theme → no style
+    // attribute, and every var() fallback keeps the deep-green defaults.
+    <div className="min-h-screen bg-[#F7F5F0] font-sans text-neutral-900" style={siteThemeStyle(config)}>
 
       {/* Masthead */}
       <header className="border-b border-neutral-900">
@@ -185,7 +189,7 @@ export default function EditorialChrome({ shop, config, active, children }: Site
             <p className="truncate text-[9px] font-bold uppercase tracking-[0.3em] text-neutral-500">{tagline}</p>
           )}
           <div className="flex shrink-0 items-center gap-3 md:gap-4">
-            <Link href={collectionsHref} className="inline-flex min-h-11 shrink-0 items-center text-[9px] font-bold uppercase tracking-[0.3em] text-neutral-900 underline underline-offset-4 transition hover:text-[#1a2e1a]">
+            <Link href={collectionsHref} className="inline-flex min-h-11 shrink-0 items-center text-[9px] font-bold uppercase tracking-[0.3em] text-neutral-900 underline underline-offset-4 transition hover:text-[var(--site-accent,#1a2e1a)]">
               Shop The Collection
             </Link>
             {/* Client islands: shop-scoped search + live cart trigger in the

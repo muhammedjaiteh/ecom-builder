@@ -6,6 +6,7 @@ import {
   type SiteChromeProps,
   type SiteProduct,
 } from '@/lib/siteTemplates';
+import { siteThemeStyle } from '@/lib/siteTheme';
 import CartBagButton from '../CartBagButton';
 import SiteSearch from '../SiteSearch';
 
@@ -70,14 +71,14 @@ export function NeutralProductCard({ product, index, href }: { product: SiteProd
   return (
     <Link
       href={href}
-      className="group block overflow-hidden rounded-2xl border border-white/10 bg-[#111] transition-all duration-300 hover:border-[#f0a500]/50 hover:bg-[#151515]"
+      className="group block overflow-hidden rounded-2xl border border-white/10 bg-[#111] transition-all duration-300 hover:border-[color-mix(in_srgb,var(--site-accent,#f0a500)_50%,transparent)] hover:bg-[#151515]"
     >
       <div className="relative aspect-square overflow-hidden bg-black">
         <NeutralProductVisual src={product.ad_hero_image_url ?? product.image_url} alt={product.name} index={index} />
         {badge && (
           <span
             className={`absolute left-3 top-3 rounded-sm px-2.5 py-1 text-[9px] font-black uppercase tracking-widest ${
-              badge.tone === 'out' ? 'bg-white text-black' : 'bg-[#f0a500] text-black'
+              badge.tone === 'out' ? 'bg-white text-black' : 'bg-[var(--site-accent,#f0a500)] text-black'
             }`}
           >
             {badge.label}
@@ -86,13 +87,13 @@ export function NeutralProductCard({ product, index, href }: { product: SiteProd
       </div>
       <div className="flex items-start justify-between gap-3 p-4">
         <p className="text-sm font-black uppercase leading-snug tracking-tight text-white">{product.name}</p>
-        <p className="shrink-0 text-sm font-black text-[#f0a500]">{neutralPrice(product.price)}</p>
+        <p className="shrink-0 text-sm font-black text-[var(--site-accent,#f0a500)]">{neutralPrice(product.price)}</p>
       </div>
     </Link>
   );
 }
 
-export default function NeutralChrome({ shop, active, children }: SiteChromeProps) {
+export default function NeutralChrome({ shop, config, active, children }: SiteChromeProps) {
   const base = siteBasePath(shop);
   const collectionsHref = siteCollectionsPath(shop) ?? '#lineup';
   // Deliberate classic-boutique escape (footer only). /shop matches the RAW
@@ -100,7 +101,9 @@ export default function NeutralChrome({ shop, active, children }: SiteChromeProp
   const shopUrl = shop.shop_slug ? `/shop/${encodeURIComponent(shop.shop_slug)}` : '/';
 
   return (
-    <div className="min-h-screen bg-[#0C0C0C] font-sans text-white">
+    // THEME SEAM: mirrors the Vitality home root — a themed config sets
+    // --site-accent/--site-serif; absent theme keeps the gold defaults.
+    <div className="min-h-screen bg-[#0C0C0C] font-sans text-white" style={siteThemeStyle(config)}>
 
       {/* Sticky dark bar — wordmark home link, gold collection CTA */}
       <nav className="sticky top-0 z-50 border-b border-white/10 bg-[#0C0C0C]/90 backdrop-blur-md">
@@ -124,7 +127,7 @@ export default function NeutralChrome({ shop, active, children }: SiteChromeProp
               className={`rounded-full px-6 py-2.5 text-[10px] font-black uppercase tracking-[0.2em] transition active:scale-95 ${
                 active === 'collections'
                   ? 'bg-white text-black hover:bg-white/90'
-                  : 'bg-[#f0a500] text-black hover:bg-amber-400'
+                  : 'bg-[var(--site-accent,#f0a500)] text-black hover:brightness-110'
               }`}
             >
               The Collection

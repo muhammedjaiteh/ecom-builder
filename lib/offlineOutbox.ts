@@ -26,9 +26,11 @@ import { fetchJSON, isTransportError } from '@/lib/transport';
 import {
   SiteAssetsSchema,
   SiteBlockSchema,
+  SiteThemeSchema,
   type ShopWebsiteRow,
   type SiteAssets,
   type SiteBlock,
+  type SiteTheme,
 } from '@/lib/siteTemplates';
 
 const OUTBOX_PREFIX = 'sndk:outbox:website:v1:';
@@ -42,6 +44,9 @@ const OutboxEntrySchema = z.object({
   /** Optional asset-slot state — additive: entries queued before the visual
    *  editor (no key) still parse and flush exactly as before. */
   assets: SiteAssetsSchema.optional(),
+  /** Optional theme state (Customize cockpit) — additive: pre-theme entries
+   *  (no key) still parse and flush exactly as before. */
+  theme: SiteThemeSchema.optional(),
   /** generated_at of the site build this edit was made against. */
   baseGeneratedAt: z.string().min(1),
   queuedAt: z.number(),
@@ -50,6 +55,7 @@ const OutboxEntrySchema = z.object({
 export type WebsiteOutboxEntry = {
   blocks: SiteBlock[];
   assets?: SiteAssets;
+  theme?: SiteTheme;
   baseGeneratedAt: string;
   queuedAt: number;
 };
@@ -73,7 +79,7 @@ export function readWebsiteOutbox(userId: string): WebsiteOutboxEntry | null {
 /** Latest-wins: replaces any existing entry for this user's site. */
 export function queueWebsiteSave(
   userId: string,
-  entry: { blocks: SiteBlock[]; assets?: SiteAssets; baseGeneratedAt: string }
+  entry: { blocks: SiteBlock[]; assets?: SiteAssets; theme?: SiteTheme; baseGeneratedAt: string }
 ): WebsiteOutboxEntry | null {
   if (typeof window === 'undefined') return null;
   const record: WebsiteOutboxEntry = { ...entry, queuedAt: Date.now() };
@@ -143,9 +149,10 @@ async function doFlush(userId: string): Promise<FlushResult> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         blocks: entry.blocks,
-        // Only entries that carried asset state send it — the PUT preserves
-        // stored assets when the key is absent (pre-assets entries).
+        // Only entries that carried asset/theme state send it — the PUT
+        // preserves the stored values when a key is absent (older entries).
         ...(entry.assets !== undefined ? { assets: entry.assets } : {}),
+        ...(entry.theme !== undefined ? { theme: entry.theme } : {}),
       }),
     });
 

@@ -41,6 +41,11 @@ type StudioProps = {
   website: ShopWebsiteRow | null;
   websiteLoading: boolean;
   onWebsiteChange: (row: ShopWebsiteRow) => void;
+  /** 'hub' (Themes hub) declutters the studio to the pure GENERATE flow:
+   *  the hero card above it owns the thumbnail, publish chip/toggle, and
+   *  live links, so the status row, copy-preview, reasoning, and link-hint
+   *  panels stay hidden. Default 'full' keeps the historical rendering. */
+  variant?: 'full' | 'hub';
 };
 
 const WEBSITE_TIERS = ['advanced', 'flagship'];
@@ -66,7 +71,8 @@ type GenerateWebsiteResponse = {
 //   building   → Step 2 running (full site generation for the chosen concept)
 type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
 
-export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, onWebsiteChange }: StudioProps) {
+export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, onWebsiteChange, variant = 'full' }: StudioProps) {
+  const hub = variant === 'hub';
   const [shopSlug, setShopSlug] = useState<string | null>(shop.shop_slug);
   const [phase, setPhase] = useState<GenPhase>('idle');
   const [concepts, setConcepts] = useState<SiteConcept[] | null>(null);
@@ -390,7 +396,7 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {hasAccess && website?.status === 'published' && siteSlug && (
+          {!hub && hasAccess && website?.status === 'published' && siteSlug && (
             <a
               href={`/site/${siteSlug}`}
               target="_blank"
@@ -400,7 +406,7 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
               <ExternalLink size={13} /> View Live Site
             </a>
           )}
-          {hasAccess && website && website.status !== 'published' && siteSlug && (
+          {!hub && hasAccess && website && website.status !== 'published' && siteSlug && (
             <a
               href={`/site/${siteSlug}?preview=1`}
               target="_blank"
@@ -605,8 +611,9 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
             </div>
           )}
 
-          {/* Generated preview */}
-          {website && site && phase !== 'building' && (
+          {/* Generated preview — hidden on the hub (the hero card owns the
+              live thumbnail, publish state, and links). */}
+          {!hub && website && site && phase !== 'building' && (
             <div className="space-y-6">
               {/* Status + publish row */}
               <div className="flex flex-wrap items-center justify-between gap-4 rounded-[2rem] border border-gray-100 bg-white p-6 shadow-sm">

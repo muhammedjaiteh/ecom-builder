@@ -2,8 +2,10 @@ import Link from 'next/link';
 import SmartImage from '@/components/SmartImage';
 import GatedVideo from '@/components/site-templates/GatedVideo';
 import Reveal from '@/components/site-templates/Reveal';
+import SiteMarquee from '@/components/site-templates/SiteMarquee';
 import SiteSearch from '@/components/site-templates/SiteSearch';
 import { siteBasePath, siteCollectionsPath, siteProductPath, type SiteTemplateProps } from '@/lib/siteTemplates';
+import { siteThemeStyle } from '@/lib/siteTheme';
 
 // VITALITY — Health, Fitness & Bold General Brands.
 // Structure: bold nav with pill CTA → dark full-width hero with condensed
@@ -30,7 +32,11 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
   const categoryCount = new Set(products.map((p) => p.category).filter(Boolean)).size || 1;
 
   return (
-    <div className="min-h-screen bg-[#0C0C0C] font-sans text-white">
+    // THEME SEAM: a themed config sets --site-accent/--site-serif here (this
+    // legacy home template is its own root; the shared sub-pages ride
+    // NeutralChrome's identical seam). Absent theme → no style attribute and
+    // every var() fallback keeps the electric-gold defaults.
+    <div className="min-h-screen bg-[#0C0C0C] font-sans text-white" style={siteThemeStyle(config)}>
 
       {/* Nav — bold left wordmark, pill CTA right */}
       <nav className="sticky top-0 z-50 border-b border-white/10 bg-[#0C0C0C]/90 backdrop-blur-md">
@@ -42,7 +48,7 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
             <SiteSearch tone="neutral" shopId={shop.id} basePath={siteBasePath(shop)} shopName={shop.shop_name} />
             <Link
               href={collectionsHref}
-              className="inline-flex min-h-11 items-center rounded-full bg-[#f0a500] px-6 text-[10px] font-black uppercase tracking-[0.2em] text-black transition hover:bg-amber-400 active:scale-95"
+              className="inline-flex min-h-11 items-center rounded-full bg-[var(--site-accent,#f0a500)] px-6 text-[10px] font-black uppercase tracking-[0.2em] text-black transition hover:brightness-110 active:scale-95"
             >
               Shop Direct
             </Link>
@@ -66,7 +72,7 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
               posterBlurTone="dark"
               posterPriority
               fallback={<div aria-hidden className="absolute inset-0 bg-gradient-to-br from-[#141414] via-[#0C0C0C] to-amber-950/40" />}
-              playButtonClassName="absolute left-1/2 top-1/2 z-10 flex min-h-11 -translate-x-1/2 -translate-y-1/2 items-center gap-2.5 rounded-full bg-[#f0a500] px-7 py-3.5 text-[10px] font-black uppercase tracking-[0.2em] text-black shadow-lg transition hover:bg-amber-400 active:scale-95"
+              playButtonClassName="absolute left-1/2 top-1/2 z-10 flex min-h-11 -translate-x-1/2 -translate-y-1/2 items-center gap-2.5 rounded-full bg-[var(--site-accent,#f0a500)] px-7 py-3.5 text-[10px] font-black uppercase tracking-[0.2em] text-black shadow-lg transition hover:brightness-110 active:scale-95"
             />
           ) : heroMedia ? (
             <SmartImage
@@ -85,7 +91,7 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
         </div>
 
         <div className="relative mx-auto max-w-7xl px-5 pb-32 pt-20 md:px-10 md:pb-44 md:pt-28">
-          <p className="inline-block rounded-sm bg-[#f0a500] px-3 py-1 text-[10px] font-black uppercase tracking-[0.3em] text-black">
+          <p className="inline-block rounded-sm bg-[var(--site-accent,#f0a500)] px-3 py-1 text-[10px] font-black uppercase tracking-[0.3em] text-black">
             {site.tagline}
           </p>
           {/* Quiet-luxury type cap (Beta QA pass): 6xl/8xl → 5xl/6xl with
@@ -97,12 +103,16 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
           <p className="mt-6 max-w-xl text-lg leading-relaxed text-white/70">{site.hero_subheadline}</p>
           <a
             href="#lineup"
-            className="mt-10 inline-block skew-x-[-6deg] bg-[#f0a500] px-10 py-4 text-xs font-black uppercase tracking-[0.25em] text-black shadow-[6px_6px_0_rgba(240,165,0,0.25)] transition hover:bg-amber-400 active:translate-y-0.5"
+            className="mt-10 inline-block skew-x-[-6deg] bg-[var(--site-accent,#f0a500)] px-10 py-4 text-xs font-black uppercase tracking-[0.25em] text-black shadow-[6px_6px_0_color-mix(in_srgb,var(--site-accent,#f0a500)_25%,transparent)] transition hover:brightness-110 active:translate-y-0.5"
           >
             <span className="inline-block skew-x-[6deg]">See The Lineup</span>
           </a>
         </div>
       </header>
+
+      {/* Kinetic marquee on the hero→stats seam — pure CSS, never wrapped in
+          Reveal (it is already motion). */}
+      <SiteMarquee shop={shop} config={config} tone="vitality" />
 
       {/* Stats band — fade-in-up on scroll (static under reduced motion
           and in editor previews — see Reveal.tsx). */}
@@ -117,7 +127,7 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
             { n: '1:1', label: 'Direct WhatsApp Checkout' },
           ].map((s) => (
             <div key={s.label} className="px-4">
-              <p className="text-4xl font-black tracking-tighter text-[#f0a500] md:text-5xl">{s.n}</p>
+              <p className="text-4xl font-black tracking-tighter text-[var(--site-accent,#f0a500)] md:text-5xl">{s.n}</p>
               <p className="mt-2 text-[10px] font-black uppercase tracking-[0.25em] text-white/50">{s.label}</p>
             </div>
           ))}
@@ -129,7 +139,7 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
         {site.value_props.map((v, i) => (
           <Reveal key={v.title} delay={i * 0.08}>
             <div
-              className={`flex flex-col gap-1 border-y border-white/10 px-5 py-6 md:flex-row md:items-center md:gap-10 md:px-10 ${i === 1 ? 'bg-[#f0a500] text-black' : 'bg-[#111]'}`}
+              className={`flex flex-col gap-1 border-y border-white/10 px-5 py-6 md:flex-row md:items-center md:gap-10 md:px-10 ${i === 1 ? 'bg-[var(--site-accent,#f0a500)] text-black' : 'bg-[#111]'}`}
             >
               <p className={`w-full shrink-0 text-2xl font-black uppercase tracking-tight md:w-96 ${i === 1 ? 'text-black' : 'text-white'}`}>
                 {v.title}
@@ -152,7 +162,7 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
             <Reveal key={p.id} delay={Math.min(i, 2) * 0.06}>
             <Link
               href={productHref(p.id)}
-              className={`group grid grid-cols-1 items-center gap-6 rounded-2xl border border-white/10 bg-[#111] p-5 transition-all duration-300 hover:border-[#f0a500]/50 hover:bg-[#151515] md:grid-cols-[280px_1fr_auto] ${i % 2 === 1 ? 'md:grid-cols-[1fr_280px_auto]' : ''}`}
+              className={`group grid grid-cols-1 items-center gap-6 rounded-2xl border border-white/10 bg-[#111] p-5 transition-all duration-300 hover:border-[color-mix(in_srgb,var(--site-accent,#f0a500)_50%,transparent)] hover:bg-[#151515] md:grid-cols-[280px_1fr_auto] ${i % 2 === 1 ? 'md:grid-cols-[1fr_280px_auto]' : ''}`}
             >
               <div className={`relative aspect-[4/3] overflow-hidden rounded-xl bg-black ${i % 2 === 1 ? 'md:order-2' : ''}`}>
                 {(p.ad_hero_image_url || p.image_url) ? (
@@ -173,9 +183,9 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
                 {p.description && (
                   <p className="mt-2 line-clamp-2 max-w-xl text-sm leading-relaxed text-white/55">{p.description}</p>
                 )}
-                <p className="mt-3 text-lg font-black text-[#f0a500]">{price(p.price)}</p>
+                <p className="mt-3 text-lg font-black text-[var(--site-accent,#f0a500)]">{price(p.price)}</p>
               </div>
-              <span className={`hidden shrink-0 rounded-full border border-[#f0a500] px-6 py-3 text-[10px] font-black uppercase tracking-[0.2em] text-[#f0a500] transition group-hover:bg-[#f0a500] group-hover:text-black md:block ${i % 2 === 1 ? 'md:order-3' : ''}`}>
+              <span className={`hidden shrink-0 rounded-full border border-[var(--site-accent,#f0a500)] px-6 py-3 text-[10px] font-black uppercase tracking-[0.2em] text-[var(--site-accent,#f0a500)] transition group-hover:bg-[var(--site-accent,#f0a500)] group-hover:text-black md:block ${i % 2 === 1 ? 'md:order-3' : ''}`}>
                 View
               </span>
             </Link>
@@ -187,7 +197,7 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
       {/* Brand story */}
       <section className="border-y border-white/10 bg-[#111] py-20 md:py-24">
         <Reveal className="mx-auto max-w-3xl px-5 md:px-10">
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#f0a500]">The Mission</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[var(--site-accent,#f0a500)]">The Mission</p>
           <p className="mt-6 text-2xl font-bold leading-relaxed text-white/90 md:text-3xl">{site.brand_story}</p>
         </Reveal>
       </section>
@@ -199,7 +209,7 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
           <p className="mx-auto mt-4 max-w-lg text-base leading-relaxed text-white/60">{site.cta_banner.subtext}</p>
           <Link
             href={collectionsHref}
-            className="mt-10 inline-block skew-x-[-6deg] bg-[#f0a500] px-12 py-5 text-sm font-black uppercase tracking-[0.25em] text-black shadow-[8px_8px_0_rgba(240,165,0,0.25)] transition hover:bg-amber-400 active:translate-y-0.5"
+            className="mt-10 inline-block skew-x-[-6deg] bg-[var(--site-accent,#f0a500)] px-12 py-5 text-sm font-black uppercase tracking-[0.25em] text-black shadow-[8px_8px_0_color-mix(in_srgb,var(--site-accent,#f0a500)_25%,transparent)] transition hover:brightness-110 active:translate-y-0.5"
           >
             <span className="inline-block skew-x-[6deg]">{site.cta_banner.button_label}</span>
           </Link>

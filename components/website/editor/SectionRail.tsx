@@ -74,6 +74,9 @@ export type SectionRailProps = {
   onEditFieldSheet: (blockId: string, path: string[]) => void;
   /** Hero-section asset slots, rendered by the parent (owns upload/generate). */
   assetSlots: ReactNode;
+  /** Optional theme controls (Customize cockpit) — accent swatches + font
+   *  picker, rendered above the section tree. Absent → rail is unchanged. */
+  themePanel?: ReactNode;
 };
 
 const inspectorInputKey = (blockId: string, path: string[]) => `${blockId}:${path.join('.')}`;
@@ -384,6 +387,9 @@ export default function SectionRail(props: SectionRailProps) {
   if (isMobile) {
     return (
       <div ref={railRef} className="space-y-2">
+        {props.themePanel && (
+          <div className="rounded-2xl border border-gray-200 bg-white p-3.5">{props.themePanel}</div>
+        )}
         {blocks.map((block, index) => {
           const focused = block.id === focusedId;
           return (
@@ -446,6 +452,9 @@ export default function SectionRail(props: SectionRailProps) {
   return (
     <div ref={railRef} className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
+        {props.themePanel && (
+          <div className="mb-4 border-b border-gray-100 pb-4">{props.themePanel}</div>
+        )}
         <p className="px-1 pb-2 text-[10px] font-bold uppercase tracking-widest text-gray-400">Sections</p>
         <Reorder.Group
           axis="y"

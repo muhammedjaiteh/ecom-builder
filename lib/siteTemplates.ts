@@ -234,6 +234,36 @@ export const SiteAssetsSchema = z.object({
 
 export type SiteAssets = z.infer<typeof SiteAssetsSchema>;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Site theme — the Customize cockpit's accent + display-font layer. Lives
+// INSIDE config (jsonb; no migration) as an OPTIONAL object: STRICT-SUPERSET
+// LAW preserved, every stored row (no theme key) keeps validating and renders
+// byte-identically (the templates' CSS variables fall back to the template
+// defaults inline). Both keys optional: a partial object ({} included)
+// validates and simply themes nothing.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Curated display faces, loaded as next/font CSS variables in app/layout.tsx
+ *  and mapped to font metadata in lib/siteTheme.ts. The enum is the schema's
+ *  contract: a stored theme can never reference a face the platform did not
+ *  ship. */
+export const SITE_FONT_KEYS = ['playfair', 'cormorant', 'fraunces', 'lora', 'bodoni'] as const;
+
+export type SiteFontKey = (typeof SITE_FONT_KEYS)[number];
+
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+
+export const SiteThemeSchema = z.object({
+  /** Accent color for the template's ACCENT SPOTS only (CTAs, badges, price
+   *  highlights) — a 6-digit hex, validated so an arbitrary CSS payload can
+   *  never enter the style attribute. */
+  accent: z.string().regex(HEX_COLOR, 'Accent must be a 6-digit hex color.').optional(),
+  /** Curated display serif — swaps --site-serif on the site root. */
+  display_font: z.enum(SITE_FONT_KEYS).optional(),
+});
+
+export type SiteTheme = z.infer<typeof SiteThemeSchema>;
+
 export const WebsiteConfigSchema = z.object({
   template_key: z.enum(TEMPLATE_KEYS),
   niche_reasoning: z.string().min(1),
@@ -263,6 +293,8 @@ export const WebsiteConfigSchema = z.object({
   blocks: z.array(SiteBlockSchema).optional(),
   /** Optional generated/uploaded brand assets — see SiteAssetsSchema above. */
   assets: SiteAssetsSchema.optional(),
+  /** Optional accent/display-font theme layer — see SiteThemeSchema above. */
+  theme: SiteThemeSchema.optional(),
 });
 
 export type WebsiteConfig = z.infer<typeof WebsiteConfigSchema>;

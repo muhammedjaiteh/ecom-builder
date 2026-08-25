@@ -15,6 +15,7 @@ import EditableText from './EditableText';
 import GatedVideo from './GatedVideo';
 import ProductTabsIsland from './ProductTabsIsland';
 import Reveal from './Reveal';
+import SiteMarquee from './SiteMarquee';
 import VideoHeroMedia from './VideoHeroMedia';
 import RitualChrome, {
   RITUAL_COLLECTION_GRID,
@@ -118,7 +119,7 @@ function RitualHero({ block, shop, heroMedia, collectionsHref }: {
         <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
           <a
             href="#collection"
-            className="rounded-full bg-white px-8 py-4 text-center text-[10px] font-bold uppercase tracking-[0.25em] text-stone-900 shadow-lg transition hover:bg-stone-100 active:scale-95"
+            className="rounded-full bg-white px-8 py-4 text-center text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--site-accent,#1c1917)] shadow-lg transition hover:bg-stone-100 active:scale-95"
           >
             Shop The Collection
           </a>
@@ -267,7 +268,7 @@ function RitualStory({ block, shopName }: { block: StoryBlock; shopName: string 
       <div className="mx-auto grid max-w-6xl grid-cols-1 gap-8 px-5 md:grid-cols-[200px_1fr] md:gap-14 md:px-10">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-stone-400">Our Story</p>
-          <div className="mt-5 hidden h-px w-16 bg-stone-900 md:block" />
+          <div className="mt-5 hidden h-px w-16 bg-[var(--site-accent,#1c1917)] md:block" />
         </div>
         <div>
           <EditableText as="p" blockId={block.id} field="body" className="font-serif text-2xl font-medium leading-relaxed text-stone-800 md:text-3xl">
@@ -294,7 +295,7 @@ function RitualCta({ block, collectionsHref }: { block: CtaBlock; collectionsHre
           href={collectionsHref}
           data-block-id={block.id}
           data-block-field="button_label"
-          className="mt-10 inline-block rounded-full bg-white px-10 py-4 text-[10px] font-bold uppercase tracking-[0.25em] text-stone-900 shadow-lg transition hover:bg-stone-100 active:scale-95"
+          className="mt-10 inline-block rounded-full bg-white px-10 py-4 text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--site-accent,#1c1917)] shadow-lg transition hover:bg-stone-100 active:scale-95"
         >
           {block.button_label}
         </Link>
@@ -336,7 +337,18 @@ export default function RitualTemplate({ shop, products, config, heroMedia }: Si
           }
         })();
         if (!section) return null;
-        if (block.type === 'hero_banner') return <Fragment key={block.id}>{section}</Fragment>;
+        if (block.type === 'hero_banner') {
+          // Kinetic marquee rides the hero→body seam: it renders directly
+          // after the hero, never inside a Reveal (it is already motion), and
+          // carries no data-block markers — invisible to the Site Editor's
+          // section rect math.
+          return (
+            <Fragment key={block.id}>
+              {section}
+              <SiteMarquee shop={shop} config={config} tone="ritual" />
+            </Fragment>
+          );
+        }
         return (
           <Reveal key={block.id} delay={Math.min(i * 0.05, 0.15)}>
             {section}

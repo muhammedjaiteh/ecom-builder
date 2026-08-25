@@ -50,6 +50,7 @@ import VideoHeroPicker, { type VideoHeroSelection } from '@/components/website/V
 import AssetSlots, { type AssetBusyState, type AssetSlotKind } from '@/components/website/editor/AssetSlots';
 import HeroImagePicker from '@/components/website/editor/HeroImagePicker';
 import SectionRail from '@/components/website/editor/SectionRail';
+import ThemePanel from '@/components/website/editor/ThemePanel';
 import {
   MAX_BLOCKS,
   SELLER_ADDED_TYPES,
@@ -84,6 +85,7 @@ import {
   type SiteProduct,
   type SiteShop,
   type SiteTemplateProps,
+  type SiteTheme,
   type TemplateKey,
   type WebsiteConfig,
 } from '@/lib/siteTemplates';
@@ -189,9 +191,18 @@ type SiteCopyEditorProps = {
   /** Receives the fresh row after a successful save (single source of truth
    *  lives in the page's SWR cache). */
   onSaved: (row: ShopWebsiteRow) => void;
+  /** Optional dirty-state mirror for the cockpit top bar's save chip. */
+  onDirtyChange?: (dirty: boolean) => void;
 };
 
-export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteCopyEditorProps) {
+/** Canonical theme form: {} (and undefined) collapse to undefined so the
+ *  dirty check settles clean against rows that never stored a theme. */
+function effectiveTheme(theme: SiteTheme | undefined): SiteTheme | undefined {
+  if (!theme) return undefined;
+  return theme.accent || theme.display_font ? theme : undefined;
+}
+
+export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirtyChange }: SiteCopyEditorProps) {
   // Mount-time outbox seed: a save queued offline (possibly in a previous
   // session) IS the seller's latest truth for this exact build — the editor
   // reopens showing it in 'queued' sync state instead of silently presenting
@@ -212,6 +223,14 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
   );
   const [savedAssets, setSavedAssets] = useState<SiteAssets | undefined>(() =>
     structuredClone(outboxSeed?.assets !== undefined ? outboxSeed.assets : website.config.assets)
+  );
+  // Theme layer (Customize cockpit) — same lifecycle as assets: seeded from a
+  // queued offline save when one exists, otherwise the stored config.
+  const [theme, setTheme] = useState<SiteTheme | undefined>(() =>
+    structuredClone(effectiveTheme(outboxSeed?.theme !== undefined ? outboxSeed.theme : website.config.theme))
+  );
+  const [savedTheme, setSavedTheme] = useState<SiteTheme | undefined>(() =>
+    structuredClone(effectiveTheme(outboxSeed?.theme !== undefined ? outboxSeed.theme : website.config.theme))
   );
   // 'queued' = the last save is stored on this device awaiting connectivity.
   const [syncState, setSyncState] = useState<'idle' | 'queued'>(outboxSeed ? 'queued' : 'idle');
@@ -345,8 +364,12 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
       site: blocksToLegacySite(blocks, website.config.site),
       blocks,
       ...(assets !== undefined ? { assets } : {}),
+      // Theme rides the LOCAL state (not the stored config), so a swatch or
+      // font tap recolors the live preview instantly; a cleared theme must
+      // also OVERRIDE a stored one, hence the explicit undefined spread.
+      theme,
     }),
-    [blocks, assets, website.config]
+    [blocks, assets, theme, website.config]
   );
 
   // Hero fallback chain with the LOCAL asset state — an uploaded/generated
@@ -359,9 +382,15 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
   const dirty = useMemo(
     () =>
       JSON.stringify(blocks) !== JSON.stringify(savedBlocks) ||
-      JSON.stringify(assets ?? null) !== JSON.stringify(savedAssets ?? null),
-    [blocks, savedBlocks, assets, savedAssets]
+      JSON.stringify(assets ?? null) !== JSON.stringify(savedAssets ?? null) ||
+      JSON.stringify(theme ?? null) !== JSON.stringify(savedTheme ?? null),
+    [blocks, savedBlocks, assets, savedAssets, theme, savedTheme]
   );
+
+  // Cockpit top-bar mirror — fires only on actual transitions.
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
 
   const payloadValid = useMemo(() => blocksAreValid(blocks), [blocks]);
 
@@ -739,6 +768,7 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
     inspectorSnapshots.current.clear();
     setBlocks(structuredClone(savedBlocks));
     setAssets(structuredClone(savedAssets));
+    setTheme(structuredClone(savedTheme));
     setToast(null);
   };
 
@@ -771,12 +801,20 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
     }
 
     const assetsPayload = assets;
+    // Theme wire form: omitted while no theme state exists on either side
+    // (stored rows stay byte-identical); once any theme is in play the FULL
+    // state ships — a cleared theme sends the explicit {} so the PUT's
+    // wholesale replace actually clears the stored object.
+    const themeInPlay = theme !== undefined || savedTheme !== undefined;
+    const themePayload: SiteTheme | undefined = themeInPlay ? theme ?? {} : undefined;
     // Optimistic: the UI settles clean immediately; the failure paths below
     // decide between queue (connectivity) and rollback (server verdict).
     const rollbackBlocks = savedBlocks;
     const rollbackAssets = savedAssets;
+    const rollbackTheme = savedTheme;
     setSavedBlocks(structuredClone(payload));
     setSavedAssets(structuredClone(assetsPayload));
+    setSavedTheme(structuredClone(theme));
     // Latest-wins: this save supersedes any queued older payload. Cleared
     // BEFORE the PUT so a concurrent outbox flush can never land stale
     // blocks on top of this newer write.
@@ -790,6 +828,7 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
         body: JSON.stringify({
           blocks: payload,
           ...(assetsPayload !== undefined ? { assets: assetsPayload } : {}),
+          ...(themePayload !== undefined ? { theme: themePayload } : {}),
         }),
       });
       setSyncState('idle');
@@ -802,6 +841,7 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
         const queued = queueWebsiteSave(userId, {
           blocks: payload,
           ...(assetsPayload !== undefined ? { assets: assetsPayload } : {}),
+          ...(themePayload !== undefined ? { theme: themePayload } : {}),
           baseGeneratedAt: website.generated_at,
         });
         if (queued) {
@@ -809,6 +849,7 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
         } else {
           setSavedBlocks(rollbackBlocks);
           setSavedAssets(rollbackAssets);
+          setSavedTheme(rollbackTheme);
           setToast({
             kind: 'error',
             message: 'You appear to be offline and this change could not be stored for later — please try again once connected.',
@@ -820,13 +861,16 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
         // KEEP the seller's edits in the editor.
         setSavedBlocks(rollbackBlocks);
         setSavedAssets(rollbackAssets);
+        setSavedTheme(rollbackTheme);
         setToast({ kind: 'error', message: err.message || 'Failed to save your changes.' });
       } else if (isTransportError(err) && err.kind === 'abort') {
         setSavedBlocks(rollbackBlocks);
         setSavedAssets(rollbackAssets);
+        setSavedTheme(rollbackTheme);
       } else {
         setSavedBlocks(rollbackBlocks);
         setSavedAssets(rollbackAssets);
+        setSavedTheme(rollbackTheme);
         setToast({ kind: 'error', message: 'Network error saving your changes. Please try again.' });
       }
     } finally {
@@ -857,6 +901,12 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
     />
   );
 
+  // Theme controls (accent swatches + font picker) — writes the same local
+  // theme state the live preview renders through the chrome's variable seam.
+  const themePanelNode = (
+    <ThemePanel templateKey={website.template_key} theme={theme} onChange={setTheme} />
+  );
+
   const sectionRail = (
     <SectionRail
       blocks={blocks}
@@ -881,6 +931,7 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved }: SiteC
       onFieldBlur={handleInspectorBlur}
       onEditFieldSheet={(blockId, path) => beginEditSheet(blockId, path, 0)}
       assetSlots={assetSlotsNode}
+      themePanel={themePanelNode}
     />
   );
 

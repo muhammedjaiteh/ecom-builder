@@ -1,22 +1,33 @@
 'use client';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Online Store → Themes — the storefront design home. Relocated wholesale from
-// /dashboard/customize (which now redirects here): the AI Website Studio is
-// the flagship section, followed by the boutique appearance settings (brand
-// colors, classic /shop layouts, bio, logo/banner uploads, fulfillment).
+// Online Store → Themes — THE HUB. One hero card carries the seller's live
+// site thumbnail (MiniSitePreview of the real config), the publish chip, and
+// exactly three primary actions: Generate (the studio flow below, decluttered
+// via variant="hub"), Publish toggle, and Customize → the full-screen cockpit
+// at ./customize (where the Site Editor now lives — it no longer renders
+// here). The classic-boutique appearance settings (colors/layouts/bio/
+// branding/fulfillment — they style /shop, not the AI site) are demoted into
+// one collapsed section at the bottom, all behavior preserved.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import useSWR, { SWRConfig } from 'swr';
-import { ArrowLeft, Crown, Loader2, Save, Store, Image as ImageIcon, Camera, Palette, LayoutTemplate, Truck, MapPin, CheckCircle2, Lock, PenLine, WifiOff, AlertTriangle } from 'lucide-react';
+import {
+  ArrowLeft, Brush, Camera, CheckCircle2, ChevronDown, ExternalLink, Eye, EyeOff,
+  Globe, Image as ImageIcon, LayoutTemplate, Loader2, Lock, MapPin, Palette, Save, Store,
+  Truck, Wand2, WifiOff, AlertTriangle,
+} from 'lucide-react';
 import Link from 'next/link';
+import { AnimatePresence, motion } from 'framer-motion';
 import SmartImage from '@/components/SmartImage';
+import MiniSitePreview from '@/components/website/MiniSitePreview';
 import WebsiteGeneratorStudio, { type StudioShop } from '@/components/website/WebsiteGeneratorStudio';
-import SiteCopyEditor, { EDITABLE_TEMPLATE_COMPONENTS } from '@/components/website/SiteCopyEditor';
-import { WebsiteConfigSchema, type ShopWebsiteRow, type SiteShop } from '@/lib/siteTemplates';
+import { CoachDot, CoachLegend, useCoachMarks } from '@/components/website/CoachMarks';
+import { SITE_TEMPLATES, WebsiteConfigSchema, type ShopWebsiteRow, type WebsiteConfig } from '@/lib/siteTemplates';
+import { slugify } from '@/lib/slugify';
 import { fetchJSON, isTransportError } from '@/lib/transport';
 import { createPersistedSwrProvider, websiteContentKey } from '@/lib/swrCache';
 import { flushWebsiteOutbox } from '@/lib/offlineOutbox';
@@ -65,8 +76,8 @@ export default function OnlineStoreThemesPage() {
   const [subscriptionTier, setSubscriptionTier] = useState('starter');
   // Identity snapshot for the AI Website Studio (the flagship section below).
   const [generatorShop, setGeneratorShop] = useState<StudioShop | null>(null);
-  // Full shop identity the Site Editor's live preview renders with.
-  const [editorShop, setEditorShop] = useState<SiteShop | null>(null);
+  // Classic-boutique appearance settings live collapsed at the bottom.
+  const [classicOpen, setClassicOpen] = useState(false);
 
   // The shop_websites row now lives in WebsiteStudioSections below: SWR over
   // the owner content API with a per-user persisted cache (instant paint from
@@ -109,18 +120,6 @@ export default function OnlineStoreThemesPage() {
           shop_name: shop.shop_name ?? null,
           shop_slug: shop.shop_slug ?? null,
           subscription_tier: shop.subscription_tier ?? null,
-        });
-        setEditorShop({
-          id: shop.id,
-          shop_name: shop.shop_name ?? null,
-          shop_slug: shop.shop_slug ?? null,
-          logo_url: shop.logo_url ?? null,
-          banner_url: shop.banner_url ?? null,
-          bio: shop.bio ?? null,
-          offers_delivery: shop.offers_delivery ?? null,
-          offers_pickup: shop.offers_pickup ?? null,
-          pickup_instructions: shop.pickup_instructions ?? null,
-          phone: shop.phone ?? null,
         });
         setBio(shop.bio || '');
         setThemeColor(shop.theme_color || 'emerald');
@@ -210,16 +209,13 @@ export default function OnlineStoreThemesPage() {
   return (
     <div className="min-h-dvh bg-[#F9F8F6] font-sans text-gray-900 selection:bg-gray-900 selection:text-white pb-24">
 
-      {/* HEADER */}
+      {/* HEADER — the global Save moved into the collapsed classic-boutique
+          section below (it only ever saved those settings). */}
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-100 px-4 py-4 md:px-10">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <Link href="/dashboard" className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-gray-400 transition hover:text-gray-900">
+        <div className="max-w-5xl mx-auto flex min-h-[44px] items-center justify-between">
+          <Link href="/dashboard" className="flex min-h-[44px] items-center gap-2 text-xs font-bold uppercase tracking-widest text-gray-400 transition hover:text-gray-900">
             <ArrowLeft size={16} /> Dashboard
           </Link>
-          <button onClick={handleSave} disabled={saving} className="flex items-center gap-2 rounded-full bg-[#1a2e1a] px-6 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white shadow-md transition hover:bg-black disabled:opacity-70">
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            {saving ? 'Saving...' : 'Save Changes'}
-          </button>
         </div>
       </header>
 
@@ -234,23 +230,69 @@ export default function OnlineStoreThemesPage() {
         <div className="mb-10">
           <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Online Store</p>
           <h1 className="mt-1 text-3xl font-serif font-bold text-gray-900">Themes</h1>
-          <p className="mt-2 text-sm text-gray-500">Your storefront&apos;s design home. Generate your AI website, then tune your boutique&apos;s colors, layout, and brand assets.</p>
+          <p className="mt-2 text-sm text-gray-500">Your storefront&apos;s design home. Generate your AI website, publish it, and customize it in the cockpit.</p>
         </div>
 
-        {/* FLAGSHIP: AI WEBSITE STUDIO + SITE EDITOR — the website row lives
+        {/* FLAGSHIP: HERO CARD + AI WEBSITE STUDIO — the website row lives
             in SWR behind a per-user persisted cache. Keyed on the user id so
-            an account switch on a shared phone remounts a clean scope. */}
+            an account switch on a shared phone remounts a clean scope.
+            The Site Editor moved OUT to the full-screen Customize cockpit. */}
         {generatorShop && userId && (
           <WebsiteStudioSections
             key={userId}
             userId={userId}
             generatorShop={generatorShop}
-            editorShop={editorShop}
             hasWebsiteAccess={hasWebsiteAccess}
           />
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        {/* ── CLASSIC BOUTIQUE APPEARANCE — collapsed. These settings style
+            the classic /shop boutique, not the AI site, so they sit quietly
+            at the bottom with every behavior preserved. */}
+        <section className="rounded-[2rem] border border-gray-100 bg-white shadow-sm">
+          <button
+            type="button"
+            onClick={() => setClassicOpen((o) => !o)}
+            aria-expanded={classicOpen}
+            className="flex min-h-[64px] w-full items-center justify-between gap-4 px-6 py-4 text-left md:px-8"
+          >
+            <span>
+              <span className="flex items-center gap-2 text-lg font-serif font-bold text-gray-900">
+                <Store size={18} className="text-gray-400" /> Classic boutique appearance
+              </span>
+              <span className="mt-1 block text-xs text-gray-500">
+                Colors, layout, bio, branding, and fulfillment for your classic /shop boutique.
+              </span>
+            </span>
+            <ChevronDown
+              size={18}
+              className={`shrink-0 text-gray-400 transition-transform duration-300 ${classicOpen ? 'rotate-180' : ''}`}
+            />
+          </button>
+
+          <AnimatePresence initial={false}>
+            {classicOpen && (
+              <motion.div
+                key="classic-appearance"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.3, ease: 'easeOut' }}
+                className="overflow-hidden"
+              >
+                <div className="border-t border-gray-100 px-6 py-6 md:px-8">
+                  <div className="mb-6 flex justify-end">
+                    <button
+                      onClick={handleSave}
+                      disabled={saving}
+                      className="flex min-h-[44px] items-center gap-2 rounded-full bg-[#1a2e1a] px-6 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white shadow-md transition hover:bg-black disabled:opacity-70"
+                    >
+                      {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                      {saving ? 'Saving...' : 'Save Boutique Changes'}
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
 
           {/* LEFT COLUMN: VISUALS & BIO */}
           <div className="md:col-span-2 space-y-8">
@@ -405,7 +447,12 @@ export default function OnlineStoreThemesPage() {
             </div>
 
           </div>
-        </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </section>
       </main>
     </div>
   );
@@ -425,7 +472,6 @@ export default function OnlineStoreThemesPage() {
 type WebsiteSectionsProps = {
   userId: string;
   generatorShop: StudioShop;
-  editorShop: SiteShop | null;
   hasWebsiteAccess: boolean;
 };
 
@@ -440,7 +486,7 @@ function WebsiteStudioSections(props: WebsiteSectionsProps) {
   );
 }
 
-function WebsiteStudioSectionsInner({ userId, generatorShop, editorShop, hasWebsiteAccess }: WebsiteSectionsProps) {
+function WebsiteStudioSectionsInner({ userId, generatorShop, hasWebsiteAccess }: WebsiteSectionsProps) {
   // Locked sellers get the premium pitch — null key, never a wasted 403.
   const { data, error, mutate } = useSWR<ShopWebsiteRow | null>(
     hasWebsiteAccess ? websiteContentKey(userId) : null,
@@ -495,15 +541,61 @@ function WebsiteStudioSectionsInner({ userId, generatorShop, editorShop, hasWebs
   const connectivityIssue = transportError !== null && (transportError.kind === 'offline' || transportError.kind === 'timeout');
   const serverIssue = transportError !== null && transportError.kind === 'server';
 
-  // The Site Editor only mounts on schema-clean data for a block-driven
-  // template: the row's jsonb config is re-validated here (same gate the live
-  // /site route applies), and Vitality stays legacy-driven by design.
-  const editorWebsite = useMemo<ShopWebsiteRow | null>(() => {
-    if (!website || !EDITABLE_TEMPLATE_COMPONENTS[website.template_key]) return null;
+  // Publish toggle — lifted from the studio into the hero card (the studio's
+  // own status row is hidden by variant="hub").
+  const [publishing, setPublishing] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
+
+  const handlePublishToggle = async () => {
+    if (!website) return;
+    setPublishError(null);
+    setPublishing(true);
+    try {
+      const action = website.status === 'published' ? 'unpublish' : 'publish';
+      const row = await fetchJSON<ShopWebsiteRow>('/api/websites/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      handleWebsiteChange(row);
+    } catch (err) {
+      if (isTransportError(err) && err.kind === 'offline') {
+        // No auto-retry: publish TOGGLES — re-firing minutes later could
+        // silently unpublish a site the seller since decided to keep.
+        setPublishError('You appear to be offline — the publish change was not applied.');
+      } else if (isTransportError(err) && err.kind === 'server') {
+        setPublishError(err.message || 'Failed to update publish state.');
+      } else {
+        setPublishError('Network error updating publish state. Please try again.');
+      }
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  // Thumbnail config: any schema-clean stored config renders in the
+  // miniature (all three templates), independent of cockpit editability.
+  const previewConfig = useMemo<WebsiteConfig | null>(() => {
+    if (!website) return null;
     const parsed = WebsiteConfigSchema.safeParse(website.config);
-    if (!parsed.success) return null;
-    return { ...website, config: parsed.data };
+    return parsed.success ? parsed.data : null;
   }, [website]);
+
+  // Law 2 slug safety (same rule as the studio): mint /site links only from
+  // an already-canonical slug — the studio's mount-time write-repair fixes
+  // legacy rows in the background.
+  const siteSlug =
+    generatorShop.shop_slug && generatorShop.shop_slug === slugify(generatorShop.shop_slug)
+      ? generatorShop.shop_slug
+      : null;
+
+  const coach = useCoachMarks('sndk:coach:themes-hub:v1');
+  const published = website?.status === 'published';
+  const templateMeta = website ? SITE_TEMPLATES[website.template_key] : null;
+
+  const scrollToStudio = () => {
+    document.getElementById('website-studio')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   return (
     <>
@@ -524,45 +616,150 @@ function WebsiteStudioSectionsInner({ userId, generatorShop, editorShop, hasWebs
         </div>
       )}
 
-      {/* FLAGSHIP: AI WEBSITE STUDIO */}
+      {/* ── HERO CARD — the site's home base: live thumbnail, publish chip,
+          and exactly three actions (Generate · Publish · Customize). */}
+      {hasWebsiteAccess && (
+        <section className="mb-8 overflow-hidden rounded-[2rem] border border-gray-100 bg-white shadow-sm">
+          <div className="grid grid-cols-1 md:grid-cols-[minmax(0,380px)_1fr]">
+            {/* Live miniature of the REAL stored site (theme layer included). */}
+            <div className="relative h-56 border-b border-gray-100 bg-gray-50 md:h-auto md:min-h-[300px] md:border-b-0 md:border-r">
+              {websiteLoading ? (
+                <div className="flex h-full items-center justify-center">
+                  <Loader2 className="h-5 w-5 animate-spin text-gray-300" />
+                </div>
+              ) : previewConfig ? (
+                <MiniSitePreview config={previewConfig} shopName={generatorShop.shop_name} />
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+                  <Globe className="h-9 w-9 text-gray-300" />
+                  <p className="text-sm font-bold text-gray-900">No website yet.</p>
+                  <p className="max-w-[240px] text-xs leading-relaxed text-gray-500">
+                    Generate one below — the AI designs it around your inventory in about a minute.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-4 p-6 md:p-8">
+              <div className="flex flex-wrap items-center gap-2">
+                {website ? (
+                  <span
+                    className={`inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest ${
+                      published
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                        : 'border-amber-200 bg-amber-50 text-amber-700'
+                    }`}
+                  >
+                    <span className={`h-1.5 w-1.5 rounded-full ${published ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                    {published ? 'Live' : 'Draft'}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                    Not generated
+                  </span>
+                )}
+                {templateMeta && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-900 px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest text-white">
+                    <Wand2 size={11} className="text-[#f0a500]" /> {templateMeta.name} Layout
+                  </span>
+                )}
+              </div>
+
+              <div>
+                <h2 className="font-serif text-2xl font-bold text-gray-900">
+                  {generatorShop.shop_name ?? 'Your boutique'}
+                </h2>
+                {siteSlug && website && (
+                  <a
+                    href={published ? `/site/${siteSlug}` : `/site/${siteSlug}?preview=1`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1 inline-flex min-h-[44px] items-center gap-1.5 font-mono text-xs text-gray-500 transition hover:text-gray-900"
+                  >
+                    /site/{siteSlug} <ExternalLink size={11} />
+                  </a>
+                )}
+              </div>
+
+              {/* THE THREE ACTIONS */}
+              <div className="mt-auto flex flex-wrap items-center gap-3 pt-2">
+                <span className="relative">
+                  <CoachDot show={coach.visible} />
+                  <button
+                    type="button"
+                    onClick={scrollToStudio}
+                    className="flex min-h-[44px] items-center gap-2 rounded-full bg-gradient-to-r from-[#1a2e1a] to-gray-900 px-6 text-[10px] font-bold uppercase tracking-widest text-white shadow-md transition hover:opacity-90 active:scale-95"
+                  >
+                    <Wand2 size={13} /> {website ? 'Regenerate' : 'Generate'}
+                  </button>
+                </span>
+
+                <span className="relative">
+                  <CoachDot show={coach.visible && !!website} />
+                  <button
+                    type="button"
+                    onClick={() => void handlePublishToggle()}
+                    disabled={!website || publishing}
+                    className={`flex min-h-[44px] items-center gap-2 rounded-full border px-6 text-[10px] font-bold uppercase tracking-widest shadow-sm transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 ${
+                      published
+                        ? 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                        : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                    }`}
+                  >
+                    {publishing ? (
+                      <><Loader2 size={13} className="animate-spin" /> Working…</>
+                    ) : published ? (
+                      <><EyeOff size={13} /> Unpublish</>
+                    ) : (
+                      <><Eye size={13} /> Publish Live</>
+                    )}
+                  </button>
+                </span>
+
+                <span className="relative">
+                  <CoachDot show={coach.visible && !!website} />
+                  {website ? (
+                    <Link
+                      href="/dashboard/online-store/themes/customize"
+                      className="flex min-h-[44px] items-center gap-2 rounded-full bg-[#f0a500] px-6 text-[10px] font-black uppercase tracking-widest text-black shadow-md transition hover:brightness-110 active:scale-95"
+                    >
+                      <Brush size={13} /> Customize
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled
+                      className="flex min-h-[44px] cursor-not-allowed items-center gap-2 rounded-full bg-gray-100 px-6 text-[10px] font-black uppercase tracking-widest text-gray-400"
+                    >
+                      <Brush size={13} /> Customize
+                    </button>
+                  )}
+                </span>
+              </div>
+
+              {publishError && (
+                <p className="text-xs font-medium text-red-700">{publishError}</p>
+              )}
+
+              <CoachLegend
+                show={coach.visible}
+                steps={['Generate your site', 'Customize it', 'Publish it live']}
+                onDismiss={coach.dismiss}
+              />
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* GENERATE FLOW — the studio, decluttered (hero card owns everything
+          else). Its id anchors the hero card's Generate action. */}
       <WebsiteGeneratorStudio
         shop={generatorShop}
         website={website}
         websiteLoading={websiteLoading}
         onWebsiteChange={handleWebsiteChange}
+        variant="hub"
       />
-
-      {/* SITE EDITOR — inline copy editing on the seller's real site.
-          Advanced/Flagship only, and only once a website exists. Keyed on
-          generated_at so a rebuilt site remounts the editor with fresh
-          blocks; saves keep the mount (generated_at is untouched by PUT). */}
-      {hasWebsiteAccess && editorWebsite && editorShop && (
-        <section id="site-editor" className="mb-12">
-          <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <div className="flex flex-wrap items-center gap-3">
-                <h2 className="text-2xl font-serif font-bold text-gray-900 flex items-center gap-2.5">
-                  <PenLine size={20} className="text-[#f0a500]" /> Site Editor
-                </h2>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-amber-50 to-yellow-50 px-3 py-1 text-[9px] font-bold uppercase tracking-widest text-amber-800 ring-1 ring-amber-200">
-                  <Crown size={11} /> Advanced
-                </span>
-              </div>
-              <p className="mt-2 max-w-xl text-sm text-gray-500">
-                Your real website, live. Click any line of copy — the headline, your story, a
-                button label — and rewrite it in place. Changes stay private until you save.
-              </p>
-            </div>
-          </div>
-          <SiteCopyEditor
-            key={`${editorWebsite.id}:${editorWebsite.generated_at}`}
-            userId={userId}
-            website={editorWebsite}
-            shop={editorShop}
-            onSaved={handleWebsiteChange}
-          />
-        </section>
-      )}
     </>
   );
 }

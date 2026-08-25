@@ -1,7 +1,15 @@
 import { CartProvider } from "../components/CartProvider";
 import Cart from "../components/Cart"; // 🚀 Added the Cart UI
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
+import {
+  Bodoni_Moda,
+  Cormorant_Garamond,
+  Fraunces,
+  Geist,
+  Geist_Mono,
+  Lora,
+  Playfair_Display,
+} from "next/font/google";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -27,6 +35,48 @@ const playfair = Playfair_Display({
   subsets: ["latin"],
   style: ["normal", "italic"],
   display: "swap",
+});
+
+// ── Curated site display faces (Customize cockpit font picker) ──────────────
+// Each face earns its slot in a distinct luxury register (see lib/siteTheme.ts
+// blurbs): Cormorant Garamond (feather-light couture garamond for beauty/
+// fragrance), Fraunces (soft old-style warmth for artisanal brands), Lora
+// (contemporary, the most readable serif for story-led long copy), Bodoni
+// Moda (razor didone, the high-fashion editorial register). All variable
+// subsets with true italics, display:swap; preload:false so PUBLIC pages only
+// download the face a site's theme actually references — the @font-face rules
+// and CSS variables ship, the woff2 streams on first use.
+const cormorant = Cormorant_Garamond({
+  variable: "--font-serif-cormorant",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  style: ["normal", "italic"],
+  display: "swap",
+  preload: false,
+});
+
+const fraunces = Fraunces({
+  variable: "--font-serif-fraunces",
+  subsets: ["latin"],
+  style: ["normal", "italic"],
+  display: "swap",
+  preload: false,
+});
+
+const lora = Lora({
+  variable: "--font-serif-lora",
+  subsets: ["latin"],
+  style: ["normal", "italic"],
+  display: "swap",
+  preload: false,
+});
+
+const bodoni = Bodoni_Moda({
+  variable: "--font-serif-bodoni",
+  subsets: ["latin"],
+  style: ["normal", "italic"],
+  display: "swap",
+  preload: false,
 });
 
 // Flag sweep: env-driven origin (PUBLIC_APP_URL ?? NEXT_PUBLIC_APP_URL)
@@ -87,7 +137,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} ${cormorant.variable} ${fraunces.variable} ${lora.variable} ${bodoni.variable} antialiased`}
       >
         <CartProvider>
           {children}

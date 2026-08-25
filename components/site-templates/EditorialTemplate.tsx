@@ -15,6 +15,7 @@ import EditableText from './EditableText';
 import GatedVideo from './GatedVideo';
 import ProductTabsIsland from './ProductTabsIsland';
 import Reveal from './Reveal';
+import SiteMarquee from './SiteMarquee';
 import VideoHeroMedia from './VideoHeroMedia';
 import EditorialChrome, {
   EDITORIAL_COLLECTION_GRID,
@@ -114,7 +115,7 @@ function EditorialHero({ block, shop, heroMedia }: {
         )}
       </div>
       <div className="flex flex-col justify-center gap-6 px-5 py-14 md:col-span-5 md:px-12 md:py-20">
-        <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-[#1a2e1a]">No. 01 — The Opening</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-[var(--site-accent,#1a2e1a)]">No. 01 — The Opening</p>
         <EditableText
           as="h1"
           blockId={block.id}
@@ -128,7 +129,7 @@ function EditorialHero({ block, shop, heroMedia }: {
         </EditableText>
         <a
           href="#collection"
-          className="group inline-flex items-center gap-3 self-start border-b-2 border-neutral-900 pb-1.5 text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-900 transition hover:border-[#1a2e1a] hover:text-[#1a2e1a]"
+          className="group inline-flex items-center gap-3 self-start border-b-2 border-neutral-900 pb-1.5 text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-900 transition hover:border-[var(--site-accent,#1a2e1a)] hover:text-[var(--site-accent,#1a2e1a)]"
         >
           Read The Collection
           <span aria-hidden className="transition-transform group-hover:translate-x-1.5">&rarr;</span>
@@ -379,6 +380,10 @@ export default function EditorialTemplate({ shop, products, config, heroMedia }:
             return (
               <Fragment key={block.id}>
                 <EditorialHero block={block} shop={shop} heroMedia={heroMedia} />
+                {/* Kinetic marquee on the hero→features seam — never inside a
+                    Reveal (it is already motion), no data-block markers, so
+                    the Site Editor's rect math is untouched. */}
+                <SiteMarquee shop={shop} config={config} tone="editorial" />
                 <Reveal>
                   <EditorialFeatures shop={shop} products={products} />
                 </Reveal>

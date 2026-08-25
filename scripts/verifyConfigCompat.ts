@@ -163,6 +163,55 @@ if (legacyResult.success && newResult.success) {
   check('non-URL asset value is rejected',
     !WebsiteConfigSchema.safeParse({ ...newConfig, assets: { logo_url: 'not-a-url' } }).success);
 
+  // ── Customize cockpit: config.theme superset checks ──────────────────────
+  console.log('Theme superset checks:');
+
+  // A row carrying the new OPTIONAL theme object must validate…
+  const themedConfig = {
+    ...newConfig,
+    theme: { accent: '#1a2e1a', display_font: 'lora' },
+  };
+  const themedResult = WebsiteConfigSchema.safeParse(themedConfig);
+  check('config with theme validates', themedResult.success,
+    themedResult.success ? undefined : JSON.stringify(themedResult.error.issues));
+
+  // …a PARTIAL theme validates (each key optional; {} is the cockpit's
+  // cleared form), on both legacy (no blocks) and block-carrying rows…
+  check('accent-only theme validates',
+    WebsiteConfigSchema.safeParse({ ...newConfig, theme: { accent: '#8a3412' } }).success);
+  check('font-only theme validates',
+    WebsiteConfigSchema.safeParse({ ...newConfig, theme: { display_font: 'bodoni' } }).success);
+  check('empty theme object validates',
+    WebsiteConfigSchema.safeParse({ ...newConfig, theme: {} }).success);
+  check('legacy config (no blocks) + theme validates',
+    WebsiteConfigSchema.safeParse({ ...legacyConfig, theme: { accent: '#1e3a5f' } }).success);
+  check('theme + assets coexist',
+    WebsiteConfigSchema.safeParse({
+      ...newConfig,
+      assets: { hero_image_url: 'https://cdn.example.com/h.jpg' },
+      theme: { accent: '#5f1a1a', display_font: 'fraunces' },
+    }).success);
+
+  // …and theme never leaks into the block/site model: resolveBlocks output is
+  // identical with or without the key.
+  if (themedResult.success) {
+    check(
+      'theme does not perturb resolveBlocks',
+      JSON.stringify(resolveBlocks(themedResult.data)) === JSON.stringify(resolveBlocks(newResult.data))
+    );
+  }
+
+  // Negative controls: malformed accents and unknown fonts must FAIL (the
+  // accent lands in a style attribute — the hex regex is the injection gate).
+  check('non-hex accent is rejected',
+    !WebsiteConfigSchema.safeParse({ ...newConfig, theme: { accent: 'red' } }).success);
+  check('3-digit hex accent is rejected',
+    !WebsiteConfigSchema.safeParse({ ...newConfig, theme: { accent: '#fff' } }).success);
+  check('css-injection accent is rejected',
+    !WebsiteConfigSchema.safeParse({ ...newConfig, theme: { accent: '#123456; background:url(x)' } }).success);
+  check('unknown display_font is rejected',
+    !WebsiteConfigSchema.safeParse({ ...newConfig, theme: { display_font: 'comic-sans' } }).success);
+
   // ── Phase 8: value_props 2–4 window (relaxed from exactly-3) ─────────────
   console.log('value_props 2-4 window checks:');
 

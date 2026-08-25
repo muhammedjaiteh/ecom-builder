@@ -105,6 +105,17 @@ function getEnvironmentVerdict(): EnvironmentVerdict {
 
 const getServerEnvironmentVerdict = (): EnvironmentVerdict => 'unknown';
 
+/** The 2G media-gate verdict as a reusable hook (marketplace cinematic tiles
+ *  share GatedVideo's exact semantics): 'unknown' on the server/hydration
+ *  pass, then live saveData/effectiveType/reduced-motion subscription. */
+export function useMediaEnvironmentVerdict(): EnvironmentVerdict {
+  return useSyncExternalStore(
+    subscribeToEnvironment,
+    getEnvironmentVerdict,
+    getServerEnvironmentVerdict
+  );
+}
+
 const DEFAULT_PLAY_BUTTON =
   'absolute left-1/2 top-1/2 z-10 flex min-h-[44px] -translate-x-1/2 -translate-y-1/2 items-center gap-2.5 rounded-full bg-black/60 px-6 py-3 text-[11px] font-bold uppercase tracking-[0.2em] text-white shadow-lg backdrop-blur-sm transition hover:bg-black/75 active:scale-95';
 
@@ -133,11 +144,7 @@ export default function GatedVideo({
   const [posterFailed, setPosterFailed] = useState(false);
   // Explicit tap on the gated affordance — user intent outranks the verdict.
   const [userStarted, setUserStarted] = useState(false);
-  const verdict = useSyncExternalStore(
-    subscribeToEnvironment,
-    getEnvironmentVerdict,
-    getServerEnvironmentVerdict
-  );
+  const verdict = useMediaEnvironmentVerdict();
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const shouldAutoplay = !inPreviewScope && (userStarted || verdict === 'unconstrained');

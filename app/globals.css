@@ -12,8 +12,11 @@
   --font-mono: var(--font-geist-mono);
   /* Brand display serif (Playfair Display via next/font in app/layout.tsx).
      Mapping it here makes every `font-serif` utility across the templates,
-     chromes, cart, and PDPs resolve to it — no per-component edits. */
-  --font-serif: var(--font-display-serif), ui-serif, Georgia, Cambria, "Times New Roman", serif;
+     chromes, cart, and PDPs resolve to it — no per-component edits.
+     THEME LAYER: --site-serif is set ONLY by a themed site's root wrapper
+     (lib/siteTheme.ts siteThemeStyle) — everywhere else the var() fallback
+     resolves to Playfair, keeping non-themed rendering byte-identical. */
+  --font-serif: var(--site-serif, var(--font-display-serif)), ui-serif, Georgia, Cambria, "Times New Roman", serif;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -27,4 +30,44 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Kinetic marquee (components/site-templates/SiteMarquee.tsx) — pure CSS,
+   zero client JS. The track holds TWO identical groups (the second is the
+   aria-hidden twin), so translateX(-50%) loops seamlessly: the moment the
+   first group fully exits, the twin occupies its exact start position.
+   Duration arrives per-instance via --sndk-marquee-duration (scaled to the
+   token count server-side); contain + will-change keep the infinite
+   transform on its own compositor layer without invalidating page layout.
+   ───────────────────────────────────────────────────────────────────────── */
+@keyframes sndk-marquee-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+.sndk-marquee {
+  overflow: hidden;
+  contain: content;
+}
+
+.sndk-marquee-track {
+  display: flex;
+  width: max-content;
+  will-change: transform;
+  animation: sndk-marquee-scroll var(--sndk-marquee-duration, 40s) linear infinite;
+}
+
+/* Reduced motion: no animation — the twin disappears and the single group
+   centers inside the full-width track, cropping evenly at both edges under
+   the marquee's overflow:hidden, so it still reads as a designed border. */
+@media (prefers-reduced-motion: reduce) {
+  .sndk-marquee-track {
+    animation: none;
+    width: 100%;
+    justify-content: center;
+  }
+  .sndk-marquee-track [data-marquee-twin] {
+    display: none;
+  }
 }

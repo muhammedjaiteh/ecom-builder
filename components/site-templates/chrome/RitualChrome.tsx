@@ -11,6 +11,7 @@ import {
   type SiteProduct,
 } from '@/lib/siteTemplates';
 import { buildWhatsAppLink } from '@/lib/orderFlow';
+import { siteThemeStyle } from '@/lib/siteTheme';
 import CartBagButton from '../CartBagButton';
 import EditableText from '../EditableText';
 import SiteSearch from '../SiteSearch';
@@ -155,7 +156,10 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
   );
 
   return (
-    <div className="min-h-screen bg-[#FBFAF7] font-sans text-stone-900">
+    // THEME SEAM: a themed config sets --site-accent/--site-serif here (the
+    // one root every ritual /site page shares); absent theme → no style
+    // attribute, and every var() fallback below keeps the stone defaults.
+    <div className="min-h-screen bg-[#FBFAF7] font-sans text-stone-900" style={siteThemeStyle(config)}>
 
       {/* Sticky logo nav */}
       <nav className="sticky top-0 z-50 border-b border-stone-200/80 bg-[#FBFAF7]/90 backdrop-blur-md">
@@ -171,7 +175,7 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
                 className="h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-stone-200"
               />
             ) : (
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-stone-900 font-serif text-sm font-bold text-[#FBFAF7]">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--site-accent,#1c1917)] font-serif text-sm font-bold text-[#FBFAF7]">
                 {monogram}
               </span>
             )}
@@ -190,7 +194,7 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
             <CartBagButton tone="ritual" />
             <Link
               href={collectionsHref}
-              className="inline-flex min-h-11 shrink-0 items-center rounded-full bg-stone-900 px-6 text-[10px] font-bold uppercase tracking-[0.2em] text-white shadow-sm transition hover:bg-stone-700 active:scale-95"
+              className="inline-flex min-h-11 shrink-0 items-center rounded-full bg-[var(--site-accent,#1c1917)] px-6 text-[10px] font-bold uppercase tracking-[0.2em] text-white shadow-sm transition hover:brightness-125 active:scale-95"
             >
               Shop Now
             </Link>
@@ -215,7 +219,7 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
                   className="h-10 w-10 rounded-full object-cover ring-1 ring-stone-200"
                 />
               ) : (
-                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-stone-900 font-serif text-base font-bold text-[#FBFAF7]">
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--site-accent,#1c1917)] font-serif text-base font-bold text-[#FBFAF7]">
                   {monogram}
                 </span>
               )}

@@ -8,6 +8,7 @@ import { repairShopSlug, slugify } from '@/lib/slugify';
 import {
   SiteAssetsSchema,
   SiteBlockSchema,
+  SiteThemeSchema,
   WebsiteConfigSchema,
   blocksToLegacySite,
   type WebsiteConfig,
@@ -34,16 +35,17 @@ const WEBSITE_TIERS = ['advanced', 'flagship'];
 // The editor always sends the full block array — reordered arrays are valid
 // by construction (the schema is order-agnostic and every renderer respects
 // stored order). Unique ids protect the editor's node targeting; the length
-// ceiling bounds a hand-crafted payload. `assets` is OPTIONAL and additive:
-// when present it replaces config.assets wholesale (the editor owns the full
-// slot state); when absent (legacy clients, pre-assets outbox entries) the
-// stored assets survive untouched.
+// ceiling bounds a hand-crafted payload. `assets` and `theme` are OPTIONAL
+// and additive: when present each replaces its config key wholesale (the
+// editor owns the full slot/theme state); when absent (legacy clients,
+// pre-theme outbox entries) the stored values survive untouched.
 const BlocksPayloadSchema = z.object({
   blocks: z.array(SiteBlockSchema).min(1).max(12).refine(
     (blocks) => new Set(blocks.map((b) => b.id)).size === blocks.length,
     { message: 'Block ids must be unique.' }
   ),
   assets: SiteAssetsSchema.optional(),
+  theme: SiteThemeSchema.optional(),
 });
 
 type OwnerGate =
@@ -145,7 +147,7 @@ export async function PUT(req: Request) {
         { status: 400 }
       );
     }
-    const { blocks, assets } = parsedPayload.data;
+    const { blocks, assets, theme } = parsedPayload.data;
 
     const admin = getAdmin();
 
@@ -181,12 +183,13 @@ export async function PUT(req: Request) {
 
     // Both representations updated in ONE jsonb write: blocks are the source
     // of truth, site.* is the mirror (seo.* preserved by the adapter).
-    // assets replaces wholesale only when the payload carried it.
+    // assets/theme replace wholesale only when the payload carried them.
     const config: WebsiteConfig = {
       ...parsedConfig.data,
       site: blocksToLegacySite(blocks, parsedConfig.data.site),
       blocks,
       ...(assets !== undefined ? { assets } : {}),
+      ...(theme !== undefined ? { theme } : {}),
     };
 
     const { data: updated, error: updateError } = await admin

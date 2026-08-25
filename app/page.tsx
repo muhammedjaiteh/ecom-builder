@@ -4,12 +4,14 @@ import { createBrowserClient } from '@supabase/ssr';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   Search, ShoppingBag, Store, X, Menu, Sparkles,
   BadgeCheck, Shield, Truck, RotateCcw, Award, Mail, ArrowRight,
 } from 'lucide-react';
 import { useCart } from '@/components/CartProvider';
+import CinematicTile, { type CinematicTileData } from '@/components/marketplace/CinematicTile';
+import PlaybackCoordinator from '@/components/marketplace/PlaybackCoordinator';
 import type { Product } from '@/lib/types';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -97,6 +99,25 @@ function categoryMatchesShelf(category: string | null | undefined, keywords: str
   return keywords.some((kw) => value.includes(kw));
 }
 
+// ── Cinematic curation ────────────────────────────────────────────────────────
+// CADENCE CAP (enforced in code, not taste): at most ONE interlude banner per
+// INTERLUDE_EVERY_N_SHELVES shelf sections — two shelves ≈ one viewport of
+// content — and at most ONE feature tile per shelf section (the selector
+// takes only the first film-bearing product per shelf).
+const INTERLUDE_EVERY_N_SHELVES = 2;
+
+function toCinematicTile(p: ProductWithShop, withVideo: boolean): CinematicTileData {
+  return {
+    id: p.id,
+    name: p.name,
+    price: p.price ?? null,
+    shopName: p.shop?.shop_name || 'Sanndikaa boutique',
+    // The seller's best pixels: Ad Studio hero still first, then the photo.
+    posterUrl: p.ad_hero_image_url ?? p.image_urls?.[0] ?? p.image_url ?? null,
+    videoUrl: withVideo ? p.ad_video_url ?? null : null,
+  };
+}
+
 function ProductCardSkeleton() {
   return (
     <div className="flex flex-col animate-pulse">
@@ -132,7 +153,7 @@ export default function GlobalHomepage() {
     async function fetchCuratedMall() {
       const { data, error } = await supabase
         .from('shops')
-        .select(`id, shop_name, shop_slug, logo_url, theme_color, subscription_tier, status, products (id, name, price, image_url, image_urls, category, stock_quantity)`)
+        .select(`id, shop_name, shop_slug, logo_url, theme_color, subscription_tier, status, products (id, name, price, image_url, image_urls, category, stock_quantity, ad_video_url, ad_hero_image_url)`)
         .eq('status', 'active');
 
       if (!error && data) {
@@ -168,6 +189,49 @@ export default function GlobalHomepage() {
     })),
     [marketplaceProducts]
   );
+
+  // Cinematic curation — tier-ranked by construction (marketplaceProducts is
+  // already flagship/advanced-first). One pass assigns every living slot so a
+  // product never appears in two curation surfaces at once:
+  //   1. feature tiles: first film-bearing product per shelf (max 1/section);
+  //   2. interludes: cadence-capped queue between shelves — films first,
+  //      still-life editions (ad hero stills) fill when no film remains;
+  //   3. empty-shelf fills: still-life editorial curation, never an apology.
+  const curation = useMemo(() => {
+    const used = new Set<string>();
+
+    const featureByShelf = new Map<string, ProductWithShop>();
+    for (const shelf of categoryShelves) {
+      const candidate = shelf.products.find((p) => p.ad_video_url && !used.has(p.id));
+      if (candidate) {
+        featureByShelf.set(shelf.id, candidate);
+        used.add(candidate.id);
+      }
+    }
+
+    const queue = [
+      ...marketplaceProducts.filter((p) => p.ad_video_url && !used.has(p.id)),
+      ...marketplaceProducts.filter((p) => !p.ad_video_url && p.ad_hero_image_url && !used.has(p.id)),
+    ];
+    let cursor = 0;
+    const next = () => (cursor < queue.length ? queue[cursor++] : null);
+
+    const interludeByIndex = new Map<number, ProductWithShop>();
+    categoryShelves.forEach((_, i) => {
+      if ((i + 1) % INTERLUDE_EVERY_N_SHELVES !== 0) return;
+      const pick = next();
+      if (pick) interludeByIndex.set(i, pick);
+    });
+
+    const fillByShelf = new Map<string, ProductWithShop>();
+    for (const shelf of categoryShelves) {
+      if (shelf.products.length > 0) continue;
+      const pick = next();
+      if (pick) fillByShelf.set(shelf.id, pick);
+    }
+
+    return { featureByShelf, interludeByIndex, fillByShelf };
+  }, [categoryShelves, marketplaceProducts]);
 
   const handleCategoryJump = (sectionId: string) => {
     setSearchQuery('');
@@ -641,11 +705,22 @@ export default function GlobalHomepage() {
 
         ) : (
 
-          /* ── CATEGORY SWIMLANES ───────────────────────────── */
+          /* ── CATEGORY SWIMLANES + CINEMATIC CURATION ──────────
+             PlaybackCoordinator enforces the one-playing-video rule across
+             every interlude and feature tile below. */
+          <PlaybackCoordinator>
           <div className="space-y-2 pb-0 md:space-y-4">
 
-            {categoryShelves.map((shelf) => (
-              <section key={shelf.id} id={shelf.id} className="bg-white py-5 md:py-6">
+            {categoryShelves.map((shelf, shelfIndex) => {
+              const featured = curation.featureByShelf.get(shelf.id) ?? null;
+              const shelfProducts = featured
+                ? shelf.products.filter((p) => p.id !== featured.id)
+                : shelf.products;
+              const fill = curation.fillByShelf.get(shelf.id) ?? null;
+              const interlude = curation.interludeByIndex.get(shelfIndex) ?? null;
+              return (
+              <div key={shelf.id}>
+              <section id={shelf.id} className="bg-white py-5 md:py-6">
 
                 {/* Shelf header */}
                 <div className="mb-3 flex items-center justify-between px-4 md:px-10">
@@ -657,17 +732,60 @@ export default function GlobalHomepage() {
                       {shelf.description}
                     </p>
                   </div>
-                  <span className="flex-shrink-0 rounded-full bg-neutral-100 px-2.5 py-1 text-[10px] font-medium text-gray-600">
-                    {shelf.products.length} item{shelf.products.length !== 1 ? 's' : ''}
-                  </span>
+                  {shelf.products.length > 0 && (
+                    <span className="flex-shrink-0 rounded-full bg-neutral-100 px-2.5 py-1 text-[10px] font-medium text-gray-600">
+                      {shelf.products.length} item{shelf.products.length !== 1 ? 's' : ''}
+                    </span>
+                  )}
                 </div>
 
                 {shelf.products.length === 0 ? (
-                  <div className="mx-4 flex min-h-[160px] flex-col items-center justify-center rounded-2xl border border-dashed border-black/10 bg-neutral-50 px-4 py-10 text-center md:mx-10">
-                    <Store className="mb-3 h-7 w-7 text-gray-300" />
-                    <h4 className="text-sm font-semibold text-gray-900">Shelf coming soon</h4>
-                    <p className="mt-1 text-xs text-gray-500">{shelf.emptyMessage}</p>
-                  </div>
+                  /* An empty shelf renders CURATION, never an apology:
+                     still-life editorial fill from the marketplace edit →
+                     featured boutiques → an invitation to open the shelf. */
+                  fill ? (
+                    <div className="mx-4 overflow-hidden rounded-2xl md:mx-10">
+                      <CinematicTile
+                        variant="interlude"
+                        data={toCinematicTile(fill, false)}
+                        kicker={`From the marketplace edit — ${fill.shop?.shop_name ?? 'Sanndikaa'}`}
+                      />
+                    </div>
+                  ) : shops.length > 0 ? (
+                    <div className="grid grid-cols-1 gap-4 px-4 sm:grid-cols-2 md:px-10">
+                      {shops.slice(0, 2).map((shop) => (
+                        <Link
+                          key={`${shelf.id}-fill-${shop.id}`}
+                          href={`/shop/${shop.shop_slug}`}
+                          className="group flex min-h-[88px] items-center gap-4 rounded-2xl border border-black/5 bg-neutral-50 p-4 transition hover:-translate-y-0.5 hover:shadow-md"
+                        >
+                          <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-full border border-black/10 bg-white">
+                            {shop.logo_url ? (
+                              <Image src={shop.logo_url} alt={shop.shop_name} fill className="rounded-full object-cover" sizes="48px" />
+                            ) : (
+                              <div className="flex h-full items-center justify-center text-gray-300"><Store size={18} /></div>
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Featured boutique</p>
+                            <p className="truncate text-sm font-semibold text-gray-900 group-hover:underline">{shop.shop_name}</p>
+                          </div>
+                          <ArrowRight size={14} className="ml-auto flex-shrink-0 text-gray-400" />
+                        </Link>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mx-4 flex min-h-[160px] flex-col items-center justify-center rounded-2xl bg-[#1a2e1a] px-6 py-10 text-center md:mx-10">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#f0a500]">The First Edit</p>
+                      <h4 className="mt-2 text-lg font-semibold text-white">This shelf opens with the first boutique.</h4>
+                      <Link
+                        href="/pricing"
+                        className="mt-4 inline-flex min-h-[44px] items-center rounded-full bg-white px-6 text-xs font-semibold text-[#1a2e1a] transition hover:bg-neutral-100"
+                      >
+                        Open your boutique
+                      </Link>
+                    </div>
+                  )
                 ) : (
                   /*
                     Horizontal carousel — fixed 160px card width on mobile.
@@ -678,7 +796,14 @@ export default function GlobalHomepage() {
                     giving a clear swipe affordance.
                   */
                   <div className="scrollbar-none flex gap-3 overflow-x-auto snap-x snap-mandatory px-4 pb-4 md:gap-5 md:px-10">
-                    {shelf.products.map((product) => (
+                    {/* Feature tile — max ONE per shelf section (cadence cap):
+                        double-width, same card anatomy, living media box. */}
+                    {featured && (
+                      <div className="w-[332px] flex-shrink-0 snap-start sm:w-[396px] md:w-[436px] lg:w-[468px]">
+                        <CinematicTile variant="feature" data={toCinematicTile(featured, true)} />
+                      </div>
+                    )}
+                    {shelfProducts.map((product) => (
                       <div
                         key={`${shelf.id}-${product.id}-${product.shop.shop_slug}`}
                         className="w-[160px] flex-shrink-0 snap-start sm:w-48 md:w-52 lg:w-56"
@@ -691,7 +816,15 @@ export default function GlobalHomepage() {
                   </div>
                 )}
               </section>
-            ))}
+
+              {/* Full-bleed interlude — cadence-capped to one per
+                  ~viewport of shelf content (every second shelf). */}
+              {interlude && (
+                <CinematicTile variant="interlude" data={toCinematicTile(interlude, true)} />
+              )}
+              </div>
+              );
+            })}
 
             {/* ── SHOP BY BOUTIQUE ──────────────────────────── */}
             <section className="bg-white py-5 md:py-8">
@@ -707,9 +840,19 @@ export default function GlobalHomepage() {
               </div>
 
               {shops.length === 0 ? (
-                <div className="mx-4 flex flex-col items-center justify-center rounded-2xl border border-dashed border-black/10 bg-neutral-50 px-4 py-20 text-center md:mx-10">
-                  <Store className="mb-3 h-8 w-8 text-gray-300" />
-                  <h3 className="text-base font-semibold text-gray-900">No boutiques yet.</h3>
+                /* Curation, never an apology: the empty boutique floor is a
+                   designed invitation (conversion surface, Law 1). */
+                <div className="mx-4 flex flex-col items-center justify-center rounded-2xl bg-[#1a2e1a] px-6 py-16 text-center md:mx-10">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#f0a500]">Opening Soon</p>
+                  <h3 className="mt-3 max-w-md text-xl font-semibold text-white">
+                    The first boutiques are being fitted. Yours could open the floor.
+                  </h3>
+                  <Link
+                    href="/pricing"
+                    className="mt-6 inline-flex min-h-[44px] items-center gap-2 rounded-full bg-white px-7 text-sm font-semibold text-[#1a2e1a] transition hover:bg-neutral-100"
+                  >
+                    Open your boutique <ArrowRight size={14} />
+                  </Link>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-6 px-4 md:grid-cols-2 md:gap-8 md:px-10">
@@ -815,6 +958,7 @@ export default function GlobalHomepage() {
             </section>
 
           </div>
+          </PlaybackCoordinator>
         )}
       </main>
 

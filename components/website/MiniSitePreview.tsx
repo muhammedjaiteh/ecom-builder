@@ -49,11 +49,18 @@ const PREVIEW_PRODUCTS: SiteProduct[] = [
 ];
 
 type MiniSitePreviewProps = {
-  concept: SiteConcept;
+  /** Concept mock (studio Step-2 cards) — the historical mode. */
+  concept?: SiteConcept | null;
+  /** REAL stored config (Themes hub hero thumbnail) — wins over `concept`
+   *  when present, so the miniature shows the seller's actual site: their
+   *  copy, their theme accents/fonts (the chrome's variable seam runs inside
+   *  this scaled render too). Products stay the deterministic demo set —
+   *  this is a layout thumbnail, not a data view. */
+  config?: WebsiteConfig | null;
   shopName?: string | null;
 };
 
-export default function MiniSitePreview({ concept, shopName }: MiniSitePreviewProps) {
+export default function MiniSitePreview({ concept, config, shopName }: MiniSitePreviewProps) {
   const frameRef = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState(0.3);
 
@@ -85,8 +92,11 @@ export default function MiniSitePreview({ concept, shopName }: MiniSitePreviewPr
 
   // The concept's own copy IS the preview content — the seller judges the
   // layout wearing the exact creative direction they would be approving.
-  const previewConfig: WebsiteConfig = useMemo(
-    () => ({
+  // A real stored config (hub thumbnail mode) short-circuits the mock.
+  const previewConfig: WebsiteConfig | null = useMemo(() => {
+    if (config) return config;
+    if (!concept) return null;
+    return {
       template_key: concept.template_key,
       niche_reasoning: concept.vibe,
       site: {
@@ -111,11 +121,12 @@ export default function MiniSitePreview({ concept, shopName }: MiniSitePreviewPr
           description: concept.vibe.slice(0, 170),
         },
       },
-    }),
-    [concept]
-  );
+    };
+  }, [concept, config]);
 
-  const Template = TEMPLATE_COMPONENTS[concept.template_key] ?? RitualTemplate;
+  if (!previewConfig) return null;
+
+  const Template = TEMPLATE_COMPONENTS[previewConfig.template_key] ?? RitualTemplate;
 
   return (
     <div

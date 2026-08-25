@@ -14,6 +14,10 @@ export type Product = {
   shop_id?: string;
   user_id?: string;
   created_at?: string;
+  /** Ad Studio outputs — optional/additive: legacy reads without these
+   *  columns keep compiling; the marketplace's cinematic tiles consume them. */
+  ad_video_url?: string | null;
+  ad_hero_image_url?: string | null;
 };
 
 export type Shop = {
