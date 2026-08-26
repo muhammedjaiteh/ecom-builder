@@ -138,6 +138,9 @@ export default function GlobalHomepage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<ProductWithShop[] | null>(null);
+  // Honest-label flag (Fix 3): true when the API served the semantic weak
+  // fallback (zero category/title matches) instead of exact lexical results.
+  const [searchRelated, setSearchRelated] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [newsletterEmail, setNewsletterEmail] = useState('');
   const [newsletterSubmitted, setNewsletterSubmitted] = useState(false);
@@ -151,15 +154,40 @@ export default function GlobalHomepage() {
 
   useEffect(() => {
     async function fetchCuratedMall() {
-      const { data, error } = await supabase
-        .from('shops')
-        .select(`id, shop_name, shop_slug, logo_url, theme_color, subscription_tier, status, products (id, name, price, image_url, image_urls, category, stock_quantity, ad_video_url, ad_hero_image_url)`)
-        .eq('status', 'active');
+      // NO FK EMBED (2026-08-26 live probe): products↔shops carries TWO
+      // relationships in the live DB (products_shop_id_fkey on shop_id plus
+      // the out-of-repo products_shop_link on user_id), so the un-hinted
+      // `products (...)` embed fails with PGRST201 "more than one
+      // relationship" and this mall rendered EMPTY. Two plain reads + the
+      // dual-column grouping below (shop_id ?? user_id — siteData.ts's
+      // resolution) are immune to live FK topology AND to shop_id-NULL ghost
+      // rows, with or without provisioning.sql SECTION 10.
+      const [shopsRes, productsRes] = await Promise.all([
+        supabase
+          .from('shops')
+          .select('id, shop_name, shop_slug, logo_url, theme_color, subscription_tier, status')
+          .eq('status', 'active'),
+        supabase
+          .from('products')
+          .select('id, name, price, image_url, image_urls, category, stock_quantity, ad_video_url, ad_hero_image_url, shop_id, user_id')
+          .order('created_at', { ascending: false }),
+      ]);
 
-      if (!error && data) {
-        const activeShops = (data as unknown as Shop[]).filter(
-          (shop) => shop.products && shop.products.length > 0
-        );
+      if (shopsRes.error) console.error('[marketplace] shops read failed:', shopsRes.error.message);
+      if (productsRes.error) console.error('[marketplace] products read failed:', productsRes.error.message);
+
+      if (!shopsRes.error && !productsRes.error && shopsRes.data) {
+        const productsByShop = new Map<string, Product[]>();
+        for (const product of (productsRes.data ?? []) as Product[]) {
+          const sellerId = product.shop_id ?? product.user_id;
+          if (!sellerId) continue;
+          const list = productsByShop.get(sellerId);
+          if (list) list.push(product);
+          else productsByShop.set(sellerId, [product]);
+        }
+        const activeShops = (shopsRes.data as unknown as Omit<Shop, 'products'>[])
+          .map((shop) => ({ ...shop, products: productsByShop.get(shop.id) ?? [] }))
+          .filter((shop) => shop.products.length > 0);
         setShops(
           activeShops.sort((a, b) => getTierRank(b.subscription_tier) - getTierRank(a.subscription_tier))
         );
@@ -237,6 +265,7 @@ export default function GlobalHomepage() {
     setSearchQuery('');
     setIsSearching(false);
     setSearchResults(null);
+    setSearchRelated(false);
     setIsMobileMenuOpen(false);
     if (typeof window !== 'undefined') {
       window.requestAnimationFrame(() => {
@@ -282,9 +311,11 @@ export default function GlobalHomepage() {
       });
 
       setSearchResults(enriched);
+      setSearchRelated(Boolean(data.related));
     } catch (err) {
       console.error('[search] client error:', err);
       setSearchResults([]);
+      setSearchRelated(false);
     } finally {
       setIsSearching(false);
     }
@@ -294,6 +325,7 @@ export default function GlobalHomepage() {
     setSearchQuery('');
     setIsSearching(false);
     setSearchResults(null);
+    setSearchRelated(false);
   };
 
   // ── Product card ─────────────────────────────────────────────────────────
@@ -642,7 +674,9 @@ export default function GlobalHomepage() {
               <div>
                 <div className="flex items-center gap-2">
                   <Sparkles size={14} className="text-[#1a2e1a]" />
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#1a2e1a]">AI Stylist Results</span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#1a2e1a]">
+                    {searchRelated ? 'AI Stylist — Closest Matches' : 'Marketplace Results'}
+                  </span>
                 </div>
                 <h2 className="mt-1 text-lg font-semibold tracking-tight text-gray-900">
                   Matches for{' '}
@@ -680,7 +714,10 @@ export default function GlobalHomepage() {
               </div>
             ) : (
               <>
-                <p className="mb-4 text-xs text-gray-400">{searchResults.length} item{searchResults.length !== 1 ? 's' : ''} found</p>
+                <p className="mb-4 text-xs text-gray-400">
+                  {searchResults.length} item{searchResults.length !== 1 ? 's' : ''} found
+                  {searchRelated && ' — no exact category or title matches, showing the closest pieces instead'}
+                </p>
                 <motion.div
                   className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
                   initial="hidden"

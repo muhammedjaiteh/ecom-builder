@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { fetchMarketplaceProduct } from '@/lib/marketplaceProduct';
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -6,15 +7,13 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  const { data: product } = await supabase
-    .from('products')
-    .select('*, shops(shop_name)')
-    .eq('id', id)
-    .single();
+  // Fix 4: the historical `shops(shop_name)` embed failed live with PGRST201
+  // (two products→shops relationships), leaving every PDP with placeholder
+  // metadata. The shared resolver reads the product alone and resolves the
+  // seller via shop_id ?? user_id.
+  const product = await fetchMarketplaceProduct(supabase, id);
 
-  // Bulletproof TypeScript Fix:
-  const shopData: any = product?.shops;
-  const shopName = (Array.isArray(shopData) ? shopData[0]?.shop_name : shopData?.shop_name) ?? 'Shop';
+  const shopName = product?.shops?.shop_name ?? 'Shop';
   const productName = product?.name ?? 'Product';
   const price = product?.price ?? 0;
 

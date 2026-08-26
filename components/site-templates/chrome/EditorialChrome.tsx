@@ -251,11 +251,14 @@ export default function EditorialChrome({ shop, config, active, children }: Site
               <EditableText as="p" blockId={ctaBlock.id} field="subtext" className="mx-auto mt-6 max-w-lg text-sm leading-relaxed text-white/60 md:text-base">
                 {cta.subtext}
               </EditableText>
+              {/* Accent cohesion (Fix 6): the sign-off CTA label rides
+                  --site-accent. Fallback #171717 IS neutral-900 — theme-less
+                  rendering stays byte-identical. */}
               <Link
                 href={collectionsHref}
                 data-block-id={ctaBlock.id}
                 data-block-field="button_label"
-                className="mt-10 inline-block bg-[#F7F5F0] px-10 py-4 text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-900 transition hover:bg-white active:scale-95"
+                className="mt-10 inline-block bg-[#F7F5F0] px-10 py-4 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-accent,#171717)] transition hover:bg-white active:scale-95"
               >
                 {cta.button_label}
               </Link>
@@ -266,7 +269,7 @@ export default function EditorialChrome({ shop, config, active, children }: Site
               <p className="mx-auto mt-6 max-w-lg text-sm leading-relaxed text-white/60 md:text-base">{cta.subtext}</p>
               <Link
                 href={collectionsHref}
-                className="mt-10 inline-block bg-[#F7F5F0] px-10 py-4 text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-900 transition hover:bg-white active:scale-95"
+                className="mt-10 inline-block bg-[#F7F5F0] px-10 py-4 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-accent,#171717)] transition hover:bg-white active:scale-95"
               >
                 {cta.button_label}
               </Link>

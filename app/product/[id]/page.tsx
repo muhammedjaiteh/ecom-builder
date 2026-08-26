@@ -1,24 +1,21 @@
 import { createClient } from '@supabase/supabase-js';
+import { fetchMarketplaceProduct } from '@/lib/marketplaceProduct';
 import ProductClient from './ProductClient';
 
+// Fix 4: the historical `.select('*, shops (…)')` embed failed live with
+// PGRST201 (two products→shops relationships in the DB) and its swallowed
+// error rendered EVERY marketplace PDP as "Item Unavailable". The shared
+// resolver fetches the product alone, then resolves the seller through the
+// dual-column rule (shop_id ?? user_id) — see lib/marketplaceProduct.ts.
 export default async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  
+
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  const rawId = String(id);
-  const cleanId = rawId.replace(/[^a-zA-Z0-9-]/g, '');
+  const product = await fetchMarketplaceProduct(supabase, id);
 
-  const { data: productData, error: productError } = await supabase
-    .from('products')
-    .select('*, shops (id, phone, shop_name, shop_slug, logo_url, offers_delivery, offers_pickup), stock_quantity')
-    .eq('id', cleanId)
-    .maybeSingle();
-
-  if (productError) console.error('[product page] fetch error:', productError.message);
-
-  return <ProductClient product={productData || null} />;
+  return <ProductClient product={product ?? undefined} />;
 }

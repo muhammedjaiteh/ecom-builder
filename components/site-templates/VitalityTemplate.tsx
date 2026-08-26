@@ -4,14 +4,17 @@ import GatedVideo from '@/components/site-templates/GatedVideo';
 import Reveal from '@/components/site-templates/Reveal';
 import SiteMarquee from '@/components/site-templates/SiteMarquee';
 import SiteSearch from '@/components/site-templates/SiteSearch';
+import StoryClamp from '@/components/site-templates/StoryClamp';
 import { siteBasePath, siteCollectionsPath, siteProductPath, type SiteTemplateProps } from '@/lib/siteTemplates';
 import { siteThemeStyle } from '@/lib/siteTheme';
 
 // VITALITY — Health, Fitness & Bold General Brands.
 // Structure: bold nav with pill CTA → dark full-width hero with condensed
-// uppercase type and DIAGONAL bottom edge → stats band (large numerals) →
-// benefit-led horizontal product rows → gold value-prop stripes → CTA →
-// footer. Near-black + electric gold.
+// uppercase type and DIAGONAL bottom edge → kinetic value-props marquee
+// (Fix 2: the static gold stripes were retired — the value_props render as
+// the moving banner, edited from the SectionRail inspector) → stats band
+// (large numerals) → benefit-led horizontal product rows → brand story
+// (3-line StoryClamp teaser) → CTA → footer. Near-black + electric gold.
 
 function price(p: number | null) {
   return p == null ? '' : `D${Number(p).toLocaleString()}`;
@@ -111,8 +114,9 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
       </header>
 
       {/* Kinetic marquee on the hero→stats seam — pure CSS, never wrapped in
-          Reveal (it is already motion). */}
-      <SiteMarquee shop={shop} config={config} tone="vitality" />
+          Reveal (it is already motion). Fix 2: this ribbon IS the value-props
+          surface (the static gold stripes were retired). */}
+      <SiteMarquee config={config} tone="vitality" />
 
       {/* Stats band — fade-in-up on scroll (static under reduced motion
           and in editor previews — see Reveal.tsx). */}
@@ -132,22 +136,6 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
             </div>
           ))}
         </Reveal>
-      </section>
-
-      {/* Gold value-prop stripes — sibling stagger as they co-enter the fold */}
-      <section className="space-y-3 py-8">
-        {site.value_props.map((v, i) => (
-          <Reveal key={v.title} delay={i * 0.08}>
-            <div
-              className={`flex flex-col gap-1 border-y border-white/10 px-5 py-6 md:flex-row md:items-center md:gap-10 md:px-10 ${i === 1 ? 'bg-[var(--site-accent,#f0a500)] text-black' : 'bg-[#111]'}`}
-            >
-              <p className={`w-full shrink-0 text-2xl font-black uppercase tracking-tight md:w-96 ${i === 1 ? 'text-black' : 'text-white'}`}>
-                {v.title}
-              </p>
-              <p className={`text-sm leading-relaxed ${i === 1 ? 'text-black/70' : 'text-white/60'}`}>{v.body}</p>
-            </div>
-          </Reveal>
-        ))}
       </section>
 
       {/* Benefit-led product rows */}
@@ -198,7 +186,13 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
       <section className="border-y border-white/10 bg-[#111] py-20 md:py-24">
         <Reveal className="mx-auto max-w-3xl px-5 md:px-10">
           <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[var(--site-accent,#f0a500)]">The Mission</p>
-          <p className="mt-6 text-2xl font-bold leading-relaxed text-white/90 md:text-3xl">{site.brand_story}</p>
+          {/* Fix 1: 3-line teaser + Read-the-full-story reveal (fade matches
+              this section's #111 panel). */}
+          <div className="mt-6">
+            <StoryClamp tone="vitality">
+              <p className="text-2xl font-bold leading-relaxed text-white/90 md:text-3xl">{site.brand_story}</p>
+            </StoryClamp>
+          </div>
         </Reveal>
       </section>
 

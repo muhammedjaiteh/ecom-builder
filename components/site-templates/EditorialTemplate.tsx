@@ -2,7 +2,6 @@ import { Fragment } from 'react';
 import Link from 'next/link';
 import SmartImage from '@/components/SmartImage';
 import {
-  findBlock,
   resolveBlocks,
   type HeroMedia,
   type SiteBlock,
@@ -16,6 +15,7 @@ import GatedVideo from './GatedVideo';
 import ProductTabsIsland from './ProductTabsIsland';
 import Reveal from './Reveal';
 import SiteMarquee from './SiteMarquee';
+import StoryClamp from './StoryClamp';
 import VideoHeroMedia from './VideoHeroMedia';
 import EditorialChrome, {
   EDITORIAL_COLLECTION_GRID,
@@ -30,15 +30,17 @@ import EditorialChrome, {
 // EDITORIAL (template_key 'editorial') — Layout B.
 // Magazine anatomy, structurally distinct from the Minimal layout:
 // hairline top bar + oversized serif masthead → asymmetric split hero
-// (media 7 columns, copy 5) → alternating full-width product features →
-// dense hairline collection grid with hover reveals → pull-quote brand
-// story → numbered index row → dark serif sign-off footer.
-// Paper `#F7F5F0`, near-black ink, deep-green accent.
+// (media 7 columns, copy 5) → kinetic value-props marquee (Fix 2: the pinned
+// numbered index row was retired — the value_props block renders as the
+// moving brand ribbon on the hero→features seam, edited from the SectionRail
+// inspector) → alternating full-width product features → dense hairline
+// collection grid with hover reveals → pull-quote brand story (clamped to a
+// 3-line teaser with a Read-the-full-story reveal — StoryClamp) → dark serif
+// sign-off footer. Paper `#F7F5F0`, near-black ink, deep-green accent.
 //
 // Phase 3 block rendering: the body iterates resolveBlocks(config) in array
-// order, with two fixed DESIGN SLOTS that are part of the Editorial anatomy
+// order, with one fixed DESIGN SLOT that is part of the Editorial anatomy
 // itself (exactly like a magazine's pinned back-matter):
-//   - value_props always closes the body as the numbered index row;
 //   - cta_banner always renders as the chrome's dark sign-off spread (that is
 //     where it has lived since Phase 2 — see chrome/EditorialChrome).
 // The product-features spread consumes live product data (not block copy) and
@@ -52,7 +54,7 @@ import EditorialChrome, {
 // scroll-snap CarouselTrack in the hairline dialect; absent/'grid' keeps the
 // exact historical grid markup), and the seller-added product_tabs /
 // video_hero blocks flow in array order — they are body blocks, never design
-// slots, so the pinned index row and chrome sign-off are untouched. The
+// slots, so the chrome sign-off is untouched. The
 // grid/tabs/film section wrappers carry data-block-section markers for the
 // Site Editor's floating settings chip — inert data attributes on the public
 // site, exactly like the EditableText copy markers.
@@ -65,7 +67,6 @@ import EditorialChrome, {
 // escape.
 
 type HeroBlock = Extract<SiteBlock, { type: 'hero_banner' }>;
-type ValuePropsBlock = Extract<SiteBlock, { type: 'value_props' }>;
 type ProductGridBlock = Extract<SiteBlock, { type: 'product_grid' }>;
 type StoryBlock = Extract<SiteBlock, { type: 'story_text' }>;
 type ProductTabsBlock = Extract<SiteBlock, { type: 'product_tabs' }>;
@@ -79,7 +80,11 @@ function EditorialHero({ block, shop, heroMedia }: {
   const initial = (shop.shop_name ?? 'S').trim().charAt(0).toUpperCase() || 'S';
   return (
     <section data-block-section={block.id} className="grid grid-cols-1 border-b border-neutral-900 md:grid-cols-12">
-      <div className="relative min-h-[340px] border-neutral-900 md:col-span-7 md:min-h-[580px] md:border-r">
+      {/* Fold discipline (Fix 5): the md media pane caps at min(580px,62vh) —
+          on short laptop viewports the hero no longer swallows the fold, and
+          large desktops keep the exact historical 580px. The copy column
+          still grows the section (min-h clip-fix semantics preserved). */}
+      <div className="relative min-h-[340px] border-neutral-900 md:col-span-7 md:min-h-[min(580px,62vh)] md:border-r">
         {heroMedia?.type === 'video' ? (
           // 2G media gate: unconstrained networks autoplay exactly as before;
           // save-data/2g/3g/reduced-motion get the ad poster (or the monogram
@@ -186,9 +191,12 @@ function EditorialFeatures({ shop, products }: { shop: SiteShop; products: SiteP
                 <p className="line-clamp-3 max-w-md text-sm leading-relaxed text-neutral-600 md:text-base">{p.description}</p>
               )}
               <p className="font-serif text-2xl italic text-neutral-900">{editorialPrice(p.price)}</p>
+              {/* Accent cohesion (Fix 6): the feature CTA rides --site-accent.
+                  Fallback #171717 IS neutral-900 — theme-less rendering stays
+                  byte-identical; a themed site recolors the outline + fill. */}
               <Link
                 href={editorialProductHref(shop, p.id)}
-                className="inline-flex self-start border border-neutral-900 px-9 py-3.5 text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-900 transition hover:bg-neutral-900 hover:text-[#F7F5F0] active:scale-95"
+                className="inline-flex self-start border border-[var(--site-accent,#171717)] px-9 py-3.5 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-accent,#171717)] transition hover:bg-[var(--site-accent,#171717)] hover:text-[#F7F5F0] active:scale-95"
               >
                 View The Piece
               </Link>
@@ -268,7 +276,9 @@ function EditorialProductTabs({ block }: { block: ProductTabsBlock }) {
 function EditorialVideoHero({ block, shopName }: { block: VideoHeroBlock; shopName: string | null }) {
   return (
     <section data-block-section={block.id} className="border-b border-neutral-900">
-      <div className="relative min-h-[380px] overflow-hidden md:min-h-[560px]">
+      {/* Fold discipline (Fix 5): md frame caps at min(560px,60vh) — px floor
+          behavior on large screens, honest height on short laptops. */}
+      <div className="relative min-h-[380px] overflow-hidden md:min-h-[min(560px,60vh)]">
         <VideoHeroMedia
           src={block.videoUrl}
           poster={block.posterUrl ?? null}
@@ -319,54 +329,38 @@ function EditorialStory({ block, shopName }: { block: StoryBlock; shopName: stri
         <span aria-hidden className="pointer-events-none absolute -top-10 left-0 select-none font-serif text-[8rem] leading-none text-neutral-300 md:-top-16 md:text-[12rem]">
           &ldquo;
         </span>
-        <EditableText
-          as="blockquote"
-          blockId={block.id}
-          field="body"
-          className={`relative pt-14 font-serif italic text-neutral-900 md:pt-20 ${
-            isLong ? 'text-2xl leading-[1.35] md:text-3xl' : 'text-3xl leading-[1.2] md:text-5xl'
-          }`}
-        >
-          {block.body}
-        </EditableText>
+        {/* Fix 1: the quote-clearing padding moved onto this relative wrapper
+            (paint order over the glyph preserved) so the clamp island wraps a
+            clean copy node — StoryClamp renders it bare in editor previews. */}
+        <div className="relative pt-14 md:pt-20">
+          <StoryClamp tone="editorial">
+            <EditableText
+              as="blockquote"
+              blockId={block.id}
+              field="body"
+              className={`font-serif italic text-neutral-900 ${
+                isLong ? 'text-2xl leading-[1.35] md:text-3xl' : 'text-3xl leading-[1.2] md:text-5xl'
+              }`}
+            >
+              {block.body}
+            </EditableText>
+          </StoryClamp>
+        </div>
         <p className="mt-9 text-[10px] font-bold uppercase tracking-[0.35em] text-neutral-500">&mdash; {shopName}</p>
       </div>
     </section>
   );
 }
 
-// 2–4 index entries (Phase 8): one column per item at md+ — the hairline
-// border logic below is already per-item, so every count keeps the print grid.
-const EDITORIAL_INDEX_COLS: Record<number, string> = {
-  2: 'md:grid-cols-2',
-  3: 'md:grid-cols-3',
-  4: 'md:grid-cols-4',
-};
-
-function EditorialIndexRow({ block }: { block: ValuePropsBlock }) {
-  return (
-    <section data-block-section={block.id} className={`grid grid-cols-1 border-b border-neutral-900 ${EDITORIAL_INDEX_COLS[block.items.length] ?? 'md:grid-cols-3'}`}>
-      {block.items.map((v, i) => (
-        <div key={i} className={`px-5 py-10 md:px-10 md:py-14 ${i > 0 ? 'border-t border-neutral-900 md:border-l md:border-t-0' : ''}`}>
-          <p className="font-serif text-4xl italic text-neutral-300">0{i + 1}</p>
-          <EditableText as="p" blockId={block.id} field={`items.${i}.title`} className="mt-4 font-serif text-xl font-bold">
-            {v.title}
-          </EditableText>
-          <EditableText as="p" blockId={block.id} field={`items.${i}.body`} className="mt-2 text-sm leading-relaxed text-neutral-600">
-            {v.body}
-          </EditableText>
-        </div>
-      ))}
-    </section>
-  );
-}
+// Fix 2: the pinned numbered index row was retired — the value_props block
+// now renders exclusively as the SiteMarquee ribbon (the block itself stays
+// in the schema/rail; its editing home is the SectionRail inspector).
 
 export default function EditorialTemplate({ shop, products, config, heroMedia }: SiteTemplateProps) {
   const blocks = resolveBlocks(config);
-  // Design slots (see header comment): the numbered index row always closes
-  // the body; the CTA banner belongs to the chrome sign-off. Everything else
-  // flows in block-array order.
-  const indexRow = findBlock(blocks, 'value_props');
+  // Design slot (see header comment): the CTA banner belongs to the chrome
+  // sign-off; value_props render as the marquee ribbon. Everything else flows
+  // in block-array order.
   const flowBlocks = blocks.filter((b) => b.type !== 'value_props' && b.type !== 'cta_banner');
 
   return (
@@ -383,7 +377,7 @@ export default function EditorialTemplate({ shop, products, config, heroMedia }:
                 {/* Kinetic marquee on the hero→features seam — never inside a
                     Reveal (it is already motion), no data-block markers, so
                     the Site Editor's rect math is untouched. */}
-                <SiteMarquee shop={shop} config={config} tone="editorial" />
+                <SiteMarquee config={config} tone="editorial" />
                 <Reveal>
                   <EditorialFeatures shop={shop} products={products} />
                 </Reveal>
@@ -417,11 +411,6 @@ export default function EditorialTemplate({ shop, products, config, heroMedia }:
             return null;
         }
       })}
-      {indexRow && (
-        <Reveal>
-          <EditorialIndexRow block={indexRow} />
-        </Reveal>
-      )}
     </EditorialChrome>
   );
 }

@@ -44,6 +44,7 @@ import {
 import EditorialTemplate from '@/components/site-templates/EditorialTemplate';
 import { GatedVideoPreviewScope } from '@/components/site-templates/GatedVideo';
 import { RevealPreviewScope } from '@/components/site-templates/Reveal';
+import { StoryClampPreviewScope } from '@/components/site-templates/StoryClamp';
 import RitualTemplate from '@/components/site-templates/RitualTemplate';
 import BottomSheet from '@/components/website/BottomSheet';
 import VideoHeroPicker, { type VideoHeroSelection } from '@/components/website/VideoHeroPicker';
@@ -1066,10 +1067,16 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
                         RevealPreviewScope: entrance animations render static —
                         the click-overlay and scroll targeting measure
                         post-transform DOM rects, and a mid-animation translateY
-                        would corrupt every measurement. */}
+                        would corrupt every measurement.
+                        StoryClampPreviewScope: the brand-story teaser renders
+                        EXPANDED and static — the story copy node stays fully
+                        clickable/measurable, and no reveal button sits under
+                        the click-capture. */}
                     <GatedVideoPreviewScope>
                       <RevealPreviewScope>
-                        <Template shop={shop} products={products} config={previewConfig} heroMedia={heroMedia} />
+                        <StoryClampPreviewScope>
+                          <Template shop={shop} products={products} config={previewConfig} heroMedia={heroMedia} />
+                        </StoryClampPreviewScope>
                       </RevealPreviewScope>
                     </GatedVideoPreviewScope>
                   </div>

@@ -9,45 +9,21 @@ import { buildCartLineId, useCart } from '@/components/CartProvider';
 import ReviewForm from '@/components/ReviewForm';
 import ReviewList from '@/components/ReviewList';
 import {
+  fetchMarketplaceProduct,
+  type MarketplaceProduct,
+  type MarketplaceProductShop,
+} from '@/lib/marketplaceProduct';
+import {
   DEFAULT_ORDER_PHONE,
   buildDirectOrderMessage,
   buildWhatsAppLink,
   recordLead,
 } from '@/lib/orderFlow';
 
-// The joined shops row this page reads (select in loadProduct) — typed so the
-// checkout call sites stay honest instead of `any`.
-type ProductShop = {
-  id: string;
-  phone: string | null;
-  shop_name: string | null;
-  shop_slug: string | null;
-  logo_url: string | null;
-  offers_delivery: boolean | null;
-  offers_pickup: boolean | null;
-};
-
-// Fields this component actually renders/orders with. The select is `*`, so
-// extra columns ride along untyped — only the accessed shape is declared.
-type MarketplaceProduct = {
-  id: string;
-  user_id: string | null;
-  name: string;
-  price: number;
-  description: string | null;
-  image_url: string | null;
-  ad_video_url: string | null;
-  ad_hero_image_url: string | null;
-  stock_quantity: number | null;
-  colors: string[] | null;
-  sizes: string[] | null;
-  shops: ProductShop | null;
-};
-
 export default function ProductClient({ product: initialProduct }: { product?: MarketplaceProduct }) {
   const [product, setProduct] = useState<MarketplaceProduct | null>(initialProduct || null);
   const [loading, setLoading] = useState(!initialProduct);
-  const [shopSettings, setShopSettings] = useState<ProductShop | null>(initialProduct?.shops || null);
+  const [shopSettings, setShopSettings] = useState<MarketplaceProductShop | null>(initialProduct?.shops || null);
 
   // 🟢 TERMINAL STATE
   const [showTerminal, setShowTerminal] = useState(false);
@@ -72,16 +48,13 @@ export default function ProductClient({ product: initialProduct }: { product?: M
     async function loadProduct() {
       if (initialProduct) return;
       if (!params?.id) return;
-      const rawId = String(params.id);
-      const cleanId = rawId.replace(/[^a-zA-Z0-9-]/g, '');
 
-      const { data: productData, error } = await supabase
-        .from('products')
-        .select(`*, shops (id, phone, shop_name, shop_slug, logo_url, offers_delivery, offers_pickup), stock_quantity`)
-        .eq('id', cleanId)
-        .maybeSingle();
-
-      if (error || !productData) { setLoading(false); return; }
+      // Fix 4: the shared resolver — product row alone, then dual-column
+      // seller resolution (shop_id ?? user_id). The historical inline
+      // `shops(…)` embed failed live with PGRST201 (two products→shops FKs)
+      // and rendered every PDP "Item Unavailable".
+      const productData = await fetchMarketplaceProduct(supabase, String(params.id));
+      if (!productData) { setLoading(false); return; }
       setProduct(productData);
       setShopSettings(productData.shops);
       setLoading(false);
@@ -173,7 +146,24 @@ export default function ProductClient({ product: initialProduct }: { product?: M
   ) : null;
 
   if (loading) return <div className="min-h-screen bg-[#F9F8F6] flex items-center justify-center text-[#2C3E2C] font-serif animate-pulse">Loading Luxury...</div>;
-  if (!product) return <div className="min-h-screen bg-[#F9F8F6] flex items-center justify-center text-[#2C3E2C]">Item Unavailable</div>;
+  // Honest not-found state — reached ONLY when the product row itself is
+  // missing/unreadable (Fix 4: seller-resolution failures no longer land here).
+  if (!product) {
+    return (
+      <div className="min-h-screen bg-[#F9F8F6] flex items-center justify-center px-6 text-center text-[#2C3E2C]">
+        <div>
+          <p className="font-serif text-2xl">This piece is no longer available.</p>
+          <p className="mt-2 text-sm text-[#5F6F5F]">It may have been removed by the boutique.</p>
+          <Link
+            href="/"
+            className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-full bg-[#2C3E2C] px-7 text-xs font-bold uppercase tracking-widest text-white transition hover:bg-[#1a2e1a]"
+          >
+            <ArrowLeft size={14} /> Back to the marketplace
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#F9F8F6] font-sans text-[#2C3E2C] relative selection:bg-green-100">

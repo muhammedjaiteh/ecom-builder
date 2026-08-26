@@ -59,21 +59,39 @@ export default function ShopPage({ params }: { params: Promise<{ slug: string }>
       // The DB stores the decoded value, so we must decode before querying.
       const decodedSlug = decodeURIComponent(slug);
 
-      const { data, error } = await supabase
+      // Fix 4 blast radius: the historical `products (…)` embed fails live
+      // with PGRST201 (two products→shops relationships in the DB) — the
+      // boutique page rendered "Boutique Not Found" for every real shop.
+      // Two plain reads + the dual-column product match (shop_id ?? user_id,
+      // the siteData.ts resolution) are immune to FK topology and ghost rows.
+      const { data: shopRow, error } = await supabase
         .from('shops')
-        .select(`
-          id, shop_name, shop_slug, banner_url, logo_url, bio, theme_color, store_layout, offers_delivery, offers_pickup, pickup_instructions, subscription_tier, ai_credits,
-          products (id, name, description, price, image_url, image_urls, category, stock_quantity)
-        `)
+        .select('id, shop_name, shop_slug, banner_url, logo_url, bio, theme_color, store_layout, offers_delivery, offers_pickup, pickup_instructions, subscription_tier, ai_credits')
         .eq('shop_slug', decodedSlug)
         .maybeSingle();
 
       if (error) {
         console.error('Error fetching shop:', (error as PostgrestError).code, (error as PostgrestError).message, (error as PostgrestError).details);
-      } else {
-        setShop(data as Shop);
+        setLoading(false);
+        return;
       }
 
+      if (!shopRow) {
+        setLoading(false);
+        return;
+      }
+
+      const { data: products, error: productsError } = await supabase
+        .from('products')
+        .select('id, name, description, price, image_url, image_urls, category, stock_quantity')
+        .or(`shop_id.eq.${shopRow.id},user_id.eq.${shopRow.id}`)
+        .order('created_at', { ascending: false });
+
+      if (productsError) {
+        console.error('Error fetching shop products:', productsError.message);
+      }
+
+      setShop({ ...shopRow, products: (products ?? []) as Product[] } as Shop);
       setLoading(false);
     }
     fetchShop();

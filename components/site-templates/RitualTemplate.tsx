@@ -16,6 +16,7 @@ import GatedVideo from './GatedVideo';
 import ProductTabsIsland from './ProductTabsIsland';
 import Reveal from './Reveal';
 import SiteMarquee from './SiteMarquee';
+import StoryClamp from './StoryClamp';
 import VideoHeroMedia from './VideoHeroMedia';
 import RitualChrome, {
   RITUAL_COLLECTION_GRID,
@@ -25,10 +26,14 @@ import RitualChrome, {
 
 // MINIMAL (template_key 'ritual') — Layout A.
 // The anatomy of a premium minimal Shopify theme:
-// sticky logo nav → full-bleed cinematic hero with dual CTAs → numbered
-// value-props band → airy spacious product grid with quick-view hovers and
-// live stock badges → brand-story strip → dark CTA banner → structured
-// footer (shop info, delivery & pickup, contact). Warm off-white, stone ink.
+// sticky logo nav → full-bleed cinematic hero with dual CTAs → kinetic
+// value-props marquee (Fix 2: the static numbered band was retired — the
+// value_props block renders as the moving brand ribbon under the hero, edited
+// from the SectionRail inspector) → airy spacious product grid with
+// quick-view hovers and live stock badges → brand-story strip (clamped to a
+// 3-line teaser with a Read-the-full-story reveal — StoryClamp) → dark CTA
+// banner → structured footer (shop info, delivery & pickup, contact).
+// Warm off-white, stone ink.
 //
 // Phase 3: the body renders from resolveBlocks(config) — one section per
 // block, in block-array order. The deterministic legacy projection equals
@@ -52,7 +57,6 @@ import RitualChrome, {
 // "View classic boutique" escape.
 
 type HeroBlock = Extract<SiteBlock, { type: 'hero_banner' }>;
-type ValuePropsBlock = Extract<SiteBlock, { type: 'value_props' }>;
 type ProductGridBlock = Extract<SiteBlock, { type: 'product_grid' }>;
 type StoryBlock = Extract<SiteBlock, { type: 'story_text' }>;
 type CtaBlock = Extract<SiteBlock, { type: 'cta_banner' }>;
@@ -66,9 +70,13 @@ function RitualHero({ block, shop, heroMedia, collectionsHref }: {
   collectionsHref: string;
 }) {
   return (
-    // min-h (not fixed h): budget-length copy at 360px can outgrow 82vh — the
-    // hero grows with it instead of clipping against overflow-hidden.
-    <header data-block-section={block.id} className="relative flex min-h-[max(560px,82vh)] w-full items-end overflow-hidden bg-stone-900 md:items-center">
+    // min-h (not fixed h): budget-length copy at 360px can outgrow the frame —
+    // the hero grows with it instead of clipping against overflow-hidden.
+    // Fold discipline (Fix 5): the viewport-driven component is capped at 62vh
+    // (was 82vh) so the marquee + first grid row peek above the fold on
+    // desktop; the 560px content floor stays, and min-h preserves the
+    // clip-fix semantics — copy can still grow the frame past the cap.
+    <header data-block-section={block.id} className="relative flex min-h-[max(560px,62vh)] w-full items-end overflow-hidden bg-stone-900 md:items-center">
       {heroMedia?.type === 'video' ? (
         // 2G media gate: unconstrained networks autoplay exactly as before;
         // save-data/2g/3g/reduced-motion get the ad poster (or the template
@@ -135,33 +143,9 @@ function RitualHero({ block, shop, heroMedia, collectionsHref }: {
   );
 }
 
-// 2–4 value props (Phase 8): one column per item at md+ so the divide-x
-// hairlines always sit between columns of a single row.
-const RITUAL_VALUE_COLS: Record<number, string> = {
-  2: 'md:grid-cols-2',
-  3: 'md:grid-cols-3',
-  4: 'md:grid-cols-4',
-};
-
-function RitualValueProps({ block }: { block: ValuePropsBlock }) {
-  return (
-    <section data-block-section={block.id} className="border-b border-stone-200 bg-white">
-      <div className={`mx-auto grid max-w-7xl grid-cols-1 divide-y divide-stone-100 md:divide-x md:divide-y-0 ${RITUAL_VALUE_COLS[block.items.length] ?? 'md:grid-cols-3'}`}>
-        {block.items.map((v, i) => (
-          <div key={i} className="px-6 py-9 text-center md:px-10 md:py-12">
-            <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-stone-400">0{i + 1}</p>
-            <EditableText as="p" blockId={block.id} field={`items.${i}.title`} className="mt-3 font-serif text-lg font-bold text-stone-900">
-              {v.title}
-            </EditableText>
-            <EditableText as="p" blockId={block.id} field={`items.${i}.body`} className="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-stone-500">
-              {v.body}
-            </EditableText>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
+// Fix 2: the static numbered value-props band was retired — the value_props
+// block now renders exclusively as the SiteMarquee ribbon (the block itself
+// stays in the schema/rail; its editing home is the SectionRail inspector).
 
 function RitualProductGrid({ block, shop, products }: {
   block: ProductGridBlock;
@@ -232,7 +216,9 @@ function RitualProductTabs({ block }: { block: ProductTabsBlock }) {
 
 function RitualVideoHero({ block, shopName }: { block: VideoHeroBlock; shopName: string | null }) {
   return (
-    <section data-block-section={block.id} className="relative flex min-h-[max(480px,72vh)] w-full items-end overflow-hidden bg-stone-900">
+    // Fold discipline (Fix 5): viewport component capped at 60vh (was 72vh);
+    // the 480px content floor and min-h clip-fix semantics are preserved.
+    <section data-block-section={block.id} className="relative flex min-h-[max(480px,60vh)] w-full items-end overflow-hidden bg-stone-900">
       <VideoHeroMedia
         src={block.videoUrl}
         poster={block.posterUrl ?? null}
@@ -271,9 +257,14 @@ function RitualStory({ block, shopName }: { block: StoryBlock; shopName: string 
           <div className="mt-5 hidden h-px w-16 bg-[var(--site-accent,#1c1917)] md:block" />
         </div>
         <div>
-          <EditableText as="p" blockId={block.id} field="body" className="font-serif text-2xl font-medium leading-relaxed text-stone-800 md:text-3xl">
-            {block.body}
-          </EditableText>
+          {/* Fix 1: 3-line teaser + Read-the-full-story reveal. StoryClamp
+              renders the bare copy node in editor previews, so the
+              data-block-id/-field targeting is untouched. */}
+          <StoryClamp tone="ritual">
+            <EditableText as="p" blockId={block.id} field="body" className="font-serif text-2xl font-medium leading-relaxed text-stone-800 md:text-3xl">
+              {block.body}
+            </EditableText>
+          </StoryClamp>
           <p className="mt-7 text-[10px] font-bold uppercase tracking-[0.3em] text-stone-400">{shopName}</p>
         </div>
       </div>
@@ -320,8 +311,8 @@ export default function RitualTemplate({ shop, products, config, heroMedia }: Si
           switch (block.type) {
             case 'hero_banner':
               return <RitualHero block={block} shop={shop} heroMedia={heroMedia} collectionsHref={collectionsHref} />;
-            case 'value_props':
-              return <RitualValueProps block={block} />;
+            // value_props: no body section (Fix 2) — the block renders as the
+            // SiteMarquee ribbon after the hero.
             case 'product_grid':
               return <RitualProductGrid block={block} shop={shop} products={products} />;
             case 'story_text':
@@ -345,7 +336,7 @@ export default function RitualTemplate({ shop, products, config, heroMedia }: Si
           return (
             <Fragment key={block.id}>
               {section}
-              <SiteMarquee shop={shop} config={config} tone="ritual" />
+              <SiteMarquee config={config} tone="ritual" />
             </Fragment>
           );
         }

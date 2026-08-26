@@ -106,7 +106,15 @@ async function downloadImage(url: string): Promise<{ bytes: Uint8Array; contentT
 }
 
 /** Deterministic luxury scene brief built from the generated brand identity —
- *  no extra LLM call in the loop (Law 3: the phase must stay fast). */
+ *  no extra LLM call in the loop (Law 3: the phase must stay fast). Prompts
+ *  are pure functions of the config (byte-stable — cache law).
+ *
+ *  ART DIRECTION (Fix 5): abstract high-end brand texture, lifestyle mood,
+ *  minimalist interior atmosphere — with EXPLICIT prohibitions. Law 4 note:
+ *  IC-Light composites the seller's REAL product cutout into this scene, so
+ *  the prohibitions govern the GENERATED SURROUNDINGS — the model must never
+ *  invent additional merchandise, mannequins, lettering, or faces around the
+ *  real product. */
 function buildHeroScenePrompt(config: WebsiteConfig): string {
   const template = SITE_TEMPLATES[config.template_key];
   const tagline = config.site.tagline;
@@ -114,8 +122,10 @@ function buildHeroScenePrompt(config: WebsiteConfig): string {
   return (
     `Photorealistic premium e-commerce hero scene for a ${template.niche} brand — "${tagline}". ` +
     `${intro} ` +
-    `Clean luxury studio environment: refined materials, elegant color-gradient backdrop, one soft directional key light with gentle volumetric haze, ` +
+    `Abstract high-end brand texture and lifestyle mood in a minimalist interior atmosphere: refined materials, elegant color-gradient backdrop, one soft directional key light with gentle volumetric haze, ` +
     `generous negative space around the product for headline typography, shallow depth of field. ` +
+    `The environment around the featured product must stay pure atmosphere: no additional products, no objects that read as merchandise, no packaging, no mannequins, ` +
+    `no text, no lettering, no logos, no watermarks, and no people or faces anywhere in the frame. ` +
     `Elite Shopify storefront standard — confident, editorial, never cluttered, never discount-retailer.`
   );
 }
@@ -178,15 +188,21 @@ export async function generateHeroAsset(args: {
 }
 
 /** Brand-identity logo prompt. A monogram emblem (not a long wordmark) —
- *  diffusion models garble long text, an initial mark stays clean. */
+ *  diffusion models garble long text, an initial mark stays clean. Pure
+ *  function of (shopName, config): byte-stable — cache law.
+ *
+ *  Full abstract-mark discipline (Fix 5): the mark is an abstract high-end
+ *  brand symbol — never a product illustration, never a scene, never a face,
+ *  and no lettering beyond the single monogram initial. */
 function buildLogoPrompt(shopName: string, config: WebsiteConfig): string {
   const template = SITE_TEMPLATES[config.template_key];
   const initial = shopName.trim().charAt(0).toUpperCase() || 'S';
   return (
     `Minimalist luxury brand logo mark for "${shopName}", a ${template.niche} boutique — "${config.site.tagline}". ` +
-    `An elegant "${initial}" monogram emblem inside a simple geometric frame, flat vector style, ` +
+    `An elegant abstract "${initial}" monogram emblem inside a simple geometric frame — an abstract high-end brand mark, flat vector style, ` +
     `two-tone palette drawn from deep charcoal and warm gold, crisp edges, centered on a plain solid off-white background. ` +
-    `No photograph, no gradient noise, no extra words, no watermark.`
+    `Strictly an abstract symbol: no photograph, no literal products, no objects that read as merchandise, no mannequins, no people or faces, ` +
+    `no words or lettering beyond the single monogram initial, no gradient noise, no watermark.`
   );
 }
 

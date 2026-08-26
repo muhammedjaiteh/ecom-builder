@@ -16,6 +16,22 @@ import type { SiteFontKey, TemplateKey, WebsiteConfig } from './siteTemplates';
 // var(--site-accent, <template default>) at their accent spots — with no
 // theme stored, siteThemeStyle returns undefined (no style attribute at all)
 // and every var() resolves to its inline default: byte-identical rendering.
+//
+// --site-accent CONSUMPTION POINTS (keep current — Fix 6 audit):
+//   RitualTemplate      hero "Shop The Collection" label · story accent rule ·
+//                       CTA-banner button label
+//   RitualChrome        nav/footer monogram fills · "Shop Now" pill
+//   EditorialTemplate   "No. 01" kicker · hero link hover · features
+//                       "View The Piece" outline/label/hover-fill (#171717
+//                       fallback = neutral-900, byte-identical untthemed)
+//   EditorialChrome     masthead link hover · sign-off CTA label (#171717)
+//   VitalityTemplate    nav pill · hero play pill · tagline chip · hero CTA +
+//                       shadow · stats numerals · row price/hover/View pill ·
+//                       mission kicker · closing CTA + shadow
+//   NeutralChrome       card hover ring/badge/price · nav CTA pill
+//   SiteMarquee         vitality token color · ritual glyphs (#d6d3d1 =
+//                       stone-300) · editorial glyphs (#a3a3a3 = neutral-400)
+//   StoryClamp          "Read the full story" button, all three dialects
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── Curated display faces ────────────────────────────────────────────────────

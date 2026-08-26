@@ -215,7 +215,15 @@ function InspectorBody(props: SectionRailProps & { block: SiteBlock }) {
         </div>
       )}
 
-      {/* value_props: add/remove rows inside the 2–4 schema window (Phase 8) */}
+      {/* value_props: add/remove rows inside the 2–4 schema window (Phase 8).
+          Fix 2: the props render as the moving brand banner under the hero —
+          deliberately not click-editable there (animated duplicated track),
+          so this inspector is their editing home. The hint says so. */}
+      {block.type === 'value_props' && (
+        <p className="rounded-xl bg-gray-100 px-3.5 py-2.5 text-[11px] leading-relaxed text-gray-500">
+          Shown in the moving banner under the hero — edit the props here.
+        </p>
+      )}
       {block.type === 'value_props' && (
         <div className="flex flex-wrap gap-2">
           <button

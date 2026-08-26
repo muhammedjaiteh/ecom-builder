@@ -30,9 +30,14 @@ import type { SiteTone } from './chrome';
 // resolves offline-capable from the in-memory index.
 //
 // MATCHING: tokenized, case-insensitive, over name + category + description.
-// Primary results require EVERY token to hit somewhere; ranking weighs
-// name hits > category hits > description hits. Zero primary hits fall back to
-// any-token partial matches, labeled honestly as "Related pieces".
+// Primary results require EVERY token to hit the NAME or CATEGORY (Fix 3:
+// description coverage used to promote loose matches — "women dress" hitting
+// a cosmetics blurb — into primaries; descriptions now only contribute to
+// ranking within a tier and to the any-token fallback pool). Ranking weighs
+// name hits > category hits > description hits (name-first is right at shop
+// scope: a boutique's categories are near-uniform, its names discriminate).
+// Zero primary hits fall back to any-token partial matches, labeled honestly
+// as "Related pieces".
 //
 // EDITOR SAFETY: the Site Editor's preview click-capture blocks every click
 // except [role=tab]/[data-carousel-nav] in the capture phase, so the trigger
@@ -75,8 +80,9 @@ function fieldHits(field: string | null, tokens: string[]): number {
   return tokens.reduce((n, t) => (value.includes(t) ? n + 1 : n), 0);
 }
 
-/** Ranked match: name > category > description; all-token hits are primary,
- *  any-token hits form the "Related pieces" fallback. */
+/** Ranked match: name > category > description; all-token NAME/CATEGORY hits
+ *  are primary (Fix 3 — description coverage never mints a primary), any-token
+ *  hits across all three fields form the "Related pieces" fallback. */
 function matchProducts(index: SearchProduct[], query: string): SearchOutcome {
   const tokens = tokenize(query);
   if (tokens.length === 0) return { results: [], related: false };
@@ -92,11 +98,13 @@ function matchProducts(index: SearchProduct[], query: string): SearchOutcome {
     if (totalHits === 0) continue;
 
     const score = nameHits * 100 + catHits * 10 + descHits;
+    // Primary discipline: every token must land in the name or the category.
+    // A description-only hit can never promote a product past this gate — it
+    // stays in the honestly-labeled "Related pieces" pool below.
     const tokensCovered = tokens.every(
       (t) =>
         product.name.toLowerCase().includes(t) ||
-        (product.category ?? '').toLowerCase().includes(t) ||
-        (product.description ?? '').toLowerCase().includes(t)
+        (product.category ?? '').toLowerCase().includes(t)
     );
     (tokensCovered ? primary : partial).push({ product, score });
   }

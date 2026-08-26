@@ -4,6 +4,7 @@ import { useLayoutEffect, useMemo, useRef, useState, type ComponentType } from '
 import EditorialTemplate from '@/components/site-templates/EditorialTemplate';
 import { GatedVideoPreviewScope } from '@/components/site-templates/GatedVideo';
 import { RevealPreviewScope } from '@/components/site-templates/Reveal';
+import { StoryClampPreviewScope } from '@/components/site-templates/StoryClamp';
 import RitualTemplate from '@/components/site-templates/RitualTemplate';
 import VitalityTemplate from '@/components/site-templates/VitalityTemplate';
 import type {
@@ -141,10 +142,14 @@ export default function MiniSitePreview({ concept, config, shopName }: MiniSiteP
         {/* GatedVideoPreviewScope: heroMedia is null here today, but any
             future video block in a miniature stays a static poster.
             RevealPreviewScope: entrance animations render static — the scaled
-            miniature must never carry mid-animation transforms. */}
+            miniature must never carry mid-animation transforms.
+            StoryClampPreviewScope: the brand story renders expanded/static —
+            a clamped teaser with a dead button is noise at thumbnail scale. */}
         <GatedVideoPreviewScope>
           <RevealPreviewScope>
-            <Template shop={previewShop} products={PREVIEW_PRODUCTS} config={previewConfig} heroMedia={null} />
+            <StoryClampPreviewScope>
+              <Template shop={previewShop} products={PREVIEW_PRODUCTS} config={previewConfig} heroMedia={null} />
+            </StoryClampPreviewScope>
           </RevealPreviewScope>
         </GatedVideoPreviewScope>
       </div>

@@ -58,16 +58,20 @@ body {
   animation: sndk-marquee-scroll var(--sndk-marquee-duration, 40s) linear infinite;
 }
 
-/* Reduced motion: no animation — the twin disappears and the single group
-   centers inside the full-width track, cropping evenly at both edges under
-   the marquee's overflow:hidden, so it still reads as a designed border. */
+/* Reduced motion: the animated track hides entirely and the component's
+   dedicated static line (.sndk-marquee-static — tagline + first value prop,
+   truncating spans) takes its place. A centered crop of the full token loop
+   would clip 2–4 value props mid-word; the curated two-token line stays a
+   designed border at every viewport width. */
+.sndk-marquee-static {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sndk-marquee-track {
-    animation: none;
-    width: 100%;
-    justify-content: center;
-  }
-  .sndk-marquee-track [data-marquee-twin] {
     display: none;
+  }
+  .sndk-marquee-static {
+    display: flex;
   }
 }
