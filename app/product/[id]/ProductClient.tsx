@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import { Phone, ArrowLeft, ShoppingBag, X, Smartphone, Banknote, Copy, Check, ShieldCheck, Truck, HomeIcon } from 'lucide-react';
 import Link from 'next/link';
 import { buildCartLineId, useCart } from '@/components/CartProvider';
-import ReviewForm from '@/components/ReviewForm';
+import BuyerReviewForm from '@/components/BuyerReviewForm';
 import ReviewList from '@/components/ReviewList';
 import {
   fetchMarketplaceProduct,
@@ -363,12 +363,14 @@ export default function ProductClient({ product: initialProduct }: { product?: M
               />
             </div>
             
-            {/* Right Column: Submission Form */}
+            {/* Right Column: Submission Form — the frictionless verified
+                buyer form (phone-matched, no login wall). The dashboard
+                seller-mode path keeps components/ReviewForm.tsx. */}
             <div className="lg:col-span-1">
               <div className="sticky top-24">
-                <ReviewForm 
-                   productId={product.id} 
-                   onReviewSubmitted={handleReviewSubmitted} 
+                <BuyerReviewForm
+                   productId={product.id}
+                   onReviewSubmitted={handleReviewSubmitted}
                 />
               </div>
             </div>

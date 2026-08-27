@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import SmartImage from '@/components/SmartImage';
 import GatedVideo from '@/components/site-templates/GatedVideo';
+import HeroBrandPlate from '@/components/site-templates/HeroBrandPlate';
 import Reveal from '@/components/site-templates/Reveal';
 import SiteMarquee from '@/components/site-templates/SiteMarquee';
 import SiteSearch from '@/components/site-templates/SiteSearch';
@@ -88,7 +89,9 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
               className="object-cover opacity-40"
             />
           ) : (
-            <div className="h-full w-full bg-gradient-to-br from-[#141414] via-[#0C0C0C] to-amber-950/40" />
+            /* Null tier (Pillar 4b): the animated brand plate — same gradient
+               stops, panned, with the accent glow + monogram. */
+            <HeroBrandPlate tone="vitality" shopName={shop.shop_name} />
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-[#0C0C0C] via-transparent to-black/40" />
         </div>

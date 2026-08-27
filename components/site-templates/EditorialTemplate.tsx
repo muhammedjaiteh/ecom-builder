@@ -12,6 +12,7 @@ import {
 import CarouselTrack from './CarouselTrack';
 import EditableText from './EditableText';
 import GatedVideo from './GatedVideo';
+import HeroBrandPlate from './HeroBrandPlate';
 import ProductTabsIsland from './ProductTabsIsland';
 import Reveal from './Reveal';
 import SiteMarquee from './SiteMarquee';
@@ -114,9 +115,9 @@ function EditorialHero({ block, shop, heroMedia }: {
             className="object-cover"
           />
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-neutral-200 via-[#EDEAE2] to-neutral-300">
-            <span className="font-serif text-[10rem] italic leading-none text-neutral-400/40 md:text-[16rem]">{initial}</span>
-          </div>
+          /* Null tier (Pillar 4b): the animated brand plate — same gradient
+             stops, panned, with the accent glow + monogram. */
+          <HeroBrandPlate tone="editorial" shopName={shop.shop_name} />
         )}
       </div>
       <div className="flex flex-col justify-center gap-6 px-5 py-14 md:col-span-5 md:px-12 md:py-20">

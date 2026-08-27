@@ -13,36 +13,32 @@ import type { ImageLoaderProps } from 'next/image';
 //                 the width next/image requests and ~75 quality. A 4000px
 //                 phone-camera original becomes a ~640px WebP-negotiated
 //                 payload on a 2G product grid — the single largest byte win
-//                 on the storefront — and it never touches the Vercel
-//                 optimizer quota.
+//                 on the storefront. The BROWSER fetches the Supabase render
+//                 CDN directly: this path never touches the /_next/image
+//                 proxy, so it keeps its transforms AND is immune to the
+//                 optimizer's SSRF guard (see below).
 //
-//   'optimized'   AI assets (Fal hero stills on fal.media / v*.fal.media,
-//                 Creatomate poster frames) go through the default Vercel
-//                 optimizer (/_next/image), governed by the exact
-//                 remotePatterns allowlist in next.config.ts.
+//   'optimized'   Local/static assets ONLY (leading-slash paths: public/
+//                 icons, logos, UI art) — the default Vercel optimizer.
 //
-//   'unoptimized' blob:/data: dashboard upload previews and any unknown host
-//                 render the raw pixels directly. The optimizer would 400 an
-//                 un-allowlisted host into a broken frame — Law 4 says the
-//                 seller's real pixels or a branded plate, never a broken
-//                 image, so unknown hosts bypass optimization instead.
+//   'unoptimized' Every REMOTE non-Supabase URL (fal.media / v*.fal.media
+//                 hero stills, creatomate.com poster frames, legacy DALL-E
+//                 blob URLs, unknown hosts) plus blob:/data: previews render
+//                 the raw pixels directly.
+//
+// NAT64 DECISION (2026-08-28): remote UGC is permanently retired from the
+// /_next/image proxy. Buyers on carrier NAT64 networks (common on Gambian
+// mobile carriers) resolve IPv4-only hosts through the 64:ff9b::/96
+// well-known prefix, and Next's optimizer SSRF heuristic rejects those
+// lookups with `resolved to private ip ["64:ff9b::…"]` — a hard runtime
+// refusal no remotePatterns entry can override, breaking real product
+// imagery for real buyers. Direct URL render = zero proxy, zero SSRF
+// surface (Law 4: the seller's real pixels, never a broken frame). Do NOT
+// re-add remote hosts to the 'optimized' path.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const SUPABASE_OBJECT_PATH = '/storage/v1/object/public/';
 const SUPABASE_RENDER_PATH = '/storage/v1/render/image/public/';
-
-/** Hosts the default Vercel optimizer accepts — mirror of next.config.ts
- *  images.remotePatterns. Keep the two lists in lockstep. (The '.fal.media'
- *  suffix already covers the explicit v2/v3/v3b entries in the config.) */
-const OPTIMIZED_EXACT_HOSTS = new Set([
-  'fal.media',
-  'creatomate.com',
-  'cdn.creatomate.com',
-  // Legacy DALL-E transient URLs in old rows; expired ones fail identically
-  // on either path, live ones now pass the allowlist.
-  'oaidalleapiprodscus.blob.core.windows.net',
-]);
-const OPTIMIZED_HOST_SUFFIXES = ['.fal.media'];
 
 export type ImageStrategy = 'supabase' | 'optimized' | 'unoptimized';
 
@@ -57,21 +53,18 @@ export function isSupabasePublicStorageUrl(src: string): boolean {
 }
 
 export function resolveImageStrategy(src: string): ImageStrategy {
-  // Local/static assets (leading slash) belong to the default optimizer.
+  // Local/static assets (leading slash) belong to the default optimizer —
+  // same-origin, never DNS-resolved, unaffected by the NAT64/SSRF guard.
   if (src.startsWith('/')) return 'optimized';
   if (src.startsWith('blob:') || src.startsWith('data:')) return 'unoptimized';
+  // Supabase Storage object URLs → custom render-CDN loader (direct browser
+  // fetch, proxy never involved). Already-transformed render URLs and any
+  // other Supabase path fall through to 'unoptimized' below — no Supabase
+  // URL can ever reach the /_next/image proxy.
   if (isSupabasePublicStorageUrl(src)) return 'supabase';
-  try {
-    const { protocol, hostname } = new URL(src);
-    if (protocol !== 'https:') return 'unoptimized';
-    if (OPTIMIZED_EXACT_HOSTS.has(hostname)) return 'optimized';
-    if (OPTIMIZED_HOST_SUFFIXES.some((suffix) => hostname.endsWith(suffix))) return 'optimized';
-    // Non-storage paths on our own Supabase host (e.g. an already-transformed
-    // render URL) ship as-is rather than double-transforming.
-    return 'unoptimized';
-  } catch {
-    return 'unoptimized';
-  }
+  // Every remote URL (fal.media, creatomate, legacy DALL-E blobs, unknown
+  // hosts) renders direct — see the NAT64 decision in the header.
+  return 'unoptimized';
 }
 
 /** next/image loader for Supabase Storage public objects: rewrites the object

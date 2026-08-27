@@ -2,16 +2,27 @@
 
 import { createBrowserClient } from '@supabase/ssr';
 import { useEffect, useMemo, useState } from 'react';
+import useSWR from 'swr';
 import Link from 'next/link';
-import Image from 'next/image';
 import { motion } from 'framer-motion';
 import {
   Search, ShoppingBag, Store, X, Menu, Sparkles,
-  BadgeCheck, Shield, Truck, RotateCcw, Award, Mail, ArrowRight,
+  BadgeCheck, Shield, MessageCircle, Mail, ArrowRight,
 } from 'lucide-react';
 import { useCart } from '@/components/CartProvider';
+import SmartImage from '@/components/SmartImage';
 import CinematicTile, { type CinematicTileData } from '@/components/marketplace/CinematicTile';
+import MarketplaceMarquee from '@/components/marketplace/MarketplaceMarquee';
 import PlaybackCoordinator from '@/components/marketplace/PlaybackCoordinator';
+import {
+  buildReviewStats,
+  compareTierThenReviewScore,
+  reviewScoreOf,
+  shopReviewScore,
+  type ProductReviewRow,
+  type ReviewStats,
+} from '@/lib/feedRanking';
+import { fetchJSON } from '@/lib/transport';
 import type { Product } from '@/lib/types';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -134,6 +145,10 @@ function ProductCardSkeleton() {
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function GlobalHomepage() {
   const [shops, setShops] = useState<Shop[]>([]);
+  // Review-aware ranking (Pillar 1c): per-product stats power the
+  // within-tier reorder + the ★ line on cards. Read failure → empty map →
+  // today's exact tier-only order (documented degradation).
+  const [reviewStats, setReviewStats] = useState<Map<string, ReviewStats>>(new Map());
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -162,7 +177,12 @@ export default function GlobalHomepage() {
       // dual-column grouping below (shop_id ?? user_id — siteData.ts's
       // resolution) are immune to live FK topology AND to shop_id-NULL ghost
       // rows, with or without provisioning.sql SECTION 10.
-      const [shopsRes, productsRes] = await Promise.all([
+      // The reviews read is the ONE addition for review-aware ranking
+      // (Pillar 1c): anon SELECT is live-proven by ReviewList; its failure
+      // degrades to an empty stats map = today's exact tier-only order.
+      // SCALE THRESHOLD (documented in lib/feedRanking.ts): move this
+      // aggregation server-side past ~10k review rows.
+      const [shopsRes, productsRes, reviewsRes] = await Promise.all([
         supabase
           .from('shops')
           .select('id, shop_name, shop_slug, logo_url, theme_color, subscription_tier, status')
@@ -171,10 +191,19 @@ export default function GlobalHomepage() {
           .from('products')
           .select('id, name, price, image_url, image_urls, category, stock_quantity, ad_video_url, ad_hero_image_url, shop_id, user_id')
           .order('created_at', { ascending: false }),
+        supabase
+          .from('reviews')
+          .select('product_id, rating'),
       ]);
 
       if (shopsRes.error) console.error('[marketplace] shops read failed:', shopsRes.error.message);
       if (productsRes.error) console.error('[marketplace] products read failed:', productsRes.error.message);
+      if (reviewsRes.error) console.error('[marketplace] reviews read failed (feed stays tier-only):', reviewsRes.error.message);
+
+      const stats = buildReviewStats(
+        reviewsRes.error ? [] : ((reviewsRes.data ?? []) as ProductReviewRow[])
+      );
+      setReviewStats(stats);
 
       if (!shopsRes.error && !productsRes.error && shopsRes.data) {
         const productsByShop = new Map<string, Product[]>();
@@ -188,14 +217,42 @@ export default function GlobalHomepage() {
         const activeShops = (shopsRes.data as unknown as Omit<Shop, 'products'>[])
           .map((shop) => ({ ...shop, products: productsByShop.get(shop.id) ?? [] }))
           .filter((shop) => shop.products.length > 0);
+        // Tier STRICTLY primary (the paid contract), Σ member reviewScores
+        // within a tier, stable third (lib/feedRanking contract).
         setShops(
-          activeShops.sort((a, b) => getTierRank(b.subscription_tier) - getTierRank(a.subscription_tier))
+          activeShops
+            .map((shop) => ({
+              shop,
+              tierRank: getTierRank(shop.subscription_tier),
+              reviewScore: shopReviewScore(stats, shop.products.map((p) => p.id)),
+            }))
+            .sort(compareTierThenReviewScore)
+            .map((ranked) => ranked.shop)
         );
       }
       setLoading(false);
     }
     fetchCuratedMall();
   }, [supabase]);
+
+  // ── Premium storefront links (Pillar 2) ────────────────────────────────
+  // ONE batched resolve for every shop on the floor, keyed on the SORTED id
+  // list so reordering shops never re-fetches. Renders /shop instantly and
+  // upgrades to /site/{slug} or https://{domain} non-blocking; any failure
+  // simply keeps the classic /shop links. Sliced to the route's 60-id cap.
+  const storefrontIdsKey = useMemo(() => {
+    if (shops.length === 0) return null;
+    return shops.slice(0, 60).map((s) => s.id).sort().join(',');
+  }, [shops]);
+
+  const { data: storefrontData } = useSWR(
+    storefrontIdsKey ? `/api/storefronts?ids=${storefrontIdsKey}` : null,
+    (url: string) => fetchJSON<{ paths: Record<string, string> }>(url),
+    { revalidateOnFocus: false }
+  );
+
+  const shopHref = (shop: Pick<Shop, 'id' | 'shop_slug'>): string =>
+    storefrontData?.paths?.[shop.id] ?? `/shop/${encodeURIComponent(shop.shop_slug)}`;
 
   const marketplaceProducts = useMemo(() => {
     const all: ProductWithShop[] = [];
@@ -207,8 +264,18 @@ export default function GlobalHomepage() {
         } as ProductWithShop);
       });
     });
-    return all.sort((a, b) => getTierRank(b.shop?.subscription_tier) - getTierRank(a.shop?.subscription_tier));
-  }, [shops]);
+    // Tier strictly primary — reviews reorder only WITHIN a tier (an
+    // advanced shop with zero reviews still outranks a 5★ starter); stable
+    // sort preserves recency as the third key.
+    return all
+      .map((product) => ({
+        product,
+        tierRank: getTierRank(product.shop?.subscription_tier),
+        reviewScore: reviewScoreOf(reviewStats, product.id),
+      }))
+      .sort(compareTierThenReviewScore)
+      .map((ranked) => ranked.product);
+  }, [shops, reviewStats]);
 
   const categoryShelves = useMemo(
     () => CATEGORY_SHELVES.map((shelf) => ({
@@ -334,6 +401,7 @@ export default function GlobalHomepage() {
     const tier = (product.shop?.subscription_tier || 'starter').toLowerCase().trim();
     const isAdvanced = tier === 'advanced';
     const isPro = tier === 'pro';
+    const stats = reviewStats.get(product.id);
 
     return (
       <Link
@@ -347,7 +415,7 @@ export default function GlobalHomepage() {
           }`}
         >
           {imgUrl ? (
-            <Image
+            <SmartImage
               src={imgUrl}
               alt={product.name}
               fill
@@ -374,6 +442,12 @@ export default function GlobalHomepage() {
             {product.name}
           </h4>
           <p className="text-[13px] font-semibold text-gray-900">D{product.price}</p>
+          {stats && stats.count > 0 && (
+            <p className="text-[11px] text-gray-500">
+              <span aria-hidden className="text-yellow-500">★</span> {stats.average.toFixed(1)}{' '}
+              <span className="sr-only">out of 5 stars,</span>({stats.count})
+            </p>
+          )}
           <p className="truncate text-[11px] text-gray-500">{product.shop?.shop_name}</p>
         </div>
       </Link>
@@ -609,30 +683,9 @@ export default function GlobalHomepage() {
       </header>
 
       {/* ═══════════════════════════════════════════════════════
-          TRUST STRIP
+          TRUST MARQUEE — every claim feature-verified (Pillar 3)
       ═══════════════════════════════════════════════════════ */}
-      <section className="border-b border-black/5 bg-white">
-        <div className="mx-auto max-w-7xl px-4 py-4 md:px-10">
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-5">
-            {[
-              { icon: <Truck size={15} className="text-[#1a2e1a]" />, label: 'Free Delivery', sub: 'On orders over D500' },
-              { icon: <Shield size={15} className="text-[#1a2e1a]" />, label: 'Secure Checkout', sub: '256-bit SSL' },
-              { icon: <Award size={15} className="text-[#1a2e1a]" />, label: 'Buyer Protection', sub: 'On every order' },
-              { icon: <RotateCcw size={15} className="text-[#1a2e1a]" />, label: 'Easy Returns', sub: 'Hassle-free policy' },
-            ].map(({ icon, label, sub }) => (
-              <div key={label} className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-green-50">
-                  {icon}
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-gray-900">{label}</p>
-                  <p className="text-[10px] text-gray-500">{sub}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      <MarketplaceMarquee />
 
       {/* ═══════════════════════════════════════════════════════
           MAIN CONTENT
@@ -793,12 +846,12 @@ export default function GlobalHomepage() {
                       {shops.slice(0, 2).map((shop) => (
                         <Link
                           key={`${shelf.id}-fill-${shop.id}`}
-                          href={`/shop/${shop.shop_slug}`}
+                          href={shopHref(shop)}
                           className="group flex min-h-[88px] items-center gap-4 rounded-2xl border border-black/5 bg-neutral-50 p-4 transition hover:-translate-y-0.5 hover:shadow-md"
                         >
                           <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-full border border-black/10 bg-white">
                             {shop.logo_url ? (
-                              <Image src={shop.logo_url} alt={shop.shop_name} fill className="rounded-full object-cover" sizes="48px" />
+                              <SmartImage src={shop.logo_url} alt={shop.shop_name} fill blurTone="none" className="rounded-full object-cover" sizes="48px" />
                             ) : (
                               <div className="flex h-full items-center justify-center text-gray-300"><Store size={18} /></div>
                             )}
@@ -871,7 +924,7 @@ export default function GlobalHomepage() {
                     Shop by Boutique
                   </h2>
                   <p className="mt-0.5 text-xs font-medium text-gray-500">
-                    Discover curated boutiques from our verified sellers
+                    Discover curated boutiques from independent sellers
                   </p>
                 </div>
               </div>
@@ -913,10 +966,11 @@ export default function GlobalHomepage() {
                               }`}
                             >
                               {shop.logo_url ? (
-                                <Image
+                                <SmartImage
                                   src={shop.logo_url}
                                   alt={shop.shop_name}
                                   fill
+                                  blurTone="none"
                                   className="rounded-full object-cover"
                                   sizes="40px"
                                 />
@@ -938,7 +992,7 @@ export default function GlobalHomepage() {
                             </div>
                           </div>
                           <Link
-                            href={`/shop/${shop.shop_slug}`}
+                            href={shopHref(shop)}
                             className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition ${
                               isAdvanced
                                 ? 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100'
@@ -966,7 +1020,7 @@ export default function GlobalHomepage() {
                                   }`}
                                 >
                                   {imgUrl ? (
-                                    <Image
+                                    <SmartImage
                                       src={imgUrl}
                                       alt={product.name}
                                       fill
@@ -1063,7 +1117,7 @@ export default function GlobalHomepage() {
                   <Shield size={11} className="text-green-600" /> Secure Payments
                 </div>
                 <div className="flex items-center gap-1.5 rounded-lg border border-black/5 bg-neutral-50 px-3 py-1.5 text-[10px] font-semibold text-gray-600">
-                  <Award size={11} className="text-blue-500" /> Buyer Protected
+                  <MessageCircle size={11} className="text-green-600" /> Direct WhatsApp Checkout
                 </div>
               </div>
             </div>
@@ -1107,8 +1161,7 @@ export default function GlobalHomepage() {
               <h4 className="mb-4 text-xs font-bold uppercase tracking-widest text-gray-900">Support</h4>
               <ul className="space-y-3">
                 <li><Link href="/" className="text-sm text-gray-500 transition hover:text-gray-900">Help Center</Link></li>
-                <li><Link href="/" className="text-sm text-gray-500 transition hover:text-gray-900">Buyer Protection</Link></li>
-                <li><Link href="/" className="text-sm text-gray-500 transition hover:text-gray-900">Returns Policy</Link></li>
+                <li><Link href="/" className="text-sm text-gray-500 transition hover:text-gray-900">How Ordering Works</Link></li>
                 <li><Link href="/" className="text-sm text-gray-500 transition hover:text-gray-900">Contact Us</Link></li>
               </ul>
             </div>

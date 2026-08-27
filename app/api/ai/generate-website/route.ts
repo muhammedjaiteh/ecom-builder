@@ -366,14 +366,14 @@ ${templateConstraint}`;
     // Runs AFTER the copy/config upsert succeeded and patches the row via a
     // SECOND service-role update: a crash or timeout mid-assets can never
     // lose the saved site. Every failure inside runSiteAssetPhase is a
-    // graceful skip (hero only when a real product photo exists; logo only
-    // when the OpenAI key is configured) — onboarding NEVER blocks on assets.
+    // graceful skip (hero AND logo are gpt-image-2 over the OpenAI key —
+    // the hero is a pure abstract atmosphere, so photo-less shops generate
+    // too) — onboarding NEVER blocks on assets.
     let finalWebsite = website;
     try {
       const assets = await runSiteAssetPhase({
         admin,
         shop: { id: shop.id, shop_name: shop.shop_name },
-        products,
         config,
       });
       if (assets) {

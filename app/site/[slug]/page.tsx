@@ -57,9 +57,10 @@ export default async function SitePage({ params }: PageProps) {
   const site = await requireSite(slug, 'home');
 
   const Template = TEMPLATE_COMPONENTS[site.config.template_key] ?? VitalityTemplate;
-  // Hero fallback chain: config.assets.hero_image_url first (the generated /
-  // uploaded hero shot), then the historical media resolution.
-  const heroMedia = resolveHeroMedia(site.products, site.shop, site.config);
+  // Hero fallback chain (Pillar 4b): config.assets.hero_image_url (the
+  // deliberate hero) → shop banner → null (the animated brand plate). Raw
+  // product media never auto-fills the masthead anymore.
+  const heroMedia = resolveHeroMedia(site.shop, site.config);
 
   return (
     <>

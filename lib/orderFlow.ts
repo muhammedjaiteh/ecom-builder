@@ -27,6 +27,23 @@ export function sanitizePhoneNumber(rawNumber?: string | null): string | null {
   return cleanNumber;
 }
 
+/**
+ * Canonical MATCHING key for a phone number — the one phone brain shared by
+ * checkout (which stores customers.phone_number RAW) and the review
+ * verification route (which must match a buyer's re-typed number against it).
+ * Builds on sanitizePhoneNumber (digits only, bare 7-digit Gambian numbers
+ * gain the 220 prefix), then strips the 220 country code back OFF so
+ * '+220 747 0187', '2207470187' and '7470187' all collapse to the same
+ * 7-digit local key. Non-Gambian numbers keep their full digit string.
+ * Returns null when nothing usable remains.
+ */
+export function canonicalPhoneKey(rawNumber?: string | null): string | null {
+  const clean = sanitizePhoneNumber(rawNumber);
+  if (!clean) return null;
+  if (clean.length === 10 && clean.startsWith('220')) return clean.slice(3);
+  return clean;
+}
+
 /** wa.me deep link with the message pre-filled, or null if the number is unusable. */
 export function buildWhatsAppLink(number: string | null | undefined, message: string): string | null {
   const cleanNumber = sanitizePhoneNumber(number);

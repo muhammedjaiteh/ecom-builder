@@ -13,6 +13,7 @@ import {
 import CarouselTrack from './CarouselTrack';
 import EditableText from './EditableText';
 import GatedVideo from './GatedVideo';
+import HeroBrandPlate from './HeroBrandPlate';
 import ProductTabsIsland from './ProductTabsIsland';
 import Reveal from './Reveal';
 import SiteMarquee from './SiteMarquee';
@@ -103,7 +104,9 @@ function RitualHero({ block, shop, heroMedia, collectionsHref }: {
           className="object-cover"
         />
       ) : (
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(214,203,186,0.35),transparent_55%),linear-gradient(to_bottom_right,#292524,#1c1917,#3a352e)]" />
+        /* Null tier (Pillar 4b): the animated brand plate — same gradient
+           stops, panned, with the accent glow + monogram. */
+        <HeroBrandPlate tone="ritual" shopName={shop.shop_name} />
       )}
       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/25 to-black/10" />
 

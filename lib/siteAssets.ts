@@ -1,7 +1,6 @@
 import { generateImage } from 'ai';
 import { openai } from '@ai-sdk/openai';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { extractFalImageUrl, falSubscribeWithLogging, logFalFailure } from '@/lib/falImaging';
 import {
   SITE_TEMPLATES,
   type SiteAssets,
@@ -12,14 +11,15 @@ import {
 // Website asset engine — the zero-click AI hero + logo behind the generated
 // storefront (and the Site Editor's on-demand "Generate with AI" slots).
 //
-// HERO (Law 4 — product-pixel integrity): reuses the EXACT Ad Studio still
-// pipeline. BiRefNet extracts the seller's product foreground as a pristine
-// unit, IC-Light v2 composites it into a generated luxury scene at the same
-// 25 inference steps (Law 3: render speed), through the same silent-failure
-// wrapper (lib/falImaging). No diffusion model ever touches the subject
-// pixels. Runs ONLY when the shop has a real product photo — otherwise the
-// caller skips and the template's gradient hero remains; nothing is ever
-// fabricated.
+// HERO (Pillar 4a): a pure ABSTRACT brand atmosphere from gpt-image-2 —
+// landscape 1536x1024, quality medium, 45s hard abort. The BiRefNet/IC-Light
+// product-composite pipeline is RETIRED for site heroes (it produced literal
+// "giant product" mastheads); Ad Studio keeps lib/falImaging untouched for
+// its own stills/films. Law 4 is now satisfied by construction: NO product
+// pixels enter this pipeline at all — the prompt explicitly prohibits
+// products, packaging, bottles, mannequins, people, text, and logos, so
+// nothing can be altered, deformed, or hallucinated. Sellers who WANT a
+// product-led hero pick an Ad Studio still explicitly via HeroImagePicker.
 //
 // LOGO: the installed Vercel AI SDK ('ai' v6) ships a stable generateImage()
 // surface with @ai-sdk/openai's provider.image() factory (the deprecated
@@ -31,30 +31,28 @@ import {
 // @ai-sdk/openai@3.0.68 omits response_format entirely
 // (hasDefaultResponseFormat, dist/index.mjs:2010) and the b64_json default
 // matches its response schema — so the SDK path stays valid with zero
-// patching. Any failure (missing key, moderation, the 30s hard abort) is a
+// patching. Any failure (missing key, moderation, the hard abort) is a
 // graceful skip in the onboarding phase — the monogram mark remains.
 //
 // STORAGE: results are copied into the platform's existing 'brand' bucket
 // (the exact bucket the themes-page logo/banner uploads use), service-role,
 // deterministic path site-assets/{shopId}/{kind}-{ts}.{ext} → public URL.
-// Provider CDN URLs (fal.media, oaidalleapi…) expire; ours do not.
+// SDK results upload as bytes directly — no provider-CDN download hop.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const CALLER = 'site-assets';
 const BRAND_BUCKET = 'brand';
 
-/** Overall onboarding budget for the hero pipeline — generate-website runs
- *  inside a 120s maxDuration that already spent time on the LLM step, so a
- *  cold-started model must time out into a skip, never kill the request. */
+/** Hard abort on the hero SDK call itself. */
+const HERO_DEADLINE_MS = 45_000;
+/** Overall onboarding budget for the hero task (SDK call + storage upload) —
+ *  generate-website runs inside a 120s maxDuration that already spent time on
+ *  the LLM step, so a stalled generation must time out into a skip, never
+ *  kill the request. */
 const HERO_PHASE_BUDGET_MS = 55_000;
 const LOGO_DEADLINE_MS = 30_000;
-const ASSET_DOWNLOAD_DEADLINE_MS = 20_000;
-
-export type AssetProductSource = {
-  id: string;
-  name: string;
-  image_url: string | null;
-};
+/** Post-abort margin for the storage upload in the logo's outer budget. */
+const ASSET_UPLOAD_MARGIN_MS = 20_000;
 
 type ShopIdentity = {
   id: string;
@@ -92,97 +90,70 @@ async function uploadSiteAsset(
   return data.publicUrl;
 }
 
-/** Download a provider CDN result with a hard deadline so a stalled socket
- *  can never eat the phase budget. */
-async function downloadImage(url: string): Promise<{ bytes: Uint8Array; contentType: string }> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(ASSET_DOWNLOAD_DEADLINE_MS) });
-  if (!res.ok) throw new Error(`Asset download failed (${res.status}) for ${url}`);
-  const contentType = res.headers.get('content-type') ?? 'image/jpeg';
-  const bytes = new Uint8Array(await res.arrayBuffer());
-  if (bytes.byteLength < 2000) {
-    throw new Error(`Downloaded asset is suspiciously small (${bytes.byteLength} bytes) — likely blank.`);
-  }
-  return { bytes, contentType };
-}
-
-/** Deterministic luxury scene brief built from the generated brand identity —
- *  no extra LLM call in the loop (Law 3: the phase must stay fast). Prompts
- *  are pure functions of the config (byte-stable — cache law).
+/** Deterministic ABSTRACT hero brief built from the generated brand identity —
+ *  no extra LLM call in the loop (Law 3: the phase must stay fast). Pure
+ *  function of the config (byte-stable — cache law).
  *
- *  ART DIRECTION (Fix 5): abstract high-end brand texture, lifestyle mood,
- *  minimalist interior atmosphere — with EXPLICIT prohibitions. Law 4 note:
- *  IC-Light composites the seller's REAL product cutout into this scene, so
- *  the prohibitions govern the GENERATED SURROUNDINGS — the model must never
- *  invent additional merchandise, mannequins, lettering, or faces around the
- *  real product. */
-function buildHeroScenePrompt(config: WebsiteConfig): string {
+ *  ART DIRECTION: pure atmosphere, texture, and negative space — a stage for
+ *  headline typography, never a subject. EXPLICIT prohibitions carry Law 4:
+ *  with no products in frame, none can be altered, deformed, or
+ *  hallucinated. Exported for testability and for the byte-stability
+ *  contract. */
+export function buildAbstractHeroPrompt(config: WebsiteConfig): string {
   const template = SITE_TEMPLATES[config.template_key];
   const tagline = config.site.tagline;
   const intro = config.site.collection_intro;
   return (
-    `Photorealistic premium e-commerce hero scene for a ${template.niche} brand — "${tagline}". ` +
+    `Abstract premium e-commerce hero backdrop for a ${template.niche} brand — "${tagline}". ` +
     `${intro} ` +
-    `Abstract high-end brand texture and lifestyle mood in a minimalist interior atmosphere: refined materials, elegant color-gradient backdrop, one soft directional key light with gentle volumetric haze, ` +
-    `generous negative space around the product for headline typography, shallow depth of field. ` +
-    `The environment around the featured product must stay pure atmosphere: no additional products, no objects that read as merchandise, no packaging, no mannequins, ` +
-    `no text, no lettering, no logos, no watermarks, and no people or faces anywhere in the frame. ` +
+    `Pure brand ATMOSPHERE only: an elegant abstract composition of refined material textures (brushed stone, silk drape, matte ceramic, soft paper grain), ` +
+    `a deep cinematic color-gradient field, one soft directional key light with gentle volumetric haze, and generous uncluttered negative space across the frame for headline typography. ` +
+    `Wide landscape framing, shallow tonal depth, quiet luxury. ` +
+    `STRICTLY NO SUBJECT: no products, no merchandise, no packaging, no bottles, no jars, no boxes, no mannequins, no furniture staging that reads as a product shot, ` +
+    `no people, no faces, no hands, no text, no lettering, no logos, no watermarks. ` +
     `Elite Shopify storefront standard — confident, editorial, never cluttered, never discount-retailer.`
   );
 }
 
-/** Pick the seller's best ORIGINAL product photo as the BiRefNet input.
- *  Only real product pixels enter the pipeline — Ad Studio composites are
- *  never re-composited. Returns null when no product has a photo (SKIP). */
-export function pickHeroSourceImage(products: AssetProductSource[]): string | null {
-  return products.find((p) => typeof p.image_url === 'string' && p.image_url.length > 0)?.image_url ?? null;
-}
-
 /**
- * HERO: BiRefNet cutout → IC-Light v2 luxury composite → 'brand' bucket.
- * Throws on failure — the onboarding orchestrator catches into a skip; the
- * on-demand API surfaces the message honestly.
+ * HERO: gpt-image-2 abstract landscape atmosphere → 'brand' bucket, bytes
+ * uploaded directly from the SDK result (no CDN download hop). Throws on
+ * failure — the onboarding orchestrator catches into a skip; the on-demand
+ * API surfaces the message honestly.
  */
 export async function generateHeroAsset(args: {
   admin: SupabaseClient;
   shopId: string;
   config: WebsiteConfig;
-  sourceImageUrl: string;
 }): Promise<string> {
-  const { admin, shopId, config, sourceImageUrl } = args;
-
-  console.log(`[${CALLER}] Hero: BiRefNet foreground extraction for shop ${shopId}`);
-  const isolateResult = await falSubscribeWithLogging(
-    'fal-ai/birefnet',
-    { image_url: sourceImageUrl },
-    'BiRefNet',
-    { caller: CALLER }
-  );
-  const cutoutUrl = extractFalImageUrl(isolateResult);
-  if (!cutoutUrl) {
-    logFalFailure(CALLER, 'BiRefNet', isolateResult);
-    throw new Error('Background removal failed — no cutout URL in the BiRefNet response.');
+  const { admin, shopId, config } = args;
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY not configured — hero generation unavailable.');
   }
 
-  console.log(`[${CALLER}] Hero: IC-Light v2 scene composition for shop ${shopId}`);
-  const iclResult = await falSubscribeWithLogging(
-    'fal-ai/iclight-v2',
-    {
-      image_url: cutoutUrl,
-      prompt: buildHeroScenePrompt(config),
-      // Law 3: 25 steps — identical to the Ad Studio still pipeline.
-      num_inference_steps: 25,
+  console.log(`[${CALLER}] Hero: gpt-image-2 abstract atmosphere for shop ${shopId}`);
+  const { image } = await generateImage({
+    model: openai.image('gpt-image-2'),
+    prompt: buildAbstractHeroPrompt(config),
+    // Landscape masthead — '1536x1024' is verified in the installed SDK's
+    // size enum for gpt-image models.
+    size: '1536x1024',
+    providerOptions: {
+      // 'medium' keeps an abstract gradient field clean while staying inside
+      // the 45s abort (Law 3: render speed over max-quality stalls).
+      openai: { quality: 'medium' },
     },
-    'IC-Light v2',
-    { caller: CALLER }
-  );
-  const heroUrl = extractFalImageUrl(iclResult);
-  if (!heroUrl) {
-    logFalFailure(CALLER, 'IC-Light v2', iclResult);
-    throw new Error('Scene composition failed — no image URL in the IC-Light response.');
-  }
+    abortSignal: AbortSignal.timeout(HERO_DEADLINE_MS),
+    maxRetries: 0,
+  });
 
-  const { bytes, contentType } = await downloadImage(heroUrl);
-  const publicUrl = await uploadSiteAsset(admin, shopId, 'hero', bytes, contentType);
+  const publicUrl = await uploadSiteAsset(
+    admin,
+    shopId,
+    'hero',
+    image.uint8Array,
+    image.mediaType || 'image/png'
+  );
   console.log(`[${CALLER}] Hero stored for shop ${shopId}: ${publicUrl}`);
   return publicUrl;
 }
@@ -279,37 +250,31 @@ function settleWithin<T>(
  * The zero-click onboarding phase: hero + logo IN PARALLEL, every failure a
  * graceful skip. Returns the assets patch to merge into config, or null when
  * nothing was produced (the row stays byte-identical — strict superset law).
+ * The hero is a pure abstract atmosphere now (Pillar 4a) — no product photo
+ * gate: photo-less shops generate exactly like stocked ones.
  */
 export async function runSiteAssetPhase(args: {
   admin: SupabaseClient;
   shop: ShopIdentity;
-  products: AssetProductSource[];
   config: WebsiteConfig;
 }): Promise<SiteAssets | null> {
-  const { admin, shop, products, config } = args;
-
-  const heroSource = pickHeroSourceImage(products);
+  const { admin, shop, config } = args;
 
   const [heroUrl, logoUrl] = await Promise.all([
-    heroSource
-      ? settleWithin(
-          'Hero generation',
-          HERO_PHASE_BUDGET_MS,
-          generateHeroAsset({ admin, shopId: shop.id, config, sourceImageUrl: heroSource })
-        )
-      : Promise.resolve<string | null>(null),
+    settleWithin(
+      'Hero generation',
+      HERO_PHASE_BUDGET_MS,
+      generateHeroAsset({ admin, shopId: shop.id, config })
+    ),
     settleWithin(
       'Logo generation',
       // The SDK's own 30s abort fires first; this outer budget only guards a
       // stalled upload after it.
-      LOGO_DEADLINE_MS + ASSET_DOWNLOAD_DEADLINE_MS,
+      LOGO_DEADLINE_MS + ASSET_UPLOAD_MARGIN_MS,
       generateLogoAsset({ admin, shopId: shop.id, shopName: shop.shop_name, config })
     ),
   ]);
 
-  if (!heroSource) {
-    console.log(`[${CALLER}] Hero skipped for shop ${shop.id}: no product photo (template hero remains — never fabricate).`);
-  }
   if (!heroUrl && !logoUrl) return null;
 
   const assets: SiteAssets = { generated_at: new Date().toISOString() };

@@ -627,30 +627,24 @@ export function siteProductPath(shop: Pick<SiteShop, 'shop_slug'>, productId: st
   return base ? `${base}/products/${productId}` : null;
 }
 
-// Best-available hero media, in fidelity order. Every input is an asset the
-// seller already owns — the dedicated generated/uploaded hero shot first
-// (config.assets.hero_image_url, when the caller passes its config), then
-// Ad Studio video, then stills, then originals. The config parameter is
-// OPTIONAL/additive: legacy callers keep their exact historical resolution.
+// Default hero resolution (Pillar 4b): the seller's DELIBERATE hero first —
+// config.assets.hero_image_url (generated abstract atmosphere, uploaded shot,
+// or an Ad Studio still picked explicitly through HeroImagePicker) — then the
+// shop banner, then null. The historical ad_video/ad_hero/raw-product tiers
+// are REMOVED from the default: they were the other "giant product bottle"
+// masthead source, so an Ad Studio asset on the hero is now always an
+// explicit seller choice, never an automatic one. Back-compat is automatic —
+// saved heroes stay first-priority and render byte-identically. Null → the
+// templates render the animated HeroBrandPlate. The HeroMedia video variant
+// stays (harmless, future-cheap) for explicit video heroes.
 export function resolveHeroMedia(
-  products: SiteProduct[],
   shop: SiteShop,
   config?: Pick<WebsiteConfig, 'assets'> | null
 ): HeroMedia {
   if (config?.assets?.hero_image_url) {
     return { type: 'image', url: config.assets.hero_image_url };
   }
-  const withVideo = products.find((p) => p.ad_video_url);
-  if (withVideo?.ad_video_url) {
-    return { type: 'video', url: withVideo.ad_video_url, poster: withVideo.ad_hero_image_url ?? withVideo.image_url };
-  }
-  const withHero = products.find((p) => p.ad_hero_image_url);
-  if (withHero?.ad_hero_image_url) {
-    return { type: 'image', url: withHero.ad_hero_image_url };
-  }
   if (shop.banner_url) return { type: 'image', url: shop.banner_url };
-  const withImage = products.find((p) => p.image_url);
-  if (withImage?.image_url) return { type: 'image', url: withImage.image_url };
   return null;
 }
 

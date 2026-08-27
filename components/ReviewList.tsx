@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Star, Play, Settings } from 'lucide-react';
+import { Star, Play } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface Review {
@@ -10,10 +10,25 @@ interface Review {
   rating: number;
   comment: string;
   created_at: string;
-  buyer_id: string;
+  buyer_id: string | null;
   is_external: boolean;
   external_author: string | null;
   media_urls: string[] | null;
+  // Verified-purchase pipeline (sql/reviews-launch.sql) — optional so rows
+  // read BEFORE the migration runs still render.
+  verified_purchase?: boolean | null;
+  reviewer_name?: string | null;
+}
+
+/** Attribution line: phone-verified buyer reviews carry the reviewer's name
+ *  and the Verified Purchase mark; legacy labels are preserved verbatim. */
+function reviewAttribution(review: Review): string {
+  if (review.verified_purchase) {
+    const name = review.reviewer_name?.trim();
+    return name ? `${name} · Verified Purchase` : 'Verified Purchase';
+  }
+  if (review.is_external) return `Verified via ${review.external_author || 'External'}`;
+  return 'Verified Buyer';
 }
 
 export default function ReviewList({ productId, refreshTrigger }: { productId: string, refreshTrigger: number }) {
@@ -87,7 +102,7 @@ export default function ReviewList({ productId, refreshTrigger }: { productId: s
                     ))}
                   </div>
                   <span className="text-xs text-neutral-400 font-medium">
-                    {review.is_external ? `Verified via ${review.external_author || 'External'}` : 'Verified Buyer'}
+                    {reviewAttribution(review)}
                   </span>
                   <span className="text-xs text-neutral-300 mx-1">•</span>
                   <span className="text-xs text-neutral-400">

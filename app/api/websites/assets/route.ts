@@ -4,19 +4,14 @@ import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { repairShopSlug } from '@/lib/slugify';
-import {
-  generateHeroAsset,
-  generateLogoAsset,
-  pickHeroSourceImage,
-  type AssetProductSource,
-} from '@/lib/siteAssets';
+import { generateHeroAsset, generateLogoAsset } from '@/lib/siteAssets';
 import { WebsiteConfigSchema, type SiteAssets, type WebsiteConfig } from '@/lib/siteTemplates';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // On-demand website asset generation — POST { kind: 'hero' | 'logo' }.
 // The Site Editor's "Generate with AI" slots fire this: SAME engine as the
-// onboarding phase (lib/siteAssets — IC-Light hero reuse, SDK logo), but
-// failures here are HONEST errors rather than silent skips: a seller who
+// onboarding phase (lib/siteAssets — gpt-image-2 abstract hero + SDK logo),
+// but failures here are HONEST errors rather than silent skips: a seller who
 // pressed the button deserves to know why nothing appeared.
 //
 // Owner-authed + tier-gated exactly like the content/publish routes; writes
@@ -98,7 +93,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "kind must be 'hero' or 'logo'." }, { status: 400 });
     }
 
-    if (!process.env.FAL_API_KEY && kind === 'hero') {
+    // The hero is a gpt-image-2 abstract atmosphere (Pillar 4a) — the OpenAI
+    // key is its ONE precondition (FAL now belongs to Ad Studio only).
+    if (!process.env.OPENAI_API_KEY && kind === 'hero') {
       return NextResponse.json({ error: 'Image engine not configured.' }, { status: 500 });
     }
 
@@ -132,22 +129,9 @@ export async function POST(req: Request) {
 
     let generatedUrl: string;
     if (kind === 'hero') {
-      // Law 4: only the seller's REAL product photo enters the pipeline.
-      // Same dual-ownership match as every /site inventory read.
-      const { data: products } = await admin
-        .from('products')
-        .select('id, name, image_url')
-        .or(`shop_id.eq.${shop.id},user_id.eq.${shop.id}`)
-        .order('created_at', { ascending: false })
-        .limit(15);
-      const source = pickHeroSourceImage((products ?? []) as AssetProductSource[]);
-      if (!source) {
-        return NextResponse.json(
-          { error: 'Add a product with a photo first — the hero shot is composed from your real product image.' },
-          { status: 400 }
-        );
-      }
-      generatedUrl = await generateHeroAsset({ admin, shopId: shop.id, config, sourceImageUrl: source });
+      // Abstract atmosphere — no product read, no photo gate: Law 4 is
+      // satisfied by construction (no product pixels enter the pipeline).
+      generatedUrl = await generateHeroAsset({ admin, shopId: shop.id, config });
     } else {
       generatedUrl = await generateLogoAsset({
         admin,

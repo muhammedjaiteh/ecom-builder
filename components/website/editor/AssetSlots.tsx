@@ -80,9 +80,11 @@ export default function AssetSlots({
         note={
           heroOverride
             ? 'Your dedicated hero shot — it overrides the automatic media pick.'
-            : heroFallback?.type === 'video'
-              ? 'Currently showing your Ad Studio film. Set an image to override it.'
-              : 'Currently using your best available media. Set a dedicated shot to take control.'
+            : heroFallback
+              ? // The only non-null default fallback is the shop banner now
+                // (Pillar 4b: product media never auto-fills the masthead).
+                'Currently showing your shop banner. Set a dedicated shot to take control.'
+              : 'No hero yet — your animated brand plate is shown. Generate an atmosphere with AI, upload a shot, or pick an Ad Studio still.'
         }
       >
         <div className="mt-3 flex items-start gap-3">

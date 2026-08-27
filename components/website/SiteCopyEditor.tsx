@@ -374,10 +374,12 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
   );
 
   // Hero fallback chain with the LOCAL asset state — an uploaded/generated
-  // hero appears in the preview instantly, before any save.
+  // hero appears in the preview instantly, before any save. (Pillar 4b: the
+  // resolver no longer reads products — raw product media never auto-fills
+  // the masthead.)
   const heroMedia = useMemo(
-    () => resolveHeroMedia(products, shop, { assets }),
-    [products, shop, assets]
+    () => resolveHeroMedia(shop, { assets }),
+    [shop, assets]
   );
 
   const dirty = useMemo(
@@ -892,7 +894,7 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
   const assetSlotsNode = (
     <AssetSlots
       assets={assets}
-      heroFallback={resolveHeroMedia(products, shop)}
+      heroFallback={resolveHeroMedia(shop)}
       shopLogoUrl={shop.logo_url}
       busy={assetBusy}
       onUpload={(slot, file) => void handleAssetUpload(slot, file)}
