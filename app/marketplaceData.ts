@@ -28,7 +28,11 @@ import type { Product } from '@/lib/types';
 // (empty shelves / tier-only ranking).
 //
 // BOUNDS (documented contract):
-//   SHOPS_LIMIT 40      — active shops, alphabetical subscription_tier ASC.
+//   SHOPS_LIMIT 40      — active shops, alphabetical subscription_tier ASC:
+//                         a coarse prefilter that keeps the paid tiers
+//                         (advanced, flagship) ahead of pro/starter at the
+//                         cut; exact paid-placement order (flagship first)
+//                         is applied in-memory via getTierRank after fetch.
 //                         By vocabulary accident that is exactly tier-rank
 //                         order (advanced < flagship < pro < starter), so the
 //                         paid tiers always survive the cut; the real ranking
