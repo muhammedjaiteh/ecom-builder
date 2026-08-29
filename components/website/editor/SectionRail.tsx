@@ -1,39 +1,54 @@
 'use client';
 
-import { useRef, type ReactNode } from 'react';
+import { Fragment, useRef, type ReactNode } from 'react';
 import { Reorder, useDragControls } from 'framer-motion';
 import {
+  AlignLeft,
   ChevronDown,
   ChevronRight,
   ChevronUp,
   Clapperboard,
+  Eye,
+  EyeOff,
   Film,
   GalleryHorizontal,
   GripVertical,
   LayoutGrid,
+  Megaphone,
+  PanelTop,
   Plus,
   Rows3,
+  Sparkles,
   Trash2,
+  type LucideIcon,
 } from 'lucide-react';
-import type { SiteBlock } from '@/lib/siteTemplates';
+import { BLOCK_SETTINGS, type SiteBlock, type SiteBlockType } from '@/lib/siteTemplates';
 import {
+  REMOVE_GUARD_HINT,
+  SECTION_CATALOG,
   SECTION_LABELS,
-  SELLER_ADDED_TYPES,
   blockExcerpt,
-  fieldsForBlock,
+  canRemoveBlock,
+  descriptorFields,
+  groupItemCount,
   readBlockField,
   type EditorField,
 } from './editorModel';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SectionRail — the Shopify-style section tree + inspector.
+// SectionRail — the Shopify-style section tree + REGISTRY-DRIVEN inspector.
+//
+// The inspector is ONE generic renderer over BLOCK_SETTINGS
+// (lib/siteTemplates.ts): copy fields with live budgets, segmented selects
+// (Grid|Carousel), bounded repeatable groups (tabs/value props 2–4), and the
+// asset/film delegation slots all render from descriptors — zero per-type
+// inspector code survives. A new block type costs a registry entry, never a
+// rail change.
 //
 // Desktop (≥768px): the ~350px left sidebar. framer-motion Reorder gives
 // drag-to-reorder on a dedicated grip (dragListener=false + dragControls, so
 // row clicks stay focus clicks); the inspector for the focused section
-// renders beneath the tree with inline copy inputs (live budgets), the
-// Grid|Carousel toggle, tab editing, film/removal controls, and the asset
-// slots on the hero section.
+// renders beneath the tree; every row carries the visibility eye (Item 2).
 //
 // Mobile (<768px, the Controls tab): the same tree as a scrollable list —
 // ≥44px rows, arrow-button reorder (drag inside a scrolling list fights the
@@ -57,15 +72,19 @@ export type SectionRailProps = {
   onReorderIds: (ids: string[]) => void;
   onMove: (blockId: string, direction: -1 | 1) => void;
   onRemove: (blockId: string) => void;
-  onAddTabsSection: () => void;
-  onAddFilmSection: () => void;
+  /** Full-catalog add (Item 2) — every block type; video_hero routes through
+   *  the Ad Studio film picker (the parent owns that flow). */
+  onAddSection: (type: SiteBlockType) => void;
+  /** Visibility eye toggle (Item 2) — dims the section, never deletes it. */
+  onToggleHidden: (blockId: string) => void;
   onChangeFilm: (blockId: string) => void;
-  onSetGridMode: (blockId: string, mode: 'grid' | 'carousel') => void;
-  onAddTab: (blockId: string) => void;
-  onRemoveTab: (blockId: string, index: number) => void;
-  /** value_props rows within the 2–4 schema window (Phase 8). */
-  onAddValueProp: (blockId: string) => void;
-  onRemoveValueProp: (blockId: string, index: number) => void;
+  /** Generic select commit (registry kind 'select') — passing the
+   *  descriptor's clearValue DELETES the key (canonical absent form). */
+  onSelectSetting: (blockId: string, path: string[], value: string, clearValue?: string) => void;
+  /** Generic bounded group rows (registry kind 'repeatable-group') —
+   *  tabs 2–4 and value props 2–4 ride the same pair. */
+  onAddGroupItem: (blockId: string, groupPath: string) => void;
+  onRemoveGroupItem: (blockId: string, groupPath: string, index: number) => void;
   /** Desktop inline input events — the parent owns snapshot/commit. */
   onFieldChange: (blockId: string, path: string[], value: string) => void;
   onFieldFocus: (blockId: string, path: string[]) => void;
@@ -140,163 +159,227 @@ function InspectorField({
   );
 }
 
-// ── Shared inspector body (fields + section controls) ───────────────────────
+// ── Generic setting renderers (Shopify-engine Item 1) ────────────────────────
+// The inspector is ONE renderer over BLOCK_SETTINGS: per descriptor kind, one
+// SettingField branch. The bespoke per-type inspector code is gone — a new
+// block type renders here with zero inspector changes (registry entry only).
+
+/** Per-option icons for segmented selects, keyed on option value. Purely
+ *  presentational sugar — an option without an icon renders label-only. */
+export const SELECT_OPTION_ICONS: Record<string, LucideIcon> = {
+  grid: LayoutGrid,
+  carousel: GalleryHorizontal,
+};
+
+/** Add-catalog icons per block type — shared with the mobile add sheet. */
+export const BLOCK_TYPE_ICONS: Record<SiteBlockType, LucideIcon> = {
+  hero_banner: PanelTop,
+  value_props: Sparkles,
+  product_grid: LayoutGrid,
+  story_text: AlignLeft,
+  cta_banner: Megaphone,
+  product_tabs: Rows3,
+  video_hero: Clapperboard,
+};
+
+// ── Shared inspector body (registry-driven fields + section controls) ───────
 
 function InspectorBody(props: SectionRailProps & { block: SiteBlock }) {
   const { block, isMobile } = props;
-  const fields = fieldsForBlock(block);
+
+  // One copy-field renderer for BOTH surfaces: desktop inline input with
+  // budgets, mobile sheet-opening row (≥48px).
+  const renderField = (field: EditorField) => {
+    const key = inspectorInputKey(block.id, field.path);
+    if (isMobile) {
+      const value = readBlockField(block, field.path) ?? '';
+      return (
+        <button
+          key={key}
+          type="button"
+          onClick={() => props.onEditFieldSheet(block.id, field.path)}
+          className="flex min-h-[48px] w-full items-center gap-3 rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-left transition active:bg-gray-50"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block text-[10px] font-bold uppercase tracking-widest text-gray-400">
+              {field.meta.label}
+            </span>
+            <span className={`block truncate text-sm ${value ? 'text-gray-900' : 'text-gray-300'}`}>
+              {value || 'Tap to write'}
+            </span>
+          </span>
+          <ChevronRight size={15} className="shrink-0 text-gray-300" />
+        </button>
+      );
+    }
+    return (
+      <InspectorField
+        key={key}
+        block={block}
+        field={field}
+        onChange={(value) => props.onFieldChange(block.id, field.path, value)}
+        onFocus={() => props.onFieldFocus(block.id, field.path)}
+        onBlur={() => props.onFieldBlur(block.id, field.path, field.optional)}
+      />
+    );
+  };
 
   return (
     <div className="space-y-3">
-      {/* Copy fields */}
-      {fields.map((field) => {
-        const key = inspectorInputKey(block.id, field.path);
-        if (isMobile) {
-          const value = readBlockField(block, field.path) ?? '';
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => props.onEditFieldSheet(block.id, field.path)}
-              className="flex min-h-[48px] w-full items-center gap-3 rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-left transition active:bg-gray-50"
-            >
-              <span className="min-w-0 flex-1">
-                <span className="block text-[10px] font-bold uppercase tracking-widest text-gray-400">
-                  {field.meta.label}
+      {BLOCK_SETTINGS[block.type].map((setting) => {
+        const settingKey = `${block.id}:${setting.kind}:${setting.path}`;
+        switch (setting.kind) {
+          // Copy fields — text and textarea share the field renderer.
+          case 'text':
+          case 'textarea':
+            return (
+              <Fragment key={settingKey}>{descriptorFields(block, setting).map(renderField)}</Fragment>
+            );
+
+          // Enumerated switch. SEGMENTED when options ≤ 3: a 2–3-way mode
+          // switch reads at a glance and every state stays one tap away
+          // (Grid|Carousel byte-for-byte); at 4+ the chips cramp below the
+          // 44px law inside the ~350px rail, so it degrades to a native
+          // select — same commit path, honest ergonomics.
+          case 'select': {
+            const path = setting.path.split('.');
+            const current = readBlockField(block, path) ?? setting.clearValue ?? setting.options[0]?.value ?? '';
+            if (setting.options.length <= 3) {
+              return (
+                <div key={settingKey}>
+                  <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-500">{setting.label}</p>
+                  <div
+                    className="grid gap-2"
+                    style={{ gridTemplateColumns: `repeat(${setting.options.length}, minmax(0, 1fr))` }}
+                  >
+                    {setting.options.map((opt) => {
+                      const Icon = SELECT_OPTION_ICONS[opt.value];
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => props.onSelectSetting(block.id, path, opt.value, setting.clearValue)}
+                          className={`flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition ${
+                            current === opt.value
+                              ? 'border-gray-900 bg-gray-900 text-white'
+                              : 'border-gray-200 bg-white text-gray-600 hover:border-gray-400'
+                          }`}
+                        >
+                          {Icon && <Icon size={13} />} {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            }
+            return (
+              <label key={settingKey} className="block">
+                <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-gray-500">
+                  {setting.label}
                 </span>
-                <span className={`block truncate text-sm ${value ? 'text-gray-900' : 'text-gray-300'}`}>
-                  {value || 'Tap to write'}
-                </span>
-              </span>
-              <ChevronRight size={15} className="shrink-0 text-gray-300" />
-            </button>
-          );
+                <select
+                  value={current}
+                  onChange={(e) => props.onSelectSetting(block.id, path, e.target.value, setting.clearValue)}
+                  className="min-h-[44px] w-full rounded-xl border border-gray-200 bg-white px-3.5 font-sans text-base text-gray-900 outline-none transition focus:border-[#f0a500] focus:ring-1 focus:ring-[#f0a500]"
+                >
+                  {setting.options.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </label>
+            );
+          }
+
+          // Bounded repeatable group: item fields → optional hint →
+          // add/remove chips within the registry's min/max window.
+          case 'repeatable-group': {
+            const count = groupItemCount(block, setting.path);
+            const noun = setting.itemNoun.split(' ').pop() ?? 'item';
+            const fallbackLabel = noun.charAt(0).toUpperCase() + noun.slice(1);
+            const firstFieldPath = setting.fields[0]?.path;
+            return (
+              <Fragment key={settingKey}>
+                {descriptorFields(block, setting).map(renderField)}
+                {setting.hint && (
+                  <p className="rounded-xl bg-gray-100 px-3.5 py-2.5 text-[11px] leading-relaxed text-gray-500">
+                    {setting.hint}
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={count >= setting.max}
+                    onClick={() => props.onAddGroupItem(block.id, setting.path)}
+                    className="flex min-h-[44px] items-center gap-1.5 rounded-full border border-gray-200 bg-white px-4 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:border-gray-900 disabled:opacity-40"
+                  >
+                    <Plus size={12} /> Add {setting.itemNoun}
+                  </button>
+                  {count > setting.min &&
+                    Array.from({ length: count }, (_, i) => {
+                      const title = firstFieldPath
+                        ? readBlockField(block, [setting.path, String(i), firstFieldPath]) ?? ''
+                        : '';
+                      return (
+                        <button
+                          key={`remove-${setting.path}-${i}`}
+                          type="button"
+                          onClick={() => props.onRemoveGroupItem(block.id, setting.path, i)}
+                          className="flex min-h-[44px] items-center gap-1.5 rounded-full border border-red-200 bg-white px-4 text-[10px] font-bold uppercase tracking-widest text-red-600 transition hover:bg-red-50"
+                        >
+                          <Trash2 size={11} /> {title.slice(0, 14) || `${fallbackLabel} ${i + 1}`}
+                        </button>
+                      );
+                    })}
+                </div>
+              </Fragment>
+            );
+          }
+
+          // Asset delegation: the hero section's brand slots (hero image +
+          // logo) — upload / Ad-Studio / Generate / Clear stay owned by the
+          // editor's one optimistic asset state machine.
+          case 'image':
+            return <Fragment key={settingKey}>{props.assetSlots}</Fragment>;
+
+          // Film delegation: swap the video_hero asset via the Ad Studio
+          // picker (copy stays untouched — the parent owns the swap).
+          case 'video':
+            return (
+              <button
+                key={settingKey}
+                type="button"
+                onClick={() => props.onChangeFilm(block.id)}
+                className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:border-gray-900"
+              >
+                <Film size={13} /> Change film
+              </button>
+            );
         }
-        return (
-          <InspectorField
-            key={key}
-            block={block}
-            field={field}
-            onChange={(value) => props.onFieldChange(block.id, field.path, value)}
-            onFocus={() => props.onFieldFocus(block.id, field.path)}
-            onBlur={() => props.onFieldBlur(block.id, field.path, field.optional)}
-          />
-        );
       })}
 
-      {/* product_grid: Grid | Carousel presentation toggle */}
-      {block.type === 'product_grid' && (
-        <div>
-          <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-500">Layout</p>
-          <div className="grid grid-cols-2 gap-2">
+      {/* Remove — ANY section except the last product_grid (a store without
+          its collection is broken). Disabled with the honest hint, which also
+          renders as text because title tooltips never surface on touch. */}
+      {(() => {
+        const removable = canRemoveBlock(props.blocks, block.id);
+        return (
+          <>
             <button
               type="button"
-              onClick={() => props.onSetGridMode(block.id, 'grid')}
-              className={`flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition ${
-                (block.displayMode ?? 'grid') === 'grid'
-                  ? 'border-gray-900 bg-gray-900 text-white'
-                  : 'border-gray-200 bg-white text-gray-600 hover:border-gray-400'
-              }`}
+              disabled={!removable}
+              title={removable ? undefined : REMOVE_GUARD_HINT}
+              onClick={() => props.onRemove(block.id)}
+              className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-red-200 bg-white text-[10px] font-bold uppercase tracking-widest text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white"
             >
-              <LayoutGrid size={13} /> Grid
+              <Trash2 size={13} /> Remove section
             </button>
-            <button
-              type="button"
-              onClick={() => props.onSetGridMode(block.id, 'carousel')}
-              className={`flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition ${
-                block.displayMode === 'carousel'
-                  ? 'border-gray-900 bg-gray-900 text-white'
-                  : 'border-gray-200 bg-white text-gray-600 hover:border-gray-400'
-              }`}
-            >
-              <GalleryHorizontal size={13} /> Carousel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* value_props: add/remove rows inside the 2–4 schema window (Phase 8).
-          Fix 2: the props render as the moving brand banner under the hero —
-          deliberately not click-editable there (animated duplicated track),
-          so this inspector is their editing home. The hint says so. */}
-      {block.type === 'value_props' && (
-        <p className="rounded-xl bg-gray-100 px-3.5 py-2.5 text-[11px] leading-relaxed text-gray-500">
-          Shown in the moving banner under the hero — edit the props here.
-        </p>
-      )}
-      {block.type === 'value_props' && (
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            disabled={block.items.length >= 4}
-            onClick={() => props.onAddValueProp(block.id)}
-            className="flex min-h-[44px] items-center gap-1.5 rounded-full border border-gray-200 bg-white px-4 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:border-gray-900 disabled:opacity-40"
-          >
-            <Plus size={12} /> Add value prop
-          </button>
-          {block.items.length > 2 &&
-            block.items.map((item, i) => (
-              <button
-                key={`remove-vp-${i}`}
-                type="button"
-                onClick={() => props.onRemoveValueProp(block.id, i)}
-                className="flex min-h-[44px] items-center gap-1.5 rounded-full border border-red-200 bg-white px-4 text-[10px] font-bold uppercase tracking-widest text-red-600 transition hover:bg-red-50"
-              >
-                <Trash2 size={11} /> {item.title.slice(0, 14) || `Prop ${i + 1}`}
-              </button>
-            ))}
-        </div>
-      )}
-
-      {/* product_tabs: add/remove tabs inside the 2–4 schema window */}
-      {block.type === 'product_tabs' && (
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            disabled={block.tabs.length >= 4}
-            onClick={() => props.onAddTab(block.id)}
-            className="flex min-h-[44px] items-center gap-1.5 rounded-full border border-gray-200 bg-white px-4 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:border-gray-900 disabled:opacity-40"
-          >
-            <Plus size={12} /> Add tab
-          </button>
-          {block.tabs.length > 2 &&
-            block.tabs.map((tab, i) => (
-              <button
-                key={`remove-${i}`}
-                type="button"
-                onClick={() => props.onRemoveTab(block.id, i)}
-                className="flex min-h-[44px] items-center gap-1.5 rounded-full border border-red-200 bg-white px-4 text-[10px] font-bold uppercase tracking-widest text-red-600 transition hover:bg-red-50"
-              >
-                <Trash2 size={11} /> {tab.title.slice(0, 14) || `Tab ${i + 1}`}
-              </button>
-            ))}
-        </div>
-      )}
-
-      {/* video_hero: swap the film asset */}
-      {block.type === 'video_hero' && (
-        <button
-          type="button"
-          onClick={() => props.onChangeFilm(block.id)}
-          className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:border-gray-900"
-        >
-          <Film size={13} /> Change film
-        </button>
-      )}
-
-      {/* hero_banner: the asset slots (hero image + logo) */}
-      {block.type === 'hero_banner' && props.assetSlots}
-
-      {/* Seller-added sections can be removed; the classic five are anatomy */}
-      {SELLER_ADDED_TYPES.has(block.type) && (
-        <button
-          type="button"
-          onClick={() => props.onRemove(block.id)}
-          className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-red-200 bg-white text-[10px] font-bold uppercase tracking-widest text-red-600 transition hover:bg-red-50"
-        >
-          <Trash2 size={13} /> Remove section
-        </button>
-      )}
+            {!removable && (
+              <p className="px-1 text-[11px] leading-relaxed text-gray-400">{REMOVE_GUARD_HINT}</p>
+            )}
+          </>
+        );
+      })()}
     </div>
   );
 }
@@ -308,13 +391,16 @@ function DesktopTreeItem({
   index,
   focused,
   onFocus,
+  onToggleHidden,
 }: {
   block: SiteBlock;
   index: number;
   focused: boolean;
   onFocus: () => void;
+  onToggleHidden: () => void;
 }) {
   const controls = useDragControls();
+  const hidden = block.hidden === true;
   return (
     <Reorder.Item
       value={block.id}
@@ -342,16 +428,29 @@ function DesktopTreeItem({
         <button
           type="button"
           onClick={onFocus}
-          className="flex min-h-[44px] min-w-0 flex-1 items-center gap-2.5 py-1.5 pr-2.5 text-left"
+          className={`flex min-h-[44px] min-w-0 flex-1 items-center gap-2.5 py-1.5 text-left ${hidden ? 'opacity-50' : ''}`}
         >
           <span className="w-4 shrink-0 font-mono text-[10px] text-gray-300">{index + 1}</span>
           <span className="min-w-0 flex-1">
             <span className="block text-[10px] font-bold uppercase tracking-widest text-gray-500">
               {SECTION_LABELS[block.type]}
+              {hidden && <span className="ml-1.5 text-gray-300">· Hidden</span>}
             </span>
             <span className="block truncate text-xs text-gray-400">{blockExcerpt(block)}</span>
           </span>
           <ChevronRight size={14} className={`shrink-0 ${focused ? 'text-[#f0a500]' : 'text-gray-200'}`} />
+        </button>
+        {/* Visibility eye (Item 2) — ≥44px, never part of the focus click. */}
+        <button
+          type="button"
+          aria-label={hidden ? `Show ${SECTION_LABELS[block.type]}` : `Hide ${SECTION_LABELS[block.type]}`}
+          aria-pressed={hidden}
+          onClick={onToggleHidden}
+          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition hover:bg-gray-100 ${
+            hidden ? 'text-amber-600' : 'text-gray-300 hover:text-gray-500'
+          }`}
+        >
+          {hidden ? <EyeOff size={15} /> : <Eye size={15} />}
         </button>
       </div>
     </Reorder.Item>
@@ -365,28 +464,37 @@ export default function SectionRail(props: SectionRailProps) {
   const railRef = useRef<HTMLDivElement | null>(null);
   const focusedBlock = focusedId ? blocks.find((b) => b.id === focusedId) ?? null : null;
 
+  // Full catalog (Item 2): every block type is addable, with an honest
+  // one-line description per type. video_hero routes through the film picker.
   const addButtons = (
     <div className="flex flex-col gap-2">
       <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
         {atCapacity ? 'At the 12-section limit — remove one to add another.' : 'Add a section'}
       </p>
-      <div className="grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          onClick={props.onAddFilmSection}
-          disabled={atCapacity || saving}
-          className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:border-gray-900 disabled:opacity-40"
-        >
-          <Clapperboard size={12} /> Brand film
-        </button>
-        <button
-          type="button"
-          onClick={props.onAddTabsSection}
-          disabled={atCapacity || saving}
-          className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:border-gray-900 disabled:opacity-40"
-        >
-          <Rows3 size={12} /> Product tabs
-        </button>
+      <div className="flex flex-col gap-1.5">
+        {SECTION_CATALOG.map(({ type, description }) => {
+          const Icon = BLOCK_TYPE_ICONS[type];
+          return (
+            <button
+              key={type}
+              type="button"
+              onClick={() => props.onAddSection(type)}
+              disabled={atCapacity || saving}
+              className="flex min-h-[48px] w-full items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2 text-left transition hover:border-gray-900 disabled:opacity-40"
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-700">
+                <Icon size={14} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[10px] font-bold uppercase tracking-widest text-gray-700">
+                  {SECTION_LABELS[type]}
+                </span>
+                <span className="block truncate text-[11px] text-gray-400">{description}</span>
+              </span>
+              <Plus size={13} className="shrink-0 text-gray-300" />
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -412,17 +520,31 @@ export default function SectionRail(props: SectionRailProps) {
                 <button
                   type="button"
                   onClick={() => props.onFocus(block.id)}
-                  className="flex min-h-[52px] min-w-0 flex-1 items-center gap-2.5 px-3.5 text-left"
+                  className={`flex min-h-[52px] min-w-0 flex-1 items-center gap-2.5 px-3.5 text-left ${
+                    block.hidden ? 'opacity-50' : ''
+                  }`}
                 >
                   <span className="w-4 shrink-0 font-mono text-[10px] text-gray-300">{index + 1}</span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-[10px] font-bold uppercase tracking-widest text-gray-500">
                       {SECTION_LABELS[block.type]}
+                      {block.hidden && <span className="ml-1.5 text-gray-300">· Hidden</span>}
                     </span>
                     <span className="block truncate text-xs text-gray-400">{blockExcerpt(block)}</span>
                   </span>
                 </button>
                 <div className="flex shrink-0 items-center pr-1.5">
+                  <button
+                    type="button"
+                    aria-label={block.hidden ? 'Show section' : 'Hide section'}
+                    aria-pressed={block.hidden === true}
+                    onClick={() => props.onToggleHidden(block.id)}
+                    className={`flex h-11 w-11 items-center justify-center rounded-full transition active:bg-gray-100 ${
+                      block.hidden ? 'text-amber-600' : 'text-gray-400'
+                    }`}
+                  >
+                    {block.hidden ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
                   <button
                     type="button"
                     aria-label="Move section up"
@@ -477,6 +599,7 @@ export default function SectionRail(props: SectionRailProps) {
               index={index}
               focused={block.id === focusedId}
               onFocus={() => props.onFocus(block.id)}
+              onToggleHidden={() => props.onToggleHidden(block.id)}
             />
           ))}
         </Reorder.Group>

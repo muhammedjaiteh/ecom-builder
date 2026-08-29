@@ -5,36 +5,39 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Crown, Star, CheckCircle2, BadgeCheck, Loader2, CreditCard } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { resolveDashboardUser } from '@/lib/dashboardAuth';
+import { useShopRow } from '@/lib/useShopRow';
 
-
-type Shop = {
-  id: string;
-  shop_name: string;
-  subscription_tier: string;
-};
 
 export default function SettingsPaywall() {
-  const [shop, setShop] = useState<Shop | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
   const router = useRouter();
 
+  // Shops-row seam (lib/useShopRow, A3) — one cached read for the whole
+  // dashboard instead of this page's own bare shops query. Tier changes made
+  // anywhere (admin activation, upgrades) repaint the plan chip on focus.
+  const { shop, verdict: shopVerdict, error: shopError } = useShopRow(userId);
+
   useEffect(() => {
     async function loadShop() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      // Non-evicting offline auth (lib/dashboardAuth) — transport failure with
+      // a local session never redirects; only a genuine no-session does.
+      const auth = await resolveDashboardUser(supabase);
+      if (auth.status === 'unauthenticated') {
         router.push('/login');
         return;
       }
-      const { data } = await supabase.from('shops').select('id, shop_name, subscription_tier').eq('id', user.id).single();
-      if (data) setShop(data as Shop);
-      setLoading(false);
+      setUserId(auth.user.id);
     }
     loadShop();
   }, [router, supabase]);
+
+  // Loading = auth pending, or no shops-row verdict from cache/network yet.
+  const loading = !userId || (shopVerdict === undefined && !shopError);
 
   // 🚀 THE MONEY PIPE ENGINE
   const handleUpgradeClick = (tier: string) => {

@@ -2,7 +2,7 @@ import Link from 'next/link';
 import SmartImage from '@/components/SmartImage';
 import {
   findBlock,
-  resolveBlocks,
+  resolveVisibleBlocks,
   siteBasePath,
   siteCollectionsPath,
   siteProductPath,
@@ -139,7 +139,11 @@ export default function EditorialChrome({ shop, config, active, children }: Site
   // tagline and the dark sign-off spread is the cta_banner block's design
   // slot. The site.* mirror keeps both identical for legacy rows, and any
   // block array missing a type falls back to the mirror.
-  const blocks = resolveBlocks(config);
+  // Item 2: hidden blocks are invisible to chrome copy reads — a hidden
+  // hero/cta demotes its slot to the static site.* mirror fallback (the
+  // masthead and the sign-off spread are chrome anatomy and always close
+  // the page; only their BLOCK affordances — edit targeting — disappear).
+  const blocks = resolveVisibleBlocks(config);
   const heroBlock = findBlock(blocks, 'hero_banner');
   const ctaBlock = findBlock(blocks, 'cta_banner');
   const tagline = heroBlock?.tagline ?? site.tagline;

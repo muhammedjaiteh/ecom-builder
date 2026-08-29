@@ -780,7 +780,8 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
               <p className="mt-3 text-sm leading-relaxed text-gray-600">
                 Generating a new concept will completely overwrite your existing website layout.
                 Any custom sections you added (like Videos or Tabs) and any text you manually
-                edited will be lost permanently.
+                edited will be replaced. Your current design is kept as a restorable backup —
+                you can bring it back anytime from the studio.
               </p>
               <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                 <button

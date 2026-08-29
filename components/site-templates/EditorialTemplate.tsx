@@ -2,7 +2,7 @@ import { Fragment } from 'react';
 import Link from 'next/link';
 import SmartImage from '@/components/SmartImage';
 import {
-  resolveBlocks,
+  resolveVisibleBlocks,
   type HeroMedia,
   type SiteBlock,
   type SiteProduct,
@@ -358,7 +358,11 @@ function EditorialStory({ block, shopName }: { block: StoryBlock; shopName: stri
 // in the schema/rail; its editing home is the SectionRail inspector).
 
 export default function EditorialTemplate({ shop, products, config, heroMedia }: SiteTemplateProps) {
-  const blocks = resolveBlocks(config);
+  // Item 2: hidden blocks are SKIPPED at render (the editor previews them
+  // dimmed by stripping the flag client-side). Hiding the hero also hides
+  // its welded companions — the seam marquee and the features spread ride
+  // the Editorial opening by design.
+  const blocks = resolveVisibleBlocks(config);
   // Design slot (see header comment): the CTA banner belongs to the chrome
   // sign-off; value_props render as the marquee ribbon. Everything else flows
   // in block-array order.

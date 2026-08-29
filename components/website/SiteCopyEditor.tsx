@@ -2,6 +2,7 @@
 
 import { createBrowserClient } from '@supabase/ssr';
 import {
+  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -17,17 +18,15 @@ import {
   Check,
   CheckCircle2,
   ChevronRight,
-  Clapperboard,
   CloudOff,
   Eye,
+  EyeOff,
   Film,
-  GalleryHorizontal,
-  LayoutGrid,
   Loader2,
   MousePointerClick,
   Plus,
   RefreshCw,
-  Rows3,
+  RotateCcw,
   Save,
   SlidersHorizontal,
   Trash2,
@@ -50,32 +49,36 @@ import BottomSheet from '@/components/website/BottomSheet';
 import VideoHeroPicker, { type VideoHeroSelection } from '@/components/website/VideoHeroPicker';
 import AssetSlots, { type AssetBusyState, type AssetSlotKind } from '@/components/website/editor/AssetSlots';
 import HeroImagePicker from '@/components/website/editor/HeroImagePicker';
-import SectionRail from '@/components/website/editor/SectionRail';
+import SectionRail, { BLOCK_TYPE_ICONS, SELECT_OPTION_ICONS } from '@/components/website/editor/SectionRail';
 import ThemePanel from '@/components/website/editor/ThemePanel';
 import {
+  BLOCK_ID_PREFIXES,
   MAX_BLOCKS,
-  SELLER_ADDED_TYPES,
-  addTabToBlock,
-  addValuePropToBlock,
-  removeValuePropFromBlock,
+  REMOVE_GUARD_HINT,
+  SECTION_CATALOG,
+  SECTION_LABELS,
+  addGroupItem,
   blocksAreValid,
-  buildProductTabsBlock,
   buildVideoHeroBlock,
+  canRemoveBlock,
   commitValue,
   cssAttrEscape,
   fieldMetaFor,
   insertAfterType,
+  insertNewBlock,
   isOptionalField,
   mintBlockId,
   moveBlock,
   readBlockField,
-  removeTabFromBlock,
+  removeGroupItem,
   reorderBlocksByIds,
+  toggleBlockHidden,
   writeBlockField,
   type FieldMeta,
 } from '@/components/website/editor/editorModel';
 import { useIsMobileViewport } from '@/lib/useIsMobileViewport';
 import {
+  BLOCK_SETTINGS,
   blocksToLegacySite,
   resolveBlocks,
   resolveHeroMedia,
@@ -150,6 +153,17 @@ export const EDITABLE_TEMPLATE_COMPONENTS: Partial<Record<TemplateKey, Component
 // MiniSitePreview so both surfaces present identical typography).
 const DESIGN_WIDTH = 1366;
 
+// Item 4 — Mobile preview design width (iPhone 12/13/14 class). The SAME
+// ResizeObserver scaling machinery drives both widths; mobile caps its scale
+// at 1 so the frame renders at natural phone size, centered with a
+// device-frame hint. HONESTY NOTE: this is a width preview, not a media-query
+// emulation — `md:` variants match the WINDOW viewport, so base (mobile-first)
+// classes plus real wrapping/cropping at 390px render, while an iframe-free
+// preview cannot re-evaluate breakpoints (see the no-iframe rationale above).
+// The true device check stays the seller's own phone, where the toggle is
+// hidden and the seller IS the mobile preview.
+const MOBILE_DESIGN_WIDTH = 390;
+
 // Existing bucket the themes-page brand uploads use — the asset slots reuse
 // it (owner-authenticated browser upload, public read).
 const BRAND_BUCKET = 'brand';
@@ -160,8 +174,9 @@ const BRAND_BUCKET = 'brand';
 const ASSET_GENERATION_TIMEOUT_MS = 125_000;
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 
-// Mobile settings-sheet labels — the three types that carry section settings
-// on the preview tab (unchanged tap-to-select contract).
+// Mobile settings-sheet labels. Item 2: EVERY section now opens the sheet
+// (it hosts the visibility eye + remove for all types); the three historical
+// labels stay, everything else falls back to its SECTION_LABELS name.
 const CHIP_LABELS: Partial<Record<SiteBlockType, string>> = {
   product_grid: 'Collection layout',
   product_tabs: 'Product tabs',
@@ -183,6 +198,45 @@ type PickerState = { mode: 'add' } | { mode: 'replace'; blockId: string };
 
 type ToastState = { kind: 'success' | 'error'; message: string };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Undo/redo history (Shopify-engine Item 3) — session-local by design, never
+// persisted. Entries are full {blocks, assets, theme} snapshots; every
+// COMMITTED mutation (field commit, add/remove/reorder/hide, theme change,
+// asset set/clear) pushes one. Keystrokes never push — only their commit
+// does. LIFECYCLE RULES:
+//   • push: mutation marks a kind; the effect below snapshots AFTER React
+//     settles (functional updates stay safe), dedupes no-op commits, and
+//     truncates the redo tail — redo clears on any new edit.
+//   • reorder coalescing: framer's Reorder emits one event per row swap, so
+//     consecutive 'reorder' commits within 1.2s collapse into one entry.
+//   • save: NO stack change — dirty is computed against savedBlocks, so
+//     undoing past a save re-dirties honestly and the stack survives.
+//   • asset-generation server patch: CLEARS the stack (the server rewrote
+//     config.assets outside the editor's mutation stream — an undo across
+//     that boundary could resurrect a pre-generation asset state that never
+//     existed on the server).
+//   • regenerate: the editor remounts (keyed on generated_at) — fresh stack
+//     by construction.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type HistoryEntry = {
+  blocks: SiteBlock[];
+  assets: SiteAssets | undefined;
+  theme: SiteTheme | undefined;
+  kind: string;
+  at: number;
+};
+
+const HISTORY_LIMIT = 50;
+const REORDER_COALESCE_MS = 1200;
+
+export type EditorHistoryHandle = {
+  canUndo: boolean;
+  canRedo: boolean;
+  undo: () => void;
+  redo: () => void;
+};
+
 type SiteCopyEditorProps = {
   /** Auth user id — namespaces the offline outbox (shared phones: one
    *  account's queued edit must never flush under another's session). */
@@ -194,6 +248,13 @@ type SiteCopyEditorProps = {
   onSaved: (row: ShopWebsiteRow) => void;
   /** Optional dirty-state mirror for the cockpit top bar's save chip. */
   onDirtyChange?: (dirty: boolean) => void;
+  /** Optional undo/redo mirror for the cockpit top bar (Item 3) — null on
+   *  unmount so the bar never fires a dead handle. */
+  onHistoryChange?: (handle: EditorHistoryHandle | null) => void;
+  /** Preview device width (Item 4, cockpit toggle): 'desktop' lays the
+   *  preview out at 1366, 'mobile' at 390 with a device-frame hint. Ignored
+   *  on actual mobile viewports — the seller IS the mobile preview there. */
+  previewDevice?: 'desktop' | 'mobile';
 };
 
 /** Canonical theme form: {} (and undefined) collapse to undefined so the
@@ -203,7 +264,15 @@ function effectiveTheme(theme: SiteTheme | undefined): SiteTheme | undefined {
   return theme.accent || theme.display_font ? theme : undefined;
 }
 
-export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirtyChange }: SiteCopyEditorProps) {
+export default function SiteCopyEditor({
+  userId,
+  website,
+  shop,
+  onSaved,
+  onDirtyChange,
+  onHistoryChange,
+  previewDevice = 'desktop',
+}: SiteCopyEditorProps) {
   // Mount-time outbox seed: a save queued offline (possibly in a previous
   // session) IS the seller's latest truth for this exact build — the editor
   // reopens showing it in 'queued' sync state instead of silently presenting
@@ -266,6 +335,138 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
   const savedAssetsRef = useRef<SiteAssets | undefined>(savedAssets);
   savedAssetsRef.current = savedAssets;
 
+  // ── Undo/redo stack (Item 3 — see the lifecycle rules above) ──────────────
+  const historyRef = useRef<{ entries: HistoryEntry[]; index: number } | null>(null);
+  if (historyRef.current === null) {
+    historyRef.current = {
+      entries: [{
+        blocks: structuredClone(blocks),
+        assets: structuredClone(assets),
+        theme: structuredClone(theme),
+        kind: 'init',
+        at: Date.now(),
+      }],
+      index: 0,
+    };
+  }
+  // Pending mutation kind — set by commit-class mutations, consumed by the
+  // push effect below after React settles the functional updates.
+  const historyMarkRef = useRef<string | null>(null);
+  // Set by the asset-generation reconciliation: rebuild the stack around the
+  // post-patch state instead of pushing.
+  const historyResetRef = useRef(false);
+  const [historyUi, setHistoryUi] = useState({ canUndo: false, canRedo: false });
+
+  const markHistory = useCallback((kind: string) => {
+    historyMarkRef.current = kind;
+  }, []);
+
+  const syncHistoryUi = useCallback(() => {
+    const h = historyRef.current!;
+    const next = { canUndo: h.index > 0, canRedo: h.index < h.entries.length - 1 };
+    setHistoryUi((prev) =>
+      prev.canUndo === next.canUndo && prev.canRedo === next.canRedo ? prev : next
+    );
+  }, []);
+
+  // Push/reset effect — runs after every blocks/assets/theme settle. React
+  // flushes passive effects before the next discrete event, so an undo click
+  // that follows a commit-blur always sees the pushed entry.
+  useEffect(() => {
+    const h = historyRef.current!;
+    const snapshot = (kind: string): HistoryEntry => ({
+      blocks: structuredClone(blocks),
+      assets: structuredClone(assets),
+      theme: structuredClone(theme),
+      kind,
+      at: Date.now(),
+    });
+    if (historyResetRef.current) {
+      historyResetRef.current = false;
+      historyMarkRef.current = null;
+      h.entries = [snapshot('reset')];
+      h.index = 0;
+      syncHistoryUi();
+      return;
+    }
+    const kind = historyMarkRef.current;
+    if (!kind) return;
+    historyMarkRef.current = null;
+    const current = h.entries[h.index];
+    const next = snapshot(kind);
+    const unchanged =
+      JSON.stringify(next.blocks) === JSON.stringify(current.blocks) &&
+      JSON.stringify(next.assets ?? null) === JSON.stringify(current.assets ?? null) &&
+      JSON.stringify(next.theme ?? null) === JSON.stringify(current.theme ?? null);
+    if (unchanged) return; // no-op commit (blur without change, bounds no-op)
+    // Redo clears on new edits: truncate the tail beyond the cursor.
+    h.entries = h.entries.slice(0, h.index + 1);
+    if (kind === 'reorder' && current.kind === 'reorder' && h.index > 0 && next.at - current.at < REORDER_COALESCE_MS) {
+      // Coalesce a drag's per-swap events into one entry.
+      h.entries[h.index] = next;
+    } else {
+      h.entries.push(next);
+      h.index += 1;
+      if (h.entries.length > HISTORY_LIMIT) {
+        h.entries.shift();
+        h.index -= 1;
+      }
+    }
+    syncHistoryUi();
+  }, [blocks, assets, theme, syncHistoryUi]);
+
+  const applyHistory = useCallback((direction: -1 | 1) => {
+    const h = historyRef.current!;
+    // Belt and suspenders: a pending unpushed mark must never land ON TOP of
+    // the restored snapshot (effects flush before this handler by contract).
+    historyMarkRef.current = null;
+    const target = h.index + direction;
+    if (target < 0 || target >= h.entries.length) return;
+    h.index = target;
+    const entry = h.entries[target];
+    // Dismiss in-flight edit surfaces WITHOUT committing — the restored
+    // snapshot is the truth now.
+    inspectorSnapshots.current.clear();
+    setEditing(null);
+    setChip(null);
+    // Same setState paths as every mutation → dirty tracking just works.
+    setBlocks(structuredClone(entry.blocks));
+    setAssets(structuredClone(entry.assets));
+    setTheme(structuredClone(entry.theme));
+    syncHistoryUi();
+  }, [syncHistoryUi]);
+
+  // Cockpit top-bar mirror — handle refreshed on can-state changes, nulled on
+  // unmount so the bar never fires into a dead editor.
+  useEffect(() => {
+    onHistoryChange?.({
+      canUndo: historyUi.canUndo,
+      canRedo: historyUi.canRedo,
+      undo: () => applyHistory(-1),
+      redo: () => applyHistory(1),
+    });
+  }, [historyUi, onHistoryChange, applyHistory]);
+
+  useEffect(() => () => onHistoryChange?.(null), [onHistoryChange]);
+
+  // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y (⌘ on Mac) — desktop only, and never
+  // while a text field is focused (the browser's native text undo owns it).
+  useEffect(() => {
+    if (isMobile) return;
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const key = e.key.toLowerCase();
+      if (key !== 'z' && key !== 'y') return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      e.preventDefault();
+      if (key === 'y' || (key === 'z' && e.shiftKey)) applyHistory(1);
+      else applyHistory(-1);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isMobile, applyHistory]);
+
   // The seller's live inventory — products carry versioned PUBLIC-read RLS
   // (unlike shop_websites), so a browser read is correct here. Same columns
   // and dual ownership match as the /site home read (siteData.ts).
@@ -318,16 +519,27 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
     return () => window.removeEventListener('online', attemptFlush);
   }, [attemptFlush]);
 
+  // Item 4: the effective preview device. On actual mobile viewports the
+  // toggle is hidden upstream and the historical desktop-width layout stays —
+  // the seller IS the mobile preview there.
+  const device: 'desktop' | 'mobile' = isMobile ? 'desktop' : previewDevice;
+  const designWidth = device === 'mobile' ? MOBILE_DESIGN_WIDTH : DESIGN_WIDTH;
+
   // Scale to the frame width; track the unscaled content height so the
   // scroll spacer matches the VISUAL height (transforms don't affect layout).
-  // Re-bound on viewport/tab flips: the frame REMOUNTS when the mobile
+  // Re-bound on viewport/tab/device flips: the frame REMOUNTS when the mobile
   // Controls tab hides it, so the observer must attach to the fresh nodes.
+  // Mobile device width caps at scale 1 (natural phone size, centered) —
+  // desktop keeps the historical fill-the-frame scale.
   useLayoutEffect(() => {
     const frame = frameRef.current;
     const content = contentRef.current;
     if (!frame || !content) return;
     const update = () => {
-      if (frame.clientWidth > 0) setScale(frame.clientWidth / DESIGN_WIDTH);
+      if (frame.clientWidth > 0) {
+        const raw = frame.clientWidth / designWidth;
+        setScale(device === 'mobile' ? Math.min(1, raw) : raw);
+      }
       if (content.offsetHeight > 0) setContentHeight(content.offsetHeight);
     };
     update();
@@ -335,7 +547,7 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
     observer.observe(frame);
     observer.observe(content);
     return () => observer.disconnect();
-  }, [isMobile, mobileTab]);
+  }, [isMobile, mobileTab, device, designWidth]);
 
   // Success toasts auto-dismiss; errors stay until dismissed or superseded.
   useEffect(() => {
@@ -359,18 +571,44 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
     frameRef.current?.scrollTo({ top: Math.max(0, editing.top - 96), behavior: 'smooth' });
   }, [isMobile, editing, mobileTab]);
 
+  // HIDDEN-IN-EDITOR CONTRACT (Item 2): the live templates SKIP hidden blocks
+  // (resolveVisibleBlocks), but the editor must show them DIMMED, not gone —
+  // so the preview strips the hidden flag from body blocks (they render, and
+  // the CSS below dims their sections). value_props keeps its flag: its only
+  // visual surface is the marquee ribbon — an aria-hidden animated track that
+  // cannot dim honestly — so the preview shows exactly what the public site
+  // will (tokens drop out), while the rail row carries the dimmed/eye state.
+  const previewBlocks = useMemo<SiteBlock[]>(
+    () =>
+      blocks.map((b) => {
+        if (!b.hidden || b.type === 'value_props') return b;
+        const next = { ...b };
+        delete next.hidden;
+        return next;
+      }),
+    [blocks]
+  );
+
+  // Body sections to dim on the canvas (hidden, with a rendered section).
+  const hiddenSectionIds = useMemo(
+    () => blocks.filter((b) => b.hidden && b.type !== 'value_props').map((b) => b.id),
+    [blocks]
+  );
+
   const previewConfig = useMemo<WebsiteConfig>(
     () => ({
       ...website.config,
+      // Mirror from ALL blocks (hidden included — content preservation);
+      // the render array is the stripped projection above.
       site: blocksToLegacySite(blocks, website.config.site),
-      blocks,
+      blocks: previewBlocks,
       ...(assets !== undefined ? { assets } : {}),
       // Theme rides the LOCAL state (not the stored config), so a swatch or
       // font tap recolors the live preview instantly; a cleared theme must
       // also OVERRIDE a stored one, hence the explicit undefined spread.
       theme,
     }),
-    [blocks, assets, theme, website.config]
+    [blocks, previewBlocks, assets, theme, website.config]
   );
 
   // Hero fallback chain with the LOCAL asset state — an uploaded/generated
@@ -490,6 +728,7 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
     // Empty copy can never save (required fields are zod min(1)) — an emptied
     // node reverts to its value at edit start; optional fields (empty
     // snapshot) delete their key instead.
+    markHistory('field');
     setBlocks((prev) => commitValue(prev, editing.blockId, editing.path, editing.snapshot));
     setEditing(null);
   };
@@ -523,6 +762,7 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
     const key = `${blockId}:${path.join('.')}`;
     const snap = inspectorSnapshots.current.get(key);
     inspectorSnapshots.current.delete(key);
+    markHistory('field');
     setBlocks((prev) => {
       let fallback = snap ?? '';
       if (!optional && !fallback) {
@@ -533,43 +773,58 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
       }
       return commitValue(prev, blockId, path, optional ? '' : fallback);
     });
-  }, [savedBlocks]);
+  }, [savedBlocks, markHistory]);
 
   // ── Section operations ─────────────────────────────────────────────────────
 
-  /** Grid|Carousel toggle. 'grid' REMOVES the key (absent means grid — the
-   *  canonical stored form), so toggling away and back leaves the block
-   *  byte-identical and the dirty check settles clean. */
-  const setGridDisplayMode = (blockId: string, mode: 'grid' | 'carousel') => {
+  /** Generic select commit (registry kind 'select'). Choosing the
+   *  descriptor's clearValue REMOVES the key (absent is the canonical stored
+   *  form — Grid|Carousel byte-identically preserved), so toggling away and
+   *  back leaves the block untouched and the dirty check settles clean.
+   *  writeBlockField's empty-string delete IS the key removal. */
+  const setSelectField = (blockId: string, path: string[], value: string, clearValue?: string) => {
+    markHistory('select');
     setBlocks((prev) =>
-      prev.map((b) => {
-        if (b.id !== blockId || b.type !== 'product_grid') return b;
-        if (mode === 'carousel') return { ...b, displayMode: 'carousel' as const };
-        const next = { ...b };
-        delete next.displayMode;
-        return next;
-      })
+      prev.map((b) =>
+        b.id === blockId
+          ? writeBlockField(b, path, clearValue !== undefined && value === clearValue ? '' : value)
+          : b
+      )
     );
   };
 
-  /** Removal is guarded to the seller-added types — the classic five stay
-   *  fixed anatomy even if a hand-crafted call slips a wrong id through. */
+  /** Removal (Item 2): ANY block except the last product_grid — the guard is
+   *  re-checked here so a hand-crafted call can never orphan the collection. */
   const removeBlock = (blockId: string) => {
     setChip(null);
     setEditing(null);
     setFocusedId((cur) => (cur === blockId ? null : cur));
-    setBlocks((prev) => prev.filter((b) => !(b.id === blockId && SELLER_ADDED_TYPES.has(b.type))));
+    markHistory('remove');
+    setBlocks((prev) => (canRemoveBlock(prev, blockId) ? prev.filter((b) => b.id !== blockId) : prev));
   };
 
-  const addProductTabsBlock = () => {
+  /** Visibility eye (Item 2) — dims/skips the section, never deletes it. */
+  const toggleHidden = (blockId: string) => {
+    markHistory('hide');
+    setBlocks((prev) => toggleBlockHidden(prev, blockId));
+  };
+
+  /** Full-catalog add (Item 2). video_hero REQUIRES an Ad Studio selection
+   *  (Law 4 — never an invented URL), so it routes through the film picker;
+   *  every other type inserts its starter block per INSERT_RULES. */
+  const addSection = (type: SiteBlockType) => {
     setChip(null);
     setEditing(null);
+    setAddSheet(false);
+    if (type === 'video_hero') {
+      setPicker({ mode: 'add' });
+      return;
+    }
     if (blocks.length >= MAX_BLOCKS) return;
-    const id = mintBlockId('tabs', blocks);
+    const id = mintBlockId(BLOCK_ID_PREFIXES[type], blocks);
+    markHistory('add');
     setBlocks((prev) =>
-      prev.length >= MAX_BLOCKS
-        ? prev
-        : insertAfterType(prev, buildProductTabsBlock(mintBlockId('tabs', prev)), 'product_grid', 'before_cta')
+      prev.length >= MAX_BLOCKS ? prev : insertNewBlock(prev, type, mintBlockId(BLOCK_ID_PREFIXES[type], prev))
     );
     setFocusedId(id);
   };
@@ -579,6 +834,7 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
     setEditing(null);
     if (blocks.length >= MAX_BLOCKS) return;
     const id = mintBlockId('film', blocks);
+    markHistory('add');
     setBlocks((prev) =>
       prev.length >= MAX_BLOCKS
         ? prev
@@ -591,6 +847,7 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
    *  poster with the new ad's hero still (or drops the stale one on a manual
    *  URL), and leaves the seller's headline/subheadline copy untouched. */
   const replaceVideoHeroAsset = (blockId: string, selection: VideoHeroSelection) => {
+    markHistory('film');
     setBlocks((prev) =>
       prev.map((b) => {
         if (b.id !== blockId || b.type !== 'video_hero') return b;
@@ -605,6 +862,9 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
   // ── Asset slot operations ──────────────────────────────────────────────────
 
   const setAssetSlot = useCallback((slot: AssetSlotKind, url: string | null) => {
+    // Asset set/clear is a committed mutation (upload landing, Ad-Studio
+    // pick, Clear) — one history entry each.
+    markHistory('asset');
     setAssets((prev) => {
       const next: SiteAssets = { ...(prev ?? {}) };
       const key = slot === 'hero' ? 'hero_image_url' : 'logo_url';
@@ -612,7 +872,7 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
       else delete next[key];
       return next;
     });
-  }, []);
+  }, [markHistory]);
 
   const setSlotBusy = (slot: AssetSlotKind, message: string | null) => {
     setAssetBusy((prev) => {
@@ -684,6 +944,11 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
         return next;
       });
       setSavedAssets(structuredClone(serverAssets));
+      // Item 3 lifecycle: the server just rewrote config.assets OUTSIDE the
+      // editor's mutation stream — clear the stack around the reconciled
+      // state so undo can never resurrect a pre-generation asset state that
+      // never existed on the server.
+      historyResetRef.current = true;
       onSaved(row);
       setToast({
         kind: 'success',
@@ -740,10 +1005,11 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
     const sectionId = sectionNode?.getAttribute('data-block-section') ?? null;
     if (sectionId) {
       if (isMobile) {
-        // Preview-tab contract (untouched): sections WITH settings select +
-        // open the settings sheet; others behave like empty space.
+        // Preview-tab contract (Item 2 extension): EVERY section now opens
+        // its settings sheet — the sheet is the canvas-chip surface that
+        // hosts the visibility eye and the guarded remove for all types.
         const block = blocks.find((b) => b.id === sectionId);
-        if (block && CHIP_LABELS[block.type]) {
+        if (block) {
           setEditing(null);
           setFocusedId(sectionId);
           setChip({ blockId: sectionId });
@@ -769,6 +1035,9 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
     setPicker(null);
     setStillPicker(false);
     inspectorSnapshots.current.clear();
+    // Discard is itself an undoable committed mutation — one entry, so an
+    // accidental discard is recoverable through the same stack.
+    markHistory('discard');
     setBlocks(structuredClone(savedBlocks));
     setAssets(structuredClone(savedAssets));
     setTheme(structuredClone(savedTheme));
@@ -776,6 +1045,12 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
   };
 
   const handleSave = async () => {
+    // RACE CLOSURE (A1, editor end): while a slot is generating/uploading, a
+    // Save's PUT and the asset route's write-back could interleave — the
+    // route now merges into a fresh read, and THIS guard (plus the disabled
+    // Save button below) removes the overlap entirely. Belt and suspenders:
+    // the button is already disabled whenever assetBusy has entries.
+    if (Object.keys(assetBusy).length > 0) return;
     // Sanitize every in-flight edit into the payload SYNCHRONOUSLY: the
     // mobile sheet (if open) and any focused inspector fields. Blur handlers
     // fire before this click, but this closure may still see pre-commit
@@ -795,6 +1070,7 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
       payload = commitValue(payload, blockId, path, optional ? '' : snap);
     }
     inspectorSnapshots.current.clear();
+    markHistory('field');
     setBlocks(payload);
 
     // Belt-and-suspenders: never send a payload the PUT will bounce.
@@ -890,6 +1166,15 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
   const atBlockCapacity = blocks.length >= MAX_BLOCKS;
   const queued = syncState === 'queued';
   const showPreview = !isMobile || mobileTab === 'preview';
+  // A1: Save waits for asset slots — honest hint in the dirty bar while the
+  // hero/logo pipeline (or an upload) is still writing its slot.
+  const busySlots = Object.keys(assetBusy) as AssetSlotKind[];
+  const assetBusyHint =
+    busySlots.length === 0
+      ? null
+      : busySlots.includes('hero')
+        ? 'Finishing your hero…'
+        : 'Finishing your logo…';
 
   const assetSlotsNode = (
     <AssetSlots
@@ -907,7 +1192,16 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
   // Theme controls (accent swatches + font picker) — writes the same local
   // theme state the live preview renders through the chrome's variable seam.
   const themePanelNode = (
-    <ThemePanel templateKey={website.template_key} theme={theme} onChange={setTheme} />
+    <ThemePanel
+      templateKey={website.template_key}
+      theme={theme}
+      onChange={(next) => {
+        // Theme changes are committed mutations (swatch/font taps commit
+        // instantly) — one history entry each.
+        markHistory('theme');
+        setTheme(next);
+      }}
+    />
   );
 
   const sectionRail = (
@@ -918,17 +1212,27 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
       saving={saving}
       atCapacity={atBlockCapacity}
       onFocus={(id) => (isMobile ? setFocusedId((cur) => (cur === id ? null : id)) : focusFromRail(id))}
-      onReorderIds={(ids) => setBlocks((prev) => reorderBlocksByIds(prev, ids))}
-      onMove={(id, dir) => setBlocks((prev) => moveBlock(prev, id, dir))}
+      onReorderIds={(ids) => {
+        markHistory('reorder');
+        setBlocks((prev) => reorderBlocksByIds(prev, ids));
+      }}
+      onMove={(id, dir) => {
+        markHistory('reorder');
+        setBlocks((prev) => moveBlock(prev, id, dir));
+      }}
       onRemove={removeBlock}
-      onAddTabsSection={addProductTabsBlock}
-      onAddFilmSection={() => setPicker({ mode: 'add' })}
+      onAddSection={addSection}
+      onToggleHidden={toggleHidden}
       onChangeFilm={(id) => setPicker({ mode: 'replace', blockId: id })}
-      onSetGridMode={setGridDisplayMode}
-      onAddTab={(id) => setBlocks((prev) => prev.map((b) => (b.id === id ? addTabToBlock(b) : b)))}
-      onRemoveTab={(id, i) => setBlocks((prev) => prev.map((b) => (b.id === id ? removeTabFromBlock(b, i) : b)))}
-      onAddValueProp={(id) => setBlocks((prev) => prev.map((b) => (b.id === id ? addValuePropToBlock(b) : b)))}
-      onRemoveValueProp={(id, i) => setBlocks((prev) => prev.map((b) => (b.id === id ? removeValuePropFromBlock(b, i) : b)))}
+      onSelectSetting={setSelectField}
+      onAddGroupItem={(id, groupPath) => {
+        markHistory('group');
+        setBlocks((prev) => prev.map((b) => (b.id === id ? addGroupItem(b, groupPath) : b)));
+      }}
+      onRemoveGroupItem={(id, groupPath, i) => {
+        markHistory('group');
+        setBlocks((prev) => prev.map((b) => (b.id === id ? removeGroupItem(b, groupPath, i) : b)));
+      }}
       onFieldChange={applyFieldValue}
       onFieldFocus={handleInspectorFocus}
       onFieldBlur={handleInspectorBlur}
@@ -971,6 +1275,17 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
           }
         }
       `}</style>
+
+      {/* Hidden sections render DIMMED on the canvas (Item 2) — still
+          clickable/focusable, so the rail eye toggle stays one tap away. */}
+      {hiddenSectionIds.length > 0 && (
+        <style>{hiddenSectionIds
+          .map(
+            (id) =>
+              `.sndk-copy-editor [data-block-section="${cssAttrEscape(id)}"] { opacity: .4; filter: grayscale(.65); }`
+          )
+          .join('\n')}</style>
+      )}
 
       {/* Focused-section outline — canvas side of the bidirectional selection
           (desktop rail focus AND mobile tap-to-select share it). */}
@@ -1056,11 +1371,27 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
                 onClickCapture={handlePreviewClickCapture}
                 className="relative h-[540px] w-full overflow-y-auto overflow-x-hidden overscroll-contain bg-white md:h-[620px]"
               >
-                <div ref={spacerRef} className="relative" style={{ height: Math.max(1, contentHeight * scale) }}>
+                {/* Item 4: in mobile device mode the spacer narrows to the
+                    scaled 390px column, centers, and wears a subtle rounded
+                    device-frame hint. Rect math is width-agnostic: section
+                    and copy-node targeting measure post-transform rects
+                    relative to THIS spacer at both widths. */}
+                <div
+                  ref={spacerRef}
+                  className={`relative ${
+                    device === 'mobile'
+                      ? 'mx-auto my-4 overflow-hidden rounded-[1.75rem] shadow-xl ring-4 ring-gray-900'
+                      : ''
+                  }`}
+                  style={{
+                    height: Math.max(1, contentHeight * scale),
+                    ...(device === 'mobile' ? { width: Math.max(1, designWidth * scale) } : {}),
+                  }}
+                >
                   <div
                     ref={contentRef}
                     className="absolute left-0 top-0 origin-top-left"
-                    style={{ width: DESIGN_WIDTH, transform: `scale(${scale})` }}
+                    style={{ width: designWidth, transform: `scale(${scale})` }}
                   >
                     {/* GatedVideoPreviewScope: every hero/gallery video in the
                         scaled preview renders its static poster state — no
@@ -1156,40 +1487,42 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
           {chip && chipBlock && (
             <BottomSheet
               key={`settings-${chip.blockId}`}
-              label={CHIP_LABELS[chipBlock.type] ?? 'Section settings'}
+              label={CHIP_LABELS[chipBlock.type] ?? SECTION_LABELS[chipBlock.type]}
               onDismiss={() => setChip(null)}
             >
               <div className="space-y-1 px-3 pb-2">
-                {chipBlock.type === 'product_grid' && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setGridDisplayMode(chipBlock.id, 'grid')}
-                      className={`flex min-h-[48px] w-full items-center gap-3 rounded-2xl px-4 text-left text-sm font-semibold transition ${
-                        (chipBlock.displayMode ?? 'grid') === 'grid'
-                          ? 'bg-gray-900 text-white'
-                          : 'text-gray-700 active:bg-gray-100'
-                      }`}
-                    >
-                      <LayoutGrid size={16} className="shrink-0" />
-                      <span className="flex-1">Grid</span>
-                      {(chipBlock.displayMode ?? 'grid') === 'grid' && <Check size={16} className="shrink-0" />}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setGridDisplayMode(chipBlock.id, 'carousel')}
-                      className={`flex min-h-[48px] w-full items-center gap-3 rounded-2xl px-4 text-left text-sm font-semibold transition ${
-                        chipBlock.displayMode === 'carousel'
-                          ? 'bg-gray-900 text-white'
-                          : 'text-gray-700 active:bg-gray-100'
-                      }`}
-                    >
-                      <GalleryHorizontal size={16} className="shrink-0" />
-                      <span className="flex-1">Carousel</span>
-                      {chipBlock.displayMode === 'carousel' && <Check size={16} className="shrink-0" />}
-                    </button>
-                  </>
-                )}
+                {/* Registry-driven select rows (kind 'select') — the sheet is
+                    the canvas-chip surface of the SAME BLOCK_SETTINGS table
+                    the rail renders, so a new select descriptor appears here
+                    with zero sheet code (Grid|Carousel byte-for-byte). */}
+                {BLOCK_SETTINGS[chipBlock.type].map((setting) => {
+                  if (setting.kind !== 'select') return null;
+                  const path = setting.path.split('.');
+                  const current =
+                    readBlockField(chipBlock, path) ?? setting.clearValue ?? setting.options[0]?.value ?? '';
+                  return (
+                    <Fragment key={`${chipBlock.id}:${setting.path}`}>
+                      {setting.options.map((opt) => {
+                        const Icon = SELECT_OPTION_ICONS[opt.value];
+                        const active = current === opt.value;
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => setSelectField(chipBlock.id, path, opt.value, setting.clearValue)}
+                            className={`flex min-h-[48px] w-full items-center gap-3 rounded-2xl px-4 text-left text-sm font-semibold transition ${
+                              active ? 'bg-gray-900 text-white' : 'text-gray-700 active:bg-gray-100'
+                            }`}
+                          >
+                            {Icon && <Icon size={16} className="shrink-0" />}
+                            <span className="flex-1">{opt.label}</span>
+                            {active && <Check size={16} className="shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </Fragment>
+                  );
+                })}
                 {chipBlock.type === 'video_hero' && (
                   <button
                     type="button"
@@ -1206,7 +1539,21 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
                     <ChevronRight size={16} className="shrink-0 text-gray-300" />
                   </button>
                 )}
-                {SELLER_ADDED_TYPES.has(chipBlock.type) && (
+                {/* Visibility eye (Item 2) — every section, ≥48px row. */}
+                <button
+                  type="button"
+                  onClick={() => toggleHidden(chipBlock.id)}
+                  className="flex min-h-[48px] w-full items-center gap-3 rounded-2xl px-4 text-left text-sm font-semibold text-gray-700 transition active:bg-gray-100"
+                >
+                  {chipBlock.hidden ? (
+                    <Eye size={16} className="shrink-0" />
+                  ) : (
+                    <EyeOff size={16} className="shrink-0" />
+                  )}
+                  <span className="flex-1">{chipBlock.hidden ? 'Show section' : 'Hide section'}</span>
+                </button>
+                {/* Remove — any section except the last product_grid. */}
+                {canRemoveBlock(blocks, chipBlock.id) ? (
                   <button
                     type="button"
                     onClick={() => removeBlock(chipBlock.id)}
@@ -1215,6 +1562,8 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
                     <Trash2 size={16} className="shrink-0" />
                     <span className="flex-1">Remove section</span>
                   </button>
+                ) : (
+                  <p className="px-4 py-2 text-xs leading-relaxed text-gray-400">{REMOVE_GUARD_HINT}</p>
                 )}
               </div>
             </BottomSheet>
@@ -1288,42 +1637,36 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
 
           {addSheet && (
             <BottomSheet key="add-sheet" label="Add a section" onDismiss={() => setAddSheet(false)}>
+              {/* Full catalog (Item 2) — one ≥56px row per block type with an
+                  honest description; the film row hands off to the Ad Studio
+                  picker (one sheet at a time on a phone). */}
               <div className="space-y-1 px-3 pb-2">
-                <button
-                  type="button"
-                  disabled={atBlockCapacity}
-                  onClick={() => {
-                    setAddSheet(false);
-                    setPicker({ mode: 'add' });
-                  }}
-                  className="flex min-h-[56px] w-full items-center gap-3 rounded-2xl px-4 text-left transition active:bg-gray-100 disabled:opacity-40"
-                >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-900 text-white">
-                    <Clapperboard size={16} />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-semibold text-gray-900">Brand film</span>
-                    <span className="block truncate text-xs text-gray-500">A cinematic Ad Studio commercial on your page</span>
-                  </span>
-                  <ChevronRight size={16} className="shrink-0 text-gray-300" />
-                </button>
-                <button
-                  type="button"
-                  disabled={atBlockCapacity}
-                  onClick={() => {
-                    addProductTabsBlock();
-                    setAddSheet(false);
-                  }}
-                  className="flex min-h-[56px] w-full items-center gap-3 rounded-2xl px-4 text-left transition active:bg-gray-100 disabled:opacity-40"
-                >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-700">
-                    <Rows3 size={16} />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-semibold text-gray-900">Product tabs</span>
-                    <span className="block truncate text-xs text-gray-500">Details, delivery and returns in tidy tabs</span>
-                  </span>
-                </button>
+                {SECTION_CATALOG.map(({ type, description }) => {
+                  const Icon = BLOCK_TYPE_ICONS[type];
+                  const opensPicker = type === 'video_hero';
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      disabled={atBlockCapacity}
+                      onClick={() => addSection(type)}
+                      className="flex min-h-[56px] w-full items-center gap-3 rounded-2xl px-4 text-left transition active:bg-gray-100 disabled:opacity-40"
+                    >
+                      <span
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                          opensPicker ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700'
+                        }`}
+                      >
+                        <Icon size={16} />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-semibold text-gray-900">{SECTION_LABELS[type]}</span>
+                        <span className="block truncate text-xs text-gray-500">{description}</span>
+                      </span>
+                      {opensPicker && <ChevronRight size={16} className="shrink-0 text-gray-300" />}
+                    </button>
+                  );
+                })}
               </div>
             </BottomSheet>
           )}
@@ -1343,9 +1686,11 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
               </p>
             ) : dirty ? (
               <p className="text-sm font-medium text-gray-700">
-                {payloadValid
-                  ? 'Unsaved changes — save to update your live site.'
-                  : 'A required field is empty — finish it to save.'}
+                {assetBusyHint
+                  ? `${assetBusyHint} Save unlocks the moment it lands.`
+                  : payloadValid
+                    ? 'Unsaved changes — save to update your live site.'
+                    : 'A required field is empty — finish it to save.'}
               </p>
             ) : (
               <p className="flex items-center gap-2 text-sm font-medium text-amber-800">
@@ -1373,16 +1718,27 @@ export default function SiteCopyEditor({ userId, website, shop, onSaved, onDirty
               )}
               {dirty && (
                 <>
+                  {/* Item 3: the dirty bar's Undo — one committed mutation
+                      back, same stack as the cockpit buttons and Ctrl+Z. */}
+                  {historyUi.canUndo && (
+                    <button
+                      onClick={() => applyHistory(-1)}
+                      disabled={saving}
+                      className="flex min-h-[44px] items-center gap-1.5 rounded-full bg-gray-50 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-600 transition hover:bg-gray-100 disabled:opacity-50"
+                    >
+                      <Undo2 size={12} /> Undo
+                    </button>
+                  )}
                   <button
                     onClick={handleDiscard}
                     disabled={saving}
                     className="flex min-h-[44px] items-center gap-1.5 rounded-full bg-gray-50 px-5 py-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-600 transition hover:bg-gray-100 disabled:opacity-50"
                   >
-                    <Undo2 size={12} /> Discard
+                    <RotateCcw size={12} /> Discard
                   </button>
                   <button
                     onClick={handleSave}
-                    disabled={saving || !payloadValid}
+                    disabled={saving || !payloadValid || busySlots.length > 0}
                     className="flex min-h-[44px] items-center gap-1.5 rounded-full bg-gradient-to-r from-[#1a2e1a] to-gray-900 px-6 py-2.5 text-[10px] font-bold uppercase tracking-widest text-white shadow-md transition hover:opacity-90 active:scale-95 disabled:opacity-60"
                   >
                     {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}

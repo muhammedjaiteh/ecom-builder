@@ -30,6 +30,8 @@ import {
   Loader2, Lock, MessageCircle, RefreshCw, Unlink, WifiOff,
 } from 'lucide-react';
 import BottomSheet from '@/components/website/BottomSheet';
+import { resolveDashboardUser } from '@/lib/dashboardAuth';
+import { useShopRow } from '@/lib/useShopRow';
 import { useIsMobileViewport } from '@/lib/useIsMobileViewport';
 import { fetchJSON, isTransportError, type TransportError } from '@/lib/transport';
 
@@ -113,33 +115,32 @@ export default function OnlineStoreDomainsPage() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  const [loading, setLoading] = useState(true);
-  const [shopName, setShopName] = useState<string | null>(null);
-  const [subscriptionTier, setSubscriptionTier] = useState('starter');
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // Shops-row seam (lib/useShopRow, A3) — one cached read for the whole
+  // dashboard instead of this page's own bare shops query.
+  const { shop, verdict: shopVerdict, error: shopError } = useShopRow(userId);
+  const shopName = shop?.shop_name ?? null;
+  const subscriptionTier = shop?.subscription_tier || 'starter';
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      // Non-evicting offline auth (lib/dashboardAuth) — transport failure with
+      // a local session never redirects; only a genuine no-session does.
+      const auth = await resolveDashboardUser(supabase);
+      if (auth.status === 'unauthenticated') {
         router.push('/login');
         return;
       }
       if (cancelled) return;
-      const { data: shop } = await supabase
-        .from('shops')
-        .select('shop_name, subscription_tier')
-        .eq('id', user.id)
-        .single();
-      if (cancelled) return;
-      if (shop) {
-        setShopName(shop.shop_name ?? null);
-        setSubscriptionTier(shop.subscription_tier || 'starter');
-      }
-      setLoading(false);
+      setUserId(auth.user.id);
     })();
     return () => { cancelled = true; };
   }, [router, supabase]);
+
+  // Loading = auth pending, or no shops-row verdict from cache/network yet.
+  const loading = !userId || (shopVerdict === undefined && !shopError);
 
   const hasAccess = DOMAIN_TIERS.includes((subscriptionTier ?? '').toLowerCase().trim());
 

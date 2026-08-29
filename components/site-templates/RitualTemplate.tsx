@@ -2,7 +2,7 @@ import { Fragment } from 'react';
 import Link from 'next/link';
 import SmartImage from '@/components/SmartImage';
 import {
-  resolveBlocks,
+  resolveVisibleBlocks,
   siteCollectionsPath,
   type HeroMedia,
   type SiteBlock,
@@ -299,7 +299,10 @@ function RitualCta({ block, collectionsHref }: { block: CtaBlock; collectionsHre
 }
 
 export default function RitualTemplate({ shop, products, config, heroMedia }: SiteTemplateProps) {
-  const blocks = resolveBlocks(config);
+  // Item 2: hidden blocks are SKIPPED at render (the editor previews them
+  // dimmed by stripping the flag client-side). Hiding the hero also hides
+  // its welded seam marquee — the ribbon rides the hero→body seam by design.
+  const blocks = resolveVisibleBlocks(config);
   // Internal routes, with honest fallbacks for slugless studio previews:
   // the preview renders this home layout, so bare anchors stay correct there.
   const collectionsHref = siteCollectionsPath(shop) ?? '#collection';

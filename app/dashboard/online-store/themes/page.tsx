@@ -13,11 +13,11 @@
 
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import useSWR, { SWRConfig } from 'swr';
 import {
   ArrowLeft, Brush, Camera, CheckCircle2, ChevronDown, ExternalLink, Eye, EyeOff,
-  Globe, Image as ImageIcon, LayoutTemplate, Loader2, Lock, MapPin, Palette, Save, Store,
+  Globe, History, Image as ImageIcon, LayoutTemplate, Loader2, Lock, MapPin, Palette, Save, Store,
   Truck, Wand2, WifiOff, AlertTriangle,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -28,6 +28,8 @@ import WebsiteGeneratorStudio, { type StudioShop } from '@/components/website/We
 import { CoachDot, CoachLegend, useCoachMarks } from '@/components/website/CoachMarks';
 import { SITE_TEMPLATES, WebsiteConfigSchema, type ShopWebsiteRow, type WebsiteConfig } from '@/lib/siteTemplates';
 import { slugify } from '@/lib/slugify';
+import { resolveDashboardUser } from '@/lib/dashboardAuth';
+import { useShopRow } from '@/lib/useShopRow';
 import { fetchJSON, isTransportError } from '@/lib/transport';
 import { createPersistedSwrProvider, websiteContentKey } from '@/lib/swrCache';
 import { flushWebsiteOutbox } from '@/lib/offlineOutbox';
@@ -72,19 +74,38 @@ export default function OnlineStoreThemesPage() {
   );
 
   const [userId, setUserId] = useState<string | null>(null);
-  const [shopId, setShopId] = useState<string | null>(null);
-  const [subscriptionTier, setSubscriptionTier] = useState('starter');
-  // Identity snapshot for the AI Website Studio (the flagship section below).
-  const [generatorShop, setGeneratorShop] = useState<StudioShop | null>(null);
   // Classic-boutique appearance settings live collapsed at the bottom.
   const [classicOpen, setClassicOpen] = useState(false);
+
+  // Shops-row seam (lib/useShopRow, A3): identity + tier ride the dashboard
+  // layout's persisted provider — instant cached paint, focus/reconnect
+  // revalidation, and the brand save below writes back through the same key
+  // so the sidebar/studio/links update everywhere instantly.
+  const { shop: shopRow, verdict: shopVerdict, error: shopError, mutate: mutateShopRow } = useShopRow(userId);
+
+  const shopId = shopRow?.id ?? null;
+  const subscriptionTier = shopRow?.subscription_tier || 'starter';
+  // Identity snapshot for the AI Website Studio (the flagship section below) —
+  // derived from the seam, so a tier upgrade or slug repair propagates live.
+  const generatorShop = useMemo<StudioShop | null>(
+    () =>
+      shopRow
+        ? {
+            id: shopRow.id,
+            shop_name: shopRow.shop_name ?? null,
+            shop_slug: shopRow.shop_slug ?? null,
+            subscription_tier: shopRow.subscription_tier ?? null,
+          }
+        : null,
+    [shopRow]
+  );
 
   // The shop_websites row now lives in WebsiteStudioSections below: SWR over
   // the owner content API with a per-user persisted cache (instant paint from
   // the last synced row, background revalidate, deadline-bounded transport) —
   // the bare mount fetch that could hang this page for minutes is gone.
 
-  // States
+  // States — the classic-boutique FORM fields stay local (seeded once below).
   const [bio, setBio] = useState('');
   const [themeColor, setThemeColor] = useState('emerald');
   const [storeLayout, setStoreLayout] = useState('bantaba');
@@ -94,48 +115,44 @@ export default function OnlineStoreThemesPage() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [bannerUrl, setBannerUrl] = useState<string | null>(null);
 
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [uploadingImage, setUploadingImage] = useState<'logo' | 'banner' | null>(null);
 
+  // Loading = auth pending, or no shops-row verdict from cache/network yet.
+  const loading = !userId || (shopVerdict === undefined && !shopError);
+
   useEffect(() => {
     let cancelled = false;
     async function loadShopData() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      // Non-evicting offline auth (lib/dashboardAuth) — transport failure with
+      // a local session never redirects; only a genuine no-session does.
+      const auth = await resolveDashboardUser(supabase);
+      if (auth.status === 'unauthenticated') {
         router.push('/login');
         return;
       }
       if (cancelled) return;
-      setUserId(user.id);
-
-      const { data: shop } = await supabase.from('shops').select('*').eq('id', user.id).single();
-      if (cancelled) return;
-      if (shop) {
-        setShopId(shop.id);
-        setSubscriptionTier(shop.subscription_tier || 'starter');
-        setGeneratorShop({
-          id: shop.id,
-          shop_name: shop.shop_name ?? null,
-          shop_slug: shop.shop_slug ?? null,
-          subscription_tier: shop.subscription_tier ?? null,
-        });
-        setBio(shop.bio || '');
-        setThemeColor(shop.theme_color || 'emerald');
-        setStoreLayout(shop.store_layout || 'bantaba');
-        setOffersDelivery(shop.offers_delivery || false);
-        setOffersPickup(shop.offers_pickup || false);
-        setLogoUrl(shop.logo_url || null);
-        setBannerUrl(shop.banner_url || null);
-      }
-      if (!cancelled) {
-        setLoading(false);
-      }
+      setUserId(auth.user.id);
     }
     loadShopData();
     return () => { cancelled = true; };
   }, [router, supabase]);
+
+  // Seed the FORM state ONCE from the first row that arrives — background
+  // revalidations must never clobber a seller's in-progress edits.
+  const formSeeded = useRef(false);
+  useEffect(() => {
+    if (!shopRow || formSeeded.current) return;
+    formSeeded.current = true;
+    setBio(shopRow.bio || '');
+    setThemeColor(shopRow.theme_color || 'emerald');
+    setStoreLayout(shopRow.store_layout || 'bantaba');
+    setOffersDelivery(shopRow.offers_delivery || false);
+    setOffersPickup(shopRow.offers_pickup || false);
+    setLogoUrl(shopRow.logo_url || null);
+    setBannerUrl(shopRow.banner_url || null);
+  }, [shopRow]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'logo' | 'banner') => {
     const file = e.target.files?.[0];
@@ -183,6 +200,26 @@ export default function OnlineStoreThemesPage() {
       }).eq('id', userId);
 
       if (error) throw error;
+
+      // Seam invalidation (A3): push the merged row through shopRowKey so the
+      // sidebar, dashboard header, studio identity, and storefront links all
+      // repaint instantly — the write just succeeded, so this IS server truth.
+      void mutateShopRow(
+        (prev) =>
+          prev
+            ? {
+                ...prev,
+                bio: bio.trim(),
+                theme_color: themeColor,
+                store_layout: storeLayout,
+                offers_delivery: offersDelivery,
+                offers_pickup: offersPickup,
+                logo_url: logoUrl,
+                banner_url: bannerUrl,
+              }
+            : prev,
+        { revalidate: false }
+      );
 
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
@@ -546,6 +583,42 @@ function WebsiteStudioSectionsInner({ userId, generatorShop, hasWebsiteAccess }:
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
 
+  // Item 5 — restore-previous-design flow (quiet affordance → confirm modal
+  // → atomic server swap → SWR reconcile).
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+
+  const handleRestore = async () => {
+    setRestoreError(null);
+    setRestoring(true);
+    try {
+      const row = await fetchJSON<ShopWebsiteRow>('/api/websites/restore', { method: 'POST' });
+      handleWebsiteChange(row);
+      setRestoreOpen(false);
+    } catch (err) {
+      if (isTransportError(err) && err.kind === 'offline') {
+        setRestoreError('You appear to be offline — the restore was not applied. Try again once connected.');
+      } else if (isTransportError(err) && err.kind === 'server') {
+        setRestoreError(err.message || 'Failed to restore your previous design.');
+      } else {
+        setRestoreError('Network error restoring your design. Please try again.');
+      }
+    } finally {
+      setRestoring(false);
+    }
+  };
+
+  // Escape dismisses the restore confirm (Cancel is the safe default).
+  useEffect(() => {
+    if (!restoreOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setRestoreOpen(false);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [restoreOpen]);
+
   const handlePublishToggle = async () => {
     if (!website) return;
     setPublishError(null);
@@ -737,6 +810,21 @@ function WebsiteStudioSectionsInner({ userId, generatorShop, hasWebsiteAccess }:
                 </span>
               </div>
 
+              {/* Item 5: quiet restore affordance — only when a snapshot
+                  exists on the stored config. */}
+              {previewConfig?.previous && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRestoreError(null);
+                    setRestoreOpen(true);
+                  }}
+                  className="inline-flex min-h-[44px] items-center gap-1.5 self-start text-[10px] font-bold uppercase tracking-widest text-gray-400 transition hover:text-gray-900"
+                >
+                  <History size={12} /> Restore previous design
+                </button>
+              )}
+
               {publishError && (
                 <p className="text-xs font-medium text-red-700">{publishError}</p>
               )}
@@ -760,6 +848,77 @@ function WebsiteStudioSectionsInner({ userId, generatorShop, hasWebsiteAccess }:
         onWebsiteChange={handleWebsiteChange}
         variant="hub"
       />
+
+      {/* ── Restore-previous-design confirm (Item 5) — z-[90], above every
+          layer of dashboard chrome, mirroring the studio's warning modal. */}
+      <AnimatePresence>
+        {restoreOpen && (
+          <motion.div
+            key="restore-confirm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            className="fixed inset-0 z-[90] flex items-center justify-center p-4"
+          >
+            <button
+              type="button"
+              aria-label="Cancel and keep my current design"
+              onClick={() => setRestoreOpen(false)}
+              className="absolute inset-0 cursor-default bg-neutral-950/60 backdrop-blur-sm"
+            />
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="restore-confirm-title"
+              initial={{ opacity: 0, scale: 0.95, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl md:p-8"
+            >
+              <h3 id="restore-confirm-title" className="font-serif text-xl font-bold leading-snug text-gray-900">
+                Restore your previous design?
+              </h3>
+              <p className="mt-3 text-sm leading-relaxed text-gray-600">
+                Your current design will be swapped with the stored backup. This is fully
+                reversible — restoring again brings the current design straight back.
+              </p>
+              {restoreError && (
+                <p className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-800">
+                  {restoreError}
+                </p>
+              )}
+              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setRestoreOpen(false)}
+                  disabled={restoring}
+                  className="min-h-[44px] rounded-full border border-gray-200 bg-white px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:bg-gray-50 active:scale-95 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleRestore()}
+                  disabled={restoring}
+                  className="flex min-h-[44px] items-center justify-center gap-2 rounded-full bg-gray-900 px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-white shadow-md transition hover:bg-black active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {restoring ? (
+                    <>
+                      <Loader2 size={13} className="animate-spin" /> Restoring…
+                    </>
+                  ) : (
+                    <>
+                      <History size={13} /> Restore previous design
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 }

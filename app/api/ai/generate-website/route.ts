@@ -14,6 +14,7 @@ import {
   SiteConceptSchema,
   TEMPLATE_KEYS,
   WebsiteGenerationSchema,
+  buildPreviousDesign,
   conceptTemplateFromCategory,
   generationToConfig,
   templateFromCategory,
@@ -337,9 +338,21 @@ ${templateConstraint}`;
     // ── Upsert draft (preserve published status on regeneration) ──────────
     const { data: existing } = await admin
       .from('shop_websites')
-      .select('status')
+      .select('status, config')
       .eq('shop_id', shop.id)
       .maybeSingle();
+
+    // ── THE SNAPSHOT RITUAL (Item 5) — written immediately before the
+    // wholesale upsert whenever a prior config exists: the outgoing design
+    // (copy edits, seller-added sections, theme, assets) survives as
+    // config.previous, restorable from the studio hub. buildPreviousDesign
+    // is non-recursive (the prior's own previous is never carried) and lax
+    // (a legacy/invalid prior still snapshots — the restore route is the
+    // strict gate).
+    if (existing?.config) {
+      const previous = buildPreviousDesign(existing.config);
+      if (previous) config.previous = previous;
+    }
 
     const { data: website, error: upsertError } = await admin
       .from('shop_websites')

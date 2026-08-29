@@ -114,17 +114,26 @@ const copy = (max: number) => z.string().min(1).max(max);
 // fixed site.* field — it has no visual surface for the inline editor.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// hidden?: true — Shopify-engine Item 2 visibility flag, on EVERY variant.
+// STRICT SUPERSET: optional, so every stored row (no hidden keys) validates
+// and renders byte-identically. Renderers read resolveVisibleBlocks (below)
+// and SKIP hidden blocks; the editor shows them dimmed with an eye toggle.
+// Canonical absent form: un-hiding DELETES the key (never `hidden: false`).
+const hidden = z.boolean().optional();
+
 export const HeroBannerBlockSchema = z.object({
   id: z.string().min(1),
   type: z.literal('hero_banner'),
   headline: copy(SITE_COPY_LIMITS.hero_headline),
   subheadline: copy(SITE_COPY_LIMITS.hero_subheadline),
   tagline: copy(SITE_COPY_LIMITS.tagline).optional(),
+  hidden,
 });
 
 export const ValuePropsBlockSchema = z.object({
   id: z.string().min(1),
   type: z.literal('value_props'),
+  hidden,
   /** 2–4 items (Phase 8 relaxation from exactly-3). STRICT SUPERSET: every
    *  stored row holds exactly 3, which stays valid; templates render 2/3/4
    *  responsively and the editor adds/removes rows within these bounds. */
@@ -145,12 +154,14 @@ export const ProductGridBlockSchema = z.object({
    *  scroll-snap track. No site.* mirror exists for it — blocksToLegacySite
    *  deliberately never reads it. */
   displayMode: z.enum(['grid', 'carousel']).optional(),
+  hidden,
 });
 
 export const StoryTextBlockSchema = z.object({
   id: z.string().min(1),
   type: z.literal('story_text'),
   body: copy(SITE_COPY_LIMITS.brand_story),
+  hidden,
 });
 
 export const CTABannerBlockSchema = z.object({
@@ -159,6 +170,7 @@ export const CTABannerBlockSchema = z.object({
   headline: copy(SITE_COPY_LIMITS.cta_headline),
   subtext: copy(SITE_COPY_LIMITS.cta_subtext),
   button_label: copy(SITE_COPY_LIMITS.cta_button_label),
+  hidden,
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -178,6 +190,7 @@ export const ProductTabsBlockSchema = z.object({
     title: copy(SITE_COPY_LIMITS.tab_title),
     content: copy(SITE_COPY_LIMITS.tab_content),
   })).min(2).max(4),
+  hidden,
 });
 
 export const VideoHeroBlockSchema = z.object({
@@ -189,6 +202,7 @@ export const VideoHeroBlockSchema = z.object({
   headline: copy(SITE_COPY_LIMITS.hero_headline).optional(),
   subheadline: copy(SITE_COPY_LIMITS.hero_subheadline).optional(),
   posterUrl: z.string().url().optional(),
+  hidden,
 });
 
 export const SiteBlockSchema = z.discriminatedUnion('type', [
@@ -203,6 +217,148 @@ export const SiteBlockSchema = z.discriminatedUnion('type', [
 
 export type SiteBlock = z.infer<typeof SiteBlockSchema>;
 export type SiteBlockType = SiteBlock['type'];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BLOCK_SETTINGS — the schema-driven inspector registry (Shopify-engine
+// Item 1). One ordered descriptor list per block type, colocated with the
+// schemas above so a field can never exist in the editor without its zod
+// gate (budgets come from the SAME SITE_COPY_LIMITS constants the schemas
+// are built from). The Site Editor's inspector, its mobile sheets, and the
+// canvas→rail focus bridge are ALL generic renderers over this table:
+// adding a new block type to the editor costs exactly (a) its zod schema in
+// the union above, (b) one BLOCK_SETTINGS entry, (c) a SECTION_LABELS/
+// catalog entry in editorModel, and (d) its template section — zero new
+// inspector code.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A single copy field (top-level or inside a repeatable group). `path` is a
+ *  dot path within the block; group fields are relative to the group item. */
+export type BlockCopySetting = {
+  kind: 'text' | 'textarea';
+  path: string;
+  label: string;
+  maxChars: number;
+  /** Schema-optional (min(1) absent): emptying the field DELETES the key. */
+  optional?: boolean;
+};
+
+/** Enumerated presentation switch. Selecting `clearValue` DELETES the key —
+ *  the canonical absent form, so toggling away and back leaves the block
+ *  byte-identical and the editor's dirty check settles clean. */
+export type BlockSelectSetting = {
+  kind: 'select';
+  path: string;
+  label: string;
+  options: ReadonlyArray<{ value: string; label: string }>;
+  clearValue?: string;
+};
+
+/** Delegation slot for the brand asset controls (hero image + logo). The
+ *  generic renderer mounts the existing AssetSlots surface here — upload /
+ *  Ad-Studio picker / Generate-with-AI / Clear stay owned by the editor's
+ *  one optimistic asset state machine. */
+export type BlockImageSetting = {
+  kind: 'image';
+  path: string;
+  label: string;
+};
+
+/** Delegation slot for the film asset (video_hero) — renders the
+ *  Change-film affordance that opens the Ad Studio picker. */
+export type BlockVideoSetting = {
+  kind: 'video';
+  path: string;
+  label: string;
+};
+
+/** Bounded repeatable group (tabs 2–4, value props 2–4). The renderer
+ *  expands `fields` per current item and gates add/remove on min/max. */
+export type BlockGroupSetting = {
+  kind: 'repeatable-group';
+  path: string;
+  label: string;
+  min: number;
+  max: number;
+  /** Noun for the add button ("Add value prop") and remove fallbacks. */
+  itemNoun: string;
+  /** Inspector hint rendered between the item fields and the add/remove
+   *  controls (e.g. the value-props marquee note). */
+  hint?: string;
+  fields: ReadonlyArray<BlockCopySetting>;
+};
+
+export type BlockSettingDescriptor =
+  | BlockCopySetting
+  | BlockSelectSetting
+  | BlockImageSetting
+  | BlockVideoSetting
+  | BlockGroupSetting;
+
+export const BLOCK_SETTINGS: Record<SiteBlockType, ReadonlyArray<BlockSettingDescriptor>> = {
+  hero_banner: [
+    { kind: 'text', path: 'tagline', label: 'Tagline', maxChars: SITE_COPY_LIMITS.tagline, optional: true },
+    { kind: 'text', path: 'headline', label: 'Hero headline', maxChars: SITE_COPY_LIMITS.hero_headline },
+    { kind: 'textarea', path: 'subheadline', label: 'Hero subheadline', maxChars: SITE_COPY_LIMITS.hero_subheadline },
+    { kind: 'image', path: 'assets', label: 'Brand assets' },
+  ],
+  value_props: [
+    {
+      kind: 'repeatable-group',
+      path: 'items',
+      label: 'Value props',
+      min: 2,
+      max: 4,
+      itemNoun: 'value prop',
+      hint: 'Shown in the moving banner under the hero — edit the props here.',
+      fields: [
+        { kind: 'text', path: 'title', label: 'Value prop title', maxChars: SITE_COPY_LIMITS.value_title },
+        { kind: 'textarea', path: 'body', label: 'Value prop body', maxChars: SITE_COPY_LIMITS.value_body },
+      ],
+    },
+  ],
+  product_grid: [
+    { kind: 'text', path: 'title', label: 'Collection title', maxChars: SITE_COPY_LIMITS.collection_title },
+    { kind: 'textarea', path: 'intro', label: 'Collection intro', maxChars: SITE_COPY_LIMITS.collection_intro },
+    {
+      kind: 'select',
+      path: 'displayMode',
+      label: 'Layout',
+      clearValue: 'grid',
+      options: [
+        { value: 'grid', label: 'Grid' },
+        { value: 'carousel', label: 'Carousel' },
+      ],
+    },
+  ],
+  story_text: [
+    { kind: 'textarea', path: 'body', label: 'Brand story', maxChars: SITE_COPY_LIMITS.brand_story },
+  ],
+  cta_banner: [
+    { kind: 'text', path: 'headline', label: 'Banner headline', maxChars: SITE_COPY_LIMITS.cta_headline },
+    { kind: 'textarea', path: 'subtext', label: 'Banner subtext', maxChars: SITE_COPY_LIMITS.cta_subtext },
+    { kind: 'text', path: 'button_label', label: 'Button label', maxChars: SITE_COPY_LIMITS.cta_button_label },
+  ],
+  product_tabs: [
+    { kind: 'text', path: 'title', label: 'Tabs heading', maxChars: SITE_COPY_LIMITS.tabs_heading },
+    {
+      kind: 'repeatable-group',
+      path: 'tabs',
+      label: 'Tabs',
+      min: 2,
+      max: 4,
+      itemNoun: 'tab',
+      fields: [
+        { kind: 'text', path: 'title', label: 'Tab title', maxChars: SITE_COPY_LIMITS.tab_title },
+        { kind: 'textarea', path: 'content', label: 'Tab content', maxChars: SITE_COPY_LIMITS.tab_content },
+      ],
+    },
+  ],
+  video_hero: [
+    { kind: 'text', path: 'headline', label: 'Film headline', maxChars: SITE_COPY_LIMITS.hero_headline, optional: true },
+    { kind: 'textarea', path: 'subheadline', label: 'Film subheadline', maxChars: SITE_COPY_LIMITS.hero_subheadline, optional: true },
+    { kind: 'video', path: 'videoUrl', label: 'Film' },
+  ],
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Generated site config — everything the templates render besides live
@@ -264,6 +420,53 @@ export const SiteThemeSchema = z.object({
 
 export type SiteTheme = z.infer<typeof SiteThemeSchema>;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// config.previous — the snapshot ritual (Shopify-engine Item 5). Written
+// server-side by the generate-website EXECUTE step immediately before the
+// wholesale upsert whenever a prior config exists, and swapped atomically by
+// the restore route. STRICT SUPERSET: optional, so every stored row (no
+// previous key) validates byte-identically. NON-RECURSIVE by construction:
+// buildPreviousDesign copies only the six content keys — the prior config's
+// own `previous` is never carried, so the snapshot is exactly one generation
+// deep.
+//
+// LAX-BUT-SHAPED ON PURPOSE: every key optional + loose (extra keys pass).
+// The snapshot is a BACKUP of a config that may predate the current schema —
+// it must NEVER make the row fail requireSite validation and knock the LIVE
+// site offline. The restore route re-validates the snapshot STRICTLY (full
+// WebsiteConfigSchema) before it ever becomes the current config, so laxness
+// here can never leak an invalid config into service.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const PreviousDesignSchema = z.looseObject({
+  template_key: z.string().optional(),
+  niche_reasoning: z.string().optional(),
+  site: z.unknown().optional(),
+  blocks: z.unknown().optional(),
+  theme: z.unknown().optional(),
+  assets: z.unknown().optional(),
+  /** ISO timestamp the snapshot was written. */
+  saved_at: z.string().optional(),
+});
+
+export type PreviousDesign = z.infer<typeof PreviousDesignSchema>;
+
+/** Build the one-generation-deep snapshot of a prior config. Returns null
+ *  for non-object priors (never written by our writers — belt and
+ *  suspenders for hand-edited rows). Deep-copied via JSON so the snapshot
+ *  can never alias the live config object. */
+export function buildPreviousDesign(prior: unknown): PreviousDesign | null {
+  if (typeof prior !== 'object' || prior === null || Array.isArray(prior)) return null;
+  const source = prior as Record<string, unknown>;
+  const snapshot: Record<string, unknown> = { saved_at: new Date().toISOString() };
+  for (const key of ['template_key', 'niche_reasoning', 'site', 'blocks', 'theme', 'assets'] as const) {
+    if (source[key] !== undefined) {
+      snapshot[key] = JSON.parse(JSON.stringify(source[key]));
+    }
+  }
+  return snapshot as PreviousDesign;
+}
+
 export const WebsiteConfigSchema = z.object({
   template_key: z.enum(TEMPLATE_KEYS),
   niche_reasoning: z.string().min(1),
@@ -295,6 +498,10 @@ export const WebsiteConfigSchema = z.object({
   assets: SiteAssetsSchema.optional(),
   /** Optional accent/display-font theme layer — see SiteThemeSchema above. */
   theme: SiteThemeSchema.optional(),
+  /** Optional restorable backup of the pre-regeneration design — see
+   *  PreviousDesignSchema above. Declared here so zod's key-stripping can
+   *  never silently drop the snapshot on a content-API rebuild. */
+  previous: PreviousDesignSchema.optional(),
 });
 
 export type WebsiteConfig = z.infer<typeof WebsiteConfigSchema>;
@@ -345,7 +552,13 @@ export function legacySiteToBlocks(site: WebsiteSiteCopy): SiteBlock[] {
  *  block wins — deterministic. Pure: never mutates its inputs.
  *  TOTAL over the union by construction: block types with no site.* counterpart
  *  (product_tabs, video_hero — and product_grid.displayMode within its case)
- *  fall through the switch untouched, so the existing mirror values survive. */
+ *  fall through the switch untouched, so the existing mirror values survive.
+ *  HIDDEN BLOCKS MIRROR TOO (Item 2, deliberate): the mirror is a CONTENT
+ *  store, not a visibility surface — hiding is reversible styling, never
+ *  deletion. Skipping hidden blocks here would blank the seo/masthead/
+ *  Vitality fallbacks the moment a seller hides a section, and un-hiding
+ *  could then resurrect stale mirror copy. Visibility is enforced solely at
+ *  render time via resolveVisibleBlocks. */
 export function blocksToLegacySite(blocks: SiteBlock[], existingSite: WebsiteSiteCopy): WebsiteSiteCopy {
   const site: WebsiteSiteCopy = {
     ...existingSite,
@@ -384,11 +597,21 @@ export function blocksToLegacySite(blocks: SiteBlock[], existingSite: WebsiteSit
   return site;
 }
 
-/** Single source of truth at render time: stored blocks when present,
- *  otherwise the deterministic legacy projection. Every template/chrome copy
- *  read goes through this — never through config.blocks directly. */
+/** Single source of truth for the FULL block array: stored blocks when
+ *  present, otherwise the deterministic legacy projection. The Site Editor
+ *  reads this (hidden blocks must stay editable); render surfaces read
+ *  resolveVisibleBlocks below. */
 export function resolveBlocks(config: WebsiteConfig): SiteBlock[] {
   return config.blocks ?? legacySiteToBlocks(config.site);
+}
+
+/** Render-time projection (Shopify-engine Item 2): resolveBlocks minus the
+ *  hidden ones. Every template body, the marquee, and the chrome copy
+ *  consumers read THIS — a hidden block disappears from the page but keeps
+ *  living in config.blocks (and in the site.* mirror — see blocksToLegacySite)
+ *  so the eye toggle is always a lossless round trip. */
+export function resolveVisibleBlocks(config: WebsiteConfig): SiteBlock[] {
+  return resolveBlocks(config).filter((b) => !b.hidden);
 }
 
 /** Typed first-match lookup, for chrome copy consumers anchored to a block

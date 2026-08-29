@@ -23,10 +23,16 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import useSWR, { SWRConfig } from 'swr';
 import Link from 'next/link';
-import { ArrowLeft, Crown, Globe, Loader2, Lock, WifiOff } from 'lucide-react';
-import SiteCopyEditor, { EDITABLE_TEMPLATE_COMPONENTS } from '@/components/website/SiteCopyEditor';
+import { ArrowLeft, Crown, Globe, Loader2, Lock, Monitor, Redo2, Smartphone, Undo2, WifiOff } from 'lucide-react';
+import SiteCopyEditor, {
+  EDITABLE_TEMPLATE_COMPONENTS,
+  type EditorHistoryHandle,
+} from '@/components/website/SiteCopyEditor';
+import { useIsMobileViewport } from '@/lib/useIsMobileViewport';
 import { CoachLegend, useCoachMarks } from '@/components/website/CoachMarks';
 import { WebsiteConfigSchema, type ShopWebsiteRow, type SiteShop } from '@/lib/siteTemplates';
+import { resolveDashboardUser } from '@/lib/dashboardAuth';
+import { useShopRow } from '@/lib/useShopRow';
 import { fetchJSON, isTransportError } from '@/lib/transport';
 import { createPersistedSwrProvider, websiteContentKey } from '@/lib/swrCache';
 
@@ -46,38 +52,49 @@ export default function CustomizeCockpitPage() {
   );
 
   const [userId, setUserId] = useState<string | null>(null);
-  const [editorShop, setEditorShop] = useState<SiteShop | null>(null);
-  const [hasWebsiteAccess, setHasWebsiteAccess] = useState(false);
-  const [loading, setLoading] = useState(true);
+
+  // Shops-row seam (lib/useShopRow, A3): the cockpit's shop identity rides
+  // the dashboard layout's persisted provider — a brand save on Themes
+  // repaints this editor's fulfillment/branding context instantly.
+  const { shop: shopRow, verdict: shopVerdict, error: shopError } = useShopRow(userId);
+
+  const hasWebsiteAccess = WEBSITE_TIERS.includes(
+    (shopRow?.subscription_tier ?? '').toLowerCase().trim()
+  );
+  const editorShop = useMemo<SiteShop | null>(
+    () =>
+      shopRow
+        ? {
+            id: shopRow.id,
+            shop_name: shopRow.shop_name ?? null,
+            shop_slug: shopRow.shop_slug ?? null,
+            logo_url: shopRow.logo_url ?? null,
+            banner_url: shopRow.banner_url ?? null,
+            bio: shopRow.bio ?? null,
+            offers_delivery: shopRow.offers_delivery ?? null,
+            offers_pickup: shopRow.offers_pickup ?? null,
+            pickup_instructions: shopRow.pickup_instructions ?? null,
+            phone: shopRow.phone ?? null,
+          }
+        : null,
+    [shopRow]
+  );
+
+  // Loading = auth pending, or no shops-row verdict from cache/network yet.
+  const loading = !userId || (shopVerdict === undefined && !shopError);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      // Non-evicting offline auth (lib/dashboardAuth) — transport failure with
+      // a local session never redirects; only a genuine no-session does.
+      const auth = await resolveDashboardUser(supabase);
+      if (auth.status === 'unauthenticated') {
         router.push('/login');
         return;
       }
       if (cancelled) return;
-      setUserId(user.id);
-      const { data: shop } = await supabase.from('shops').select('*').eq('id', user.id).single();
-      if (cancelled) return;
-      if (shop) {
-        setHasWebsiteAccess(WEBSITE_TIERS.includes((shop.subscription_tier ?? '').toLowerCase().trim()));
-        setEditorShop({
-          id: shop.id,
-          shop_name: shop.shop_name ?? null,
-          shop_slug: shop.shop_slug ?? null,
-          logo_url: shop.logo_url ?? null,
-          banner_url: shop.banner_url ?? null,
-          bio: shop.bio ?? null,
-          offers_delivery: shop.offers_delivery ?? null,
-          offers_pickup: shop.offers_pickup ?? null,
-          pickup_instructions: shop.pickup_instructions ?? null,
-          phone: shop.phone ?? null,
-        });
-      }
-      if (!cancelled) setLoading(false);
+      setUserId(auth.user.id);
     })();
     return () => { cancelled = true; };
   }, [router, supabase]);
@@ -129,6 +146,12 @@ function CockpitBodyInner({ userId, editorShop, hasWebsiteAccess }: CockpitBodyP
   const website = data ?? null;
   const websiteLoading = hasWebsiteAccess && data === undefined;
   const [dirty, setDirty] = useState(false);
+  // Item 3: the editor's undo/redo handle (null while no editor is mounted).
+  const [history, setHistory] = useState<EditorHistoryHandle | null>(null);
+  // Item 4: preview device width. The toggle hides on actual mobile
+  // viewports (<768px) — the seller IS the mobile preview there.
+  const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('desktop');
+  const isMobileViewport = useIsMobileViewport();
   const coach = useCoachMarks('sndk:coach:cockpit:v1');
 
   const handleWebsiteChange = useCallback(
@@ -165,6 +188,65 @@ function CockpitBodyInner({ userId, editorShop, hasWebsiteAccess }: CockpitBodyP
           {editorShop?.shop_name ?? 'Your site'}
         </p>
         <div className="flex shrink-0 items-center gap-2">
+          {/* Item 4: Desktop | Mobile preview width (≥44px targets). Hidden
+              on actual mobile viewports — the seller IS the mobile preview. */}
+          {!isMobileViewport && editorWebsite && (
+            <div className="flex items-center gap-1 rounded-full border border-gray-200 bg-white p-0.5">
+              <button
+                type="button"
+                aria-label="Desktop preview"
+                aria-pressed={previewDevice === 'desktop'}
+                title="Desktop preview"
+                onClick={() => setPreviewDevice('desktop')}
+                className={`flex h-11 w-11 items-center justify-center rounded-full transition ${
+                  previewDevice === 'desktop'
+                    ? 'bg-gray-900 text-white'
+                    : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
+                }`}
+              >
+                <Monitor size={16} />
+              </button>
+              <button
+                type="button"
+                aria-label="Mobile preview"
+                aria-pressed={previewDevice === 'mobile'}
+                title="Mobile preview"
+                onClick={() => setPreviewDevice('mobile')}
+                className={`flex h-11 w-11 items-center justify-center rounded-full transition ${
+                  previewDevice === 'mobile'
+                    ? 'bg-gray-900 text-white'
+                    : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
+                }`}
+              >
+                <Smartphone size={16} />
+              </button>
+            </div>
+          )}
+          {/* Item 3: undo/redo — same stack as Ctrl+Z / Ctrl+Shift+Z. */}
+          {history && (
+            <div className="flex items-center gap-1 rounded-full border border-gray-200 bg-white p-0.5">
+              <button
+                type="button"
+                aria-label="Undo"
+                title="Undo (Ctrl+Z)"
+                disabled={!history.canUndo}
+                onClick={history.undo}
+                className="flex h-11 w-11 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 disabled:opacity-30 disabled:hover:bg-transparent"
+              >
+                <Undo2 size={16} />
+              </button>
+              <button
+                type="button"
+                aria-label="Redo"
+                title="Redo (Ctrl+Shift+Z)"
+                disabled={!history.canRedo}
+                onClick={history.redo}
+                className="flex h-11 w-11 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 disabled:opacity-30 disabled:hover:bg-transparent"
+              >
+                <Redo2 size={16} />
+              </button>
+            </div>
+          )}
           {website && (
             <span
               className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest ${
@@ -241,6 +323,8 @@ function CockpitBodyInner({ userId, editorShop, hasWebsiteAccess }: CockpitBodyP
             shop={editorShop}
             onSaved={handleWebsiteChange}
             onDirtyChange={setDirty}
+            onHistoryChange={setHistory}
+            previewDevice={previewDevice}
           />
         ) : null}
       </main>

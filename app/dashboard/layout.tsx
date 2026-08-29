@@ -1,118 +1,170 @@
 'use client';
 
 import { createBrowserClient } from '@supabase/ssr';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import { SWRConfig } from 'swr';
 import { Loader2 } from 'lucide-react';
 import AdRenderNotifier from '@/components/adstudio/AdRenderNotifier';
 import DashboardSidebar from '@/components/dashboard/DashboardSidebar';
 import VaultDoor from '@/components/dashboard/VaultDoor';
+import { resolveDashboardUser } from '@/lib/dashboardAuth';
+import { createPersistedSwrProvider } from '@/lib/swrCache';
+import { useShopRow } from '@/lib/useShopRow';
 import { fetchJSON } from '@/lib/transport';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Dashboard layout — auth gate + THE provider scope + the vault door.
+//
+// A3 (shops-row seam): this layout mounts createPersistedSwrProvider(userId)
+// around EVERY dashboard page, so lib/useShopRow (and the existing
+// websiteContentKey reads) share one persisted per-user cache. The layout's
+// own tier gate consumes the same seam — the shops row is read ONCE per
+// dashboard session and revalidated on focus/reconnect, instead of two bare
+// reads per route visit. Vault-door semantics are behavior-identical: only
+// the data source changed.
+//
+// B2 (non-evicting offline auth): the pathname-keyed re-check resolves through
+// lib/dashboardAuth — a transport failure with a local session present is
+// authenticated-offline and NEVER redirects to /login mid-navigation.
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const [status, setStatus] = useState<string | null>(null);
-  const [shopName, setShopName] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [paymentLink, setPaymentLink] = useState('https://wa.me/447599710468');
-  // Loop guard: at most ONE heal attempt per layout mount — the ref persists
-  // across the pathname-keyed effect re-runs, so in-dashboard navigation can
-  // never re-fire the heal.
-  const healAttempted = useRef(false);
-  
+
   const supabase = createBrowserClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
   const router = useRouter();
   const pathname = usePathname();
 
   useEffect(() => {
-    async function checkGlobalAccess() {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
+    let cancelled = false;
+    (async () => {
+      // Non-evicting offline auth (lib/dashboardAuth): local session first,
+      // classified network verify. Re-fired per pathname (the historical
+      // security posture), but in-dashboard navigation with the radio dead now
+      // resolves authenticated-offline instead of bouncing to /login.
+      const auth = await resolveDashboardUser(supabase);
+      if (cancelled) return;
+      if (auth.status === 'unauthenticated') {
         router.push('/login');
         return;
       }
-      setUserId(user.id);
-
-      // Fetch their exact subscription tier and shop name
-      let { data } = await supabase.from('shops').select('shop_name, subscription_tier').eq('id', user.id).single();
-
-      // ORPHAN HEAL: a NULL row here means the signup trigger never minted
-      // this account's shops row. Fire the heal API once, then refetch ONCE.
-      // Failures are swallowed into the existing null path — the vault door
-      // below already renders correctly for a missing row.
-      if (!data && !healAttempted.current) {
-        healAttempted.current = true;
-        try {
-          await fetchJSON('/api/shops/ensure', { method: 'POST' });
-          const refetch = await supabase.from('shops').select('shop_name, subscription_tier').eq('id', user.id).single();
-          data = refetch.data;
-        } catch {
-          // Heal unavailable (offline/timeout/server) — fall through to the
-          // vault door's existing missing-row behavior.
-        }
-      }
-
-      if (data) {
-        setStatus(data.subscription_tier);
-        setShopName(data.shop_name ?? null);
-
-        // 🧠 THE MAGIC: Read their memory and generate the personalized professional invoice
-        if (data.subscription_tier === 'pending' || data.subscription_tier === 'suspended') {
-          const savedPlan = localStorage.getItem('sanndikaa_plan') || 'starter';
-          const savedConcierge = localStorage.getItem('sanndikaa_concierge') || 'no';
-
-          let planPrice = 399;
-          let planName = 'Starter';
-          if (savedPlan === 'pro') { planPrice = 1500; planName = 'Pro'; }
-          if (savedPlan === 'advanced' || savedPlan === 'flagship') { planPrice = 2500; planName = 'Advanced'; }
-
-          let total = planPrice;
-          let conciergeText = '';
-          if (savedConcierge === 'yes') {
-             total += 500;
-             conciergeText = `\nI also added the *Done-For-You Setup* (D500).`;
-          }
-
-          const shopNameStr = data.shop_name || 'my boutique';
-          
-          // The Ultimate Professional Invoice Message
-          const msg = `✨ *Sanndikaa Store Activation*\n\nHello Admin! I need to complete my payment to unlock the dashboard for *${shopNameStr}*.\n\nI selected the *${planName} Plan* (D${planPrice}).${conciergeText}\n\n*Total Due: D${total}*\n\nHow do I send my payment?`;
-          
-          setPaymentLink(`https://wa.me/447599710468?text=${encodeURIComponent(msg)}`);
-        }
-      }
-      setLoading(false);
-    }
-    checkGlobalAccess();
+      setUserId(auth.user.id);
+    })();
+    return () => { cancelled = true; };
   }, [router, supabase, pathname]);
+
+  if (!userId) {
+    return <div className="flex min-h-screen items-center justify-center bg-[#F9F8F6]"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>;
+  }
+
+  // key={userId}: an account switch on a shared phone remounts a clean scope —
+  // the provider registry (lib/swrCache) hands each account its own bucket.
+  return (
+    <DashboardShell key={userId} userId={userId}>
+      {children}
+    </DashboardShell>
+  );
+}
+
+// ── Provider scope — ONE persisted per-user cache for every dashboard page ──
+
+function DashboardShell({ userId, children }: { userId: string; children: React.ReactNode }) {
+  const provider = useMemo(() => createPersistedSwrProvider(userId), [userId]);
+  return (
+    <SWRConfig value={{ provider }}>
+      <DashboardGate userId={userId}>{children}</DashboardGate>
+    </SWRConfig>
+  );
+}
+
+// ── The vault door gate — tier truth now flows from the shops-row seam ──────
+
+function DashboardGate({ userId, children }: { userId: string; children: React.ReactNode }) {
+  const { shop, verdict, error, mutate } = useShopRow(userId);
+  // Loop guard: at most ONE heal attempt per gate mount — in-dashboard
+  // navigation can never re-fire the heal (the layout persists across routes).
+  const healAttempted = useRef(false);
+  // Real-time activation handoff (VaultDoor onUnlocked) — an instant local
+  // override while the seam revalidates the fresh tier from the DB.
+  const [unlockedTier, setUnlockedTier] = useState<string | null>(null);
+
+  // ORPHAN HEAL: a DEFINITIVE null verdict means the signup trigger never
+  // minted this account's shops row (a thrown read error is NOT a verdict —
+  // SWR retries those). Fire the heal API once, then revalidate the seam.
+  // Failures are swallowed — the vault door renders correctly for a missing
+  // row, exactly as before.
+  useEffect(() => {
+    if (verdict !== null || healAttempted.current) return;
+    healAttempted.current = true;
+    (async () => {
+      try {
+        await fetchJSON('/api/shops/ensure', { method: 'POST' });
+        await mutate();
+      } catch {
+        // Heal unavailable (offline/timeout/server) — vault door path below.
+      }
+    })();
+  }, [verdict, mutate]);
+
+  const status = unlockedTier ?? shop?.subscription_tier ?? null;
+  const shopName = shop?.shop_name ?? null;
+
+  // 🧠 THE MAGIC: read the seller's plan memory and mint the personalized
+  // professional invoice (unchanged logic — only the row source moved).
+  const paymentLink = useMemo(() => {
+    const fallback = 'https://wa.me/447599710468';
+    if (typeof window === 'undefined') return fallback;
+    if (status !== 'pending' && status !== 'suspended') return fallback;
+
+    const savedPlan = localStorage.getItem('sanndikaa_plan') || 'starter';
+    const savedConcierge = localStorage.getItem('sanndikaa_concierge') || 'no';
+
+    let planPrice = 399;
+    let planName = 'Starter';
+    if (savedPlan === 'pro') { planPrice = 1500; planName = 'Pro'; }
+    if (savedPlan === 'advanced' || savedPlan === 'flagship') { planPrice = 2500; planName = 'Advanced'; }
+
+    let total = planPrice;
+    let conciergeText = '';
+    if (savedConcierge === 'yes') {
+      total += 500;
+      conciergeText = `\nI also added the *Done-For-You Setup* (D500).`;
+    }
+
+    const shopNameStr = shopName || 'my boutique';
+
+    // The Ultimate Professional Invoice Message
+    const msg = `✨ *Sanndikaa Store Activation*\n\nHello Admin! I need to complete my payment to unlock the dashboard for *${shopNameStr}*.\n\nI selected the *${planName} Plan* (D${planPrice}).${conciergeText}\n\n*Total Due: D${total}*\n\nHow do I send my payment?`;
+
+    return `https://wa.me/447599710468?text=${encodeURIComponent(msg)}`;
+  }, [status, shopName]);
 
   // Real-time activation handoff: VaultDoor watched the shops row (realtime +
   // 15s poll + wake/reconnect re-checks), played its "Payment Verified"
-  // interstitial, and now hands us the fresh active tier. Setting status swaps
-  // this layout to the activated branch — fresh sellers then hit the
-  // OnboardingInterceptor naturally (no shop_websites row → Magic Storefront
-  // Builder). VaultDoor unmounts, tearing down its channel and timers.
+  // interstitial, and now hands us the fresh active tier. The local override
+  // swaps this gate to the activated branch instantly; the seam revalidation
+  // writes the fresh row into the shared cache so every consumer agrees.
   const handleUnlocked = useCallback((tier: string) => {
-    setStatus(tier);
-  }, []);
+    setUnlockedTier(tier);
+    void mutate();
+  }, [mutate]);
 
-  if (loading) {
+  // Loading = no verdict from cache OR network yet, and no terminal error.
+  // A returning seller paints instantly from the persisted cache; a failed
+  // read with nothing cached degrades to the vault door exactly as the
+  // historical error-swallowing read did.
+  if (verdict === undefined && !error) {
     return <div className="flex min-h-screen items-center justify-center bg-[#F9F8F6]"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>;
   }
 
   // 🛑 THE GLOBAL VAULT DOOR — lock screen + real-time unlock live in
-  // components/dashboard/VaultDoor.tsx. userId is guaranteed non-null here:
-  // the only setLoading(false) runs AFTER a successful auth check (the no-user
-  // path redirects and never clears loading). The unreachable null guard
-  // renders the same loader — no side effects in render.
+  // components/dashboard/VaultDoor.tsx. Same status vocabulary as ever:
+  // pending/suspended/null (missing row or unreadable) stay locked.
   if (status === 'pending' || status === 'suspended' || status === null) {
-    if (!userId) {
-      return <div className="flex min-h-screen items-center justify-center bg-[#F9F8F6]"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>;
-    }
     return <VaultDoor userId={userId} paymentLink={paymentLink} onUnlocked={handleUnlocked} />;
   }
 
@@ -121,7 +173,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // background, so completion toasts + the unseen badge must live on EVERY
   // dashboard page, not just the studio. The lg:pl-60 content region matches
   // the fixed w-60 sidebar; below lg the sidebar becomes a floating-trigger
-  // drawer and pages keep their full-width designs.
+  // drawer and pages keep their full-width designs. shopName rides the seam —
+  // a brand save anywhere updates the sidebar instantly via shopRowKey.
   return (
     <>
       <DashboardSidebar shopName={shopName} />

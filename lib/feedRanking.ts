@@ -24,6 +24,17 @@ export type ProductReviewRow = {
   rating: number | null;
 };
 
+/** The mall's paid-placement vocabulary. Unknown/legacy values fall to 1 —
+ *  including 'flagship', which the shipped homepage has always ranked at the
+ *  base tier (flagged for a founder decision; do not silently change paid
+ *  placement in a refactor). Shared here so the server feed loader and the
+ *  client re-rankers can never drift. */
+export const TIER_RANK = { advanced: 3, pro: 2, starter: 1 } as const;
+
+export function getTierRank(tier?: string | null): number {
+  return TIER_RANK[(tier?.toLowerCase().trim() as keyof typeof TIER_RANK)] || 1;
+}
+
 export type ReviewStats = {
   count: number;
   average: number;

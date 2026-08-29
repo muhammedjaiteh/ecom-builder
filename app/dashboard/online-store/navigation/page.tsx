@@ -14,22 +14,28 @@ import { createBrowserClient } from '@supabase/ssr';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import useSWR from 'swr';
 import {
   ArrowLeft, Compass, Crown, ExternalLink, Globe, ListTree,
   Loader2, Lock, Wand2,
 } from 'lucide-react';
 import { SITE_TEMPLATES, type ShopWebsiteRow, type TemplateKey } from '@/lib/siteTemplates';
+import { resolveDashboardUser } from '@/lib/dashboardAuth';
+import { useShopRow } from '@/lib/useShopRow';
+import { fetchJSON, isTransportError } from '@/lib/transport';
+import { websiteContentKey } from '@/lib/swrCache';
 import { useCanonicalShopSlug } from '@/lib/useCanonicalShopSlug';
 
 const WEBSITE_TIERS = ['advanced', 'flagship'];
 
-type WebsiteRow = Pick<ShopWebsiteRow, 'template_key' | 'status'>;
-
-type ShopIdentity = {
-  shop_name: string | null;
-  shop_slug: string | null;
-  subscription_tier: string | null;
-};
+// A2: the website row rides the SAME websiteContentKey SWR seam the themes
+// page / cockpit / interceptor use (deadline-bounded transport, persisted
+// per-user cache via the dashboard layout's provider) — the raw deadline-less
+// fetch('/api/websites/content') this page shipped with is gone.
+async function fetchWebsiteRow(): Promise<ShopWebsiteRow | null> {
+  const data = await fetchJSON<{ website: ShopWebsiteRow | null }>('/api/websites/content');
+  return data.website ?? null;
+}
 
 // kind decides how the link is minted:
 //   'anchor'   — home-page section anchor (sub-pages route home first)
@@ -102,9 +108,11 @@ export default function OnlineStoreNavigationPage() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  const [loading, setLoading] = useState(true);
-  const [shop, setShop] = useState<ShopIdentity | null>(null);
-  const [website, setWebsite] = useState<WebsiteRow | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // Shops-row seam (lib/useShopRow, A3) — one cached read for the whole
+  // dashboard instead of this page's own bare shops query.
+  const { shop, verdict: shopVerdict, error: shopError } = useShopRow(userId);
 
   const tier = (shop?.subscription_tier ?? '').toLowerCase().trim();
   const hasAccess = WEBSITE_TIERS.includes(tier);
@@ -113,41 +121,36 @@ export default function OnlineStoreNavigationPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.push('/login'); return; }
-
-      const { data: shopRow } = await supabase
-        .from('shops')
-        .select('shop_name, shop_slug, subscription_tier')
-        .eq('id', user.id)
-        .single();
+      // Non-evicting offline auth (lib/dashboardAuth) — transport failure with
+      // a local session never redirects; only a genuine no-session does.
+      const auth = await resolveDashboardUser(supabase);
+      if (auth.status === 'unauthenticated') { router.push('/login'); return; }
       if (cancelled) return;
-      setShop((shopRow as ShopIdentity | null) ?? null);
-
-      const rowTier = ((shopRow as ShopIdentity | null)?.subscription_tier ?? '').toLowerCase().trim();
-      if (WEBSITE_TIERS.includes(rowTier)) {
-        // Website row via the owner content API. shop_websites has NO select
-        // policies — the browser-client read this page shipped with returned
-        // zero rows SILENTLY, so generated sites presented here as
-        // "No AI website generated yet". All owner reads go through the
-        // service-role-backed GET /api/websites/content.
-        try {
-          const res = await fetch('/api/websites/content');
-          if (res.ok) {
-            const data = await res.json();
-            if (cancelled) return;
-            setWebsite((data.website as WebsiteRow | null) ?? null);
-          }
-        } catch {
-          // Non-fatal: the page renders its empty state.
-        }
-        if (cancelled) return;
-      }
-      setLoading(false);
+      setUserId(auth.user.id);
     })();
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router]);
+  }, [router, supabase]);
+
+  // Website row via the owner content API (shop_websites has NO select
+  // policies — a browser-client read returns zero rows SILENTLY). Same key,
+  // fetcher contract, and retry idiom as the themes page.
+  const { data: websiteData, error: websiteError } = useSWR<ShopWebsiteRow | null>(
+    userId && hasAccess ? websiteContentKey(userId) : null,
+    fetchWebsiteRow,
+    {
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+      shouldRetryOnError: (err) => !(isTransportError(err) && err.kind === 'server'),
+    }
+  );
+  const website = websiteData ?? null;
+
+  // The page paints as one piece, exactly as before: auth, the shops row,
+  // and — for qualifying tiers — the website verdict.
+  const loading =
+    !userId ||
+    (shopVerdict === undefined && !shopError) ||
+    (hasAccess && websiteData === undefined && !websiteError);
 
   if (loading) {
     return <div className="flex min-h-screen items-center justify-center bg-[#F9F8F6]"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>;

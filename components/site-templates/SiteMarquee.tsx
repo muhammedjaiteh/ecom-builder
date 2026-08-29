@@ -1,5 +1,5 @@
 import { Fragment, type CSSProperties } from 'react';
-import { findBlock, resolveBlocks, type WebsiteConfig } from '@/lib/siteTemplates';
+import { findBlock, resolveVisibleBlocks, type WebsiteConfig } from '@/lib/siteTemplates';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SiteMarquee — the kinetic brand ribbon between hero and product content.
@@ -74,7 +74,10 @@ type SiteMarqueeProps = {
 };
 
 export default function SiteMarquee({ config, tone }: SiteMarqueeProps) {
-  const blocks = resolveBlocks(config);
+  // Item 2: hidden blocks drop out here too — a hidden value_props block
+  // removes its titles from the ribbon (first VISIBLE value_props wins), and
+  // a hidden hero's tagline falls back to the site.* mirror read below.
+  const blocks = resolveVisibleBlocks(config);
   const valueProps = findBlock(blocks, 'value_props')?.items ?? [];
   const tagline = (findBlock(blocks, 'hero_banner')?.tagline ?? config.site.tagline)?.trim();
 

@@ -141,16 +141,49 @@ export async function POST(req: Request) {
       });
     }
 
+    // ── RACE CLOSURE (A1) ────────────────────────────────────────────────
+    // Generation held this request open for up to 120s. Writing back
+    // `{...config, assets}` from the PRE-generation read would wholesale-
+    // revert any content PUT that landed in the meantime (blocks, theme,
+    // copy — a seller's whole edit session). Re-read the CURRENT row
+    // immediately before the write and merge ONLY the assets key into the
+    // FRESH config. The mirror direction is already safe: the content PUT
+    // preserves stored assets when its payload omits them, and the editor
+    // now blocks Save while a slot is generating (SiteCopyEditor assetBusy).
+    const { data: current, error: rereadError } = await admin
+      .from('shop_websites')
+      .select('config')
+      .eq('shop_id', shop.id)
+      .maybeSingle();
+    if (rereadError || !current) {
+      console.error('[websites/assets] pre-write re-read failed:', rereadError ?? 'row vanished');
+      return NextResponse.json(
+        { error: 'The asset was generated but could not be saved. Please retry.' },
+        { status: 500 }
+      );
+    }
+    const parsedCurrent = WebsiteConfigSchema.safeParse(current.config);
+    // A row that validated 120s ago and fails now would be a concurrent
+    // corrupting write — fall back to the pre-generation config (still a
+    // valid site) rather than persisting an invalid one or losing the asset.
+    const freshConfig: WebsiteConfig = parsedCurrent.success ? parsedCurrent.data : config;
+    if (!parsedCurrent.success) {
+      console.error(`[websites/assets] fresh config invalid for shop ${shop.id} — writing back over the pre-generation config:`, parsedCurrent.error.issues);
+    }
+
     // Merge-patch ONLY the touched slot; the other slot survives untouched.
+    // assets.generated_at semantics preserved: it stamps this asset write;
+    // the ROW's generated_at column is never touched here, so a mounted
+    // editor keyed on it never remounts mid-edit.
     const assets: SiteAssets = {
-      ...(config.assets ?? {}),
+      ...(freshConfig.assets ?? {}),
       [kind === 'hero' ? 'hero_image_url' : 'logo_url']: generatedUrl,
       generated_at: new Date().toISOString(),
     };
 
     const { data: updated, error: updateError } = await admin
       .from('shop_websites')
-      .update({ config: { ...config, assets } })
+      .update({ config: { ...freshConfig, assets } })
       .eq('shop_id', shop.id)
       .select()
       .single();

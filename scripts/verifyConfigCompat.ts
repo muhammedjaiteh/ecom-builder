@@ -14,8 +14,10 @@
 import {
   WebsiteConfigSchema,
   blocksToLegacySite,
+  buildPreviousDesign,
   legacySiteToBlocks,
   resolveBlocks,
+  resolveVisibleBlocks,
   type WebsiteConfig,
 } from '../lib/siteTemplates';
 
@@ -248,6 +250,133 @@ if (legacyResult.success && newResult.success) {
       `${n}-prop mirrors round-trip identically`,
       JSON.stringify(roundN) === JSON.stringify(parsedN.site)
     );
+  }
+
+  // ── Shopify-engine Item 2: hidden?: boolean superset checks ──────────────
+  console.log('Hidden-block superset checks:');
+
+  // A hidden-bearing row validates on every variant position…
+  const hiddenBlocks = projected.map((b) =>
+    b.type === 'story_text' ? { ...b, hidden: true } : b
+  );
+  const hiddenResult = WebsiteConfigSchema.safeParse({ ...legacyConfig, blocks: hiddenBlocks });
+  check('config with a hidden block validates', hiddenResult.success,
+    hiddenResult.success ? undefined : JSON.stringify(hiddenResult.error.issues));
+  check('hidden on every variant validates',
+    WebsiteConfigSchema.safeParse({
+      ...legacyConfig,
+      blocks: projected.map((b) => ({ ...b, hidden: true })),
+    }).success);
+  check('hidden: false also validates (non-canonical but legal)',
+    WebsiteConfigSchema.safeParse({
+      ...legacyConfig,
+      blocks: projected.map((b) => (b.type === 'cta_banner' ? { ...b, hidden: false } : b)),
+    }).success);
+
+  if (hiddenResult.success) {
+    // resolveBlocks is UNPERTURBED (the editor keeps seeing hidden blocks)…
+    const full = resolveBlocks(hiddenResult.data);
+    check('resolveBlocks keeps hidden blocks', full.length === 5,
+      `got ${full.length}`);
+    // …resolveVisibleBlocks is the render projection that skips them…
+    const visible = resolveVisibleBlocks(hiddenResult.data);
+    check('resolveVisibleBlocks skips hidden blocks',
+      visible.length === 4 && !visible.some((b) => b.type === 'story_text'));
+    // …and the mirror is a CONTENT store: a hidden block still mirrors its
+    // copy (hide → un-hide is lossless; legacy consumers keep their copy).
+    const mirroredHidden = blocksToLegacySite(hiddenResult.data.blocks!, legacyResult.data.site);
+    check('hidden blocks still mirror into site.*',
+      mirroredHidden.brand_story === legacyResult.data.site.brand_story);
+    check('hidden-bearing mirrors round-trip identically',
+      JSON.stringify(mirroredHidden) === JSON.stringify(legacyResult.data.site));
+  }
+
+  // Negative control: a non-boolean hidden must FAIL.
+  check('non-boolean hidden is rejected',
+    !WebsiteConfigSchema.safeParse({
+      ...legacyConfig,
+      blocks: projected.map((b) => (b.type === 'story_text' ? { ...b, hidden: 'yes' } : b)),
+    }).success);
+
+  // ── Shopify-engine Item 5: config.previous (the snapshot ritual) ─────────
+  console.log('Previous-design (snapshot ritual) checks:');
+
+  // Two distinct designs: A = the legacy ritual row (as blocks), B = a
+  // "regenerated" design with a different headline.
+  const configA = WebsiteConfigSchema.parse({
+    ...legacyConfig,
+    blocks: legacySiteToBlocks(legacyParsedForBlocks.site),
+  });
+  const siteB = { ...legacyParsedForBlocks.site, hero_headline: 'A Regenerated Opening' };
+  const configB = WebsiteConfigSchema.parse({
+    ...legacyConfig,
+    site: siteB,
+    blocks: legacySiteToBlocks(siteB),
+  });
+
+  // Execute-step write: B upserts wholesale carrying previous = snapshot(A).
+  const snapA = buildPreviousDesign(configA);
+  check('buildPreviousDesign produces a snapshot', snapA !== null);
+  const regenParse = WebsiteConfigSchema.safeParse({ ...configB, previous: snapA });
+  check('previous-bearing config validates', regenParse.success,
+    regenParse.success ? undefined : JSON.stringify(regenParse.error.issues));
+
+  // Lax law: partial and junk-key snapshots must NEVER fail requireSite —
+  // the snapshot is a backup, not a service contract.
+  check('partial previous validates',
+    WebsiteConfigSchema.safeParse({ ...configB, previous: { saved_at: '2026-08-29T00:00:00.000Z' } }).success);
+  check('junk-key previous validates',
+    WebsiteConfigSchema.safeParse({ ...configB, previous: { some_future_field: { nested: true } } }).success);
+  check('legacy row (no previous) still validates',
+    WebsiteConfigSchema.safeParse(legacyConfig).success);
+  // The only malformation rejected: a non-object previous (never written by
+  // any writer — buildPreviousDesign returns null for non-objects).
+  check('non-object previous is rejected',
+    !WebsiteConfigSchema.safeParse({ ...configB, previous: 'yesterday' }).success);
+  check('buildPreviousDesign refuses non-objects', buildPreviousDesign('yesterday') === null);
+
+  if (regenParse.success && snapA) {
+    // previous never leaks into the render model…
+    check('previous does not perturb resolveBlocks',
+      JSON.stringify(resolveBlocks(regenParse.data)) === JSON.stringify(resolveBlocks(configB)));
+    // …and zod keeps the DECLARED snapshot through a content-API-style
+    // reparse (an undeclared key would be silently stripped on every save).
+    // Compared per key — zod re-orders keys to schema order, which is
+    // serialization cosmetics, not content.
+    const reparsedPrev = regenParse.data.previous as Record<string, unknown>;
+    const originalPrev = snapA as Record<string, unknown>;
+    check('reparse preserves the snapshot',
+      Object.keys(originalPrev).length === Object.keys(reparsedPrev).length &&
+        Object.keys(originalPrev).every(
+          (k) => JSON.stringify(reparsedPrev[k]) === JSON.stringify(originalPrev[k])
+        ));
+
+    // The restore route's swap, simulated exactly: strict-parse the
+    // snapshot (nested previous dropped defensively), outgoing → previous.
+    const restore = (stored: WebsiteConfig): WebsiteConfig => {
+      const candidate = { ...(stored.previous as Record<string, unknown>) };
+      delete candidate.previous;
+      const parsed = WebsiteConfigSchema.parse(candidate);
+      const outgoing = buildPreviousDesign(stored)!;
+      return { ...parsed, previous: outgoing };
+    };
+    const stripPrevious = (c: WebsiteConfig) => {
+      const rest = { ...c };
+      delete rest.previous;
+      return rest;
+    };
+
+    const restoredOnce = restore(regenParse.data);
+    check('restored config validates strictly', WebsiteConfigSchema.safeParse(restoredOnce).success);
+    check('restore brings design A back',
+      restoredOnce.site.hero_headline === configA.site.hero_headline);
+    check('restore snapshot is non-recursive',
+      !('previous' in (restoredOnce.previous as Record<string, unknown>)));
+
+    // Reversibility: restoring AGAIN round-trips design B exactly.
+    const restoredTwice = restore(restoredOnce);
+    check('double restore round-trips design B',
+      JSON.stringify(stripPrevious(restoredTwice)) === JSON.stringify(stripPrevious(configB)));
   }
 }
 

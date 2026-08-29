@@ -19,6 +19,8 @@ import DiscountManager from '@/components/DiscountManager';
 import VideoManager from '@/components/VideoManager';
 import ReviewForm from '@/components/ReviewForm';
 import ReviewList from '@/components/ReviewList';
+import { resolveDashboardUser } from '@/lib/dashboardAuth';
+import { useShopRow } from '@/lib/useShopRow';
 import { useStorefrontUrl } from '@/lib/useStorefrontUrl';
 import type { Product, Shop, Order, CustomerCRM } from '@/lib/types';
 
@@ -111,7 +113,6 @@ function ReviewsPanel({ products }: { products: Product[] }) {
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
-  const [shop, setShop] = useState<Shop | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [customersCRM, setCustomersCRM] = useState<CustomerCRM[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
@@ -149,17 +150,19 @@ export default function Dashboard() {
 
   const handleLogout = async () => { await supabase.auth.signOut(); router.push('/login'); };
 
-  const fetchShop = async (id: string) => {
-    const { data: shopData } = await supabase.from('shops').select('*').eq('id', id).single();
-    setShop(shopData as Shop | null);
-  };
+  // Shops-row seam (lib/useShopRow): the layout's provider scope guarantees a
+  // cached verdict before this page renders, so this is a pure cache read —
+  // and a brand save on Themes updates this header instantly via shopRowKey.
+  const { shop } = useShopRow(userId);
 
   useEffect(() => {
     async function loadDashboard() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.push('/login'); return; }
+      // Non-evicting offline auth (lib/dashboardAuth) — transport failure with
+      // a local session never redirects; only a genuine no-session does.
+      const auth = await resolveDashboardUser(supabase);
+      if (auth.status === 'unauthenticated') { router.push('/login'); return; }
+      const user = auth.user;
       setUserId(user.id);
-      await fetchShop(user.id);
 
       const { data: productData } = await supabase.from('products').select('id, image_url, name, price, category').eq('user_id', user.id).order('created_at', { ascending: false });
       setProducts((productData as Product[]) || []);

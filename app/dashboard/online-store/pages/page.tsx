@@ -20,25 +20,33 @@ import { createBrowserClient } from '@supabase/ssr';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import useSWR from 'swr';
 import {
   ArrowLeft, Crown, ExternalLink, Eye, FileText, Globe,
   LayoutGrid, Loader2, Lock, Package, Store, Wand2,
 } from 'lucide-react';
 import { SITE_TEMPLATES, type ShopWebsiteRow } from '@/lib/siteTemplates';
+import { resolveDashboardUser } from '@/lib/dashboardAuth';
+import { useShopRow } from '@/lib/useShopRow';
+import { fetchJSON, isTransportError } from '@/lib/transport';
+import { websiteContentKey } from '@/lib/swrCache';
 import { useCanonicalShopSlug } from '@/lib/useCanonicalShopSlug';
 
 const WEBSITE_TIERS = ['advanced', 'flagship'];
-
-type ShopIdentity = {
-  shop_name: string | null;
-  shop_slug: string | null;
-  subscription_tier: string | null;
-};
 
 type SampleProduct = {
   id: string;
   name: string;
 };
+
+// A2: the website row rides the SAME websiteContentKey SWR seam the themes
+// page / cockpit / interceptor use (deadline-bounded transport, persisted
+// per-user cache via the dashboard layout's provider) — the raw deadline-less
+// fetch('/api/websites/content') this page shipped with is gone.
+async function fetchWebsiteRow(): Promise<ShopWebsiteRow | null> {
+  const data = await fetchJSON<{ website: ShopWebsiteRow | null }>('/api/websites/content');
+  return data.website ?? null;
+}
 
 function formatDate(iso: string | null): string | null {
   if (!iso) return null;
@@ -67,10 +75,13 @@ export default function OnlineStorePagesPage() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  const [loading, setLoading] = useState(true);
-  const [shop, setShop] = useState<ShopIdentity | null>(null);
-  const [website, setWebsite] = useState<ShopWebsiteRow | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [sampleProduct, setSampleProduct] = useState<SampleProduct | null>(null);
+  const [sampleResolved, setSampleResolved] = useState(false);
+
+  // Shops-row seam (lib/useShopRow, A3) — one cached read for the whole
+  // dashboard instead of this page's own bare shops query.
+  const { shop, verdict: shopVerdict, error: shopError } = useShopRow(userId);
 
   const tier = (shop?.subscription_tier ?? '').toLowerCase().trim();
   const hasAccess = WEBSITE_TIERS.includes(tier);
@@ -79,54 +90,59 @@ export default function OnlineStorePagesPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.push('/login'); return; }
-
-      const { data: shopRow } = await supabase
-        .from('shops')
-        .select('shop_name, shop_slug, subscription_tier')
-        .eq('id', user.id)
-        .single();
+      // Non-evicting offline auth (lib/dashboardAuth) — transport failure with
+      // a local session never redirects; only a genuine no-session does.
+      const auth = await resolveDashboardUser(supabase);
+      if (auth.status === 'unauthenticated') { router.push('/login'); return; }
       if (cancelled) return;
-      setShop((shopRow as ShopIdentity | null) ?? null);
-
-      const rowTier = ((shopRow as ShopIdentity | null)?.subscription_tier ?? '').toLowerCase().trim();
-      if (WEBSITE_TIERS.includes(rowTier)) {
-        // Website row via the owner content API. shop_websites has NO select
-        // policies — the browser-client read this page shipped with returned
-        // zero rows SILENTLY, so every generated site presented here as
-        // "No AI website generated yet". All owner reads go through the
-        // service-role-backed GET /api/websites/content.
-        try {
-          const res = await fetch('/api/websites/content');
-          if (res.ok) {
-            const data = await res.json();
-            if (cancelled) return;
-            setWebsite((data.website as ShopWebsiteRow | null) ?? null);
-          }
-        } catch {
-          // Non-fatal: the page renders its empty state.
-        }
-        if (cancelled) return;
-
-        // Newest product mints the sample /site/{slug}/products/{id} link.
-        // Match either ownership column (mixed legacy schema — same rule the
-        // site router applies).
-        const { data: productRow } = await supabase
-          .from('products')
-          .select('id, name')
-          .or(`shop_id.eq.${user.id},user_id.eq.${user.id}`)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (cancelled) return;
-        setSampleProduct((productRow as SampleProduct | null) ?? null);
-      }
-      setLoading(false);
+      setUserId(auth.user.id);
     })();
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router]);
+  }, [router, supabase]);
+
+  // Website row via the owner content API (shop_websites has NO select
+  // policies — a browser-client read returns zero rows SILENTLY). Same key,
+  // fetcher contract, and retry idiom as the themes page: server verdicts
+  // don't retry, connectivity failures ride SWR's backoff.
+  const { data: websiteData, error: websiteError } = useSWR<ShopWebsiteRow | null>(
+    userId && hasAccess ? websiteContentKey(userId) : null,
+    fetchWebsiteRow,
+    {
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+      shouldRetryOnError: (err) => !(isTransportError(err) && err.kind === 'server'),
+    }
+  );
+  const website = websiteData ?? null;
+
+  // Newest product mints the sample /site/{slug}/products/{id} link.
+  // Match either ownership column (mixed legacy schema — same rule the
+  // site router applies).
+  useEffect(() => {
+    if (!userId || !hasAccess) return;
+    let cancelled = false;
+    (async () => {
+      const { data: productRow } = await supabase
+        .from('products')
+        .select('id, name')
+        .or(`shop_id.eq.${userId},user_id.eq.${userId}`)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (cancelled) return;
+      setSampleProduct((productRow as SampleProduct | null) ?? null);
+      setSampleResolved(true);
+    })();
+    return () => { cancelled = true; };
+  }, [userId, hasAccess, supabase]);
+
+  // The page paints as one piece, exactly as before: auth, the shops row,
+  // and — for qualifying tiers — the website verdict and the sample product.
+  const loading =
+    !userId ||
+    (shopVerdict === undefined && !shopError) ||
+    (hasAccess && websiteData === undefined && !websiteError) ||
+    (hasAccess && !sampleResolved);
 
   if (loading) {
     return <div className="flex min-h-screen items-center justify-center bg-[#F9F8F6]"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>;

@@ -2,7 +2,7 @@ import Link from 'next/link';
 import SmartImage from '@/components/SmartImage';
 import {
   findBlock,
-  resolveBlocks,
+  resolveVisibleBlocks,
   resolveLogoUrl,
   siteBasePath,
   siteCollectionsPath,
@@ -115,7 +115,9 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
   // Block-driven copy (Phase 3): the footer's bio fallback is the hero
   // block's tagline; the site.* mirror keeps the value identical for legacy
   // rows and any block array missing a hero.
-  const heroBlock = findBlock(resolveBlocks(config), 'hero_banner');
+  // Item 2: hidden blocks are invisible to chrome copy reads too — the
+  // site.* mirror (which stores hidden content as well) keeps the fallback.
+  const heroBlock = findBlock(resolveVisibleBlocks(config), 'hero_banner');
   const taglineFallback = heroBlock?.tagline ?? site.tagline;
   const base = siteBasePath(shop);
   const collectionsHref = siteCollectionsPath(shop) ?? '#collection';
