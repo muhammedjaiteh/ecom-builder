@@ -9,6 +9,7 @@ import {
   AlertTriangle, CheckCircle2, Crown, Loader2, Lock, Plus, Sparkles, Wand2, WifiOff,
 } from 'lucide-react';
 import type { ShopWebsiteRow } from '@/lib/siteTemplates';
+import { canUseStudio } from '@/lib/tiers';
 import { fetchJSON, isTransportError } from '@/lib/transport';
 import { createPersistedSwrProvider, websiteContentKey } from '@/lib/swrCache';
 
@@ -35,7 +36,7 @@ import { createPersistedSwrProvider, websiteContentKey } from '@/lib/swrCache';
 // The builder itself renders HONEST stepped states (the generator API
 // hard-rejects otherwise — a magic button that always errors is anti-aha):
 //   products === 0            → "Add Your First Product" → /dashboard/add
-//   tier below Advanced       → the studio's premium lock idiom → /pricing
+//   tier below Pro            → the studio's premium lock idiom → /pricing
 //   qualifying                → one ≥44px "Generate My Store" button firing
 //                               the generator's preserved LEGACY one-call path.
 //
@@ -44,7 +45,8 @@ import { createPersistedSwrProvider, websiteContentKey } from '@/lib/swrCache';
 // editor paints the brand-new site instantly from cache, zero loading screen.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const WEBSITE_TIERS = ['advanced', 'flagship'];
+// Tier gate: lib/tiers canUseStudio — Pro+ (Studio moved down to Pro,
+// founder matrix 2026-08-29; legacy 'advanced' payers keep access).
 
 // Same client-side ceiling as WebsiteGeneratorStudio's AI steps: the route's
 // maxDuration (120s) plus a small network margin, passed to fetchJSON as the
@@ -102,7 +104,7 @@ export function OnboardingInterceptor({ userId, productsCount, tier, children }:
 
 function InterceptorVerdict({ userId, productsCount, tier, children }: OnboardingInterceptorProps) {
   const { cache } = useSWRConfig();
-  const tierQualifies = WEBSITE_TIERS.includes((tier ?? '').toLowerCase().trim());
+  const tierQualifies = canUseStudio(tier);
 
   // Locked tiers would 403 on the owner GET (it tier-gates like every website
   // route) — never fire a doomed request for them (the themes-page idiom). But
@@ -204,7 +206,7 @@ export default function MagicStorefrontBuilder({
   // first-render closure.
   const retryRef = useRef<() => void>(() => {});
 
-  const tierQualifies = WEBSITE_TIERS.includes((tier ?? '').toLowerCase().trim());
+  const tierQualifies = canUseStudio(tier);
 
   // Abort any in-flight generation when the seller navigates away.
   useEffect(() => () => { abortRef.current?.abort('unmount'); }, []);
@@ -458,7 +460,7 @@ export default function MagicStorefrontBuilder({
                   </div>
                 )}
 
-                {/* Stepped state b — tier below Advanced: the studio's premium
+                {/* Stepped state b — tier below Pro: the studio's premium
                     lock idiom (the API 403s these tiers). */}
                 {showUpgrade && (
                   <div className="relative overflow-hidden rounded-[2rem] bg-[#1a1a1a] p-8 text-center text-white shadow-2xl md:p-10">
@@ -467,7 +469,7 @@ export default function MagicStorefrontBuilder({
                     <h2 className="mt-5 font-serif text-2xl font-bold">Your entire storefront, generated.</h2>
                     <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-white/60">
                       The AI Website Studio studies your inventory and builds a complete premium
-                      website around it — hero, brand story, and all. Exclusive to the Advanced tier.
+                      website around it — hero, brand story, and all. Included from the Pro tier.
                     </p>
                     <p className="mt-4 flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-widest text-white/40">
                       <Lock size={12} /> Locked on your current plan
@@ -476,7 +478,7 @@ export default function MagicStorefrontBuilder({
                       href="/pricing"
                       className="mt-7 inline-flex min-h-[48px] items-center justify-center gap-2 rounded-full bg-[#f0a500] px-8 py-3.5 text-[11px] font-black uppercase tracking-widest text-black transition hover:bg-amber-400 active:scale-95"
                     >
-                      <Crown size={14} /> Upgrade to Advanced
+                      <Crown size={14} /> Upgrade to Pro
                     </Link>
                   </div>
                 )}

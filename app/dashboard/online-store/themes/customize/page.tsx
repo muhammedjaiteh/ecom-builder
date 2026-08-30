@@ -32,11 +32,12 @@ import { useIsMobileViewport } from '@/lib/useIsMobileViewport';
 import { CoachLegend, useCoachMarks } from '@/components/website/CoachMarks';
 import { WebsiteConfigSchema, type ShopWebsiteRow, type SiteShop } from '@/lib/siteTemplates';
 import { resolveDashboardUser } from '@/lib/dashboardAuth';
+import { canUseStudio } from '@/lib/tiers';
 import { useShopRow } from '@/lib/useShopRow';
 import { fetchJSON, isTransportError } from '@/lib/transport';
 import { createPersistedSwrProvider, websiteContentKey } from '@/lib/swrCache';
 
-const WEBSITE_TIERS = ['advanced', 'flagship'];
+// Tier gate: lib/tiers canUseStudio — Pro+ (legacy 'advanced' kept).
 const HUB_PATH = '/dashboard/online-store/themes';
 
 async function fetchWebsiteRow(): Promise<ShopWebsiteRow | null> {
@@ -58,9 +59,7 @@ export default function CustomizeCockpitPage() {
   // repaints this editor's fulfillment/branding context instantly.
   const { shop: shopRow, verdict: shopVerdict, error: shopError } = useShopRow(userId);
 
-  const hasWebsiteAccess = WEBSITE_TIERS.includes(
-    (shopRow?.subscription_tier ?? '').toLowerCase().trim()
-  );
+  const hasWebsiteAccess = canUseStudio(shopRow?.subscription_tier);
   const editorShop = useMemo<SiteShop | null>(
     () =>
       shopRow

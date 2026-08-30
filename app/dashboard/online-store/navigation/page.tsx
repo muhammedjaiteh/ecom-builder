@@ -21,12 +21,13 @@ import {
 } from 'lucide-react';
 import { SITE_TEMPLATES, type ShopWebsiteRow, type TemplateKey } from '@/lib/siteTemplates';
 import { resolveDashboardUser } from '@/lib/dashboardAuth';
+import { canUseStudio } from '@/lib/tiers';
 import { useShopRow } from '@/lib/useShopRow';
 import { fetchJSON, isTransportError } from '@/lib/transport';
 import { websiteContentKey } from '@/lib/swrCache';
 import { useCanonicalShopSlug } from '@/lib/useCanonicalShopSlug';
 
-const WEBSITE_TIERS = ['advanced', 'flagship'];
+// Tier gate: lib/tiers canUseStudio — Pro+ (legacy 'advanced' kept).
 
 // A2: the website row rides the SAME websiteContentKey SWR seam the themes
 // page / cockpit / interceptor use (deadline-bounded transport, persisted
@@ -114,8 +115,7 @@ export default function OnlineStoreNavigationPage() {
   // dashboard instead of this page's own bare shops query.
   const { shop, verdict: shopVerdict, error: shopError } = useShopRow(userId);
 
-  const tier = (shop?.subscription_tier ?? '').toLowerCase().trim();
-  const hasAccess = WEBSITE_TIERS.includes(tier);
+  const hasAccess = canUseStudio(shop?.subscription_tier);
   const siteSlug = useCanonicalShopSlug(shop?.shop_slug ?? null, hasAccess);
 
   useEffect(() => {
@@ -173,7 +173,9 @@ export default function OnlineStoreNavigationPage() {
       }
       case 'boutique':
         // /shop matches the RAW stored slug — encode it as-is (Law 2).
-        return shop?.shop_slug ? `/shop/${encodeURIComponent(shop.shop_slug)}` : null;
+        // ?classic=1: this link DESCRIBES the classic boutique — bypass the
+        // Pillar-1 /shop bridge (published-site shops 307 to /site).
+        return shop?.shop_slug ? `/shop/${encodeURIComponent(shop.shop_slug)}?classic=1` : null;
       case 'external':
         // Dynamic target (seller's WhatsApp number) — described, not minted here.
         return null;
@@ -234,7 +236,7 @@ export default function OnlineStoreNavigationPage() {
             <h2 className="mt-5 font-serif text-2xl font-bold">Your website&apos;s menus live here.</h2>
             <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-white/60">
               Generate your AI website and this page maps its header menu, section anchors, and
-              footer links. Exclusive to the Advanced tier.
+              footer links. Included from the Pro tier.
             </p>
             <p className="mt-4 flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-widest text-white/40">
               <Lock size={12} /> Locked on your current plan
@@ -243,7 +245,7 @@ export default function OnlineStoreNavigationPage() {
               href="/pricing"
               className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#f0a500] px-7 py-3 text-[11px] font-black uppercase tracking-widest text-black transition hover:bg-amber-400 active:scale-95"
             >
-              <Crown size={14} /> Upgrade to Advanced
+              <Crown size={14} /> Upgrade to Pro
             </Link>
           </div>
         )}

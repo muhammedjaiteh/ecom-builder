@@ -2,12 +2,14 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import { SITE_CHROMES, type SiteTone } from '@/components/site-templates/chrome';
+import SiteThemeCascade from '@/components/site-templates/SiteThemeCascade';
 import {
   WebsiteConfigSchema,
   siteBasePath,
   siteCollectionsPath,
   type SiteShop,
 } from '@/lib/siteTemplates';
+import { siteThemeVars } from '@/lib/siteTheme';
 import {
   loadSite,
   loadSiteProduct,
@@ -217,8 +219,14 @@ export default async function SiteProductPage({ params }: PageProps) {
   const description = product.description?.trim() || null;
   const priceLabel = product.price == null ? 'Price on request' : `D${Number(product.price).toLocaleString()}`;
 
+  // Cascade gap (Pillar 4): mirror the theme onto document.documentElement so
+  // the root-layout Cart drawer wears the boutique tokens on the PDP — the
+  // page where the cart is opened most.
+  const themeVars = siteThemeVars(site.config);
+
   return (
     <>
+      {themeVars && <SiteThemeCascade vars={themeVars} />}
       {site.isDraftPreview && <SiteDraftBadge />}
       <Chrome shop={site.shop} config={site.config} active="product">
         <section className={s.section}>

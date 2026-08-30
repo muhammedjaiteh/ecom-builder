@@ -98,8 +98,8 @@ export function RitualProductCard({ product, index, href }: { product: SiteProdu
         </span>
       </div>
       <div className="mt-4 flex items-start justify-between gap-3 px-1">
-        <p className="text-sm font-medium leading-snug text-stone-800">{product.name}</p>
-        <p className="shrink-0 text-sm text-stone-500">{ritualPrice(product.price)}</p>
+        <p className="text-sm font-medium leading-snug text-[var(--site-text,oklch(26.8%_0.007_34.298))]">{product.name}</p>
+        <p className="shrink-0 text-sm text-[var(--site-muted,oklch(55.3%_0.013_58.071))]">{ritualPrice(product.price)}</p>
       </div>
     </Link>
   );
@@ -123,7 +123,9 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
   const collectionsHref = siteCollectionsPath(shop) ?? '#collection';
   // Deliberate classic-boutique escape (footer only). /shop matches the RAW
   // stored slug, so encode it as-is — lowercasing a legacy value would 404.
-  const shopUrl = shop.shop_slug ? `/shop/${encodeURIComponent(shop.shop_slug)}` : '/';
+  // ?classic=1: the Pillar-1 /shop server bridge 307s published-site shops
+  // back to /site — this param is the escape's documented bypass.
+  const shopUrl = shop.shop_slug ? `/shop/${encodeURIComponent(shop.shop_slug)}?classic=1` : '/';
   const monogram = (shop.shop_name ?? 'S').trim().charAt(0).toUpperCase() || 'S';
   // Logo slot fallback chain (Premium Visual Editor): generated/uploaded site
   // logo → shop.logo_url → the monogram mark. Legacy rows (no assets) render
@@ -138,8 +140,8 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
   // ≥44px tap targets: the anchor itself carries the interactive box
   // (min-h-11 + centering) — inside the h-16/h-20 nav row nothing grows.
   const navLink = (isActive: boolean) =>
-    `inline-flex min-h-11 items-center text-[10px] font-bold uppercase tracking-[0.25em] transition hover:text-stone-900 ${
-      isActive ? 'text-stone-900' : 'text-stone-500'
+    `inline-flex min-h-11 items-center text-[10px] font-bold uppercase tracking-[0.25em] transition hover:text-[var(--site-text,oklch(21.6%_0.006_56.043))] ${
+      isActive ? 'text-[var(--site-text,oklch(21.6%_0.006_56.043))]' : 'text-[var(--site-muted,oklch(55.3%_0.013_58.071))]'
     }`;
 
   // Fulfillment facts for the structured footer. Fields are optional/additive:
@@ -161,10 +163,11 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
     // THEME SEAM: a themed config sets --site-accent/--site-serif here (the
     // one root every ritual /site page shares); absent theme → no style
     // attribute, and every var() fallback below keeps the stone defaults.
-    <div className="min-h-screen bg-[#FBFAF7] font-sans text-stone-900" style={siteThemeStyle(config)}>
+    <div className="min-h-screen bg-[var(--site-bg,#FBFAF7)] font-sans text-[var(--site-text,oklch(21.6%_0.006_56.043))]" style={siteThemeStyle(config)}>
 
       {/* Sticky logo nav */}
-      <nav className="sticky top-0 z-50 border-b border-stone-200/80 bg-[#FBFAF7]/90 backdrop-blur-md">
+      {/* sticky_nav (Pillar 4): absent/true = the historical sticky nav; false = static. */}
+      <nav className={`${config.theme?.sticky_nav === false ? 'relative' : 'sticky top-0'} z-50 border-b border-stone-200/80 bg-[color-mix(in_srgb,var(--site-bg,#FBFAF7)_90%,transparent)] backdrop-blur-md`}>
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 md:h-20 md:px-10">
           <Link href={base ?? '#'} className="flex min-w-0 items-center gap-3">
             {logoUrl ? (
@@ -196,7 +199,7 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
             <CartBagButton tone="ritual" />
             <Link
               href={collectionsHref}
-              className="inline-flex min-h-11 shrink-0 items-center rounded-full bg-[var(--site-accent,#1c1917)] px-6 text-[10px] font-bold uppercase tracking-[0.2em] text-white shadow-sm transition hover:brightness-125 active:scale-95"
+              className="inline-flex min-h-11 shrink-0 items-center rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#1c1917)] px-6 text-[10px] font-bold uppercase tracking-[0.2em] text-white shadow-sm transition hover:brightness-125 active:scale-95"
             >
               Shop Now
             </Link>
@@ -225,9 +228,9 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
                   {monogram}
                 </span>
               )}
-              <p className="font-serif text-xl font-bold text-stone-900">{shop.shop_name}</p>
+              <p className="font-serif text-xl font-bold text-[var(--site-text,oklch(21.6%_0.006_56.043))]">{shop.shop_name}</p>
             </div>
-            <p className="mt-5 max-w-sm text-sm leading-relaxed text-stone-500">
+            <p className="mt-5 max-w-sm text-sm leading-relaxed text-[var(--site-muted,oklch(55.3%_0.013_58.071))]">
               {shop.bio?.trim() ? (
                 shop.bio.trim().slice(0, 220)
               ) : heroBlock ? (
@@ -241,12 +244,12 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
           </div>
 
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-stone-400">Shop</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-muted,oklch(70.9%_0.01_56.259))]">Shop</p>
             {/* ≥44px rows: each link IS its tap box (min-h-11), so the column
                 gap shrinks to keep the printed rhythm. */}
             <div className="mt-3 flex flex-col gap-1">
-              <Link href={collectionsHref} className="flex min-h-11 items-center text-sm text-stone-600 transition hover:text-stone-900">The Collection</Link>
-              <a href={homeAnchor('#story')} className="flex min-h-11 items-center text-sm text-stone-600 transition hover:text-stone-900">Our Story</a>
+              <Link href={collectionsHref} className="flex min-h-11 items-center text-sm text-[var(--site-muted,oklch(44.4%_0.011_73.639))] transition hover:text-[var(--site-text,oklch(21.6%_0.006_56.043))]">The Collection</Link>
+              <a href={homeAnchor('#story')} className="flex min-h-11 items-center text-sm text-[var(--site-muted,oklch(44.4%_0.011_73.639))] transition hover:text-[var(--site-text,oklch(21.6%_0.006_56.043))]">Our Story</a>
               <Link href={shopUrl} className="flex min-h-11 items-center text-xs text-stone-400 underline-offset-4 transition hover:text-stone-600 hover:underline">
                 View classic boutique
               </Link>
@@ -254,10 +257,10 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
           </div>
 
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-stone-400">Delivery & Contact</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-muted,oklch(70.9%_0.01_56.259))]">Delivery & Contact</p>
             <div className="mt-5 flex flex-col gap-3">
               {fulfillment.map((line) => (
-                <p key={line} className="text-sm text-stone-600">{line}</p>
+                <p key={line} className="text-sm text-[var(--site-muted,oklch(44.4%_0.011_73.639))]">{line}</p>
               ))}
               {pickupNote && <p className="text-xs leading-relaxed text-stone-400">{pickupNote}</p>}
               {whatsAppHref && (
@@ -276,7 +279,7 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
 
         <div className="border-t border-stone-200">
           <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-2 px-5 py-6 md:flex-row md:px-10">
-            <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-stone-500">{shop.shop_name}</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--site-muted,oklch(55.3%_0.013_58.071))]">{shop.shop_name}</p>
             <p className="text-[10px] uppercase tracking-widest text-stone-400">Site generated by Sanndikaa AI</p>
           </div>
         </div>

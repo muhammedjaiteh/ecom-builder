@@ -63,6 +63,29 @@ type StoryBlock = Extract<SiteBlock, { type: 'story_text' }>;
 type CtaBlock = Extract<SiteBlock, { type: 'cta_banner' }>;
 type ProductTabsBlock = Extract<SiteBlock, { type: 'product_tabs' }>;
 type VideoHeroBlock = Extract<SiteBlock, { type: 'video_hero' }>;
+type TestimonialsBlock = Extract<SiteBlock, { type: 'testimonials' }>;
+type SplitCtaBlock = Extract<SiteBlock, { type: 'split_cta' }>;
+
+// ── Inspector depth (Pillar 4): per-dialect padding/align class maps ─────────
+// Coverage in the RITUAL dialect: padding on product_grid / story_text /
+// cta_banner / product_tabs / testimonials / split_cta; align on product_grid
+// (header), story_text (copy column), cta_banner, testimonials (heading).
+// Absent keys return the EXACT historical classes — byte-identical law.
+type PadKey = 'compact' | 'default' | 'spacious';
+function ritualPad(p: PadKey | undefined, map: Record<PadKey, string>): string {
+  return map[p ?? 'default'];
+}
+const PAD_20_28: Record<PadKey, string> = {
+  compact: 'py-12 md:py-16',
+  default: 'py-20 md:py-28',
+  spacious: 'py-28 md:py-40',
+};
+const PAD_16_24: Record<PadKey, string> = {
+  compact: 'py-10 md:py-14',
+  default: 'py-16 md:py-24',
+  spacious: 'py-24 md:py-36',
+};
+
 
 function RitualHero({ block, shop, heroMedia, collectionsHref }: {
   block: HeroBlock;
@@ -101,7 +124,9 @@ function RitualHero({ block, shop, heroMedia, collectionsHref }: {
           priority
           sizes="100vw"
           blurTone="dark"
-          className="object-cover"
+          // .sndk-parallax: pure-CSS scroll depth (archetype pass) — static
+          // where scroll-timelines/motion are unavailable (globals.css).
+          className="sndk-parallax object-cover"
         />
       ) : (
         /* Null tier (Pillar 4b): the animated brand plate — same gradient
@@ -130,13 +155,13 @@ function RitualHero({ block, shop, heroMedia, collectionsHref }: {
         <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
           <a
             href="#collection"
-            className="rounded-full bg-white px-8 py-4 text-center text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--site-accent,#1c1917)] shadow-lg transition hover:bg-stone-100 active:scale-95"
+            className="rounded-[var(--site-radius,9999px)] bg-white px-8 py-4 text-center text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--site-accent,#1c1917)] shadow-lg transition hover:bg-stone-100 active:scale-95"
           >
             Shop The Collection
           </a>
           <Link
             href={collectionsHref}
-            className="rounded-full border border-white/50 px-8 py-4 text-center text-[10px] font-bold uppercase tracking-[0.25em] text-white transition hover:border-white hover:bg-white/10 active:scale-95"
+            className="rounded-[var(--site-radius,9999px)] border border-white/50 px-8 py-4 text-center text-[10px] font-bold uppercase tracking-[0.25em] text-white transition hover:border-white hover:bg-white/10 active:scale-95"
           >
             View The Full Collection
           </Link>
@@ -156,12 +181,13 @@ function RitualProductGrid({ block, shop, products }: {
   products: SiteProduct[];
 }) {
   return (
-    <section id="collection" data-block-section={block.id} className="mx-auto max-w-7xl px-5 py-20 md:px-10 md:py-28">
-      <div className="mx-auto max-w-xl text-center">
-        <EditableText as="h2" blockId={block.id} field="title" className="font-serif text-3xl font-bold tracking-tight text-stone-900 md:text-5xl">
+    // padding/align consumption (Pillar 4): grid section spacing + header alignment.
+    <section id="collection" data-block-section={block.id} className={`mx-auto max-w-7xl px-5 md:px-10 ${ritualPad(block.padding, PAD_20_28)}`}>
+      <div className={block.align === 'left' ? 'max-w-xl text-left' : 'mx-auto max-w-xl text-center'}>
+        <EditableText as="h2" blockId={block.id} field="title" className="font-serif text-3xl font-bold tracking-tight text-[var(--site-text,oklch(21.6%_0.006_56.043))] md:text-5xl">
           {block.title}
         </EditableText>
-        <EditableText as="p" blockId={block.id} field="intro" className="mt-4 text-sm leading-relaxed text-stone-500 md:text-base">
+        <EditableText as="p" blockId={block.id} field="intro" className="mt-4 text-sm leading-relaxed text-[var(--site-muted,oklch(55.3%_0.013_58.071))] md:text-base">
           {block.intro}
         </EditableText>
       </div>
@@ -170,8 +196,8 @@ function RitualProductGrid({ block, shop, products }: {
         // Branded empty state (mirrors /collections): the hero's
         // "Shop The Collection" anchor lands on something dignified.
         <div className="mx-auto mt-14 max-w-md rounded-2xl border border-dashed border-stone-300 px-8 py-14 text-center md:mt-20">
-          <p className="font-serif text-xl font-bold text-stone-900">The collection is being prepared.</p>
-          <p className="mt-3 text-sm leading-relaxed text-stone-500">New pieces are on their way — check back soon.</p>
+          <p className="font-serif text-xl font-bold text-[var(--site-text,oklch(21.6%_0.006_56.043))]">The collection is being prepared.</p>
+          <p className="mt-3 text-sm leading-relaxed text-[var(--site-muted,oklch(55.3%_0.013_58.071))]">New pieces are on their way — check back soon.</p>
         </div>
       ) : block.displayMode === 'carousel' ? (
         <div className="mt-14 md:mt-20">
@@ -199,7 +225,8 @@ function RitualProductGrid({ block, shop, products }: {
 
 function RitualProductTabs({ block }: { block: ProductTabsBlock }) {
   return (
-    <section data-block-section={block.id} className="border-b border-stone-200 bg-white py-16 md:py-24">
+    // padding consumption (Pillar 4): tabs section spacing.
+    <section data-block-section={block.id} className={`border-b border-stone-200 bg-white ${ritualPad(block.padding, PAD_16_24)}`}>
       <div className="mx-auto max-w-4xl px-5 md:px-10">
         <EditableText
           as="h2"
@@ -253,18 +280,19 @@ function RitualVideoHero({ block, shopName }: { block: VideoHeroBlock; shopName:
 
 function RitualStory({ block, shopName }: { block: StoryBlock; shopName: string | null }) {
   return (
-    <section id="story" data-block-section={block.id} className="border-y border-stone-200 bg-white py-20 md:py-28">
+    // padding/align consumption (Pillar 4): story spacing + copy alignment.
+    <section id="story" data-block-section={block.id} className={`border-y border-stone-200 bg-white ${ritualPad(block.padding, PAD_20_28)}`}>
       <div className="mx-auto grid max-w-6xl grid-cols-1 gap-8 px-5 md:grid-cols-[200px_1fr] md:gap-14 md:px-10">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-stone-400">Our Story</p>
           <div className="mt-5 hidden h-px w-16 bg-[var(--site-accent,#1c1917)] md:block" />
         </div>
-        <div>
+        <div className={block.align === 'center' ? 'text-center' : undefined}>
           {/* Fix 1: 3-line teaser + Read-the-full-story reveal. StoryClamp
               renders the bare copy node in editor previews, so the
               data-block-id/-field targeting is untouched. */}
           <StoryClamp tone="ritual">
-            <EditableText as="p" blockId={block.id} field="body" className="font-serif text-2xl font-medium leading-relaxed text-stone-800 md:text-3xl">
+            <EditableText as="p" blockId={block.id} field="body" className="font-serif text-2xl font-medium leading-relaxed text-[var(--site-text,oklch(26.8%_0.007_34.298))] md:text-3xl">
               {block.body}
             </EditableText>
           </StoryClamp>
@@ -275,21 +303,109 @@ function RitualStory({ block, shopName }: { block: StoryBlock; shopName: string 
   );
 }
 
+// Archetype pass (Pillar 3): real customer voices in the airy stone dialect —
+// serif pull-quotes on white cards, verified attribution beneath. Items are
+// seeded exclusively from real reviews (integrity law).
+function RitualTestimonials({ block }: { block: TestimonialsBlock }) {
+  return (
+    // padding/align consumption (Pillar 4): quotes section spacing + heading alignment.
+    <section data-block-section={block.id} className={`border-y border-stone-200 bg-white ${ritualPad(block.padding, PAD_20_28)}`}>
+      <div className="mx-auto max-w-6xl px-5 md:px-10">
+        {block.title && (
+          <EditableText
+            as="h2"
+            blockId={block.id}
+            field="title"
+            className={`font-serif text-3xl font-bold tracking-tight text-[var(--site-text,oklch(21.6%_0.006_56.043))] md:text-4xl ${block.align === 'left' ? 'text-left' : 'text-center'}`}
+          >
+            {block.title}
+          </EditableText>
+        )}
+        <div className={`grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-8 ${block.title ? 'mt-12 md:mt-16' : ''}`}>
+          {block.items.map((item, i) => (
+            <figure key={`${block.id}-quote-${i}`} className="rounded-2xl border border-stone-200 bg-[var(--site-bg,#FBFAF7)] p-7 md:p-9">
+              <span aria-hidden className="font-serif text-4xl leading-none text-[var(--site-accent,#1c1917)]">&ldquo;</span>
+              <EditableText
+                as="blockquote"
+                blockId={block.id}
+                field={`items.${i}.quote`}
+                className="mt-3 font-serif text-lg font-medium leading-relaxed text-[var(--site-text,oklch(26.8%_0.007_34.298))] md:text-xl"
+              >
+                {item.quote}
+              </EditableText>
+              <figcaption className="mt-5">
+                <EditableText
+                  as="span"
+                  blockId={block.id}
+                  field={`items.${i}.author`}
+                  className="text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--site-muted,oklch(70.9%_0.01_56.259))]"
+                >
+                  {item.author}
+                </EditableText>
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// Archetype pass (Pillar 3): the two-panel conversion spread — copy beside a
+// solid accent panel carrying the boutique monogram. Accent rides
+// --site-accent with the stone default, so themeless rendering stays on-dialect.
+function RitualSplitCta({ block, shopName, collectionsHref }: {
+  block: SplitCtaBlock;
+  shopName: string | null;
+  collectionsHref: string;
+}) {
+  const monogram = (shopName ?? 'S').trim().charAt(0).toUpperCase() || 'S';
+  return (
+    // padding consumption (Pillar 4): split-spread section spacing.
+    <section data-block-section={block.id} className={`mx-auto max-w-7xl px-5 md:px-10 ${ritualPad(block.padding, PAD_16_24)}`}>
+      <div className="grid grid-cols-1 overflow-hidden rounded-3xl border border-stone-200 bg-white md:grid-cols-2">
+        <div className="flex flex-col justify-center gap-5 p-8 md:p-14">
+          <EditableText as="h2" blockId={block.id} field="headline" className="font-serif text-3xl font-bold tracking-tight text-[var(--site-text,oklch(21.6%_0.006_56.043))] md:text-4xl">
+            {block.headline}
+          </EditableText>
+          <EditableText as="p" blockId={block.id} field="body" className="max-w-md text-sm leading-relaxed text-[var(--site-muted,oklch(55.3%_0.013_58.071))] md:text-base">
+            {block.body}
+          </EditableText>
+          <Link
+            href={collectionsHref}
+            data-block-id={block.id}
+            data-block-field="button_label"
+            className="mt-2 inline-flex min-h-11 items-center self-start rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#1c1917)] px-8 text-[10px] font-bold uppercase tracking-[0.25em] text-white shadow-sm transition hover:brightness-125 active:scale-95"
+          >
+            {block.button_label}
+          </Link>
+        </div>
+        <div aria-hidden className="relative flex min-h-[220px] items-center justify-center bg-[var(--site-accent,#1c1917)] md:min-h-[320px]">
+          <span className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.16),transparent_60%)]" />
+          <span className="relative font-serif text-[7rem] italic leading-none text-white/25 md:text-[10rem]">{monogram}</span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function RitualCta({ block, collectionsHref }: { block: CtaBlock; collectionsHref: string }) {
   return (
-    <section data-block-section={block.id} className="bg-stone-900 py-20 text-center md:py-28">
+    // primary/padding/align consumption (Pillar 4): the dark banner rides
+    // --site-primary (stone-900 fallback); spacing + alignment per block.
+    <section data-block-section={block.id} className={`bg-[var(--site-primary,oklch(21.6%_0.006_56.043))] ${block.align === 'left' ? 'text-left' : 'text-center'} ${ritualPad(block.padding, PAD_20_28)}`}>
       <div className="mx-auto max-w-2xl px-5 md:px-10">
         <EditableText as="h2" blockId={block.id} field="headline" className="font-serif text-3xl font-bold tracking-tight text-white md:text-5xl">
           {block.headline}
         </EditableText>
-        <EditableText as="p" blockId={block.id} field="subtext" className="mx-auto mt-5 max-w-lg text-base leading-relaxed text-white/60">
+        <EditableText as="p" blockId={block.id} field="subtext" className={`mt-5 max-w-lg text-base leading-relaxed text-white/60 ${block.align === 'left' ? '' : 'mx-auto'}`}>
           {block.subtext}
         </EditableText>
         <Link
           href={collectionsHref}
           data-block-id={block.id}
           data-block-field="button_label"
-          className="mt-10 inline-block rounded-full bg-white px-10 py-4 text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--site-accent,#1c1917)] shadow-lg transition hover:bg-stone-100 active:scale-95"
+          className="mt-10 inline-block rounded-[var(--site-radius,9999px)] bg-white px-10 py-4 text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--site-accent,#1c1917)] shadow-lg transition hover:bg-stone-100 active:scale-95"
         >
           {block.button_label}
         </Link>
@@ -329,6 +445,10 @@ export default function RitualTemplate({ shop, products, config, heroMedia }: Si
               return <RitualProductTabs block={block} />;
             case 'video_hero':
               return <RitualVideoHero block={block} shopName={shop.shop_name} />;
+            case 'testimonials':
+              return <RitualTestimonials block={block} />;
+            case 'split_cta':
+              return <RitualSplitCta block={block} shopName={shop.shop_name} collectionsHref={collectionsHref} />;
             default:
               return null;
           }

@@ -7,13 +7,14 @@ import { RevealPreviewScope } from '@/components/site-templates/Reveal';
 import { StoryClampPreviewScope } from '@/components/site-templates/StoryClamp';
 import RitualTemplate from '@/components/site-templates/RitualTemplate';
 import VitalityTemplate from '@/components/site-templates/VitalityTemplate';
-import type {
-  SiteConcept,
-  SiteProduct,
-  SiteShop,
-  SiteTemplateProps,
-  TemplateKey,
-  WebsiteConfig,
+import {
+  ARCHETYPES,
+  type SiteConcept,
+  type SiteProduct,
+  type SiteShop,
+  type SiteTemplateProps,
+  type TemplateKey,
+  type WebsiteConfig,
 } from '@/lib/siteTemplates';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -122,6 +123,11 @@ export default function MiniSitePreview({ concept, config, shopName }: MiniSiteP
           description: concept.vibe.slice(0, 170),
         },
       },
+      // Archetype pitches wear their REAL theme preset in the miniature —
+      // the seller approves the accent/typeface they will actually receive.
+      ...(concept.archetype_key
+        ? { theme: { ...ARCHETYPES[concept.archetype_key].theme } }
+        : {}),
     };
   }, [concept, config]);
 

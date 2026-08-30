@@ -4,8 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { generateWithFallback } from '@/lib/llm';
-
-const METERED_TIERS = ['starter', 'pro'];
+import { METERED_TIERS } from '@/lib/tiers';
 
 const ListingDraftSchema = z.object({
   title: z.string().min(1, 'title is required'),
@@ -59,7 +58,7 @@ export async function POST(req: Request) {
 
     if (METERED_TIERS.includes(tier) && (!shop.ai_credits || shop.ai_credits <= 0)) {
       return NextResponse.json(
-        { error: 'AI credit limit reached. Upgrade to Advanced for unlimited access.', creditsRemaining: 0 },
+        { error: 'AI credit limit reached. Upgrade to Flagship for unlimited access.', creditsRemaining: 0 },
         { status: 403 }
       );
     }

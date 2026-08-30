@@ -1,8 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse, NextRequest } from 'next/server';
 import { mintStorefrontLink, resolveAppOrigin } from '@/lib/storefrontUrl';
-
-const METERED_TIERS = ['starter', 'pro'];
+import { METERED_TIERS } from '@/lib/tiers';
 
 /**export type Product = {
   id: string;
@@ -136,7 +135,7 @@ export async function POST(request: NextRequest) {
       if (!shop.ai_credits || shop.ai_credits <= 0) {
         return NextResponse.json(
           {
-            error: 'AI Credit limit reached. Please upgrade to Advanced for unlimited access.',
+            error: 'AI Credit limit reached. Please upgrade to Flagship for unlimited access.',
             creditsRemaining: 0,
           },
           { status: 403 }

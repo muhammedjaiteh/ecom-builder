@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import type { SiteFontKey, TemplateKey, WebsiteConfig } from './siteTemplates';
+import type { SiteFontKey, SiteTheme, TemplateKey, WebsiteConfig } from './siteTemplates';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Site theme layer — the SINGLE module behind the Customize cockpit's color
@@ -142,20 +142,72 @@ export const TEMPLATE_THEMES: Record<TemplateKey, TemplateThemeMeta> = {
 };
 
 // ── The render seam ──────────────────────────────────────────────────────────
+// Token cascade (Pillar 4): alongside --site-accent/--site-serif the seam now
+// emits, when the theme carries them:
+//   --site-primary : deep brand surface (dark CTA banners, sign-off spread,
+//                    solid checkout buttons)
+//   --site-bg      : page paper
+//   --site-text    : page ink
+//   --site-muted   : DERIVED (never stored) — text mixed 62% into the page
+//                    paper (chosen background ?? the template's default
+//                    paper). Consumed by the secondary-copy spots so a themed
+//                    ink keeps a readable muted companion; themeless pages
+//                    keep every historical muted literal untouched.
+//   --site-radius  : sharp 0px · rounded 0.75rem · pill 9999px
+// FALLBACK LAW unchanged: every consumption point is var(--x, <historical
+// literal>) — an absent token renders byte-identically.
+
+export const RADIUS_VALUES: Record<NonNullable<SiteTheme['button_radius']>, string> = {
+  sharp: '0px',
+  rounded: '0.75rem',
+  pill: '9999px',
+};
+
+/** Deterministic per-channel hex mix: `ratio` of a over (1-ratio) of b. */
+export function mixHex(a: string, b: string, ratio: number): string | null {
+  const ca = parseHex(a);
+  const cb = parseHex(b);
+  if (!ca || !cb) return null;
+  const channel = (i: number) => Math.round(ca[i] * ratio + cb[i] * (1 - ratio));
+  return `#${[0, 1, 2].map((i) => channel(i).toString(16).padStart(2, '0')).join('')}`;
+}
+
+/** The plain string→string variable map for a themed config, or null when the
+ *  config carries no effective theme. Shared by siteThemeStyle (the wrapper
+ *  style attribute) and SiteThemeCascade (the document-root island that lets
+ *  root-layout portals — the Cart drawer — inherit the boutique theme). */
+export function siteThemeVars(
+  config: Pick<WebsiteConfig, 'theme' | 'template_key'>
+): Record<string, string> | null {
+  const theme = config.theme;
+  if (!theme) return null;
+  const vars: Record<string, string> = {};
+  if (theme.accent) vars['--site-accent'] = theme.accent;
+  if (theme.display_font && SITE_FONTS[theme.display_font]) {
+    vars['--site-serif'] = SITE_FONTS[theme.display_font].cssValue;
+  }
+  if (theme.primary) vars['--site-primary'] = theme.primary;
+  if (theme.background) vars['--site-bg'] = theme.background;
+  if (theme.text) {
+    vars['--site-text'] = theme.text;
+    // Muted companion: text softened into the EFFECTIVE paper. TEMPLATE_THEMES
+    // paper is the historical default when no background token is chosen.
+    const paper = theme.background ?? TEMPLATE_THEMES[config.template_key]?.paper;
+    const muted = paper ? mixHex(theme.text, paper, 0.62) : null;
+    if (muted) vars['--site-muted'] = muted;
+  }
+  if (theme.button_radius) vars['--site-radius'] = RADIUS_VALUES[theme.button_radius];
+  return Object.keys(vars).length > 0 ? vars : null;
+}
 
 /** Style-variable payload for a site root wrapper. Returns undefined when the
  *  config carries no effective theme, so the wrapper renders WITHOUT a style
  *  attribute — byte-identical to the pre-theme output. */
-export function siteThemeStyle(config: Pick<WebsiteConfig, 'theme'>): CSSProperties | undefined {
-  const theme = config.theme;
-  if (!theme) return undefined;
-  const style: Record<string, string> = {};
-  if (theme.accent) style['--site-accent'] = theme.accent;
-  if (theme.display_font && SITE_FONTS[theme.display_font]) {
-    style['--site-serif'] = SITE_FONTS[theme.display_font].cssValue;
-  }
-  if (Object.keys(style).length === 0) return undefined;
-  return style as CSSProperties;
+export function siteThemeStyle(
+  config: Pick<WebsiteConfig, 'theme' | 'template_key'>
+): CSSProperties | undefined {
+  const vars = siteThemeVars(config);
+  return vars ? (vars as CSSProperties) : undefined;
 }
 
 // ── WCAG contrast math (the cockpit's guard) ─────────────────────────────────
@@ -219,5 +271,46 @@ export function judgeAccent(templateKey: TemplateKey, accent: string): AccentVer
     vsLabel,
     lowSurfaceContrast: vsPaper < ACCENT_SURFACE_MIN && vsInk < ACCENT_SURFACE_MIN,
     blocked: vsLabel < ACCENT_LABEL_MIN,
+  };
+}
+
+// ── Token-pair guard (Pillar 4 extension) ────────────────────────────────────
+// The cockpit judges the EFFECTIVE page pair — chosen tokens falling back to
+// the template's historical paper/ink — so a text pick is judged against the
+// background it will actually sit on (and vice versa).
+//   · text-on-bg   < 4.5:1 (WCAG 1.4.3, body copy)  → HARD BLOCK
+//   · primary-on-bg < 3:1  (WCAG 1.4.11, surfaces)  → soft warning (a section
+//     panel that melts into the page is a taste problem, not a readability
+//     failure — the seller sees it live and decides).
+
+export type ThemeTokenVerdict = {
+  /** Effective ink vs effective paper. */
+  textOnBg: number;
+  /** Effective primary surface vs effective paper. */
+  primaryOnBg: number;
+  /** HARD BLOCK: body copy below 4.5:1. */
+  textBlocked: boolean;
+  /** Soft warning: the primary surface nearly vanishes against the paper. */
+  primaryLow: boolean;
+};
+
+export function judgeThemeTokens(
+  templateKey: TemplateKey,
+  theme: Pick<SiteTheme, 'primary' | 'background' | 'text'> | undefined
+): ThemeTokenVerdict | null {
+  const meta = TEMPLATE_THEMES[templateKey];
+  const bg = theme?.background ?? meta.paper;
+  const text = theme?.text ?? meta.ink;
+  // Historical primary surfaces per dialect (the literals the templates fall
+  // back to): ritual stone-900 ≈ ink; editorial #141414; vitality panels.
+  const primary = theme?.primary ?? meta.ink;
+  const textOnBg = contrastRatio(text, bg);
+  const primaryOnBg = contrastRatio(primary, bg);
+  if (textOnBg === null || primaryOnBg === null) return null;
+  return {
+    textOnBg,
+    primaryOnBg,
+    textBlocked: textOnBg < ACCENT_LABEL_MIN,
+    primaryLow: primaryOnBg < ACCENT_SURFACE_MIN,
   };
 }

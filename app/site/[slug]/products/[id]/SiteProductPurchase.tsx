@@ -61,7 +61,7 @@ const PURCHASE_STYLES: Record<SiteTone, PurchaseStyles> = {
     stepper: 'inline-flex items-center rounded-full border border-stone-300 bg-white',
     stepperButton: 'flex h-11 w-11 items-center justify-center text-stone-500 transition hover:text-stone-900 disabled:opacity-30',
     stepperValue: 'w-10 text-center text-sm font-bold text-stone-900',
-    primaryButton: 'flex w-full items-center justify-center gap-3 rounded-full bg-stone-900 px-8 py-4 text-[10px] font-bold uppercase tracking-[0.25em] text-white shadow-lg transition hover:bg-stone-700 active:scale-95 sm:w-auto',
+    primaryButton: 'flex w-full items-center justify-center gap-3 rounded-[var(--site-radius,9999px)] bg-[var(--site-primary,oklch(21.6%_0.006_56.043))] px-8 py-4 text-[10px] font-bold uppercase tracking-[0.25em] text-white shadow-lg transition hover:bg-[var(--site-primary,oklch(37.4%_0.01_67.558))] active:scale-95 sm:w-auto',
     secondaryButton: 'flex w-full items-center justify-center gap-3 rounded-full border border-stone-900 bg-white px-8 py-4 text-[10px] font-bold uppercase tracking-[0.25em] text-stone-900 transition hover:bg-stone-900 hover:text-white active:scale-95 sm:w-auto',
     hint: 'text-xs font-medium text-amber-700',
     soldOut: 'rounded-2xl border border-stone-300 bg-white px-6 py-5 text-center',
@@ -69,7 +69,7 @@ const PURCHASE_STYLES: Record<SiteTone, PurchaseStyles> = {
     soldOutBody: 'mt-1 text-xs text-stone-500',
     buyBar: 'border-t border-stone-200 bg-white/95 backdrop-blur',
     buyBarPrice: 'text-lg font-light text-stone-900',
-    buyBarButton: 'flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-full bg-stone-900 px-6 text-[10px] font-bold uppercase tracking-[0.25em] text-white shadow-lg transition active:scale-95',
+    buyBarButton: 'flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-[var(--site-radius,9999px)] bg-[var(--site-primary,oklch(21.6%_0.006_56.043))] px-6 text-[10px] font-bold uppercase tracking-[0.25em] text-white shadow-lg transition active:scale-95',
   },
   editorial: {
     label: 'text-[10px] font-bold uppercase tracking-[0.35em] text-neutral-400',
@@ -78,7 +78,7 @@ const PURCHASE_STYLES: Record<SiteTone, PurchaseStyles> = {
     stepper: 'inline-flex items-center border border-neutral-900 bg-[#F7F5F0]',
     stepperButton: 'flex h-11 w-11 items-center justify-center text-neutral-500 transition hover:text-neutral-900 disabled:opacity-30',
     stepperValue: 'w-10 text-center text-sm font-bold text-neutral-900',
-    primaryButton: 'flex w-full items-center justify-center gap-3 bg-neutral-900 px-9 py-4 text-[10px] font-bold uppercase tracking-[0.3em] text-[#F7F5F0] transition hover:bg-[#1a2e1a] active:scale-95 sm:w-auto',
+    primaryButton: 'flex w-full items-center justify-center gap-3 rounded-[var(--site-radius,0px)] bg-[var(--site-primary,oklch(20.5%_0_0))] px-9 py-4 text-[10px] font-bold uppercase tracking-[0.3em] text-[#F7F5F0] transition hover:bg-[var(--site-primary,#1a2e1a)] active:scale-95 sm:w-auto',
     secondaryButton: 'flex w-full items-center justify-center gap-3 border border-neutral-900 px-9 py-4 text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-900 transition hover:bg-neutral-900 hover:text-[#F7F5F0] active:scale-95 sm:w-auto',
     hint: 'text-xs font-medium text-amber-800',
     soldOut: 'border border-neutral-900 bg-[#F7F5F0] px-6 py-5 text-center',
@@ -86,24 +86,24 @@ const PURCHASE_STYLES: Record<SiteTone, PurchaseStyles> = {
     soldOutBody: 'mt-1 text-xs text-neutral-500',
     buyBar: 'border-t border-neutral-900 bg-[#F7F5F0]/95 backdrop-blur',
     buyBarPrice: 'font-serif text-lg italic text-neutral-900',
-    buyBarButton: 'flex min-h-[48px] flex-1 items-center justify-center gap-2 bg-neutral-900 px-6 text-[10px] font-bold uppercase tracking-[0.3em] text-[#F7F5F0] transition active:scale-95',
+    buyBarButton: 'flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-[var(--site-radius,0px)] bg-[var(--site-primary,oklch(20.5%_0_0))] px-6 text-[10px] font-bold uppercase tracking-[0.3em] text-[#F7F5F0] transition active:scale-95',
   },
   neutral: {
     label: 'text-[10px] font-black uppercase tracking-[0.25em] text-white/50',
-    pill: 'rounded-full border border-white/20 bg-[#111] px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white/70 transition hover:border-[#f0a500]',
-    pillActive: 'rounded-full border border-[#f0a500] bg-[#f0a500] px-4 py-2 text-[10px] font-black uppercase tracking-widest text-black',
+    pill: 'rounded-full border border-white/20 bg-[#111] px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white/70 transition hover:border-[var(--site-accent,#f0a500)]',
+    pillActive: 'rounded-full border border-[var(--site-accent,#f0a500)] bg-[var(--site-accent,#f0a500)] px-4 py-2 text-[10px] font-black uppercase tracking-widest text-black',
     stepper: 'inline-flex items-center rounded-full border border-white/20 bg-[#111]',
     stepperButton: 'flex h-11 w-11 items-center justify-center text-white/60 transition hover:text-white disabled:opacity-30',
     stepperValue: 'w-10 text-center text-sm font-black text-white',
-    primaryButton: 'flex w-full items-center justify-center gap-3 rounded-full bg-[#f0a500] px-8 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-black shadow-lg transition hover:bg-amber-400 active:scale-95 sm:w-auto',
-    secondaryButton: 'flex w-full items-center justify-center gap-3 rounded-full border border-[#f0a500] px-8 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-[#f0a500] transition hover:bg-[#f0a500] hover:text-black active:scale-95 sm:w-auto',
-    hint: 'text-xs font-bold text-[#f0a500]',
+    primaryButton: 'flex w-full items-center justify-center gap-3 rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#f0a500)] px-8 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-black shadow-lg transition hover:bg-[var(--site-accent,oklch(82.8%_0.189_84.429))] active:scale-95 sm:w-auto',
+    secondaryButton: 'flex w-full items-center justify-center gap-3 rounded-[var(--site-radius,9999px)] border border-[var(--site-accent,#f0a500)] px-8 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-[var(--site-accent,#f0a500)] transition hover:bg-[var(--site-accent,#f0a500)] hover:text-black active:scale-95 sm:w-auto',
+    hint: 'text-xs font-bold text-[var(--site-accent,#f0a500)]',
     soldOut: 'rounded-2xl border border-white/15 bg-[#111] px-6 py-5 text-center',
     soldOutTitle: 'text-sm font-black uppercase tracking-widest text-white',
     soldOutBody: 'mt-1 text-xs text-white/50',
     buyBar: 'border-t border-white/10 bg-[#0C0C0C]/95 backdrop-blur',
-    buyBarPrice: 'text-lg font-black text-[#f0a500]',
-    buyBarButton: 'flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-full bg-[#f0a500] px-6 text-[10px] font-black uppercase tracking-[0.2em] text-black shadow-lg transition active:scale-95',
+    buyBarPrice: 'text-lg font-black text-[var(--site-accent,#f0a500)]',
+    buyBarButton: 'flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#f0a500)] px-6 text-[10px] font-black uppercase tracking-[0.2em] text-black shadow-lg transition active:scale-95',
   },
 };
 
@@ -404,7 +404,7 @@ export default function SiteProductPurchase({
       {showTerminal && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4 backdrop-blur-md">
           <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-[#F9F8F6] shadow-2xl">
-            <div className="relative bg-[#1a2e1a] p-6 text-center">
+            <div className="relative bg-[var(--site-primary,#1a2e1a)] p-6 text-center">
               <button
                 type="button"
                 onClick={() => { setShowTerminal(false); setPaymentStep('SELECT'); }}

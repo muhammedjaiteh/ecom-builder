@@ -1,12 +1,14 @@
 import type { Metadata } from 'next';
 import EditorialTemplate from '@/components/site-templates/EditorialTemplate';
 import RitualTemplate from '@/components/site-templates/RitualTemplate';
+import SiteThemeCascade from '@/components/site-templates/SiteThemeCascade';
 import VitalityTemplate from '@/components/site-templates/VitalityTemplate';
 import {
   WebsiteConfigSchema,
   resolveHeroMedia,
   type TemplateKey,
 } from '@/lib/siteTemplates';
+import { siteThemeVars } from '@/lib/siteTheme';
 import { loadSite, requireSite } from './siteData';
 import SiteDraftBadge from './SiteDraftBadge';
 
@@ -62,8 +64,16 @@ export default async function SitePage({ params }: PageProps) {
   // product media never auto-fills the masthead anymore.
   const heroMedia = resolveHeroMedia(site.shop, site.config);
 
+  // Cascade gap (Pillar 4): the Cart drawer mounts in the ROOT layout —
+  // outside this subtree — so the wrapper vars never reach it. The island
+  // mirrors the theme onto document.documentElement while a REAL /site page
+  // is mounted (never in editor/concept previews, which render the same
+  // templates without it).
+  const themeVars = siteThemeVars(site.config);
+
   return (
     <>
+      {themeVars && <SiteThemeCascade vars={themeVars} />}
       {site.isDraftPreview && <SiteDraftBadge />}
       <Template
         shop={site.shop}

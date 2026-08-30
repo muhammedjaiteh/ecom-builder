@@ -98,15 +98,18 @@ export default function NeutralChrome({ shop, config, active, children }: SiteCh
   const collectionsHref = siteCollectionsPath(shop) ?? '#lineup';
   // Deliberate classic-boutique escape (footer only). /shop matches the RAW
   // stored slug, so encode it as-is — lowercasing a legacy value would 404.
-  const shopUrl = shop.shop_slug ? `/shop/${encodeURIComponent(shop.shop_slug)}` : '/';
+  // ?classic=1: the Pillar-1 /shop server bridge 307s published-site shops
+  // back to /site — this param is the escape's documented bypass.
+  const shopUrl = shop.shop_slug ? `/shop/${encodeURIComponent(shop.shop_slug)}?classic=1` : '/';
 
   return (
     // THEME SEAM: mirrors the Vitality home root — a themed config sets
     // --site-accent/--site-serif; absent theme keeps the gold defaults.
-    <div className="min-h-screen bg-[#0C0C0C] font-sans text-white" style={siteThemeStyle(config)}>
+    <div className="min-h-screen bg-[var(--site-bg,#0C0C0C)] font-sans text-[var(--site-text,#ffffff)]" style={siteThemeStyle(config)}>
 
       {/* Sticky dark bar — wordmark home link, gold collection CTA */}
-      <nav className="sticky top-0 z-50 border-b border-white/10 bg-[#0C0C0C]/90 backdrop-blur-md">
+      {/* sticky_nav (Pillar 4): absent/true = the historical sticky nav; false = static. */}
+      <nav className={`${config.theme?.sticky_nav === false ? 'relative' : 'sticky top-0'} z-50 border-b border-white/10 bg-[color-mix(in_srgb,var(--site-bg,#0C0C0C)_90%,transparent)] backdrop-blur-md`}>
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 md:px-10">
           <Link href={base ?? '#'} className="truncate text-lg font-black uppercase tracking-tight">
             {shop.shop_name}
@@ -124,7 +127,7 @@ export default function NeutralChrome({ shop, config, active, children }: SiteCh
             <CartBagButton tone="neutral" />
             <Link
               href={collectionsHref}
-              className={`rounded-full px-6 py-2.5 text-[10px] font-black uppercase tracking-[0.2em] transition active:scale-95 ${
+              className={`rounded-[var(--site-radius,9999px)] px-6 py-2.5 text-[10px] font-black uppercase tracking-[0.2em] transition active:scale-95 ${
                 active === 'collections'
                   ? 'bg-white text-black hover:bg-white/90'
                   : 'bg-[var(--site-accent,#f0a500)] text-black hover:brightness-110'

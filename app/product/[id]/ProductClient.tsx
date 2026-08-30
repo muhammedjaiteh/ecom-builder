@@ -3,8 +3,10 @@
 import { createBrowserClient } from '@supabase/ssr';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
+import useSWR from 'swr';
 import { Phone, ArrowLeft, ShoppingBag, X, Smartphone, Banknote, Copy, Check, ShieldCheck, Truck, HomeIcon } from 'lucide-react';
 import Link from 'next/link';
+import { fetchJSON } from '@/lib/transport';
 import { buildCartLineId, useCart } from '@/components/CartProvider';
 import BuyerReviewForm from '@/components/BuyerReviewForm';
 import ReviewList from '@/components/ReviewList';
@@ -65,6 +67,23 @@ export default function ProductClient({ product: initialProduct }: { product?: M
   // Derived, not state: exactly the old effect's truth table (unknown stock →
   // false) without the setState-in-effect cascade the lint flagged.
   const isOutOfStock = product?.stock_quantity === 0;
+
+  // ── Storefront resolution for the "Sold By" surface (Pillar 1) ───────────
+  // The historical link hardcoded /shop/{slug} (with a phantom 'famwise'
+  // fallback and no URL-encoding), silently bypassing the premium /site
+  // storefronts and custom domains sellers pay for. Same pattern as the
+  // marketplace feed: the encoded /shop link renders INSTANTLY, then upgrades
+  // non-blocking through the cached /api/storefronts batch resolver (the
+  // exact /site serve predicate). No slug at all → no link is minted.
+  const sellerShopId = product?.shops?.id ?? null;
+  const { data: storefrontData } = useSWR(
+    sellerShopId ? `/api/storefronts?ids=${sellerShopId}` : null,
+    (url: string) => fetchJSON<{ paths: Record<string, string> }>(url),
+    { revalidateOnFocus: false }
+  );
+  const soldByHref: string | null =
+    (sellerShopId ? storefrontData?.paths?.[sellerShopId] : undefined) ??
+    (product?.shops?.shop_slug ? `/shop/${encodeURIComponent(product.shops.shop_slug)}` : null);
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -213,22 +232,38 @@ export default function ProductClient({ product: initialProduct }: { product?: M
           {/* Product Details */}
           <div className="flex flex-col justify-center space-y-8 pt-4">
             
-            {/* Shop Badge */}
-            <Link href={`/shop/${product.shops?.shop_slug || 'famwise'}`} className="flex items-center gap-4 group w-max p-2 -ml-2 rounded-full hover:bg-white transition-all">
-              <div className="w-12 h-12 rounded-full overflow-hidden border border-gray-200 bg-gray-50">
-                {product.shops?.logo_url ? (
-                   <img src={product.shops.logo_url} alt="Shop Logo" className="w-full h-full object-cover" />
-                ) : (
-                   <div className="w-full h-full flex items-center justify-center font-serif font-bold text-[#2C3E2C]">{product.shops?.shop_name?.charAt(0) || 'S'}</div>
-                )}
-              </div>
-              <div>
-                <p className="text-[9px] text-gray-400 font-bold tracking-widest uppercase mb-0.5">Sold By</p>
-                <p className="text-lg font-serif text-[#2C3E2C] group-hover:text-green-800 transition-colors">
-                  {product.shops?.shop_name || 'Famwise Store'}
-                </p>
-              </div>
-            </Link>
+            {/* Shop Badge — storefront-resolved (custom domain → /site →
+                /shop); renders as plain identity when no shop link exists. */}
+            {(() => {
+              const badgeBody = (
+                <>
+                  <div className="w-12 h-12 rounded-full overflow-hidden border border-gray-200 bg-gray-50">
+                    {product.shops?.logo_url ? (
+                       <img src={product.shops.logo_url} alt="Shop Logo" className="w-full h-full object-cover" />
+                    ) : (
+                       <div className="w-full h-full flex items-center justify-center font-serif font-bold text-[#2C3E2C]">{product.shops?.shop_name?.charAt(0) || 'S'}</div>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-[9px] text-gray-400 font-bold tracking-widest uppercase mb-0.5">Sold By</p>
+                    <p className="text-lg font-serif text-[#2C3E2C] group-hover:text-green-800 transition-colors">
+                      {product.shops?.shop_name || 'Sanndikaa Boutique'}
+                    </p>
+                  </div>
+                </>
+              );
+              const badgeClass = 'flex items-center gap-4 group w-max p-2 -ml-2 rounded-full hover:bg-white transition-all';
+              if (!soldByHref) {
+                return <div className={badgeClass}>{badgeBody}</div>;
+              }
+              // Custom domains are absolute URLs — a plain anchor, never
+              // next/link's client router.
+              return soldByHref.startsWith('http') ? (
+                <a href={soldByHref} className={badgeClass}>{badgeBody}</a>
+              ) : (
+                <Link href={soldByHref} className={badgeClass}>{badgeBody}</Link>
+              );
+            })()}
 
             {/* Title & Price */}
             <div>

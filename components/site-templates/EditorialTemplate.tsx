@@ -3,6 +3,7 @@ import Link from 'next/link';
 import SmartImage from '@/components/SmartImage';
 import {
   resolveVisibleBlocks,
+  siteCollectionsPath,
   type HeroMedia,
   type SiteBlock,
   type SiteProduct,
@@ -72,6 +73,40 @@ type ProductGridBlock = Extract<SiteBlock, { type: 'product_grid' }>;
 type StoryBlock = Extract<SiteBlock, { type: 'story_text' }>;
 type ProductTabsBlock = Extract<SiteBlock, { type: 'product_tabs' }>;
 type VideoHeroBlock = Extract<SiteBlock, { type: 'video_hero' }>;
+type TestimonialsBlock = Extract<SiteBlock, { type: 'testimonials' }>;
+type SplitCtaBlock = Extract<SiteBlock, { type: 'split_cta' }>;
+
+// ── Inspector depth (Pillar 4): per-dialect padding/align class maps ─────────
+// Coverage in the EDITORIAL dialect: padding on product_grid (header zone) /
+// story_text / product_tabs / testimonials / split_cta (copy column); align on
+// product_grid (header row), story_text (quote), testimonials (heading).
+// cta_banner is the chrome sign-off DESIGN SLOT — no per-block spacing there.
+// Absent keys return the EXACT historical classes — byte-identical law.
+type PadKey = 'compact' | 'default' | 'spacious';
+function editorialPad(p: PadKey | undefined, map: Record<PadKey, string>): string {
+  return map[p ?? 'default'];
+}
+const PAD_GRID_HEAD: Record<PadKey, string> = {
+  compact: 'py-6 md:py-8',
+  default: 'py-10 md:py-14',
+  spacious: 'py-16 md:py-24',
+};
+const PAD_STORY: Record<PadKey, string> = {
+  compact: 'py-12 md:py-20',
+  default: 'py-20 md:py-32',
+  spacious: 'py-28 md:py-44',
+};
+const PAD_16_24: Record<PadKey, string> = {
+  compact: 'py-10 md:py-14',
+  default: 'py-16 md:py-24',
+  spacious: 'py-24 md:py-36',
+};
+const PAD_SPLIT: Record<PadKey, string> = {
+  compact: 'py-8 md:py-12',
+  default: 'py-14 md:py-20',
+  spacious: 'py-20 md:py-32',
+};
+
 
 function EditorialHero({ block, shop, heroMedia }: {
   block: HeroBlock;
@@ -112,7 +147,9 @@ function EditorialHero({ block, shop, heroMedia }: {
             fill
             priority
             sizes="(min-width: 768px) 58vw, 100vw"
-            className="object-cover"
+            // .sndk-parallax: pure-CSS scroll depth (archetype pass) — static
+            // where scroll-timelines/motion are unavailable (globals.css).
+            className="sndk-parallax object-cover"
           />
         ) : (
           /* Null tier (Pillar 4b): the animated brand plate — same gradient
@@ -130,12 +167,12 @@ function EditorialHero({ block, shop, heroMedia }: {
         >
           {block.headline}
         </EditableText>
-        <EditableText as="p" blockId={block.id} field="subheadline" className="max-w-md text-base leading-relaxed text-neutral-600">
+        <EditableText as="p" blockId={block.id} field="subheadline" className="max-w-md text-base leading-relaxed text-[var(--site-muted,oklch(43.9%_0_0))]">
           {block.subheadline}
         </EditableText>
         <a
           href="#collection"
-          className="group inline-flex items-center gap-3 self-start border-b-2 border-neutral-900 pb-1.5 text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-900 transition hover:border-[var(--site-accent,#1a2e1a)] hover:text-[var(--site-accent,#1a2e1a)]"
+          className="group inline-flex items-center gap-3 self-start border-b-2 border-[var(--site-text,oklch(20.5%_0_0))] pb-1.5 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-text,oklch(20.5%_0_0))] transition hover:border-[var(--site-accent,#1a2e1a)] hover:text-[var(--site-accent,#1a2e1a)]"
         >
           Read The Collection
           <span aria-hidden className="transition-transform group-hover:translate-x-1.5">&rarr;</span>
@@ -189,15 +226,15 @@ function EditorialFeatures({ shop, products }: { shop: SiteShop; products: SiteP
               <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-neutral-400">Feature No. 0{i + 1}</p>
               <h2 className="font-serif text-3xl font-bold leading-tight md:text-5xl">{p.name}</h2>
               {p.description && (
-                <p className="line-clamp-3 max-w-md text-sm leading-relaxed text-neutral-600 md:text-base">{p.description}</p>
+                <p className="line-clamp-3 max-w-md text-sm leading-relaxed text-[var(--site-muted,oklch(43.9%_0_0))] md:text-base">{p.description}</p>
               )}
-              <p className="font-serif text-2xl italic text-neutral-900">{editorialPrice(p.price)}</p>
+              <p className="font-serif text-2xl italic text-[var(--site-text,oklch(20.5%_0_0))]">{editorialPrice(p.price)}</p>
               {/* Accent cohesion (Fix 6): the feature CTA rides --site-accent.
                   Fallback #171717 IS neutral-900 — theme-less rendering stays
                   byte-identical; a themed site recolors the outline + fill. */}
               <Link
                 href={editorialProductHref(shop, p.id)}
-                className="inline-flex self-start border border-[var(--site-accent,#171717)] px-9 py-3.5 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-accent,#171717)] transition hover:bg-[var(--site-accent,#171717)] hover:text-[#F7F5F0] active:scale-95"
+                className="inline-flex self-start rounded-[var(--site-radius,0px)] border border-[var(--site-accent,#171717)] px-9 py-3.5 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-accent,#171717)] transition hover:bg-[var(--site-accent,#171717)] hover:text-[#F7F5F0] active:scale-95"
               >
                 View The Piece
               </Link>
@@ -215,12 +252,13 @@ function EditorialGrid({ block, shop, products }: {
   products: SiteProduct[];
 }) {
   return (
+    // padding/align consumption (Pillar 4): grid header zone spacing + layout.
     <section id="collection" data-block-section={block.id} className="border-b border-neutral-900">
-      <div className="flex flex-col items-start justify-between gap-4 px-5 py-10 md:flex-row md:items-baseline md:px-10 md:py-14">
+      <div className={`flex flex-col gap-4 px-5 md:px-10 ${editorialPad(block.padding, PAD_GRID_HEAD)} ${block.align === 'center' ? 'items-center text-center' : 'items-start justify-between md:flex-row md:items-baseline'}`}>
         <EditableText as="h2" blockId={block.id} field="title" className="font-serif text-4xl font-black tracking-tight md:text-5xl">
           {block.title}
         </EditableText>
-        <EditableText as="p" blockId={block.id} field="intro" className="max-w-md text-sm leading-relaxed text-neutral-500">
+        <EditableText as="p" blockId={block.id} field="intro" className="max-w-md text-sm leading-relaxed text-[var(--site-muted,oklch(55.6%_0_0))]">
           {block.intro}
         </EditableText>
       </div>
@@ -256,7 +294,8 @@ function EditorialGrid({ block, shop, products }: {
 
 function EditorialProductTabs({ block }: { block: ProductTabsBlock }) {
   return (
-    <section data-block-section={block.id} className="border-b border-neutral-900 px-5 py-16 md:px-10 md:py-24">
+    // padding consumption (Pillar 4): tabs section spacing.
+    <section data-block-section={block.id} className={`border-b border-neutral-900 px-5 md:px-10 ${editorialPad(block.padding, PAD_16_24)}`}>
       <div className="mx-auto max-w-4xl">
         <EditableText
           as="h2"
@@ -316,6 +355,89 @@ function EditorialVideoHero({ block, shopName }: { block: VideoHeroBlock; shopNa
   );
 }
 
+// Archetype pass (Pillar 3): reader letters in the print dialect — hairline
+// column rules, italic quotes, em-dash attribution. Items are seeded
+// exclusively from real reviews (integrity law).
+function EditorialTestimonials({ block }: { block: TestimonialsBlock }) {
+  return (
+    // padding/align consumption (Pillar 4): quotes spacing + heading alignment.
+    <section data-block-section={block.id} className={`border-b border-neutral-900 px-5 md:px-10 ${editorialPad(block.padding, PAD_16_24)}`}>
+      <div className="mx-auto max-w-5xl">
+        {block.title ? (
+          <EditableText
+            as="h2"
+            blockId={block.id}
+            field="title"
+            className={`font-serif text-3xl font-black tracking-tight md:text-5xl ${block.align === 'center' ? 'text-center' : ''}`}
+          >
+            {block.title}
+          </EditableText>
+        ) : (
+          <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-neutral-400">Letters</p>
+        )}
+        <div className="mt-10 grid grid-cols-1 gap-y-10 md:grid-cols-2 md:gap-x-14">
+          {block.items.map((item, i) => (
+            <figure key={`${block.id}-quote-${i}`} className={`md:pr-2 ${i > 0 ? 'border-t border-neutral-300 pt-10 md:border-t-0 md:pt-0' : ''}`}>
+              <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-neutral-400">No. 0{i + 1}</p>
+              <EditableText
+                as="blockquote"
+                blockId={block.id}
+                field={`items.${i}.quote`}
+                className="mt-4 font-serif text-xl italic leading-relaxed text-[var(--site-text,oklch(20.5%_0_0))] md:text-2xl"
+              >
+                {item.quote}
+              </EditableText>
+              <figcaption className="mt-4">
+                <EditableText
+                  as="span"
+                  blockId={block.id}
+                  field={`items.${i}.author`}
+                  className="text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-muted,oklch(55.6%_0_0))]"
+                >
+                  {item.author}
+                </EditableText>
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// Archetype pass (Pillar 3): the two-panel conversion spread in the hairline
+// dialect — copy column beside a solid accent plate. Square corners, print
+// borders; the accent rides --site-accent with the deep-green default.
+function EditorialSplitCta({ block, shop }: { block: SplitCtaBlock; shop: SiteShop }) {
+  const monogram = (shop.shop_name ?? 'S').trim().charAt(0).toUpperCase() || 'S';
+  return (
+    <section data-block-section={block.id} className="grid grid-cols-1 border-b border-neutral-900 md:grid-cols-2">
+      {/* padding consumption (Pillar 4): split copy-column spacing. */}
+      <div className={`flex flex-col justify-center gap-5 border-neutral-900 px-5 md:border-r md:px-14 ${editorialPad(block.padding, PAD_SPLIT)}`}>
+        <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-[var(--site-accent,#1a2e1a)]">The Invitation</p>
+        <EditableText as="h2" blockId={block.id} field="headline" className="font-serif text-3xl italic leading-tight md:text-5xl">
+          {block.headline}
+        </EditableText>
+        <EditableText as="p" blockId={block.id} field="body" className="max-w-md text-sm leading-relaxed text-[var(--site-muted,oklch(43.9%_0_0))] md:text-base">
+          {block.body}
+        </EditableText>
+        <Link
+          href={siteCollectionsPath(shop) ?? '#collection'}
+          data-block-id={block.id}
+          data-block-field="button_label"
+          className="mt-1 inline-flex self-start rounded-[var(--site-radius,0px)] border border-[var(--site-accent,#171717)] px-9 py-3.5 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-accent,#171717)] transition hover:bg-[var(--site-accent,#171717)] hover:text-[#F7F5F0] active:scale-95"
+        >
+          {block.button_label}
+        </Link>
+      </div>
+      <div aria-hidden className="relative flex min-h-[220px] items-center justify-center bg-[var(--site-accent,#1a2e1a)] md:min-h-[340px]">
+        <span className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(247,245,240,0.14),transparent_60%)]" />
+        <span className="relative font-serif text-[7rem] italic leading-none text-[#F7F5F0]/25 md:text-[11rem]">{monogram}</span>
+      </div>
+    </section>
+  );
+}
+
 // Pull-quote scale guard (Phase 8): brand_story is budgeted to 600 chars but
 // md:text-5xl only reads as a pull-quote for SHORT copy. Beyond 220 chars
 // (~3 display lines at 5xl on a 4xl-max column) the quote steps down to a
@@ -325,7 +447,8 @@ const STORY_LONG_THRESHOLD = 220;
 function EditorialStory({ block, shopName }: { block: StoryBlock; shopName: string | null }) {
   const isLong = block.body.length > STORY_LONG_THRESHOLD;
   return (
-    <section id="story" data-block-section={block.id} className="border-b border-neutral-900 px-5 py-20 md:px-10 md:py-32">
+    // padding/align consumption (Pillar 4): story spacing + quote alignment.
+    <section id="story" data-block-section={block.id} className={`border-b border-neutral-900 px-5 md:px-10 ${editorialPad(block.padding, PAD_STORY)}`}>
       <div className="relative mx-auto max-w-4xl">
         <span aria-hidden className="pointer-events-none absolute -top-10 left-0 select-none font-serif text-[8rem] leading-none text-neutral-300 md:-top-16 md:text-[12rem]">
           &ldquo;
@@ -333,13 +456,13 @@ function EditorialStory({ block, shopName }: { block: StoryBlock; shopName: stri
         {/* Fix 1: the quote-clearing padding moved onto this relative wrapper
             (paint order over the glyph preserved) so the clamp island wraps a
             clean copy node — StoryClamp renders it bare in editor previews. */}
-        <div className="relative pt-14 md:pt-20">
+        <div className={`relative pt-14 md:pt-20 ${block.align === 'center' ? 'text-center' : ''}`}>
           <StoryClamp tone="editorial">
             <EditableText
               as="blockquote"
               blockId={block.id}
               field="body"
-              className={`font-serif italic text-neutral-900 ${
+              className={`font-serif italic text-[var(--site-text,oklch(20.5%_0_0))] ${
                 isLong ? 'text-2xl leading-[1.35] md:text-3xl' : 'text-3xl leading-[1.2] md:text-5xl'
               }`}
             >
@@ -347,7 +470,7 @@ function EditorialStory({ block, shopName }: { block: StoryBlock; shopName: stri
             </EditableText>
           </StoryClamp>
         </div>
-        <p className="mt-9 text-[10px] font-bold uppercase tracking-[0.35em] text-neutral-500">&mdash; {shopName}</p>
+        <p className="mt-9 text-[10px] font-bold uppercase tracking-[0.35em] text-[var(--site-muted,oklch(55.6%_0_0))]">&mdash; {shopName}</p>
       </div>
     </section>
   );
@@ -410,6 +533,18 @@ export default function EditorialTemplate({ shop, products, config, heroMedia }:
             return (
               <Reveal key={block.id} delay={Math.min(i * 0.05, 0.15)}>
                 <EditorialVideoHero block={block} shopName={shop.shop_name} />
+              </Reveal>
+            );
+          case 'testimonials':
+            return (
+              <Reveal key={block.id} delay={Math.min(i * 0.05, 0.15)}>
+                <EditorialTestimonials block={block} />
+              </Reveal>
+            );
+          case 'split_cta':
+            return (
+              <Reveal key={block.id} delay={Math.min(i * 0.05, 0.15)}>
+                <EditorialSplitCta block={block} shop={shop} />
               </Reveal>
             );
           default:

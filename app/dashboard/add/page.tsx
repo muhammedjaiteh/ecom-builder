@@ -123,7 +123,7 @@ export default function AddProductPage() {
 
       // Handle 403 credit exhaustion error
       if (response.status === 403) {
-        setAiError(data.error || 'AI Credit limit reached. Please upgrade to Advanced for unlimited access.');
+        setAiError(data.error || 'AI Credit limit reached. Please upgrade to Flagship for unlimited access.');
         return;
       }
 
@@ -583,7 +583,7 @@ export default function AddProductPage() {
                         <p className="text-sm font-semibold text-red-900 break-words">{aiError}</p>
                           {aiError.includes('limit reached') && (
                             <Link href="/pricing" className="mt-2 inline-block text-xs font-bold text-red-600 hover:text-red-700 underline">
-                              Upgrade to Advanced for Unlimited AI →
+                              Upgrade to Flagship for Unlimited AI →
                             </Link>
                           )}
                         </div>

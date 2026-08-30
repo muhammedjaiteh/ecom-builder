@@ -56,6 +56,8 @@ export const SECTION_LABELS: Record<SiteBlockType, string> = {
   cta_banner: 'Closing banner',
   product_tabs: 'Product tabs',
   video_hero: 'Brand film',
+  testimonials: 'Customer quotes',
+  split_cta: 'Split spread',
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -65,12 +67,17 @@ export const SECTION_LABELS: Record<SiteBlockType, string> = {
 // only ceiling. Descriptions feed the add-bar and the mobile add sheet.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// 'testimonials' is DELIBERATELY absent from the add catalog: quote items
+// enter a config exclusively from real product reviews at generation time
+// (integrity law — the platform never fabricates a customer's words). An
+// existing testimonials block stays fully editable/hidable/removable.
 export const SECTION_CATALOG: ReadonlyArray<{ type: SiteBlockType; description: string }> = [
   { type: 'hero_banner', description: 'A bold opening banner — headline, support line, and CTAs' },
   { type: 'value_props', description: 'Trust points that ride the moving brand banner' },
   { type: 'product_grid', description: 'Your live products, as a grid or a carousel' },
   { type: 'story_text', description: 'A brand-story passage in your own voice' },
   { type: 'cta_banner', description: 'A dark closing banner with one clear call to action' },
+  { type: 'split_cta', description: 'A two-panel spread — your pitch beside a bold accent panel' },
   { type: 'product_tabs', description: 'Details, delivery and returns in tidy tabs' },
   { type: 'video_hero', description: 'A cinematic Ad Studio commercial on your page' },
 ];
@@ -290,6 +297,8 @@ export const BLOCK_ID_PREFIXES: Record<SiteBlockType, string> = {
   cta_banner: 'cta',
   product_tabs: 'tabs',
   video_hero: 'film',
+  testimonials: 'quotes',
+  split_cta: 'split',
 };
 
 /** Canonical-anatomy insert rules for every addable type: a new section
@@ -303,6 +312,9 @@ export const INSERT_RULES: Record<SiteBlockType, { anchor: SiteBlockType; fallba
   cta_banner: { anchor: 'cta_banner', fallback: 'end' },
   product_tabs: { anchor: 'product_grid', fallback: 'before_cta' },
   video_hero: { anchor: 'hero_banner', fallback: 'start' },
+  // Quotes elaborate on the story; the split spread converts near the story.
+  testimonials: { anchor: 'story_text', fallback: 'before_cta' },
+  split_cta: { anchor: 'story_text', fallback: 'before_cta' },
 };
 
 // ── Starter builders (full catalog, Item 2) — real, sellable on-brand
@@ -364,9 +376,23 @@ export function buildCtaBannerBlock(id: string): SiteBlock {
   };
 }
 
+/** Starter copy for a seller-added split spread — real, sellable defaults
+ *  inside the SITE_COPY_LIMITS budgets. */
+export function buildSplitCtaBlock(id: string): SiteBlock {
+  return {
+    id,
+    type: 'split_cta',
+    headline: 'Made To Be Kept',
+    body: 'One line on why this collection earns its place — the material, the craft, or the feeling it delivers.',
+    button_label: 'Explore The Collection',
+  };
+}
+
 /** Catalog dispatch for the picker-less types. video_hero returns null — it
  *  REQUIRES an Ad Studio selection (never an invented URL, Law 4), so the
- *  editor routes it through the film picker instead. */
+ *  editor routes it through the film picker instead. testimonials returns
+ *  null too — quotes come only from real reviews (integrity law), so there is
+ *  no starter to mint; the type is also absent from SECTION_CATALOG. */
 export function buildBlockForType(type: SiteBlockType, id: string): SiteBlock | null {
   switch (type) {
     case 'hero_banner': return buildHeroBannerBlock(id);
@@ -375,7 +401,9 @@ export function buildBlockForType(type: SiteBlockType, id: string): SiteBlock | 
     case 'story_text': return buildStoryTextBlock(id);
     case 'cta_banner': return buildCtaBannerBlock(id);
     case 'product_tabs': return buildProductTabsBlock(id);
+    case 'split_cta': return buildSplitCtaBlock(id);
     case 'video_hero': return null;
+    case 'testimonials': return null;
   }
 }
 
@@ -451,10 +479,20 @@ export function buildStarterValueProp(): { title: string; body: string } {
 
 // Starter items per repeatable group ("type:groupPath") — a new group in the
 // registry ships its starter here and the generic add path just works.
+// 'testimonials:items' has NO starter ON PURPOSE: a starter quote would be a
+// fabricated customer voice (integrity law) — the rail disables the add
+// button via hasGroupStarter below; quotes arrive only from real reviews.
 const GROUP_STARTERS: Record<string, () => Record<string, string>> = {
   'value_props:items': buildStarterValueProp,
   'product_tabs:tabs': buildStarterTab,
 };
+
+/** Whether a repeatable group has a legitimate starter — the SectionRail
+ *  disables its add button when this is false (a no-op enabled button would
+ *  be a silent failure). */
+export function hasGroupStarter(type: SiteBlockType, groupPath: string): boolean {
+  return `${type}:${groupPath}` in GROUP_STARTERS;
+}
 
 /** Generic bounded group add — no-op at the registry ceiling or without a
  *  starter. Replaces the bespoke addTabToBlock/addValuePropToBlock pair. */
@@ -528,5 +566,9 @@ export function blockExcerpt(block: SiteBlock): string {
       return block.title;
     case 'video_hero':
       return block.headline ?? 'Brand film';
+    case 'testimonials':
+      return block.title ?? block.items[0]?.quote ?? '';
+    case 'split_cta':
+      return block.headline;
   }
 }

@@ -27,12 +27,13 @@ import {
 } from 'lucide-react';
 import { SITE_TEMPLATES, type ShopWebsiteRow } from '@/lib/siteTemplates';
 import { resolveDashboardUser } from '@/lib/dashboardAuth';
+import { canUseStudio } from '@/lib/tiers';
 import { useShopRow } from '@/lib/useShopRow';
 import { fetchJSON, isTransportError } from '@/lib/transport';
 import { websiteContentKey } from '@/lib/swrCache';
 import { useCanonicalShopSlug } from '@/lib/useCanonicalShopSlug';
 
-const WEBSITE_TIERS = ['advanced', 'flagship'];
+// Tier gate: lib/tiers canUseStudio — Pro+ (legacy 'advanced' kept).
 
 type SampleProduct = {
   id: string;
@@ -83,8 +84,7 @@ export default function OnlineStorePagesPage() {
   // dashboard instead of this page's own bare shops query.
   const { shop, verdict: shopVerdict, error: shopError } = useShopRow(userId);
 
-  const tier = (shop?.subscription_tier ?? '').toLowerCase().trim();
-  const hasAccess = WEBSITE_TIERS.includes(tier);
+  const hasAccess = canUseStudio(shop?.subscription_tier);
   const siteSlug = useCanonicalShopSlug(shop?.shop_slug ?? null, hasAccess);
 
   useEffect(() => {
@@ -201,7 +201,9 @@ export default function OnlineStorePagesPage() {
               </div>
               {boutiqueSlug && (
                 <a
-                  href={`/shop/${encodeURIComponent(boutiqueSlug)}`}
+                  // ?classic=1: this row IS the classic boutique — bypass the
+                  // Pillar-1 /shop bridge (published-site shops 307 to /site).
+                  href={`/shop/${encodeURIComponent(boutiqueSlug)}?classic=1`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-1.5 rounded-full bg-emerald-50 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-emerald-700 ring-1 ring-emerald-200 transition hover:bg-emerald-100"
@@ -220,7 +222,7 @@ export default function OnlineStorePagesPage() {
               <h2 className="mt-5 font-serif text-2xl font-bold">Your AI website&apos;s pages live here.</h2>
               <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-white/60">
                 Generate a complete standalone storefront in the AI Website Studio and this list grows
-                with its home page — publish state, preview links, and all. Exclusive to the Advanced tier.
+                with its home page — publish state, preview links, and all. Included from the Pro tier.
               </p>
               <p className="mt-4 flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-widest text-white/40">
                 <Lock size={12} /> Locked on your current plan
@@ -229,7 +231,7 @@ export default function OnlineStorePagesPage() {
                 href="/pricing"
                 className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#f0a500] px-7 py-3 text-[11px] font-black uppercase tracking-widest text-black transition hover:bg-amber-400 active:scale-95"
               >
-                <Crown size={14} /> Upgrade to Advanced
+                <Crown size={14} /> Upgrade to Pro
               </Link>
             </div>
           )}

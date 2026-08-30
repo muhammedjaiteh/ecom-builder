@@ -18,6 +18,7 @@ import {
   Check,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { TIER_BY_ID } from '@/lib/tiers';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared motion presets
@@ -59,27 +60,31 @@ const SHOWCASE_FRAMES = [
   { gradient: 'from-indigo-950 via-violet-900 to-purple-800', hook: 'Cashmere, Quiet As Snow', tag: 'Fashion' },
 ];
 
+// One pricing truth — lib/tiers TIER_MATRIX (founder matrix 2026-08-29:
+// Starter D100 · Pro D250 · Flagship D750). Bullets are condensed but each
+// names a shipped feature; the unverifiable item/credit-count claims the old
+// hardcoded cards carried are gone.
 const TIERS = [
   {
-    name: 'Starter',
-    price: 'D399',
-    blurb: 'Open your boutique and make your first sales.',
-    features: ['Up to 10 items', 'Mobile-first storefront', '3 AI photo upgrades / month'],
+    name: TIER_BY_ID.starter.name,
+    price: `D${TIER_BY_ID.starter.monthlyPrice}`,
+    blurb: TIER_BY_ID.starter.tagline,
+    features: ['Your own boutique page', 'WhatsApp checkout + order tracking', 'Customer reviews & sales analytics'],
     dark: false,
   },
   {
-    name: 'Pro',
-    price: 'D1,500',
-    blurb: 'Unlimited inventory with the full AI toolkit.',
-    features: ['Unlimited inventory', 'Verified Seller badge', '50 AI photos + 10 ad scripts'],
+    name: TIER_BY_ID.pro.name,
+    price: `D${TIER_BY_ID.pro.monthlyPrice}`,
+    blurb: TIER_BY_ID.pro.tagline,
+    features: ['AI Website Studio + live Site Editor', 'Premium layouts & brand colors', 'Verified Pro badge + feed placement'],
     dark: false,
     popular: true,
   },
   {
-    name: 'Advanced',
-    price: 'D2,500',
-    blurb: 'The enterprise suite — including your AI-built website.',
-    features: ['Unlimited AI generation', 'AI Website Generator', 'Priority placement + custom domain'],
+    name: TIER_BY_ID.flagship.name,
+    price: `D${TIER_BY_ID.flagship.monthlyPrice}`,
+    blurb: TIER_BY_ID.flagship.tagline,
+    features: ['VIP placement — top of every feed', 'Custom domain with automatic SSL', 'WhatsApp customer broadcast engine'],
     dark: true,
   },
 ];
@@ -229,7 +234,7 @@ export default function LandingPage() {
               className="mt-6 max-w-xl text-lg leading-relaxed text-gray-600"
             >
               Upload one photo. Sanndikaa&apos;s AI builds a photorealistic luxury scene around your product,
-              turns it into a scroll-stopping video ad, and — on the Advanced tier — generates your entire
+              turns it into a scroll-stopping video ad, and — from the Pro tier — generates your entire
               storefront website. Enterprise-grade selling, minutes not months.
             </motion.p>
 
@@ -311,7 +316,7 @@ export default function LandingPage() {
             {
               icon: Globe,
               title: 'AI Website Generator',
-              body: 'Advanced tier: the AI studies your inventory, picks a niche-matched template, and generates your entire storefront — copy, layout, and hero film included.',
+              body: 'From the Pro tier: the AI studies your inventory, picks a niche-matched template, and generates your entire storefront — copy, layout, and hero film included.',
               accent: 'bg-violet-50 text-violet-700',
               badge: 'Advanced',
             },

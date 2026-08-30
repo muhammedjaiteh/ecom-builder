@@ -28,14 +28,15 @@ import WebsiteGeneratorStudio, { type StudioShop } from '@/components/website/We
 import { CoachDot, CoachLegend, useCoachMarks } from '@/components/website/CoachMarks';
 import { SITE_TEMPLATES, WebsiteConfigSchema, type ShopWebsiteRow, type WebsiteConfig } from '@/lib/siteTemplates';
 import { slugify } from '@/lib/slugify';
+import { canUseStudio } from '@/lib/tiers';
 import { resolveDashboardUser } from '@/lib/dashboardAuth';
 import { useShopRow } from '@/lib/useShopRow';
 import { fetchJSON, isTransportError } from '@/lib/transport';
 import { createPersistedSwrProvider, websiteContentKey } from '@/lib/swrCache';
 import { flushWebsiteOutbox } from '@/lib/offlineOutbox';
 
-// Same gate as the studio and every website API route.
-const WEBSITE_TIERS = ['advanced', 'flagship'];
+// Same gate as the studio and every website API route — lib/tiers
+// canUseStudio (Pro+, founder matrix 2026-08-29; legacy 'advanced' kept).
 
 // 🚀 Premium Locks for Themes
 const THEMES = [
@@ -231,10 +232,10 @@ export default function OnlineStoreThemesPage() {
   };
 
   const hasPremiumAccess = subscriptionTier === 'pro' || subscriptionTier === 'advanced' || subscriptionTier === 'flagship';
-  const hasWebsiteAccess = WEBSITE_TIERS.includes((subscriptionTier ?? '').toLowerCase().trim());
+  const hasWebsiteAccess = canUseStudio(subscriptionTier);
 
   const handlePremiumClick = (itemName: string) => {
-    alert(`The ${itemName} design is locked. Upgrade to District PRO or ADVANCED to unlock premium branding features!`);
+    alert(`The ${itemName} design is locked. Upgrade to Pro to unlock premium branding features!`);
     router.push('/dashboard/settings');
   };
 

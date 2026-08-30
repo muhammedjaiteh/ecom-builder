@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 import { SITE_CHROMES, type SiteTone } from '@/components/site-templates/chrome';
 import { EditorialGridFillers } from '@/components/site-templates/chrome/EditorialChrome';
+import SiteThemeCascade from '@/components/site-templates/SiteThemeCascade';
 import {
   WebsiteConfigSchema,
   siteCollectionsPath,
@@ -9,6 +10,7 @@ import {
   type SiteProduct,
   type WebsiteConfig,
 } from '@/lib/siteTemplates';
+import { siteThemeVars } from '@/lib/siteTheme';
 import { loadSite, loadSiteCatalog, requireSite, type SiteCatalogPage } from '../siteData';
 import SiteDraftBadge from '../SiteDraftBadge';
 
@@ -227,8 +229,13 @@ export default async function SiteCollectionsPage({ params, searchParams }: Page
   const basePath = siteCollectionsPath(site.shop) ?? `/site/${slug}/collections`;
   const productHref = (p: SiteProduct) => siteProductPath(site.shop, p.id) ?? `/product/${p.id}`;
 
+  // Cascade gap (Pillar 4): mirror the theme onto document.documentElement so
+  // the root-layout Cart drawer wears the boutique tokens on this page too.
+  const themeVars = siteThemeVars(site.config);
+
   return (
     <>
+      {themeVars && <SiteThemeCascade vars={themeVars} />}
       {site.isDraftPreview && <SiteDraftBadge />}
       <Chrome shop={site.shop} config={site.config} active="collections">
         <Body site={site.config.site} catalog={catalog} basePath={basePath} productHref={productHref} />

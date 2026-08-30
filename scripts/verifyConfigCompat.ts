@@ -12,14 +12,22 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
+  ARCHETYPES,
   WebsiteConfigSchema,
+  WebsiteGenerationSchema,
+  applyArchetype,
   blocksToLegacySite,
   buildPreviousDesign,
+  buildTestimonialsFromReviews,
+  generationToConfig,
   legacySiteToBlocks,
+  pickConceptArchetypes,
   resolveBlocks,
   resolveVisibleBlocks,
+  type SiteBlock,
   type WebsiteConfig,
 } from '../lib/siteTemplates';
+import { judgeAccent, judgeThemeTokens, siteThemeVars } from '../lib/siteTheme';
 
 let failures = 0;
 
@@ -379,6 +387,191 @@ if (legacyResult.success && newResult.success) {
       JSON.stringify(stripPrevious(restoredTwice)) === JSON.stringify(stripPrevious(configB)));
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PILLAR 3 — archetype pass: new block types + honest testimonial seeding.
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('Archetype block-type checks (Pillar 3):');
+
+const legacyParsedP3 = WebsiteConfigSchema.parse(legacyConfig);
+const baseBlocksP3 = legacySiteToBlocks(legacyParsedP3.site);
+
+const testimonialsBlock: SiteBlock = {
+  id: 'testimonials',
+  type: 'testimonials',
+  title: 'In Their Words',
+  items: [
+    { quote: 'The serum arrived in two days and my skin has never felt calmer.', author: 'Fatou · Verified Purchase' },
+    { quote: 'Beautiful packaging, honest sizing, and the oil smells incredible.', author: 'Verified buyer' },
+  ],
+};
+const splitCtaBlock: SiteBlock = {
+  id: 'split-cta',
+  type: 'split_cta',
+  headline: 'Made To Be Kept',
+  body: 'Cold-pressed oils in amber glass — blended weekly, delivered fast.',
+  button_label: 'Explore The Collection',
+};
+
+check('config with testimonials + split_cta validates',
+  WebsiteConfigSchema.safeParse({ ...legacyConfig, blocks: [...baseBlocksP3, testimonialsBlock, splitCtaBlock] }).success);
+check('testimonials below 2 quotes is rejected',
+  !WebsiteConfigSchema.safeParse({
+    ...legacyConfig,
+    blocks: [...baseBlocksP3, { ...testimonialsBlock, items: testimonialsBlock.type === 'testimonials' ? testimonialsBlock.items.slice(0, 1) : [] }],
+  }).success);
+check('testimonials above 6 quotes is rejected',
+  !WebsiteConfigSchema.safeParse({
+    ...legacyConfig,
+    blocks: [...baseBlocksP3, {
+      ...testimonialsBlock,
+      items: Array.from({ length: 7 }, (_, i) => ({ quote: `A real quote number ${i + 1} with substance.`, author: 'Verified buyer' })),
+    }],
+  }).success);
+
+// The mirror stays TOTAL: new types have no site.* counterpart and fall
+// through blocksToLegacySite untouched.
+const mirroredWithNew = blocksToLegacySite([...baseBlocksP3, testimonialsBlock, splitCtaBlock], legacyParsedP3.site);
+check('new types do not perturb the site.* mirror',
+  JSON.stringify(mirroredWithNew) === JSON.stringify(legacyParsedP3.site));
+
+// Honest seeding: quotes come only from qualifying reviews; too few → null.
+const seeded = buildTestimonialsFromReviews([
+  { rating: 5, comment: 'Absolutely stunning craftsmanship, worth every dalasi.', reviewer_name: 'Awa', verified_purchase: true },
+  { rating: 4, comment: 'Fast delivery and the fit is exactly as described.', reviewer_name: null, external_author: 'Instagram' },
+  { rating: 2, comment: 'Not for me.', reviewer_name: 'X' },
+  { rating: 5, comment: 'ok', reviewer_name: 'Y' },
+]);
+check('review seeding builds a valid block from qualifying reviews',
+  seeded !== null && seeded.items.length === 2 &&
+  WebsiteConfigSchema.safeParse({ ...legacyConfig, blocks: [...baseBlocksP3, seeded] }).success);
+check('review seeding refuses to fabricate (0 reviews → no block)',
+  buildTestimonialsFromReviews([]) === null);
+check('review seeding refuses thin evidence (1 quote → no block)',
+  buildTestimonialsFromReviews([
+    { rating: 5, comment: 'One glowing sentence about the product quality.', reviewer_name: 'Solo' },
+  ]) === null);
+
+// ── Full archetype assembly: generation → applyArchetype → strict validation
+console.log('Archetype assembly checks:');
+
+const generationSample = WebsiteGenerationSchema.parse({
+  template_key: 'ritual',
+  niche_reasoning: 'Beauty oils suit the minimal ritual anatomy.',
+  hero: { tagline: 'Skin Rituals, Perfected', headline: 'Skin Drinks Golden Light', subheadline: 'Cold-pressed oils for skin that keeps its glow.' },
+  value_props: [
+    { title: 'Cold-Pressed', body: 'Pressed within days of harvest.' },
+    { title: 'Small Batches', body: 'Blended weekly, never warehoused.' },
+  ],
+  product_grid: { title: 'The Ritual Edit', intro: 'Nine oils and serums, one calm routine.' },
+  story: { body: 'We started at a kitchen table with one bottle of marula oil and a belief: skincare should be food for the skin.' },
+  cta: { headline: 'Your Skin Remembers Ritual', subtext: 'Order before noon and it ships the same day.', button_label: 'Begin The Ritual' },
+  seo: { title: 'Golden Ritual Oils', description: 'Cold-pressed marula and baobab skincare, blended in small batches.' },
+  split_cta: { headline: 'Kept In Amber Glass', body: 'Light-proof bottles keep every active potent to the last drop.', button_label: 'See The Oils' },
+});
+
+for (const key of Object.keys(ARCHETYPES) as Array<keyof typeof ARCHETYPES>) {
+  const archetype = ARCHETYPES[key];
+  const assembled = applyArchetype(
+    generationToConfig(generationSample),
+    archetype,
+    generationSample,
+    [
+      { rating: 5, comment: 'Absolutely stunning craftsmanship, worth every dalasi.', reviewer_name: 'Awa', verified_purchase: true },
+      { rating: 5, comment: 'Fast delivery and the glow is real — my third order.', reviewer_name: 'Mariama' },
+    ]
+  );
+  const parsedAssembled = WebsiteConfigSchema.safeParse(assembled);
+  check(`archetype "${key}" assembly validates strictly`, parsedAssembled.success,
+    parsedAssembled.success ? undefined : JSON.stringify(parsedAssembled.error.issues).slice(0, 300));
+  check(`archetype "${key}" pins its base template`, assembled.template_key === archetype.template_key);
+  check(`archetype "${key}" blocks follow its blockMix order`,
+    JSON.stringify((assembled.blocks ?? []).map((b) => b.type)) === JSON.stringify(archetype.blockMix));
+  // WCAG guard: every shipped preset must clear its own cockpit gates.
+  const accentVerdict = archetype.theme.accent ? judgeAccent(archetype.template_key, archetype.theme.accent) : null;
+  check(`archetype "${key}" accent clears the CTA-label guard`,
+    accentVerdict !== null && !accentVerdict.blocked,
+    accentVerdict ? `label ${accentVerdict.vsLabel.toFixed(2)}:1` : 'unparsable accent');
+  const tokenVerdict = judgeThemeTokens(archetype.template_key, archetype.theme);
+  check(`archetype "${key}" text/background clears 4.5:1`,
+    tokenVerdict !== null && !tokenVerdict.textBlocked,
+    tokenVerdict ? `text ${tokenVerdict.textOnBg.toFixed(2)}:1` : 'unparsable tokens');
+}
+
+// Deterministic variety: the pick is stable per shop and varies across shops.
+const pickA = pickConceptArchetypes('11111111-1111-4111-8111-111111111111', 'skincare');
+const pickA2 = pickConceptArchetypes('11111111-1111-4111-8111-111111111111', 'skincare');
+check('archetype pick is deterministic per shop',
+  pickA[0].key === pickA2[0].key && pickA[1].key === pickA2[1].key);
+check('archetype pick pitches two different bundles', pickA[0].key !== pickA[1].key);
+const variedPair = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map((c) =>
+  pickConceptArchetypes(`${c}${c}${c}${c}${c}${c}${c}${c}-0000-4000-8000-000000000000`, 'skincare')[0].key
+);
+check('archetype pick varies across shop ids', new Set(variedPair).size > 1, variedPair.join(','));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PILLAR 4 — token cascade + inspector depth supersets.
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('Theme-token superset checks (Pillar 4):');
+
+check('full token theme validates',
+  WebsiteConfigSchema.safeParse({
+    ...legacyConfig,
+    theme: { accent: '#7a5c33', display_font: 'bodoni', primary: '#1d1a15', background: '#12100d', text: '#e8e2d6', button_radius: 'sharp', sticky_nav: false },
+  }).success);
+check('partial token theme validates (radius only)',
+  WebsiteConfigSchema.safeParse({ ...legacyConfig, theme: { button_radius: 'pill' } }).success);
+check('sticky_nav-only theme validates',
+  WebsiteConfigSchema.safeParse({ ...legacyConfig, theme: { sticky_nav: false } }).success);
+check('legacy accent+font theme still validates',
+  WebsiteConfigSchema.safeParse({ ...legacyConfig, theme: { accent: '#1a2e1a', display_font: 'lora' } }).success);
+check('non-hex primary is rejected',
+  !WebsiteConfigSchema.safeParse({ ...legacyConfig, theme: { primary: 'charcoal' } }).success);
+check('css-injection background is rejected',
+  !WebsiteConfigSchema.safeParse({ ...legacyConfig, theme: { background: '#123456; background:url(x)' } }).success);
+check('unknown button_radius is rejected',
+  !WebsiteConfigSchema.safeParse({ ...legacyConfig, theme: { button_radius: 'circle' } }).success);
+check('non-boolean sticky_nav is rejected',
+  !WebsiteConfigSchema.safeParse({ ...legacyConfig, theme: { sticky_nav: 'yes' } }).success);
+
+// The var seam: full tokens emit every variable (muted derived from text/bg);
+// a theme-less config emits nothing (byte-identical law).
+const fullVars = siteThemeVars({
+  template_key: 'ritual',
+  theme: { accent: '#7a5c33', primary: '#1d1a15', background: '#12100d', text: '#e8e2d6', button_radius: 'sharp' },
+} as Pick<WebsiteConfig, 'theme' | 'template_key'>);
+check('siteThemeVars emits the full token set (+ derived muted)',
+  fullVars !== null &&
+  ['--site-accent', '--site-primary', '--site-bg', '--site-text', '--site-muted', '--site-radius'].every((k) => Boolean(fullVars[k])));
+check('siteThemeVars emits nothing for a theme-less config',
+  siteThemeVars({ template_key: 'ritual', theme: undefined } as Pick<WebsiteConfig, 'theme' | 'template_key'>) === null);
+
+console.log('Inspector-depth superset checks (Pillar 4):');
+
+const paddedBlocks = baseBlocksP3.map((b) =>
+  b.type === 'product_grid' ? { ...b, padding: 'spacious' as const, align: 'left' as const } : b
+);
+check('padding/align on a classic block validates',
+  WebsiteConfigSchema.safeParse({ ...legacyConfig, blocks: paddedBlocks }).success);
+check('padding/align on EVERY variant validates',
+  WebsiteConfigSchema.safeParse({
+    ...legacyConfig,
+    blocks: [...baseBlocksP3.map((b) => ({ ...b, padding: 'compact' as const, align: 'center' as const })), { ...testimonialsBlock, padding: 'spacious' as const }, { ...splitCtaBlock, align: 'left' as const }],
+  }).success);
+check('unknown padding value is rejected',
+  !WebsiteConfigSchema.safeParse({
+    ...legacyConfig,
+    blocks: baseBlocksP3.map((b) => (b.type === 'story_text' ? { ...b, padding: 'huge' } : b)),
+  }).success);
+check('unknown align value is rejected',
+  !WebsiteConfigSchema.safeParse({
+    ...legacyConfig,
+    blocks: baseBlocksP3.map((b) => (b.type === 'cta_banner' ? { ...b, align: 'right' } : b)),
+  }).success);
+check('padding/align do not perturb the site.* mirror',
+  JSON.stringify(blocksToLegacySite(paddedBlocks, legacyParsedP3.site)) === JSON.stringify(legacyParsedP3.site));
+check('legacy row (no new keys anywhere) STILL validates untouched',
+  WebsiteConfigSchema.safeParse(legacyConfig).success);
 
 if (failures > 0) {
   console.error(`\n${failures} check(s) FAILED`);

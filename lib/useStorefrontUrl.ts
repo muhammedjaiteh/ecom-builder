@@ -33,11 +33,12 @@ import useSWR from 'swr';
 import { fetchJSON, isTransportError } from '@/lib/transport';
 import { websiteContentKey } from '@/lib/swrCache';
 import type { ShopWebsiteRow } from '@/lib/siteTemplates';
+import { canUseStudio } from '@/lib/tiers';
 import { resolveStorefrontPath, toAbsoluteStorefrontUrl as toAbsolute } from '@/lib/storefrontUrl';
 import { useCanonicalShopSlug } from '@/lib/useCanonicalShopSlug';
 
-// Same value as the publish/content/domains routes — the serve gates agree.
-const WEBSITE_TIERS = ['advanced', 'flagship'];
+// Tier gate: lib/tiers canUseStudio — the same predicate the content API
+// enforces server-side, so the fetch only fires for qualifying tiers.
 
 /** Minimal shops-row shape the hook needs — lib/types.ts Shop satisfies it. */
 export type StorefrontShop = {
@@ -69,9 +70,7 @@ export function toAbsoluteStorefrontUrl(url: string): string {
 }
 
 export function useStorefrontUrl(shop: StorefrontShop | null | undefined): string | null {
-  const tierQualifies = WEBSITE_TIERS.includes(
-    (shop?.subscription_tier ?? '').toLowerCase().trim()
-  );
+  const tierQualifies = canUseStudio(shop?.subscription_tier);
 
   const { data: website } = useSWR<WebsiteRowWithDomain | null>(
     shop && tierQualifies ? websiteContentKey(shop.id) : null,

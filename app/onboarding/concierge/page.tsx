@@ -4,6 +4,7 @@ import { createBrowserClient } from '@supabase/ssr';
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { CheckCircle2, Sparkles, Loader2, CreditCard } from 'lucide-react';
+import { CONCIERGE_PRICE, SUPPORT_WHATSAPP, invoicePlanFor } from '@/lib/tiers';
 
 function CheckoutEngine() {
   const [shopName, setShopName] = useState<string>('my boutique');
@@ -29,17 +30,12 @@ function CheckoutEngine() {
     loadShop();
   }, [router, supabase]);
 
-  const getPlanPrice = (tier: string) => {
-    if (tier === 'pro') return 1500;
-    if (tier === 'advanced' || tier === 'flagship') return 2500;
-    return 399; 
-  };
-
-  const planName = shopTier.charAt(0).toUpperCase() + shopTier.slice(1);
-  const planPrice = getPlanPrice(shopTier);
-  const conciergePrice = 500;
+  // One pricing truth: lib/tiers (founder matrix 2026-08-29). A legacy
+  // 'advanced' plan intent invoices as Flagship — advanced is no longer sold.
+  const { name: planName, price: planPrice } = invoicePlanFor(shopTier);
+  const conciergePrice = CONCIERGE_PRICE;
   const totalWithConcierge = planPrice + conciergePrice;
-  const adminNumber = '447599710468';
+  const adminNumber = SUPPORT_WHATSAPP;
 
   const handleFullCheckout = () => {
     // 🧠 BROWSER MEMORY: Remember they wanted the Done-For-You service
@@ -78,7 +74,7 @@ function CheckoutEngine() {
           <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div>
               <div className="flex items-center gap-2 mb-2"><Sparkles size={20} className="text-yellow-400" /><h2 className="text-xl font-bold font-serif">Sanndikaa Concierge</h2></div>
-              <p className="text-sm text-emerald-100 leading-relaxed max-w-sm">Skip the hard work. For a one-time fee of <strong className="text-white">D500</strong>, our expert team will build your entire luxury store in 48 hours.</p>
+              <p className="text-sm text-emerald-100 leading-relaxed max-w-sm">Skip the hard work. For a one-time fee of <strong className="text-white">D{conciergePrice}</strong>, our expert team will build your entire luxury store in 48 hours.</p>
             </div>
             <div className="shrink-0 text-left md:text-right border-t border-emerald-800/50 md:border-t-0 md:border-l md:pl-6 pt-4 md:pt-0">
               <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-400">Total with Concierge</p>

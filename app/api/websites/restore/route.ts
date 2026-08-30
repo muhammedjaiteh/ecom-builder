@@ -4,6 +4,7 @@ import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { repairShopSlug, slugify } from '@/lib/slugify';
+import { canUseStudio } from '@/lib/tiers';
 import {
   WebsiteConfigSchema,
   buildPreviousDesign,
@@ -30,7 +31,8 @@ import {
 // the very next /site request.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const WEBSITE_TIERS = ['advanced', 'flagship'];
+// Tier gate: lib/tiers canUseStudio — Pro+ (Studio moved down to Pro,
+// founder matrix 2026-08-29; legacy 'advanced' payers keep access).
 
 type OwnerGate =
   | { ok: true; shop: { id: string; shop_name: string | null; shop_slug: string | null } }
@@ -68,12 +70,11 @@ async function requireOwner(): Promise<OwnerGate> {
     return { ok: false, response: NextResponse.json({ error: 'Shop profile not found.' }, { status: 404 }) };
   }
 
-  const tier = (shop.subscription_tier ?? '').toLowerCase().trim();
-  if (!WEBSITE_TIERS.includes(tier)) {
+  if (!canUseStudio(shop.subscription_tier)) {
     return {
       ok: false,
       response: NextResponse.json(
-        { error: 'The AI Website Generator is an Advanced-tier feature.' },
+        { error: 'The AI Website Studio is a Pro-tier feature.' },
         { status: 403 }
       ),
     };

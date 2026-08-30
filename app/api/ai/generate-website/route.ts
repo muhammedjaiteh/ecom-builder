@@ -6,20 +6,24 @@ import { cookies } from 'next/headers';
 import { generateWithFallback } from '@/lib/llm';
 import { ELITE_COPY_RULES } from '@/lib/adCopy';
 import { repairShopSlug, slugify } from '@/lib/slugify';
+import { canUseStudio } from '@/lib/tiers';
 import { runSiteAssetPhase } from '@/lib/siteAssets';
 import {
-  CONCEPT_TEMPLATE_KEYS,
+  ARCHETYPES,
   ConceptPairSchema,
   SITE_TEMPLATES,
   SiteConceptSchema,
   TEMPLATE_KEYS,
   WebsiteGenerationSchema,
+  applyArchetype,
   buildPreviousDesign,
-  conceptTemplateFromCategory,
   generationToConfig,
+  pickConceptArchetypes,
   templateFromCategory,
+  type SiteArchetype,
   type SiteConcept,
   type TemplateKey,
+  type TestimonialSourceReview,
 } from '@/lib/siteTemplates';
 
 // AI Website Generator — Advanced tier only. Two-step premium flow:
@@ -35,7 +39,8 @@ import {
 // optional templateOverride), exactly as the original single-step generator.
 export const maxDuration = 120;
 
-const WEBSITE_TIERS = ['advanced', 'flagship'];
+// Tier gate: lib/tiers canUseStudio — Pro+ (Studio moved down to Pro,
+// founder matrix 2026-08-29; legacy 'advanced' payers keep access).
 
 export async function POST(req: Request) {
   try {
@@ -71,10 +76,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Shop profile not found.' }, { status: 404 });
     }
 
-    const tier = (shop.subscription_tier ?? '').toLowerCase().trim();
-    if (!WEBSITE_TIERS.includes(tier)) {
+    if (!canUseStudio(shop.subscription_tier)) {
       return NextResponse.json(
-        { error: 'The AI Website Generator is an Advanced-tier feature. Upgrade to unlock your generated storefront.' },
+        { error: 'The AI Website Studio is a Pro-tier feature. Upgrade to unlock your generated storefront.' },
         { status: 403 }
       );
     }
@@ -161,32 +165,30 @@ export async function POST(req: Request) {
       .join('\n');
 
     // ═══════════════════════════════════════════════════════════════════════
-    // STEP 1 — Design consultation: two distinct concepts, no full pipeline.
-    // The pitch is constrained to the TWO structurally distinct layouts
-    // (CONCEPT_TEMPLATE_KEYS): 'ritual' = Minimal, 'editorial' = Editorial
-    // magazine. 'vitality' remains render-valid for legacy rows/overrides but
-    // is never offered here.
+    // STEP 1 — Design consultation: two distinct ARCHETYPE pitches (Pillar 3).
+    // An archetype = (template base × theme preset × block mix) bundle; the
+    // TWO pitched per shop come from pickConceptArchetypes — niche-fitting
+    // candidates rotated by the shop-id hash, so two cosmetics shops are
+    // pitched different pairs (deterministic variety, stable per shop).
     // ═══════════════════════════════════════════════════════════════════════
     if (step === 'concepts') {
-      const conceptCatalog = CONCEPT_TEMPLATE_KEYS
-        .map((k) => {
-          const t = SITE_TEMPLATES[k];
-          return `- "${t.key}" — ${t.name} (${t.niche}): ${t.description}`;
-        })
-        .join('\n');
-
-      // Concept-pair-safe heuristic for the dynamic hint below.
-      const conceptHeuristic = conceptTemplateFromCategory(dominantCategory);
+      const [primary, secondary] = pickConceptArchetypes(shop.id, dominantCategory);
 
       // STATIC block (cachedSystem): byte-identical on every request — role,
-      // layout catalog (built from SITE_TEMPLATES constants), copy rules,
-      // and the output field spec. Per-request data lives ONLY in `prompt`.
+      // the FULL archetype catalog (built from ARCHETYPES constants), copy
+      // rules, and the output field spec. Changed ONCE for the archetype
+      // pass and byte-stable from here — the per-request pair assignment
+      // lives ONLY in `prompt`.
+      const archetypeCatalog = Object.values(ARCHETYPES)
+        .map((a) => `- "${a.key}" (renders on the "${a.template_key}" layout — ${SITE_TEMPLATES[a.template_key].name}): ${a.name}. ${a.vibe} Voice: ${a.copyDirection}`)
+        .join('\n');
+
       const cachedSystem = `You are the creative director for Sanndikaa, running a design consultation for one of our sellers. Propose exactly TWO distinct premium storefront concepts they will choose between. This is positioning copy only — short, evocative, decisive. Do NOT write the full site.
 
-AVAILABLE LAYOUTS:
-${conceptCatalog}
+THE ARCHETYPE CATALOG (each bundles a layout, a palette direction, and a voice):
+${archetypeCatalog}
 
-You MUST return exactly one concept per layout above — the two template_key values must be different, one for each layout. Each concept must feel like it came from a different creative agency: different mood, different angle on the same inventory. Ground every line in the actual products (materials, ingredients, categories) the user provides.
+The user names the TWO archetypes to pitch. Write exactly one concept per named archetype, in the order given, honoring that archetype's vibe and voice precisely. Each concept must feel like it came from a different creative agency: different mood, different angle on the same inventory. Ground every line in the actual products (materials, ingredients, categories) the user provides.
 
 ${ELITE_COPY_RULES}
 
@@ -194,9 +196,10 @@ ${ELITE_COPY_RULES}
 
 Return a JSON object:
 - "niche_reasoning" : 1-2 sentences on this shop's niche and why these two directions suit it
-- "concepts"        : EXACTLY 2 items, each a DIFFERENT template_key, each:
+- "concepts"        : EXACTLY 2 items, in the user's archetype order, each:
   {
-    "template_key"     : one of ${CONCEPT_TEMPLATE_KEYS.map((k) => `"${k}"`).join(' | ')}
+    "template_key"     : the named archetype's layout key (one of ${TEMPLATE_KEYS.map((k) => `"${k}"`).join(' | ')})
+    "archetype_key"    : the named archetype's key, verbatim
     "concept_name"     : evocative 2-4 word concept title (max 60 chars) — like an agency pitch name
     "tagline"          : 3-8 word brand essence line (max 80 chars)
     "vibe"             : 1-2 sentences describing the mood and feel of this direction (max 240 chars)
@@ -212,7 +215,11 @@ ${shop.bio ? `- Bio: ${shop.bio}` : ''}
 INVENTORY (${products.length} products, first 15 shown):
 ${inventorySummary}
 
-NICHE HINT: dominant category "${dominantCategory ?? 'unknown'}" → heuristic layout "${conceptHeuristic}". Lead with the strongest-fit layout, then a genuinely different second direction.`;
+PITCH THESE TWO ARCHETYPES, IN THIS ORDER:
+1. "${primary.key}" — ${primary.name}
+2. "${secondary.key}" — ${secondary.name}
+
+NICHE CONTEXT: dominant category "${dominantCategory ?? 'unknown'}".`;
 
       const { data: pair, provider } = await generateWithFallback({
         schema: ConceptPairSchema,
@@ -221,19 +228,16 @@ NICHE HINT: dominant category "${dominantCategory ?? 'unknown'}" → heuristic l
         callerName: 'generate-website:concepts',
       });
 
-      // Belt-and-suspenders: deterministically pin the pair to the two offered
-      // layouts even if the model drifted (repeated a key, or reached for
-      // 'vitality', which the shared SiteConceptSchema still accepts).
-      const conceptKeys = CONCEPT_TEMPLATE_KEYS as readonly TemplateKey[];
-      if (!conceptKeys.includes(pair.concepts[0].template_key)) {
-        pair.concepts[0].template_key = conceptHeuristic;
-      }
-      const remaining = conceptKeys.find((k) => k !== pair.concepts[0].template_key)!;
-      if (pair.concepts[1].template_key !== remaining) {
-        pair.concepts[1].template_key = remaining;
-      }
+      // Belt-and-suspenders: deterministically PIN both concepts to the two
+      // assigned archetypes (template + archetype key) even if the model
+      // drifted — the pitch copy stays, the routing facts are ours.
+      const assigned: [SiteArchetype, SiteArchetype] = [primary, secondary];
+      pair.concepts.forEach((concept, i) => {
+        concept.template_key = assigned[i].template_key;
+        concept.archetype_key = assigned[i].key;
+      });
 
-      console.log(`[generate-website] Concepts by ${provider} for shop ${shop.id}: ${pair.concepts.map((c) => `${c.template_key}/"${c.concept_name}"`).join(' vs ')}`);
+      console.log(`[generate-website] Concepts by ${provider} for shop ${shop.id}: ${pair.concepts.map((c) => `${c.archetype_key}(${c.template_key})/"${c.concept_name}"`).join(' vs ')}`);
 
       return NextResponse.json({
         step: 'concepts',
@@ -245,19 +249,33 @@ NICHE HINT: dominant category "${dominantCategory ?? 'unknown'}" → heuristic l
 
     // ═══════════════════════════════════════════════════════════════════════
     // STEP 2 — Execution: full pipeline for the chosen concept/template.
+    // Archetype resolution (Pillar 3): a concept carrying archetype_key
+    // executes as that bundle — theme preset + block mix applied after
+    // generation. Concepts without it (pre-archetype clients, manual
+    // templateOverride, the legacy no-step path) run the classic pipeline
+    // byte-identically.
     // ═══════════════════════════════════════════════════════════════════════
+    const archetype: SiteArchetype | null =
+      concept?.archetype_key ? ARCHETYPES[concept.archetype_key] ?? null : null;
+
+    // The archetype's base template ALWAYS wins over a drifted concept key —
+    // the bundle is the contract the seller approved.
     const chosenTemplate: TemplateKey | undefined =
-      concept?.template_key ?? (templateOverride as TemplateKey | undefined);
+      archetype?.template_key ?? concept?.template_key ?? (templateOverride as TemplateKey | undefined);
+
+    const archetypeDirection = archetype
+      ? `\n\nARCHETYPE DIRECTION — the approved bundle is "${archetype.name}". ${archetype.vibe}\nVOICE: ${archetype.copyDirection}\nWrite the split_cta object for this site (see the field spec) — it renders as the two-panel conversion spread this archetype composes.`
+      : '';
 
     const templateConstraint = concept
-      ? `TEMPLATE CONSTRAINT: the seller approved the "${concept.template_key}" concept. You MUST set template_key to "${concept.template_key}" and write niche_reasoning explaining how this direction is styled for their inventory.
+      ? `TEMPLATE CONSTRAINT: the seller approved the "${chosenTemplate ?? concept.template_key}" concept. You MUST set template_key to "${chosenTemplate ?? concept.template_key}" and write niche_reasoning explaining how this direction is styled for their inventory.
 
 APPROVED CREATIVE DIRECTION — honor it precisely, refine and expand it into the full site, never contradict it:
 - Concept: ${concept.concept_name}
 - Tagline direction: ${concept.tagline}
 - Vibe: ${concept.vibe}
 - Palette & styling: ${concept.palette}
-- Approved hero direction: "${concept.hero_headline}" — "${concept.hero_subheadline}"`
+- Approved hero direction: "${concept.hero_headline}" — "${concept.hero_subheadline}"${archetypeDirection}`
       : chosenTemplate
         ? `TEMPLATE CONSTRAINT: the seller has explicitly chosen the "${chosenTemplate}" template. You MUST set template_key to "${chosenTemplate}" and write niche_reasoning explaining how this template will be styled for their inventory.`
         : `TEMPLATE SELECTION: choose the single best template_key for this inventory. Heuristic suggestion based on the dominant category ("${dominantCategory ?? 'unknown'}"): "${heuristicTemplate}" — but override it if the actual product mix clearly fits another niche better. Explain your choice in niche_reasoning.`;
@@ -267,10 +285,11 @@ APPROVED CREATIVE DIRECTION — honor it precisely, refine and expand it into th
     // all requests — role, template catalog (built from SITE_TEMPLATES
     // constants), elite copy rules, and the full output field spec. This is
     // the massive stable prefix the ephemeral cache keys on. Changed ONCE for
-    // the Phase-3 block model, ONCE more for the Phase-8 brevity mandate
-    // (terseness exemption deleted; targets well under every cap; value_props
-    // window 2-4), and byte-stable again from here — no per-request data
-    // inside.
+    // the Phase-3 block model, ONCE for the Phase-8 brevity mandate, and ONCE
+    // MORE for the archetype pass (the optional split_cta field spec below) —
+    // byte-stable again from here, no per-request data inside. The archetype
+    // itself is per-request and rides ONLY the dynamic prompt
+    // (archetypeDirection inside templateConstraint).
     // DYNAMIC block (prompt): shop identity, inventory, and the per-request
     // template constraint / approved concept — anything here in the cached
     // block would silently kill every cache hit.
@@ -304,7 +323,8 @@ Return a JSON object:
   }
 - "story"            : the brand-story block — { "body": 2-3 short sentences of origin/craft in the brand's voice (target ~280 chars, max 600) }
 - "cta"              : the closing banner block — { "headline": target ~40 chars, max 90; "subtext": one sentence, target ~90 chars, max 200; "button_label": 2-5 words }
-- "seo"              : { "title": max 70 chars including the shop name, "description": target ~140 chars, max 170 }`;
+- "seo"              : { "title": max 70 chars including the shop name, "description": target ~140 chars, max 170 }
+- "split_cta"        : OPTIONAL — write it ONLY when the user's instructions ask for it. A two-panel conversion spread, distinct from "cta" (never repeat its copy): { "headline": target ~40 chars, max 90; "body": one sentence, target ~90 chars, max 200; "button_label": 2-5 words }`;
 
     const prompt = `SHOP:
 - Name: ${shop.shop_name}
@@ -326,11 +346,43 @@ ${templateConstraint}`;
     // site.* mirror via blocksToLegacySite — both representations stored
     // consistently, so block-driven templates and legacy consumers
     // (VitalityTemplate, tone bodies, seo metadata) read the same copy.
-    const config = generationToConfig(generation);
+    let config = generationToConfig(generation);
 
     // Belt-and-suspenders: enforce the chosen template even if the model drifted.
     if (chosenTemplate) {
       config.template_key = chosenTemplate;
+    }
+
+    // ── Archetype application (Pillar 3) ──────────────────────────────────
+    // Theme preset + block mix + the conditional new sections:
+    //   · split_cta from the model's optional object (skipped when absent);
+    //   · testimonials from REAL product reviews (rating ≥ 4 with substance)
+    //     — the read is best-effort and a failure/empty result just means NO
+    //     testimonials section (integrity law: never a fabricated quote).
+    // The classic path (no archetype) never enters this branch.
+    if (archetype) {
+      let reviewRows: TestimonialSourceReview[] | null = null;
+      try {
+        const productIds = products.map((p) => p.id).filter(Boolean);
+        if (productIds.length > 0) {
+          const { data: reviews, error: reviewsError } = await admin
+            .from('reviews')
+            .select('rating, comment, reviewer_name, external_author, verified_purchase')
+            .in('product_id', productIds)
+            .gte('rating', 4)
+            .order('created_at', { ascending: false })
+            .limit(12);
+          if (reviewsError) {
+            console.warn('[generate-website] reviews read failed — testimonials skipped:', reviewsError.message);
+          } else {
+            reviewRows = (reviews ?? []) as TestimonialSourceReview[];
+          }
+        }
+      } catch (reviewsFatal) {
+        console.warn('[generate-website] reviews read threw — testimonials skipped:', reviewsFatal);
+      }
+      config = applyArchetype(config, archetype, generation, reviewRows);
+      console.log(`[generate-website] Archetype "${archetype.key}" applied for shop ${shop.id}: blocks=[${(config.blocks ?? []).map((b) => b.type).join(', ')}]`);
     }
 
     console.log(`[generate-website] Config by ${provider} for shop ${shop.id}: template=${config.template_key} — ${config.niche_reasoning}`);

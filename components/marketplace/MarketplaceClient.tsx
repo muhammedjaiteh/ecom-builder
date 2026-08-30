@@ -322,7 +322,10 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
   const renderProductCard = (product: ProductWithShop) => {
     const imgUrl = product.image_urls?.[0] || product.image_url;
     const tier = (product.shop?.subscription_tier || 'starter').toLowerCase().trim();
-    const isAdvanced = tier === 'advanced';
+    // Gold "Featured" family = flagship + legacy advanced (Blind Spot fix:
+    // flagship ranks ABOVE advanced in the feed but historically rendered
+    // with NO badge at all — the top payer showed less than the tier below).
+    const isAdvanced = tier === 'advanced' || tier === 'flagship';
     const isPro = tier === 'pro';
     const stats = reviewStats.get(product.id);
 
@@ -829,7 +832,8 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                 <div className="grid grid-cols-1 gap-6 px-4 md:grid-cols-2 md:gap-8 md:px-10">
                   {shops.map((shop) => {
                     const tier = (shop.subscription_tier || 'starter').toLowerCase().trim();
-                    const isAdvanced = tier === 'advanced';
+                    // Gold family = flagship + legacy advanced (see card note).
+                    const isAdvanced = tier === 'advanced' || tier === 'flagship';
                     const isPro = tier === 'pro';
 
                     return (

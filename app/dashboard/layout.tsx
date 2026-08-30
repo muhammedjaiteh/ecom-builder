@@ -10,6 +10,7 @@ import DashboardSidebar from '@/components/dashboard/DashboardSidebar';
 import VaultDoor from '@/components/dashboard/VaultDoor';
 import { resolveDashboardUser } from '@/lib/dashboardAuth';
 import { createPersistedSwrProvider } from '@/lib/swrCache';
+import { CONCIERGE_PRICE, SUPPORT_WHATSAPP, invoicePlanFor } from '@/lib/tiers';
 import { useShopRow } from '@/lib/useShopRow';
 import { fetchJSON } from '@/lib/transport';
 
@@ -114,25 +115,24 @@ function DashboardGate({ userId, children }: { userId: string; children: React.R
   const shopName = shop?.shop_name ?? null;
 
   // 🧠 THE MAGIC: read the seller's plan memory and mint the personalized
-  // professional invoice (unchanged logic — only the row source moved).
+  // professional invoice. Prices flow from lib/tiers (founder matrix
+  // 2026-08-29: Starter D100 · Pro D250 · Flagship D750); a legacy 'advanced'
+  // localStorage intent invoices as Flagship — advanced is no longer sold.
   const paymentLink = useMemo(() => {
-    const fallback = 'https://wa.me/447599710468';
+    const fallback = `https://wa.me/${SUPPORT_WHATSAPP}`;
     if (typeof window === 'undefined') return fallback;
     if (status !== 'pending' && status !== 'suspended') return fallback;
 
     const savedPlan = localStorage.getItem('sanndikaa_plan') || 'starter';
     const savedConcierge = localStorage.getItem('sanndikaa_concierge') || 'no';
 
-    let planPrice = 399;
-    let planName = 'Starter';
-    if (savedPlan === 'pro') { planPrice = 1500; planName = 'Pro'; }
-    if (savedPlan === 'advanced' || savedPlan === 'flagship') { planPrice = 2500; planName = 'Advanced'; }
+    const { name: planName, price: planPrice } = invoicePlanFor(savedPlan);
 
     let total = planPrice;
     let conciergeText = '';
     if (savedConcierge === 'yes') {
-      total += 500;
-      conciergeText = `\nI also added the *Done-For-You Setup* (D500).`;
+      total += CONCIERGE_PRICE;
+      conciergeText = `\nI also added the *Done-For-You Setup* (D${CONCIERGE_PRICE}).`;
     }
 
     const shopNameStr = shopName || 'my boutique';
@@ -140,7 +140,7 @@ function DashboardGate({ userId, children }: { userId: string; children: React.R
     // The Ultimate Professional Invoice Message
     const msg = `✨ *Sanndikaa Store Activation*\n\nHello Admin! I need to complete my payment to unlock the dashboard for *${shopNameStr}*.\n\nI selected the *${planName} Plan* (D${planPrice}).${conciergeText}\n\n*Total Due: D${total}*\n\nHow do I send my payment?`;
 
-    return `https://wa.me/447599710468?text=${encodeURIComponent(msg)}`;
+    return `https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent(msg)}`;
   }, [status, shopName]);
 
   // Real-time activation handoff: VaultDoor watched the shops row (realtime +

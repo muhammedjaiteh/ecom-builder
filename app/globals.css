@@ -98,3 +98,28 @@ body {
     animation: none;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Archetype pass (Pillar 3) — .sndk-parallax: the subtle CSS-only depth
+   treatment on hero media and brand plates. Pure CSS scroll-driven animation
+   (animation-timeline: view()) — ZERO JavaScript, zero cost on 2G beyond the
+   rule bytes. Progressive enhancement by @supports: browsers without
+   scroll-timelines render the exact static hero; prefers-reduced-motion is
+   honored by the media gate. The paired scale guarantees object-cover never
+   exposes edges while the frame drifts.
+   ───────────────────────────────────────────────────────────────────────── */
+@keyframes sndk-parallax-drift {
+  from { transform: translateY(-4%) scale(1.08); }
+  to { transform: translateY(4%) scale(1.08); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .sndk-parallax {
+      animation: sndk-parallax-drift linear both;
+      animation-timeline: view();
+      /* Drive the drift across the hero's own journey through the viewport. */
+      animation-range: cover 0% cover 100%;
+    }
+  }
+}

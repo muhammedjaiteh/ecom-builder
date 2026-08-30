@@ -4,9 +4,11 @@ import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { repairShopSlug, slugify } from '@/lib/slugify';
+import { canUseStudio } from '@/lib/tiers';
 
 // Toggles the shop's generated website between draft and published.
-const WEBSITE_TIERS = ['advanced', 'flagship'];
+// Tier gate: lib/tiers canUseStudio — Pro+ (Studio moved down to Pro,
+// founder matrix 2026-08-29; legacy 'advanced' payers keep access).
 
 export async function POST(req: Request) {
   try {
@@ -46,10 +48,9 @@ export async function POST(req: Request) {
     if (!shop) {
       return NextResponse.json({ error: 'Shop profile not found.' }, { status: 404 });
     }
-    const tier = (shop.subscription_tier ?? '').toLowerCase().trim();
-    if (!WEBSITE_TIERS.includes(tier)) {
+    if (!canUseStudio(shop.subscription_tier)) {
       return NextResponse.json(
-        { error: 'The AI Website Generator is an Advanced-tier feature.' },
+        { error: 'The AI Website Studio is a Pro-tier feature. Upgrade to unlock it.' },
         { status: 403 }
       );
     }

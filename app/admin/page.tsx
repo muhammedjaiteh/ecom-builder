@@ -48,21 +48,24 @@ import { useIsMobileViewport } from '@/lib/useIsMobileViewport';
 import { fetchJSON, isTransportError } from '@/lib/transport';
 import { resolveAdmin } from '@/lib/adminGuard';
 import { buildWhatsAppLink } from '@/lib/orderFlow';
+import { TIER_BY_ID, TIER_MATRIX, TIER_PRICE_RANGE } from '@/lib/tiers';
 
-// ── Pricing law (mirrors app/dashboard/layout.tsx invoice logic) ─────────────
-const PLAN_PRICING: Record<string, { label: string; price: number }> = {
-  starter: { label: 'Starter', price: 399 },
-  pro: { label: 'Pro', price: 1500 },
-  advanced: { label: 'Advanced', price: 2500 },
-  flagship: { label: 'Flagship', price: 2500 },
-};
-const PRICE_RANGE = 'D399–D2,500';
+// ── Pricing law — lib/tiers TIER_MATRIX (founder matrix 2026-08-29:
+// Starter D100 · Pro D250 · Flagship D750). 'advanced' is NO LONGER SOLD:
+// a legacy requested_plan of 'advanced' invoices as Flagship, and the
+// activation options below offer only the sellable ladder. Existing advanced
+// payers keep their tier untouched (legacy honoring — lib/tiers predicates).
+const PLAN_PRICING: Record<string, { label: string; price: number }> = Object.fromEntries([
+  ...TIER_MATRIX.map((t) => [t.id, { label: t.name, price: t.monthlyPrice }]),
+  // Legacy plan intents resolve to the Flagship invoice.
+  ['advanced', { label: 'Flagship', price: TIER_BY_ID.flagship.monthlyPrice }],
+]);
+const PRICE_RANGE = TIER_PRICE_RANGE;
 
 const TIER_OPTIONS: Array<{ tier: string; label: string; price: number; desc: string }> = [
-  { tier: 'starter', label: 'Starter', price: 399, desc: 'Core boutique on the marketplace' },
-  { tier: 'pro', label: 'Pro', price: 1500, desc: 'Growth toolkit for serious sellers' },
-  { tier: 'advanced', label: 'Advanced', price: 2500, desc: 'Unlocks the AI Website Studio' },
-  { tier: 'flagship', label: 'Flagship', price: 2500, desc: 'Everything, top priority support' },
+  { tier: 'starter', label: 'Starter', price: TIER_BY_ID.starter.monthlyPrice, desc: 'Core boutique on the marketplace' },
+  { tier: 'pro', label: 'Pro', price: TIER_BY_ID.pro.monthlyPrice, desc: 'Unlocks the AI Website Studio' },
+  { tier: 'flagship', label: 'Flagship', price: TIER_BY_ID.flagship.monthlyPrice, desc: 'VIP placement + custom domain' },
 ];
 
 const dalasi = (n: number) => `D${n.toLocaleString('en-US')}`;
@@ -118,8 +121,12 @@ function timeAgo(iso: string): string {
 }
 
 function planFor(requestedPlan: string | null | undefined) {
-  const key = (requestedPlan ?? '').toLowerCase().trim();
-  return PLAN_PRICING[key] ? { key, ...PLAN_PRICING[key] } : null;
+  const raw = (requestedPlan ?? '').toLowerCase().trim();
+  if (!PLAN_PRICING[raw]) return null;
+  // Legacy 'advanced' intents resolve to the Flagship KEY too — the approval
+  // default must select a tier that exists on the sellable ladder.
+  const key = raw === 'advanced' ? 'flagship' : raw;
+  return { key, ...PLAN_PRICING[raw] };
 }
 
 /** Prefilled payment-confirmation WhatsApp message (admin → seller). */

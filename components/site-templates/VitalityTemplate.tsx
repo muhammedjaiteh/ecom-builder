@@ -1,12 +1,21 @@
 import Link from 'next/link';
 import SmartImage from '@/components/SmartImage';
+import EditableText from '@/components/site-templates/EditableText';
 import GatedVideo from '@/components/site-templates/GatedVideo';
 import HeroBrandPlate from '@/components/site-templates/HeroBrandPlate';
 import Reveal from '@/components/site-templates/Reveal';
 import SiteMarquee from '@/components/site-templates/SiteMarquee';
 import SiteSearch from '@/components/site-templates/SiteSearch';
 import StoryClamp from '@/components/site-templates/StoryClamp';
-import { siteBasePath, siteCollectionsPath, siteProductPath, type SiteTemplateProps } from '@/lib/siteTemplates';
+import {
+  findBlock,
+  resolveVisibleBlocks,
+  siteBasePath,
+  siteCollectionsPath,
+  siteProductPath,
+  type SiteBlock,
+  type SiteTemplateProps,
+} from '@/lib/siteTemplates';
 import { siteThemeStyle } from '@/lib/siteTheme';
 
 // VITALITY — Health, Fitness & Bold General Brands.
@@ -21,16 +30,122 @@ function price(p: number | null) {
   return p == null ? '' : `D${Number(p).toLocaleString()}`;
 }
 
+type TestimonialsBlock = Extract<SiteBlock, { type: 'testimonials' }>;
+type SplitCtaBlock = Extract<SiteBlock, { type: 'split_cta' }>;
+
+// ── Inspector depth (Pillar 4): per-dialect padding/align class maps ─────────
+// Coverage in the VITALITY dialect: the classic anatomy is site.*-driven
+// (no per-block params by construction), so ONLY the archetype-slot sections
+// consume — padding + align (heading) on testimonials, padding on split_cta.
+type PadKey = 'compact' | 'default' | 'spacious';
+function vitalityPad(p: PadKey | undefined, map: Record<PadKey, string>): string {
+  return map[p ?? 'default'];
+}
+const PAD_16_20: Record<PadKey, string> = {
+  compact: 'py-10 md:py-12',
+  default: 'py-16 md:py-20',
+  spacious: 'py-24 md:py-32',
+};
+
+
+// Archetype pass (Pillar 3): customer receipts in the street dialect — dark
+// cards, condensed uppercase attribution, accent quote marks. Items are
+// seeded exclusively from real reviews (integrity law).
+function VitalityTestimonials({ block }: { block: TestimonialsBlock }) {
+  return (
+    // padding/align consumption (Pillar 4): quotes spacing + heading alignment.
+    <section data-block-section={block.id} className={`mx-auto max-w-7xl px-5 md:px-10 ${vitalityPad(block.padding, PAD_16_20)}`}>
+      {block.title && (
+        <EditableText as="h2" blockId={block.id} field="title" className={`text-3xl font-black uppercase tracking-tight md:text-4xl ${block.align === 'center' ? 'text-center' : ''}`}>
+          {block.title}
+        </EditableText>
+      )}
+      <div className={`grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 ${block.title ? 'mt-10' : ''}`}>
+        {block.items.map((item, i) => (
+          <figure key={`${block.id}-quote-${i}`} className="rounded-2xl border border-white/10 bg-[#111] p-6 md:p-8">
+            <span aria-hidden className="text-4xl font-black leading-none text-[var(--site-accent,#f0a500)]">&ldquo;</span>
+            <EditableText
+              as="blockquote"
+              blockId={block.id}
+              field={`items.${i}.quote`}
+              className="mt-2 text-base font-bold leading-relaxed text-white/90 md:text-lg"
+            >
+              {item.quote}
+            </EditableText>
+            <figcaption className="mt-4">
+              <EditableText
+                as="span"
+                blockId={block.id}
+                field={`items.${i}.author`}
+                className="text-[10px] font-black uppercase tracking-[0.25em] text-white/40"
+              >
+                {item.author}
+              </EditableText>
+            </figcaption>
+          </figure>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// Archetype pass (Pillar 3): the two-panel spread — copy beside a solid
+// accent panel. Skewed CTA keeps the street register; the panel rides
+// --site-accent with the electric-gold default.
+function VitalitySplitCta({ block, shopName, collectionsHref }: {
+  block: SplitCtaBlock;
+  shopName: string | null;
+  collectionsHref: string;
+}) {
+  const monogram = (shopName ?? 'S').trim().charAt(0).toUpperCase() || 'S';
+  return (
+    // padding consumption (Pillar 4): split-spread spacing. The skewed CTA
+    // deliberately skips the radius token — skew + radius breaks the dialect.
+    <section data-block-section={block.id} className={`mx-auto max-w-7xl px-5 md:px-10 ${vitalityPad(block.padding, PAD_16_20)}`}>
+      <div className="grid grid-cols-1 overflow-hidden rounded-2xl border border-white/10 md:grid-cols-2">
+        <div className="flex flex-col justify-center gap-5 bg-[#111] p-8 md:p-12">
+          <EditableText as="h2" blockId={block.id} field="headline" className="text-3xl font-black uppercase leading-tight tracking-tight md:text-4xl">
+            {block.headline}
+          </EditableText>
+          <EditableText as="p" blockId={block.id} field="body" className="max-w-md text-sm leading-relaxed text-white/60 md:text-base">
+            {block.body}
+          </EditableText>
+          <Link
+            href={collectionsHref}
+            data-block-id={block.id}
+            data-block-field="button_label"
+            className="mt-2 inline-block skew-x-[-6deg] self-start bg-[var(--site-accent,#f0a500)] px-9 py-4 text-xs font-black uppercase tracking-[0.25em] text-black transition hover:brightness-110 active:translate-y-0.5"
+          >
+            <span className="inline-block skew-x-[6deg]">{block.button_label}</span>
+          </Link>
+        </div>
+        <div aria-hidden className="relative flex min-h-[200px] items-center justify-center bg-[var(--site-accent,#f0a500)] md:min-h-[300px]">
+          <span className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(0,0,0,0.25),transparent_60%)]" />
+          <span className="relative text-[7rem] font-black uppercase leading-none text-black/20 md:text-[10rem]">{monogram}</span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function VitalityTemplate({ shop, products, config, heroMedia }: SiteTemplateProps) {
   const { site } = config;
+  // Archetype pass: Vitality's classic anatomy stays site.*-driven and
+  // byte-identical, but the NEW block types render in deterministic slots —
+  // testimonials after the Brand story, the split spread after that (before
+  // the CTA). Legacy rows carry neither, so nothing changes for them.
+  const visibleBlocks = resolveVisibleBlocks(config);
+  const testimonialsBlock = findBlock(visibleBlocks, 'testimonials');
+  const splitCtaBlock = findBlock(visibleBlocks, 'split_cta');
   // Omnichannel hygiene (Phase 9): primary journeys stay on the branded site.
   // Nav/CTA route to the on-site catalog; product rows open the on-site PDP —
   // the same siteProductPath helper the chromes use (slugless previews keep
   // the honest legacy fallback). The ONE deliberate classic-boutique escape is
   // the footer link, and — per the documented RitualChrome:119-120 pattern —
   // /shop matches the RAW stored slug, so encode it as-is: lowercasing a
-  // legacy value would 404.
-  const shopUrl = shop.shop_slug ? `/shop/${encodeURIComponent(shop.shop_slug)}` : '/';
+  // legacy value would 404. ?classic=1: the Pillar-1 /shop server bridge 307s
+  // published-site shops back to /site — the escape's documented bypass.
+  const shopUrl = shop.shop_slug ? `/shop/${encodeURIComponent(shop.shop_slug)}?classic=1` : '/';
   const collectionsHref = siteCollectionsPath(shop) ?? '#lineup';
   const productHref = (id: string) => siteProductPath(shop, id) ?? `/product/${id}`;
   const categoryCount = new Set(products.map((p) => p.category).filter(Boolean)).size || 1;
@@ -40,19 +155,20 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
     // legacy home template is its own root; the shared sub-pages ride
     // NeutralChrome's identical seam). Absent theme → no style attribute and
     // every var() fallback keeps the electric-gold defaults.
-    <div className="min-h-screen bg-[#0C0C0C] font-sans text-white" style={siteThemeStyle(config)}>
+    <div className="min-h-screen bg-[var(--site-bg,#0C0C0C)] font-sans text-[var(--site-text,#ffffff)]" style={siteThemeStyle(config)}>
 
       {/* Nav — bold left wordmark, pill CTA right */}
-      <nav className="sticky top-0 z-50 border-b border-white/10 bg-[#0C0C0C]/90 backdrop-blur-md">
+      {/* sticky_nav (Pillar 4): absent/true = the historical sticky nav; false = static. */}
+      <nav className={`${config.theme?.sticky_nav === false ? 'relative' : 'sticky top-0'} z-50 border-b border-white/10 bg-[color-mix(in_srgb,var(--site-bg,#0C0C0C)_90%,transparent)] backdrop-blur-md`}>
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 md:px-10">
           <span className="text-lg font-black uppercase tracking-tight">{shop.shop_name}</span>
           <div className="flex items-center gap-3 md:gap-6">
-            <a href="#lineup" className="hidden min-h-11 items-center text-[10px] font-black uppercase tracking-[0.25em] text-white/50 transition hover:text-white md:inline-flex">The Lineup</a>
+            <a href="#lineup" className="hidden min-h-11 items-center text-[10px] font-black uppercase tracking-[0.25em] text-[color-mix(in_srgb,var(--site-text,#fff)_50%,transparent)] transition hover:text-[var(--site-text,#ffffff)] md:inline-flex">The Lineup</a>
             {/* Client island: shop-scoped search (neutral/dark dialect). */}
             <SiteSearch tone="neutral" shopId={shop.id} basePath={siteBasePath(shop)} shopName={shop.shop_name} />
             <Link
               href={collectionsHref}
-              className="inline-flex min-h-11 items-center rounded-full bg-[var(--site-accent,#f0a500)] px-6 text-[10px] font-black uppercase tracking-[0.2em] text-black transition hover:brightness-110 active:scale-95"
+              className="inline-flex min-h-11 items-center rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#f0a500)] px-6 text-[10px] font-black uppercase tracking-[0.2em] text-black transition hover:brightness-110 active:scale-95"
             >
               Shop Direct
             </Link>
@@ -86,7 +202,9 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
               priority
               sizes="100vw"
               blurTone="dark"
-              className="object-cover opacity-40"
+              // .sndk-parallax: pure-CSS scroll depth (archetype pass) —
+              // static where scroll-timelines/motion are unavailable.
+              className="sndk-parallax object-cover opacity-40"
             />
           ) : (
             /* Null tier (Pillar 4b): the animated brand plate — same gradient
@@ -106,7 +224,7 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
           <h1 className="mt-6 max-w-4xl text-5xl font-black uppercase leading-[1.02] tracking-tight md:text-6xl">
             {site.hero_headline}
           </h1>
-          <p className="mt-6 max-w-xl text-lg leading-relaxed text-white/70">{site.hero_subheadline}</p>
+          <p className="mt-6 max-w-xl text-lg leading-relaxed text-[color-mix(in_srgb,var(--site-text,#fff)_70%,transparent)]">{site.hero_subheadline}</p>
           <a
             href="#lineup"
             className="mt-10 inline-block skew-x-[-6deg] bg-[var(--site-accent,#f0a500)] px-10 py-4 text-xs font-black uppercase tracking-[0.25em] text-black shadow-[6px_6px_0_color-mix(in_srgb,var(--site-accent,#f0a500)_25%,transparent)] transition hover:brightness-110 active:translate-y-0.5"
@@ -145,7 +263,7 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
       <section id="lineup" className="mx-auto max-w-7xl px-5 py-20 md:px-10 md:py-24">
         <Reveal>
           <h2 className="text-4xl font-black uppercase tracking-tight md:text-5xl">{site.collection_title}</h2>
-          <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/60">{site.collection_intro}</p>
+          <p className="mt-3 max-w-xl text-sm leading-relaxed text-[color-mix(in_srgb,var(--site-text,#fff)_60%,transparent)]">{site.collection_intro}</p>
         </Reveal>
 
         <div className="mt-14 space-y-8">
@@ -193,17 +311,29 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
               this section's #111 panel). */}
           <div className="mt-6">
             <StoryClamp tone="vitality">
-              <p className="text-2xl font-bold leading-relaxed text-white/90 md:text-3xl">{site.brand_story}</p>
+              <p className="text-2xl font-bold leading-relaxed text-[color-mix(in_srgb,var(--site-text,#fff)_90%,transparent)] md:text-3xl">{site.brand_story}</p>
             </StoryClamp>
           </div>
         </Reveal>
       </section>
 
+      {/* Archetype slots — render ONLY when the config carries the blocks. */}
+      {testimonialsBlock && (
+        <Reveal>
+          <VitalityTestimonials block={testimonialsBlock} />
+        </Reveal>
+      )}
+      {splitCtaBlock && (
+        <Reveal>
+          <VitalitySplitCta block={splitCtaBlock} shopName={shop.shop_name} collectionsHref={collectionsHref} />
+        </Reveal>
+      )}
+
       {/* CTA */}
       <section className="py-24 text-center">
         <Reveal className="mx-auto max-w-2xl px-5 md:px-10">
           <h2 className="text-4xl font-black uppercase tracking-tight md:text-5xl">{site.cta_banner.headline}</h2>
-          <p className="mx-auto mt-4 max-w-lg text-base leading-relaxed text-white/60">{site.cta_banner.subtext}</p>
+          <p className="mx-auto mt-4 max-w-lg text-base leading-relaxed text-[color-mix(in_srgb,var(--site-text,#fff)_60%,transparent)]">{site.cta_banner.subtext}</p>
           <Link
             href={collectionsHref}
             className="mt-10 inline-block skew-x-[-6deg] bg-[var(--site-accent,#f0a500)] px-12 py-5 text-sm font-black uppercase tracking-[0.25em] text-black shadow-[8px_8px_0_color-mix(in_srgb,var(--site-accent,#f0a500)_25%,transparent)] transition hover:brightness-110 active:translate-y-0.5"

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
+import { TIER_BY_ID, canUseBroadcast } from '@/lib/tiers';
 import { 
   MessageCircle, 
   Lock, 
@@ -300,7 +301,8 @@ export default function BroadcastPage() {
     );
   }
 
-  const hasAccess = shopData.subscription_tier === 'advanced' || shopData.subscription_tier === 'flagship';
+  // lib/tiers canUseBroadcast — Flagship (legacy 'advanced' payers keep it).
+  const hasAccess = canUseBroadcast(shopData.subscription_tier);
 
   // Tier gate - lock screen
   if (!hasAccess) {
@@ -364,19 +366,19 @@ export default function BroadcastPage() {
                 <p className="text-2xl font-black text-gray-900 capitalize mb-2">
                   {shopData.subscription_tier === 'starter' ? 'Starter' : shopData.subscription_tier}
                 </p>
-                <p className="text-gray-600 text-sm">Upgrade to <span className="font-bold">Advanced</span> or <span className="font-bold">Flagship</span> to unlock this feature</p>
+                <p className="text-gray-600 text-sm">Upgrade to <span className="font-bold">Flagship</span> to unlock this feature</p>
               </div>
 
               <Link
                 href="/dashboard/settings"
                 className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold py-4 px-6 rounded-xl transition-all shadow-lg hover:shadow-xl mb-4"
               >
-                Upgrade to Advanced
+                Upgrade to Flagship
                 <ArrowRight size={20} />
               </Link>
 
               <p className="text-sm text-gray-600">
-                Advanced Plan: <span className="font-bold text-gray-900">D2,500</span> per month
+                Flagship Plan: <span className="font-bold text-gray-900">D{TIER_BY_ID.flagship.monthlyPrice}</span> per month
               </p>
             </div>
           </div>
@@ -407,7 +409,7 @@ export default function BroadcastPage() {
               </div>
               <div className="ml-auto flex items-center gap-2 bg-amber-100 text-amber-800 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider">
                 <span className="w-2 h-2 bg-amber-600 rounded-full"></span>
-                Advanced Feature
+                Flagship Feature
               </div>
             </div>
           </div>

@@ -51,7 +51,9 @@ export default function HeroBrandPlate({ tone, shopName }: HeroBrandPlateProps) 
   const initial = (shopName ?? 'S').trim().charAt(0).toUpperCase() || 'S';
 
   return (
-    <div aria-hidden className="absolute inset-0 overflow-hidden">
+    // .sndk-parallax (archetype pass): pure-CSS scroll drift on the plate —
+    // @supports-gated, reduced-motion-honoring, zero JS (globals.css).
+    <div aria-hidden className="sndk-parallax absolute inset-0 overflow-hidden">
       <div className={`sndk-hero-plate absolute inset-0 ${t.gradient}`} />
       <div
         className="absolute inset-0 opacity-25 blur-3xl"

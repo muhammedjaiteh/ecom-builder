@@ -308,10 +308,15 @@ export default function Cart() {
                           <textarea value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} rows={2} placeholder="Full Delivery Address (Street, Neighborhood)" className="w-full rounded-xl border border-black/10 bg-gray-50/50 p-3.5 text-base font-medium outline-none focus:border-gray-900 focus:bg-white transition-all mt-1" />
                         )}
                         
-                        <button 
-                          onClick={() => handleProcessCheckout(shopId, shopData)} 
-                          disabled={isProcessing} 
-                          className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#1a2e1a] px-5 text-sm font-semibold tracking-normal text-white shadow-[0_1px_2px_rgba(16,24,40,0.08),0_10px_24px_rgba(16,24,40,0.18)] transition hover:-translate-y-0.5 hover:bg-black disabled:opacity-70"
+                        {/* Token cascade (Pillar 4): on a /site page the
+                            SiteThemeCascade island puts the boutique tokens on
+                            the document root, so this PRIMARY button wears the
+                            boutique primary + radius; everywhere else the
+                            fallbacks ARE the exact historical literals. */}
+                        <button
+                          onClick={() => handleProcessCheckout(shopId, shopData)}
+                          disabled={isProcessing}
+                          className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-[var(--site-radius,0.75rem)] bg-[var(--site-primary,#1a2e1a)] px-5 text-sm font-semibold tracking-normal text-white shadow-[0_1px_2px_rgba(16,24,40,0.08),0_10px_24px_rgba(16,24,40,0.18)] transition hover:-translate-y-0.5 hover:bg-[var(--site-primary,black)] disabled:opacity-70"
                         >
                           {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} 
                           {isProcessing ? 'Processing...' : `Send Order to Seller • D${shopData.total.toLocaleString()}`}
@@ -323,7 +328,10 @@ export default function Cart() {
                       <div className="mb-4 flex justify-between text-sm font-black text-gray-900">
                         <span>Subtotal</span><span className="text-emerald-700">D{shopData.total.toLocaleString()}</span>
                       </div>
-                      <button onClick={() => setActiveCheckoutShop(shopId)} className="flex w-full items-center justify-center gap-2 rounded-xl bg-gray-900 py-3.5 text-[10px] font-bold uppercase tracking-widest text-white shadow-md transition hover:bg-black hover:shadow-lg hover:-translate-y-0.5">
+                      {/* Token cascade (Pillar 4): primary button #2 — the
+                          oklch fallback IS Tailwind v4 gray-900, so themeless
+                          rendering is byte-identical. */}
+                      <button onClick={() => setActiveCheckoutShop(shopId)} className="flex w-full items-center justify-center gap-2 rounded-[var(--site-radius,0.75rem)] bg-[var(--site-primary,oklch(21%_0.034_264.665))] py-3.5 text-[10px] font-bold uppercase tracking-widest text-white shadow-md transition hover:bg-[var(--site-primary,black)] hover:shadow-lg hover:-translate-y-0.5">
                         Checkout with {shopData.shopName} <ArrowRight size={14} />
                       </button>
                     </div>

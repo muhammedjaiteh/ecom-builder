@@ -49,11 +49,11 @@ export const SITE_TEMPLATES: Record<TemplateKey, {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Step-1 concept pair — the TWO structurally distinct layouts the design
-// consultation pitches (founder mandate: two cards that LOOK like two
-// different websites). 'ritual' renders Layout A (Minimal) and 'editorial'
-// renders Layout B (Editorial magazine). 'vitality' stays render-valid for
-// every legacy row and explicit templateOverride, but is no longer pitched.
+// LEGACY Step-1 concept pair (superseded by ARCHETYPES below — Pillar 3).
+// The design consultation now pitches two ARCHETYPE bundles picked by
+// pickConceptArchetypes; these exports remain render-valid history: the
+// heuristic still backs conceptTemplateFromCategory consumers and any
+// pre-archetype client payloads.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const CONCEPT_TEMPLATE_KEYS = ['ritual', 'editorial'] as const;
@@ -102,6 +102,12 @@ export const SITE_COPY_LIMITS = {
   tabs_heading: 60,
   tab_title: 40,
   tab_content: 400,
+  // Archetype pass — testimonials block budgets. Quotes are REAL review
+  // excerpts (never fabricated — integrity law), clipped to a readable
+  // pull-quote length; the author line is the verified reviewer attribution.
+  testimonials_heading: 60,
+  testimonial_quote: 240,
+  testimonial_author: 60,
 } as const;
 
 const copy = (max: number) => z.string().min(1).max(max);
@@ -121,6 +127,19 @@ const copy = (max: number) => z.string().min(1).max(max);
 // Canonical absent form: un-hiding DELETES the key (never `hidden: false`).
 const hidden = z.boolean().optional();
 
+// Inspector depth (Pillar 4): per-block presentation switches, on EVERY
+// variant. STRICT SUPERSET — both optional; absent = the dialect's exact
+// historical spacing/alignment (canonical form: selecting the default DELETES
+// the key). Templates consume via per-dialect class maps — coverage is per
+// block type and documented at each consumption site; types whose anatomy is
+// spacing-driven (hero, marquee value props, video) simply never register a
+// descriptor for them (BLOCK_SETTINGS), so no dead controls render.
+const padding = z.enum(['compact', 'default', 'spacious']).optional();
+const align = z.enum(['left', 'center']).optional();
+
+export type BlockPadding = 'compact' | 'default' | 'spacious';
+export type BlockAlign = 'left' | 'center';
+
 export const HeroBannerBlockSchema = z.object({
   id: z.string().min(1),
   type: z.literal('hero_banner'),
@@ -128,12 +147,16 @@ export const HeroBannerBlockSchema = z.object({
   subheadline: copy(SITE_COPY_LIMITS.hero_subheadline),
   tagline: copy(SITE_COPY_LIMITS.tagline).optional(),
   hidden,
+  padding,
+  align,
 });
 
 export const ValuePropsBlockSchema = z.object({
   id: z.string().min(1),
   type: z.literal('value_props'),
   hidden,
+  padding,
+  align,
   /** 2–4 items (Phase 8 relaxation from exactly-3). STRICT SUPERSET: every
    *  stored row holds exactly 3, which stays valid; templates render 2/3/4
    *  responsively and the editor adds/removes rows within these bounds. */
@@ -155,6 +178,8 @@ export const ProductGridBlockSchema = z.object({
    *  deliberately never reads it. */
   displayMode: z.enum(['grid', 'carousel']).optional(),
   hidden,
+  padding,
+  align,
 });
 
 export const StoryTextBlockSchema = z.object({
@@ -162,6 +187,8 @@ export const StoryTextBlockSchema = z.object({
   type: z.literal('story_text'),
   body: copy(SITE_COPY_LIMITS.brand_story),
   hidden,
+  padding,
+  align,
 });
 
 export const CTABannerBlockSchema = z.object({
@@ -171,6 +198,8 @@ export const CTABannerBlockSchema = z.object({
   subtext: copy(SITE_COPY_LIMITS.cta_subtext),
   button_label: copy(SITE_COPY_LIMITS.cta_button_label),
   hidden,
+  padding,
+  align,
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -191,6 +220,8 @@ export const ProductTabsBlockSchema = z.object({
     content: copy(SITE_COPY_LIMITS.tab_content),
   })).min(2).max(4),
   hidden,
+  padding,
+  align,
 });
 
 export const VideoHeroBlockSchema = z.object({
@@ -203,6 +234,51 @@ export const VideoHeroBlockSchema = z.object({
   subheadline: copy(SITE_COPY_LIMITS.hero_subheadline).optional(),
   posterUrl: z.string().url().optional(),
   hidden,
+  padding,
+  align,
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Archetype-pass blocks (Pillar 3). Neither type has a site.* mirror field —
+// blocksToLegacySite ignores them exactly like video_hero (existing mirror
+// values preserved) and legacySiteToBlocks never fabricates them.
+//
+// 'testimonials' — INTEGRITY LAW: quote items are seeded EXCLUSIVELY from
+// real product reviews (the generation route reads the reviews table at
+// execute time). When a shop has no qualifying reviews the block is simply
+// never added — the honest placeholder-free fallback is NO section. The
+// editor can edit/remove/hide an existing block but cannot ADD one (no
+// starter is registered — see editorModel GROUP_STARTERS/SECTION_CATALOG),
+// so a fabricated quote can never enter a config through the platform.
+//
+// 'split_cta' — a two-panel conversion spread: copy side (headline, body,
+// button) + a solid accent panel. Pure brand copy, so it IS catalog-addable
+// and the LLM may write it (WebsiteGenerationSchema.split_cta below).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const TestimonialsBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal('testimonials'),
+  title: copy(SITE_COPY_LIMITS.testimonials_heading).optional(),
+  /** 2–6 REAL review excerpts. */
+  items: z.array(z.object({
+    quote: copy(SITE_COPY_LIMITS.testimonial_quote),
+    author: copy(SITE_COPY_LIMITS.testimonial_author),
+  })).min(2).max(6),
+  hidden,
+  padding,
+  align,
+});
+
+export const SplitCtaBlockSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal('split_cta'),
+  headline: copy(SITE_COPY_LIMITS.cta_headline),
+  body: copy(SITE_COPY_LIMITS.cta_subtext),
+  button_label: copy(SITE_COPY_LIMITS.cta_button_label),
+  hidden,
+  padding,
+  align,
 });
 
 export const SiteBlockSchema = z.discriminatedUnion('type', [
@@ -213,6 +289,8 @@ export const SiteBlockSchema = z.discriminatedUnion('type', [
   CTABannerBlockSchema,
   ProductTabsBlockSchema,
   VideoHeroBlockSchema,
+  TestimonialsBlockSchema,
+  SplitCtaBlockSchema,
 ]);
 
 export type SiteBlock = z.infer<typeof SiteBlockSchema>;
@@ -294,6 +372,35 @@ export type BlockSettingDescriptor =
   | BlockVideoSetting
   | BlockGroupSetting;
 
+// ── Inspector depth (Pillar 4): shared padding/align descriptors ─────────────
+// Registered ONLY on types whose templates actually consume them (truthful
+// controls; coverage documented per dialect at each consumption site).
+// clearValue 'default' DELETES the key — the canonical absent form, so
+// selecting the default leaves the block byte-identical.
+const PADDING_SETTING: BlockSelectSetting = {
+  kind: 'select',
+  path: 'padding',
+  label: 'Section spacing',
+  clearValue: 'default',
+  options: [
+    { value: 'default', label: 'Default' },
+    { value: 'compact', label: 'Compact' },
+    { value: 'spacious', label: 'Spacious' },
+  ],
+};
+
+const ALIGN_SETTING: BlockSelectSetting = {
+  kind: 'select',
+  path: 'align',
+  label: 'Alignment',
+  clearValue: 'default',
+  options: [
+    { value: 'default', label: 'Default' },
+    { value: 'left', label: 'Left' },
+    { value: 'center', label: 'Centered' },
+  ],
+};
+
 export const BLOCK_SETTINGS: Record<SiteBlockType, ReadonlyArray<BlockSettingDescriptor>> = {
   hero_banner: [
     { kind: 'text', path: 'tagline', label: 'Tagline', maxChars: SITE_COPY_LIMITS.tagline, optional: true },
@@ -329,14 +436,22 @@ export const BLOCK_SETTINGS: Record<SiteBlockType, ReadonlyArray<BlockSettingDes
         { value: 'carousel', label: 'Carousel' },
       ],
     },
+    PADDING_SETTING,
+    ALIGN_SETTING,
   ],
   story_text: [
     { kind: 'textarea', path: 'body', label: 'Brand story', maxChars: SITE_COPY_LIMITS.brand_story },
+    PADDING_SETTING,
+    ALIGN_SETTING,
   ],
+  // padding/align consumed by the RITUAL banner only (editorial's cta is the
+  // chrome sign-off design slot; vitality's is site.*-driven) — documented.
   cta_banner: [
     { kind: 'text', path: 'headline', label: 'Banner headline', maxChars: SITE_COPY_LIMITS.cta_headline },
     { kind: 'textarea', path: 'subtext', label: 'Banner subtext', maxChars: SITE_COPY_LIMITS.cta_subtext },
     { kind: 'text', path: 'button_label', label: 'Button label', maxChars: SITE_COPY_LIMITS.cta_button_label },
+    PADDING_SETTING,
+    ALIGN_SETTING,
   ],
   product_tabs: [
     { kind: 'text', path: 'title', label: 'Tabs heading', maxChars: SITE_COPY_LIMITS.tabs_heading },
@@ -352,11 +467,36 @@ export const BLOCK_SETTINGS: Record<SiteBlockType, ReadonlyArray<BlockSettingDes
         { kind: 'textarea', path: 'content', label: 'Tab content', maxChars: SITE_COPY_LIMITS.tab_content },
       ],
     },
+    PADDING_SETTING,
   ],
   video_hero: [
     { kind: 'text', path: 'headline', label: 'Film headline', maxChars: SITE_COPY_LIMITS.hero_headline, optional: true },
     { kind: 'textarea', path: 'subheadline', label: 'Film subheadline', maxChars: SITE_COPY_LIMITS.hero_subheadline, optional: true },
     { kind: 'video', path: 'videoUrl', label: 'Film' },
+  ],
+  testimonials: [
+    { kind: 'text', path: 'title', label: 'Testimonials heading', maxChars: SITE_COPY_LIMITS.testimonials_heading, optional: true },
+    {
+      kind: 'repeatable-group',
+      path: 'items',
+      label: 'Customer quotes',
+      min: 2,
+      max: 6,
+      itemNoun: 'quote',
+      hint: 'These quotes were taken from your real product reviews. New quotes only arrive from reviews — never invented.',
+      fields: [
+        { kind: 'textarea', path: 'quote', label: 'Quote', maxChars: SITE_COPY_LIMITS.testimonial_quote },
+        { kind: 'text', path: 'author', label: 'Attribution', maxChars: SITE_COPY_LIMITS.testimonial_author },
+      ],
+    },
+    PADDING_SETTING,
+    ALIGN_SETTING,
+  ],
+  split_cta: [
+    { kind: 'text', path: 'headline', label: 'Spread headline', maxChars: SITE_COPY_LIMITS.cta_headline },
+    { kind: 'textarea', path: 'body', label: 'Spread body', maxChars: SITE_COPY_LIMITS.cta_subtext },
+    { kind: 'text', path: 'button_label', label: 'Button label', maxChars: SITE_COPY_LIMITS.cta_button_label },
+    PADDING_SETTING,
   ],
 };
 
@@ -416,9 +556,186 @@ export const SiteThemeSchema = z.object({
   accent: z.string().regex(HEX_COLOR, 'Accent must be a 6-digit hex color.').optional(),
   /** Curated display serif — swaps --site-serif on the site root. */
   display_font: z.enum(SITE_FONT_KEYS).optional(),
+  // ── Token cascade (Pillar 4) — ALL OPTIONAL (strict superset; a stored
+  // theme without them renders byte-identically through the var() fallbacks).
+  /** Deep primary brand surface/fill — dark CTA banners, the sign-off spread,
+   *  solid checkout buttons (--site-primary). Hex-gated like accent. */
+  primary: z.string().regex(HEX_COLOR, 'Primary must be a 6-digit hex color.').optional(),
+  /** Page paper (--site-bg). The cockpit's WCAG guard blocks text/background
+   *  pairs below 4.5:1 before they can be applied. */
+  background: z.string().regex(HEX_COLOR, 'Background must be a 6-digit hex color.').optional(),
+  /** Page ink (--site-text). Guarded against `background` at 4.5:1. */
+  text: z.string().regex(HEX_COLOR, 'Text must be a 6-digit hex color.').optional(),
+  /** Corner language for CTAs/buttons (--site-radius): sharp 0px ·
+   *  rounded 0.75rem · pill 9999px. Absent = each dialect's native corners. */
+  button_radius: z.enum(['sharp', 'rounded', 'pill']).optional(),
+  /** Sticky-nav toggle (theme-level — chromes consume). Absent/true = the
+   *  dialect's historical behavior (ritual/vitality/neutral navs stick);
+   *  false = static nav. The Editorial masthead is print anatomy and never
+   *  sticks — the toggle is a documented no-op there. */
+  sticky_nav: z.boolean().optional(),
 });
 
 export type SiteTheme = z.infer<typeof SiteThemeSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GENERATIVE ARCHETYPES (Pillar 3) — variety without abandoning the proven
+// engine. An archetype is a (template_key × theme preset × block mix) BUNDLE,
+// not a new template: the three shipped templates stay the only renderers.
+//
+//   pastel-minimalist  — ritual base. Pastel-adjacent dusty-rose accent
+//                        (#a15c6e clears the 4.5:1 white-label CTA guard —
+//                        true pastels cannot carry white button text, so the
+//                        preset keeps the pastel register in the DEEP-muted
+//                        range instead of lying about readability), Cormorant
+//                        serif emphasis, ritual's native pill CTAs.
+//   high-contrast-street — vitality base. Black/white/neon-volt accent
+//                        (#c6f04a, a shipped vitality swatch); NO display_font
+//                        override on purpose: vitality's native font-black
+//                        uppercase sans IS the grotesque/condensed register —
+//                        the curated font enum ships serifs only, and forcing
+//                        one would soften the street anatomy.
+//   warm-editorial     — editorial base. Terracotta accent (#8a3412, a
+//                        shipped editorial-adjacent ember), Fraunces warmth,
+//                        storytelling emphasis (story spread BEFORE the grid —
+//                        Editorial renders body blocks in array order).
+//   deep-luxury        — RITUAL base (decided over editorial: ritual's
+//                        full-bleed dark hero, airy spacious grid, and dark
+//                        CTA banner are literally the minimalist-showcase
+//                        anatomy the brief names; editorial's dense hairline
+//                        print grid reads magazine, not luxury-minimal).
+//                        Antique-bronze metallic accent (#7a5c33 — clears the
+//                        white-label guard where brighter golds fail), Bodoni
+//                        didone.
+//
+// blockMix is the ORDERED home-page composition. 'testimonials' is a
+// conditional slot — the generation route fills it ONLY from real reviews and
+// silently drops it otherwise (integrity law). 'split_cta' is filled from the
+// LLM's optional split_cta object and likewise dropped when absent.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const ARCHETYPE_KEYS = [
+  'pastel-minimalist',
+  'high-contrast-street',
+  'warm-editorial',
+  'deep-luxury',
+] as const;
+
+export type ArchetypeKey = (typeof ARCHETYPE_KEYS)[number];
+
+export type SiteArchetype = {
+  key: ArchetypeKey;
+  name: string;
+  template_key: TemplateKey;
+  /** Theme preset applied at execute time — accent + display_font only
+   *  (SiteThemeSchema-valid by construction). */
+  theme: SiteTheme;
+  /** Ordered home-page composition (conditional slots noted above). */
+  blockMix: SiteBlockType[];
+  /** One-line creative direction handed to the LLM (dynamic prompt). */
+  copyDirection: string;
+  /** Mood line for the concept pitch. */
+  vibe: string;
+};
+
+export const ARCHETYPES: Record<ArchetypeKey, SiteArchetype> = {
+  'pastel-minimalist': {
+    key: 'pastel-minimalist',
+    name: 'Pastel Minimalist',
+    template_key: 'ritual',
+    // Pastel register lives on the SURFACES (blush paper) — the accent stays
+    // deep enough to carry white CTA labels (guard-verified). Pill corners.
+    theme: { accent: '#a15c6e', display_font: 'cormorant', background: '#f7f0ec', text: '#3d3430', button_radius: 'pill' },
+    blockMix: ['hero_banner', 'value_props', 'product_grid', 'split_cta', 'story_text', 'testimonials', 'cta_banner'],
+    copyDirection:
+      'Soft-spoken, airy, feminine-leaning luxury: short sentences, gentle sensory words (petal, glow, calm), zero hype.',
+    vibe: 'Powder-soft minimalism — blush tones, feather serifs, generous air.',
+  },
+  'high-contrast-street': {
+    key: 'high-contrast-street',
+    name: 'High-Contrast Street',
+    template_key: 'vitality',
+    theme: { accent: '#c6f04a' },
+    blockMix: ['hero_banner', 'value_props', 'product_grid', 'split_cta', 'story_text', 'testimonials', 'cta_banner'],
+    copyDirection:
+      'Loud, kinetic, street-poster energy: punchy verbs, uppercase-worthy fragments, confident swagger — never corporate.',
+    vibe: 'Black-and-white with a neon-volt strike — condensed, dense, unapologetic.',
+  },
+  'warm-editorial': {
+    key: 'warm-editorial',
+    name: 'Warm Editorial',
+    template_key: 'editorial',
+    // Warm paper + espresso ink (12.7:1) under the terracotta accent.
+    theme: { accent: '#8a3412', display_font: 'fraunces', background: '#f4ede2', text: '#2b2015' },
+    blockMix: ['hero_banner', 'value_props', 'story_text', 'product_grid', 'testimonials', 'split_cta', 'cta_banner'],
+    copyDirection:
+      'Long-table storytelling: warm, earthy, human — lead with origin and craft, terracotta-and-olive imagery, print-magazine cadence.',
+    vibe: 'Sun-baked print pages — terracotta ink, olive undertones, stories first.',
+  },
+  'deep-luxury': {
+    key: 'deep-luxury',
+    name: 'Deep Luxury',
+    template_key: 'ritual',
+    // Obsidian paper, bone ink (14.5:1), charcoal primary panels, sharp
+    // museum-label corners.
+    theme: { accent: '#7a5c33', display_font: 'bodoni', background: '#12100d', text: '#e8e2d6', primary: '#1d1a15', button_radius: 'sharp' },
+    blockMix: ['hero_banner', 'value_props', 'product_grid', 'split_cta', 'story_text', 'testimonials', 'cta_banner'],
+    copyDirection:
+      'Obsidian-quiet luxury: sparse, declarative, museum-label restraint — every word costs something, nothing pleads.',
+    vibe: 'Obsidian and charcoal with a bronze thread — a minimalist showcase.',
+  },
+};
+
+// ── Niche → archetype mapping with DETERMINISTIC VARIETY ────────────────────
+// Two cosmetics shops must not render twins: the shop id hash ROTATES the
+// niche-fitting candidate list, so which two archetypes get pitched (and
+// which leads) varies per shop while staying stable across regenerations.
+
+/** FNV-1a 32-bit — tiny, dependency-free, stable across runtimes. */
+export function fnv1a(input: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}
+
+/** Ordered archetype candidates for a niche (best-fit first). Every list
+ *  carries at least three entries so the hash rotation has room to vary. */
+export function nicheArchetypeCandidates(dominantCategory: string | null | undefined): ArchetypeKey[] {
+  switch (templateFromCategory(dominantCategory)) {
+    case 'editorial':
+      // Fashion/apparel/craft — story-led print first.
+      return ['warm-editorial', 'deep-luxury', 'high-contrast-street', 'pastel-minimalist'];
+    case 'ritual':
+      // Beauty/wellness/home — soft minimalism first.
+      return ['pastel-minimalist', 'deep-luxury', 'warm-editorial', 'high-contrast-street'];
+    default:
+      // Health/fitness/tech/food/bold general — street energy first.
+      return ['high-contrast-street', 'deep-luxury', 'pastel-minimalist', 'warm-editorial'];
+  }
+}
+
+/** The TWO archetypes the design consultation pitches for this shop:
+ *  hash-rotated within the niche-fitting candidates (deterministic variety),
+ *  always two DIFFERENT bundles. */
+export function pickConceptArchetypes(
+  shopId: string,
+  dominantCategory: string | null | undefined
+): [SiteArchetype, SiteArchetype] {
+  const candidates = nicheArchetypeCandidates(dominantCategory);
+  // xor-fold before the small modulo: FNV-1a's LOW bits disperse poorly for
+  // strings sharing a long suffix (every UUID tail collided onto one offset
+  // in the compat gate) — folding the high half in restores the variety.
+  const hash = fnv1a(shopId);
+  const offset = ((hash >>> 16) ^ (hash & 0xffff)) % candidates.length;
+  const first = candidates[offset];
+  // Second pick: the next DIFFERENT candidate in rotated order — adjacent in
+  // fit ranking, so both pitches stay niche-honest while varying per shop.
+  const second = candidates[(offset + 1) % candidates.length];
+  return [ARCHETYPES[first], ARCHETYPES[second]];
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // config.previous — the snapshot ritual (Shopify-engine Item 5). Written
@@ -660,6 +977,16 @@ export const WebsiteGenerationSchema = z.object({
     title: copy(SITE_COPY_LIMITS.seo_title),
     description: copy(SITE_COPY_LIMITS.seo_description),
   }),
+  /** Archetype pass (Pillar 3): the two-panel conversion spread. OPTIONAL —
+   *  a strict superset of the classic generation shape, so every provider in
+   *  the cascade that omits it still validates; the assembler simply skips
+   *  the split_cta slot. Testimonials are DELIBERATELY absent here: quotes
+   *  come only from real reviews, never from the model (integrity law). */
+  split_cta: z.object({
+    headline: copy(SITE_COPY_LIMITS.cta_headline),
+    body: copy(SITE_COPY_LIMITS.cta_subtext),
+    button_label: copy(SITE_COPY_LIMITS.cta_button_label),
+  }).optional(),
 });
 
 export type WebsiteGeneration = z.infer<typeof WebsiteGenerationSchema>;
@@ -723,6 +1050,117 @@ export function generationToConfig(gen: WebsiteGeneration): WebsiteConfig {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Archetype assembly (Pillar 3) — pure helpers the execute step composes AFTER
+// generationToConfig. The classic path (no archetype) never calls these, so
+// legacy behavior is byte-identical.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A real review row, as the generation route reads it (service role). */
+export type TestimonialSourceReview = {
+  rating: number | null;
+  comment: string | null;
+  reviewer_name?: string | null;
+  external_author?: string | null;
+  verified_purchase?: boolean | null;
+};
+
+/** Word-boundary clip that keeps quotes inside the schema budget without
+ *  mid-word amputation. */
+function clipQuote(text: string, max: number): string {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (clean.length <= max) return clean;
+  const cut = clean.slice(0, max - 1);
+  const lastSpace = cut.lastIndexOf(' ');
+  return `${cut.slice(0, lastSpace > 40 ? lastSpace : max - 1).trimEnd()}…`;
+}
+
+/** Build the testimonials block from REAL reviews — or null when the shop
+ *  cannot honestly fill it (fewer than 2 quality quotes → NO section, never a
+ *  fabricated one). Quality bar: rating ≥ 4 with a substantive comment. */
+export function buildTestimonialsFromReviews(
+  reviews: TestimonialSourceReview[] | null | undefined,
+  id = 'testimonials'
+): Extract<SiteBlock, { type: 'testimonials' }> | null {
+  const items: Array<{ quote: string; author: string }> = [];
+  for (const review of reviews ?? []) {
+    if (items.length >= 6) break;
+    const rating = Number(review?.rating);
+    const comment = (review?.comment ?? '').trim();
+    if (!Number.isFinite(rating) || rating < 4) continue;
+    if (comment.length < 12) continue; // too thin to stand as a pull-quote
+    const name =
+      review.reviewer_name?.trim() ||
+      review.external_author?.trim() ||
+      'Verified buyer';
+    items.push({
+      quote: clipQuote(comment, SITE_COPY_LIMITS.testimonial_quote),
+      author: clipQuote(
+        review.verified_purchase && review.reviewer_name?.trim()
+          ? `${name} · Verified Purchase`
+          : name,
+        SITE_COPY_LIMITS.testimonial_author
+      ),
+    });
+  }
+  if (items.length < 2) return null;
+  return { id, type: 'testimonials', title: 'In Their Words', items };
+}
+
+/** Apply an archetype bundle to a freshly generated config:
+ *    1. template_key pinned to the archetype's base;
+ *    2. theme preset attached (accent + display_font);
+ *    3. split_cta (from the LLM's optional object) and testimonials (from
+ *       real reviews) blocks minted;
+ *    4. blocks reordered to the archetype's blockMix — first block per type
+ *       takes the slot, unfilled conditional slots drop out, and any block
+ *       the mix doesn't name (impossible today, defensive forever) appends in
+ *       original order so content is never silently lost.
+ *  The site.* mirror is already consistent (new types have no mirror fields —
+ *  blocksToLegacySite ignores them by construction). Pure: returns a new
+ *  config object. */
+export function applyArchetype(
+  config: WebsiteConfig,
+  archetype: SiteArchetype,
+  gen: Pick<WebsiteGeneration, 'split_cta'>,
+  reviews: TestimonialSourceReview[] | null | undefined
+): WebsiteConfig {
+  const pool: SiteBlock[] = (config.blocks ?? legacySiteToBlocks(config.site)).map((b) => ({ ...b }));
+
+  if (gen.split_cta) {
+    pool.push({
+      id: 'split-cta',
+      type: 'split_cta',
+      headline: gen.split_cta.headline,
+      body: gen.split_cta.body,
+      button_label: gen.split_cta.button_label,
+    });
+  }
+
+  const testimonials = buildTestimonialsFromReviews(reviews);
+  if (testimonials) pool.push(testimonials);
+
+  const used = new Set<string>();
+  const ordered: SiteBlock[] = [];
+  for (const type of archetype.blockMix) {
+    const block = pool.find((b) => b.type === type && !used.has(b.id));
+    if (block) {
+      used.add(block.id);
+      ordered.push(block);
+    }
+  }
+  for (const block of pool) {
+    if (!used.has(block.id)) ordered.push(block);
+  }
+
+  return {
+    ...config,
+    template_key: archetype.template_key,
+    blocks: ordered,
+    theme: { ...archetype.theme },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // The full shop_websites row as every owner-authed API returns it
 // (generate-website, publish, content). Shared by the studio, the inline
 // editor, and the Online Store dashboards so they all agree on one contract.
@@ -747,6 +1185,10 @@ export type ShopWebsiteRow = {
 
 export const SiteConceptSchema = z.object({
   template_key: z.enum(TEMPLATE_KEYS),
+  /** Archetype bundle this concept pitches (Pillar 3). OPTIONAL — a strict
+   *  superset: pre-archetype clients post concepts without it and execute
+   *  down the classic template-only path unchanged. */
+  archetype_key: z.enum(ARCHETYPE_KEYS).optional(),
   concept_name: z.string().min(1).max(60),
   tagline: z.string().min(1).max(80),
   vibe: z.string().min(1).max(240),

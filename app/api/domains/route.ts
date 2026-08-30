@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import { canUseCustomDomain } from '@/lib/tiers';
 import {
   attachDomain,
   buildDnsInstructions,
@@ -30,11 +31,9 @@ import { slugifyWithFallback } from '@/lib/slugify';
 // The Vercel token and raw upstream bodies never leave lib/vercelDomains.ts.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Tier gate — same value as WEBSITE_TIERS in app/api/websites/publish/route.ts
-// (custom domains ride on the generated website, so the gates must agree).
-// SINGLE-CONSTANT SWITCH: if the founder later restricts BYOD to
-// flagship-only, change this ONE array to ['flagship'] — nothing else moves.
-const DOMAIN_TIERS = ['advanced', 'flagship'];
+// Tier gate: lib/tiers canUseCustomDomain — Flagship-exclusive in the new
+// ladder (founder matrix 2026-08-29); legacy 'advanced' payers keep it. The
+// SINGLE-CONSTANT SWITCH now lives in lib/tiers DOMAIN_TIERS.
 
 type DomainState = 'not_connected' | 'pending_txt' | 'awaiting_dns' | 'active';
 const DOMAIN_STATES: DomainState[] = ['not_connected', 'pending_txt', 'awaiting_dns', 'active'];
@@ -91,12 +90,11 @@ async function requireOwner(): Promise<OwnerGate> {
     };
   }
 
-  const tier = (shop.subscription_tier ?? '').toLowerCase().trim();
-  if (!DOMAIN_TIERS.includes(tier)) {
+  if (!canUseCustomDomain(shop.subscription_tier)) {
     return {
       ok: false,
       response: NextResponse.json(
-        { error: 'Custom domains are an Advanced-tier feature.', code: 'tier_gate' },
+        { error: 'Custom domains are a Flagship-tier feature.', code: 'tier_gate' },
         { status: 403 }
       ),
     };

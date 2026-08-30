@@ -93,7 +93,7 @@ export function EditorialGridFillers({ itemCount }: { itemCount: number }) {
         <div
           key={i}
           aria-hidden
-          className={`bg-[#F7F5F0] ${i < mobileNeed ? '' : 'hidden md:block'}`}
+          className={`bg-[var(--site-bg,#F7F5F0)] ${i < mobileNeed ? '' : 'hidden md:block'}`}
         />
       ))}
     </>
@@ -104,7 +104,7 @@ export function EditorialGridFillers({ itemCount }: { itemCount: number }) {
 export function EditorialProductCard({ product, index, href }: { product: SiteProduct; index: number; href: string }) {
   const badge = editorialStockBadge(product.stock_quantity);
   return (
-    <Link href={href} className="group block bg-[#F7F5F0]">
+    <Link href={href} className="group block bg-[var(--site-bg,#F7F5F0)]">
       <div className="relative aspect-square overflow-hidden">
         <EditorialProductPlate src={product.ad_hero_image_url ?? product.image_url} alt={product.name} index={index} />
         {badge && (
@@ -122,7 +122,7 @@ export function EditorialProductCard({ product, index, href }: { product: SitePr
       </div>
       <div className="flex items-baseline justify-between gap-2 border-t border-neutral-900 px-3 py-2.5">
         <p className="truncate font-serif text-sm italic">{product.name}</p>
-        <p className="shrink-0 text-[11px] text-neutral-500">{editorialPrice(product.price)}</p>
+        <p className="shrink-0 text-[11px] text-[var(--site-muted,oklch(55.6%_0_0))]">{editorialPrice(product.price)}</p>
       </div>
     </Link>
   );
@@ -152,7 +152,9 @@ export default function EditorialChrome({ shop, config, active, children }: Site
   const collectionsHref = siteCollectionsPath(shop) ?? '#collection';
   // Deliberate classic-boutique escape (footer only). /shop matches the RAW
   // stored slug, so encode it as-is — lowercasing a legacy value would 404.
-  const shopUrl = shop.shop_slug ? `/shop/${encodeURIComponent(shop.shop_slug)}` : '/';
+  // ?classic=1: the Pillar-1 /shop server bridge 307s published-site shops
+  // back to /site — this param is the escape's documented bypass.
+  const shopUrl = shop.shop_slug ? `/shop/${encodeURIComponent(shop.shop_slug)}?classic=1` : '/';
 
   // Section anchors live on the home page; from sub-pages they route home
   // first. Slugless previews always render the home layout, so bare hashes
@@ -162,8 +164,8 @@ export default function EditorialChrome({ shop, config, active, children }: Site
   // ≥44px tap targets: the anchor itself carries the interactive box
   // (min-h-11 + centering) — the container's padding is not a tap area.
   const navLink = (isActive: boolean) =>
-    `inline-flex min-h-11 items-center text-[9px] font-bold uppercase tracking-[0.3em] transition hover:text-neutral-900 md:text-[10px] ${
-      isActive ? 'text-neutral-900' : 'text-neutral-500'
+    `inline-flex min-h-11 items-center text-[9px] font-bold uppercase tracking-[0.3em] transition hover:text-[var(--site-text,oklch(20.5%_0_0))] md:text-[10px] ${
+      isActive ? 'text-[var(--site-text,oklch(20.5%_0_0))]' : 'text-[var(--site-muted,oklch(55.6%_0_0))]'
     }`;
 
   const fulfillment: string[] = [];
@@ -175,7 +177,7 @@ export default function EditorialChrome({ shop, config, active, children }: Site
     // THEME SEAM: a themed config sets --site-accent/--site-serif here (the
     // one root every editorial /site page shares); absent theme → no style
     // attribute, and every var() fallback keeps the deep-green defaults.
-    <div className="min-h-screen bg-[#F7F5F0] font-sans text-neutral-900" style={siteThemeStyle(config)}>
+    <div className="min-h-screen bg-[var(--site-bg,#F7F5F0)] font-sans text-[var(--site-text,oklch(20.5%_0_0))]" style={siteThemeStyle(config)}>
 
       {/* Masthead */}
       <header className="border-b border-neutral-900">
@@ -185,15 +187,15 @@ export default function EditorialChrome({ shop, config, active, children }: Site
               as="p"
               blockId={heroBlock.id}
               field="tagline"
-              className="truncate text-[9px] font-bold uppercase tracking-[0.3em] text-neutral-500"
+              className="truncate text-[9px] font-bold uppercase tracking-[0.3em] text-[var(--site-muted,oklch(55.6%_0_0))]"
             >
               {tagline}
             </EditableText>
           ) : (
-            <p className="truncate text-[9px] font-bold uppercase tracking-[0.3em] text-neutral-500">{tagline}</p>
+            <p className="truncate text-[9px] font-bold uppercase tracking-[0.3em] text-[var(--site-muted,oklch(55.6%_0_0))]">{tagline}</p>
           )}
           <div className="flex shrink-0 items-center gap-3 md:gap-4">
-            <Link href={collectionsHref} className="inline-flex min-h-11 shrink-0 items-center text-[9px] font-bold uppercase tracking-[0.3em] text-neutral-900 underline underline-offset-4 transition hover:text-[var(--site-accent,#1a2e1a)]">
+            <Link href={collectionsHref} className="inline-flex min-h-11 shrink-0 items-center text-[9px] font-bold uppercase tracking-[0.3em] text-[var(--site-text,oklch(20.5%_0_0))] underline underline-offset-4 transition hover:text-[var(--site-accent,#1a2e1a)]">
               Shop The Collection
             </Link>
             {/* Client islands: shop-scoped search + live cart trigger in the
@@ -240,7 +242,8 @@ export default function EditorialChrome({ shop, config, active, children }: Site
       {/* Dark serif sign-off footer — CTA folded into the closing spread.
           This is the cta_banner block's fixed design slot in the Editorial
           anatomy (the templates' body never renders it). */}
-      <footer className="bg-[#141414] text-[#F7F5F0]">
+      {/* --site-primary (Pillar 4): the dark sign-off spread rides the primary token. */}
+      <footer className="bg-[var(--site-primary,#141414)] text-[#F7F5F0]">
         {/* data-block-section: inert marker for the Site Editor's section
             focus (the cta_banner block's fixed design slot lives here). */}
         <div
@@ -262,7 +265,7 @@ export default function EditorialChrome({ shop, config, active, children }: Site
                 href={collectionsHref}
                 data-block-id={ctaBlock.id}
                 data-block-field="button_label"
-                className="mt-10 inline-block bg-[#F7F5F0] px-10 py-4 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-accent,#171717)] transition hover:bg-white active:scale-95"
+                className="mt-10 inline-block rounded-[var(--site-radius,0px)] bg-[var(--site-bg,#F7F5F0)] px-10 py-4 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-accent,#171717)] transition hover:bg-white active:scale-95"
               >
                 {cta.button_label}
               </Link>
@@ -273,7 +276,7 @@ export default function EditorialChrome({ shop, config, active, children }: Site
               <p className="mx-auto mt-6 max-w-lg text-sm leading-relaxed text-white/60 md:text-base">{cta.subtext}</p>
               <Link
                 href={collectionsHref}
-                className="mt-10 inline-block bg-[#F7F5F0] px-10 py-4 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-accent,#171717)] transition hover:bg-white active:scale-95"
+                className="mt-10 inline-block rounded-[var(--site-radius,0px)] bg-[var(--site-bg,#F7F5F0)] px-10 py-4 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-accent,#171717)] transition hover:bg-white active:scale-95"
               >
                 {cta.button_label}
               </Link>

@@ -104,7 +104,16 @@ function getAuthedClient() {
   );
 }
 
-type SiteWebsite = { template_key: TemplateKey; config: unknown; status: string };
+// custom_domain/domain_status are ADDITIVE (Pillar 1 /shop bridge): cached
+// entries written before this select widened simply lack them (undefined) —
+// the bridge then skips the domain tier until the 300s backstop refreshes.
+type SiteWebsite = {
+  template_key: TemplateKey;
+  config: unknown;
+  status: string;
+  custom_domain?: string | null;
+  domain_status?: string | null;
+};
 
 // Fulfillment columns feed the structured template footers; phone feeds the
 // footer WhatsApp contact link and the on-site PDP checkout (all confirmed
@@ -186,7 +195,7 @@ async function findShopBySlug(slug: string) {
 async function readWebsiteRow(shopId: string): Promise<SiteWebsite | null> {
   const { data, error } = await getServiceClient()
     .from('shop_websites')
-    .select('template_key, config, status')
+    .select('template_key, config, status, custom_domain, domain_status')
     .eq('shop_id', shopId)
     .maybeSingle();
   if (error) throw new Error(`shop_websites read failed: ${error.message}`);
@@ -356,16 +365,19 @@ export async function requireSite(slug: string, route: SiteRoute): Promise<Resol
   }
   // /shop decodes its param and matches the raw stored value, so legacy slugs
   // (with spaces) must be URL-encoded here to survive the round trip.
+  // ?classic=1: this bounce just RULED the site unservable — the /shop server
+  // bridge must serve the classic page without re-evaluating the predicate
+  // (deterministic loop-proofing against racing publish writes).
   if (!data.website) {
     console.log(`[site-route] slug=${slug} route=${route} shop=found website=${data.storedStatus} ${viewerLog(data.viewer)} → redirect:/shop`);
-    redirect(`/shop/${encodeURIComponent(data.shop.shop_slug ?? slug)}`);
+    redirect(`/shop/${encodeURIComponent(data.shop.shop_slug ?? slug)}?classic=1`);
   }
 
   const parsed = WebsiteConfigSchema.safeParse(data.website.config);
   if (!parsed.success) {
     console.error(`[site/${slug}] Stored config failed validation:`, parsed.error.issues);
     console.log(`[site-route] slug=${slug} route=${route} shop=found website=${data.storedStatus} ${viewerLog(data.viewer)} config=invalid → redirect:/shop`);
-    redirect(`/shop/${encodeURIComponent(data.shop.shop_slug ?? slug)}`);
+    redirect(`/shop/${encodeURIComponent(data.shop.shop_slug ?? slug)}?classic=1`);
   }
 
   console.log(`[site-route] slug=${slug} route=${route} shop=found website=${data.storedStatus} ${viewerLog(data.viewer)} → serve`);

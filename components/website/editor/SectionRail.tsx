@@ -8,6 +8,7 @@ import {
   ChevronRight,
   ChevronUp,
   Clapperboard,
+  Columns2,
   Eye,
   EyeOff,
   Film,
@@ -17,6 +18,7 @@ import {
   Megaphone,
   PanelTop,
   Plus,
+  Quote,
   Rows3,
   Sparkles,
   Trash2,
@@ -31,6 +33,7 @@ import {
   canRemoveBlock,
   descriptorFields,
   groupItemCount,
+  hasGroupStarter,
   readBlockField,
   type EditorField,
 } from './editorModel';
@@ -180,6 +183,8 @@ export const BLOCK_TYPE_ICONS: Record<SiteBlockType, LucideIcon> = {
   cta_banner: Megaphone,
   product_tabs: Rows3,
   video_hero: Clapperboard,
+  testimonials: Quote,
+  split_cta: Columns2,
 };
 
 // ── Shared inspector body (registry-driven fields + section controls) ───────
@@ -307,14 +312,19 @@ function InspectorBody(props: SectionRailProps & { block: SiteBlock }) {
                   </p>
                 )}
                 <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={count >= setting.max}
-                    onClick={() => props.onAddGroupItem(block.id, setting.path)}
-                    className="flex min-h-[44px] items-center gap-1.5 rounded-full border border-gray-200 bg-white px-4 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:border-gray-900 disabled:opacity-40"
-                  >
-                    <Plus size={12} /> Add {setting.itemNoun}
-                  </button>
+                  {/* Starter-less groups (testimonials — quotes come only from
+                      real reviews) hide the add button entirely: an enabled
+                      no-op would be a silent failure. */}
+                  {hasGroupStarter(block.type, setting.path) && (
+                    <button
+                      type="button"
+                      disabled={count >= setting.max}
+                      onClick={() => props.onAddGroupItem(block.id, setting.path)}
+                      className="flex min-h-[44px] items-center gap-1.5 rounded-full border border-gray-200 bg-white px-4 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:border-gray-900 disabled:opacity-40"
+                    >
+                      <Plus size={12} /> Add {setting.itemNoun}
+                    </button>
+                  )}
                   {count > setting.min &&
                     Array.from({ length: count }, (_, i) => {
                       const title = firstFieldPath

@@ -8,6 +8,7 @@ import {
   RefreshCw, Eye, EyeOff, Wand2, Compass,
 } from 'lucide-react';
 import { SITE_TEMPLATES, SiteConceptSchema, type ShopWebsiteRow, type SiteConcept } from '@/lib/siteTemplates';
+import { canUseStudio } from '@/lib/tiers';
 import { slugify } from '@/lib/slugify';
 import { fetchJSON, isTransportError } from '@/lib/transport';
 import ConceptCard from '@/components/website/ConceptCard';
@@ -48,7 +49,8 @@ type StudioProps = {
   variant?: 'full' | 'hub';
 };
 
-const WEBSITE_TIERS = ['advanced', 'flagship'];
+// Tier gate: lib/tiers canUseStudio — Pro+ (Studio moved down to Pro,
+// founder matrix 2026-08-29; legacy 'advanced' payers keep access).
 
 // Client-side ceiling for either AI step — the route's maxDuration (120s)
 // plus a small network margin, so a hung provider can never lock the UI.
@@ -104,8 +106,7 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
     build: () => {},
   });
 
-  const tier = (shop.subscription_tier ?? '').toLowerCase().trim();
-  const hasAccess = WEBSITE_TIERS.includes(tier);
+  const hasAccess = canUseStudio(shop.subscription_tier);
 
   // Elapsed ticker during either AI step.
   const busy = phase === 'consulting' || phase === 'building';
@@ -386,7 +387,7 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
               <Wand2 size={20} className="text-[#f0a500]" /> AI Website Studio
             </h2>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-amber-50 to-yellow-50 px-3 py-1 text-[9px] font-bold uppercase tracking-widest text-amber-800 ring-1 ring-amber-200">
-              <Crown size={11} /> Advanced
+              <Crown size={11} /> Pro
             </span>
           </div>
           <p className="mt-2 max-w-xl text-sm text-gray-500">
@@ -427,7 +428,7 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
           <h3 className="mt-6 font-serif text-3xl font-bold md:text-4xl">Your entire storefront, generated.</h3>
           <p className="mx-auto mt-4 max-w-lg leading-relaxed text-white/60">
             The AI Website Studio studies your inventory, pitches two live website concepts, and builds
-            the one you choose — hero film, brand story, and all. Exclusive to the Advanced tier.
+            the one you choose — hero film, brand story, and all. Included from the Pro tier.
           </p>
           <p className="mt-5 flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-widest text-white/40">
             <Lock size={12} /> Locked on your current plan
@@ -436,7 +437,7 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
             href="/pricing"
             className="mt-8 inline-flex items-center gap-2 rounded-full bg-[#f0a500] px-8 py-3.5 text-[11px] font-black uppercase tracking-widest text-black transition hover:bg-amber-400 active:scale-95"
           >
-            <Crown size={14} /> Upgrade to Advanced
+            <Crown size={14} /> Upgrade to Pro
           </Link>
         </div>
       )}

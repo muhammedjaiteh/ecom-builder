@@ -3,8 +3,7 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { createClient } from '@supabase/supabase-js';
 import { mintStorefrontLink, resolveAppOrigin } from '@/lib/storefrontUrl';
-
-const METERED_TIERS = ['starter', 'pro'];
+import { METERED_TIERS } from '@/lib/tiers';
 
 type CampaignShop = { id: string; ai_credits: number | null };
 
@@ -43,7 +42,7 @@ async function handleCampaignGeneration(
       if (!shop.ai_credits || shop.ai_credits <= 0) {
         return NextResponse.json(
           {
-            error: 'AI credit limit reached. Upgrade to Advanced tier for unlimited AI generation.',
+            error: 'AI credit limit reached. Upgrade to Flagship for unlimited AI generation.',
             creditsRemaining: 0,
             tier
           },
@@ -237,7 +236,7 @@ export async function POST(req: Request) {
       if (!shop.ai_credits || shop.ai_credits <= 0) {
         return NextResponse.json(
           {
-            error: 'AI Credit limit reached. Please upgrade to Advanced for unlimited access.',
+            error: 'AI Credit limit reached. Please upgrade to Flagship for unlimited access.',
             creditsRemaining: 0,
           },
           { status: 403 }
