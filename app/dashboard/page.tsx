@@ -543,9 +543,13 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* BROADCAST TAB */}
+        {/* BROADCAST TAB — extra safe-area bottom clearance below lg: the
+            floating sidebar trigger (DashboardSidebar, fixed left-4 z-50 at
+            bottom max(1.25rem, safe-area)) must never cover the pane's
+            full-width left-edge Send buttons / footer at end of scroll. The
+            page-level pb-24 is static; this adds the env() inset headroom. */}
         {activeTab === 'broadcast' && (
-          <div className="animate-in fade-in duration-300">
+          <div className="animate-in fade-in duration-300 pb-[calc(3.5rem+env(safe-area-inset-bottom))] lg:pb-0">
             <Broadcast />
           </div>
         )}

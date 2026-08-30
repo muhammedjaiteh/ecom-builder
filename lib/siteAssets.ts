@@ -12,7 +12,8 @@ import {
 // storefront (and the Site Editor's on-demand "Generate with AI" slots).
 //
 // HERO (Pillar 4a): a pure ABSTRACT brand atmosphere from gpt-image-2 —
-// landscape 1536x1024, quality medium, 45s hard abort. The BiRefNet/IC-Light
+// landscape 1536x1024, quality medium, hard abort per the deadline ladder
+// below (on-demand 120s / onboarding 45s). The BiRefNet/IC-Light
 // product-composite pipeline is RETIRED for site heroes (it produced literal
 // "giant product" mastheads); Ad Studio keeps lib/falImaging untouched for
 // its own stills/films. Law 4 is now satisfied by construction: NO product
@@ -43,15 +44,43 @@ import {
 const CALLER = 'site-assets';
 const BRAND_BUCKET = 'brand';
 
-/** Hard abort on the hero SDK call itself. */
-const HERO_DEADLINE_MS = 45_000;
-/** Overall onboarding budget for the hero task (SDK call + storage upload) —
- *  generate-website runs inside a 120s maxDuration that already spent time on
- *  the LLM step, so a stalled generation must time out into a skip, never
- *  kill the request. */
-const HERO_PHASE_BUDGET_MS = 55_000;
-const LOGO_DEADLINE_MS = 30_000;
-/** Post-abort margin for the storage upload in the logo's outer budget. */
+// ── DEADLINE LADDER (Hotfix 4) ───────────────────────────────────────────────
+// Two callers, two envelopes — one generator pair serves both via the
+// optional deadlineMs override:
+//
+//   ON-DEMAND (app/api/websites/assets, maxDuration 300, HONEST errors):
+//     gpt-image-2 renders are observed at 30–90s for 1536x1024/medium — the
+//     old 30s/45s aborts fired DURING healthy renders and the route's
+//     timeout classifier turned them into self-authored 504s at ~30s. The
+//     defaults below (hero 120s, logo 90s) clear observed p99 latency with
+//     headroom; worst-case route occupancy is abort + the 20s upload margin
+//     (hero ≈ 140s, logo ≈ 110s), leaving the 300s envelope >150s of slack
+//     for auth, config reads, the merge-write, and cache revalidation. An
+//     abort at these deadlines now means a genuinely stalled render — the
+//     504 the route classifies from it is finally honest.
+//
+//   ONBOARDING (runSiteAssetPhase inside generate-website's 120s
+//     maxDuration, which has ALREADY spent time on the LLM step + upsert):
+//     keeps its OWN tighter budgets — hero abort 45s inside a 55s settle
+//     budget, logo abort 30s inside a 50s settle budget (abort + upload
+//     margin). Phase ceiling: max(55s, 50s) = 55s of the 120s envelope. A
+//     slow render there is a graceful settleWithin skip (the seller
+//     regenerates from the Site Editor's slots, which ride the generous
+//     on-demand envelope), never a dead generation request.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** On-demand hero abort — default for the Site Editor slot route (300s). */
+const HERO_DEADLINE_MS = 120_000;
+/** On-demand logo abort — default for the Site Editor slot route (300s). */
+const LOGO_DEADLINE_MS = 90_000;
+/** Onboarding hero abort — must resolve into a skip well inside
+ *  generate-website's 120s maxDuration. */
+const ONBOARDING_HERO_DEADLINE_MS = 45_000;
+/** Onboarding settle budget for the hero task (abort + storage upload). */
+const ONBOARDING_HERO_BUDGET_MS = 55_000;
+/** Onboarding logo abort — a logo draft is a bonus, never a blocker. */
+const ONBOARDING_LOGO_DEADLINE_MS = 30_000;
+/** Post-abort margin for the storage upload inside settle budgets. */
 const ASSET_UPLOAD_MARGIN_MS = 20_000;
 
 type ShopIdentity = {
@@ -92,26 +121,33 @@ async function uploadSiteAsset(
 
 /** Deterministic ABSTRACT hero brief built from the generated brand identity —
  *  no extra LLM call in the loop (Law 3: the phase must stay fast). Pure
- *  function of the config (byte-stable — cache law).
+ *  function of the config (byte-stable — cache law: Hotfix 4 made ONE
+ *  intentional prompt revision; the function stays deterministic, so identical
+ *  configs keep producing identical prompt bytes from here on).
  *
- *  ART DIRECTION: pure atmosphere, texture, and negative space — a stage for
- *  headline typography, never a subject. EXPLICIT prohibitions carry Law 4:
- *  with no products in frame, none can be altered, deformed, or
- *  hallucinated. Exported for testability and for the byte-stability
- *  contract. */
+ *  BANNER MAPPING: there is NO buildBannerPrompt — this abstract hero IS the
+ *  storefront banner asset. Every surface that needs a wide brand banner
+ *  reuses assets.hero_image_url; keep any future banner needs routed here.
+ *
+ *  ART DIRECTION: pure atmosphere, texture, and negative space — a
+ *  conversion-optimized stage for overlaid headline copy and a CTA, never a
+ *  subject. EXPLICIT prohibitions carry Law 4: with no products in frame,
+ *  none can be altered, deformed, or hallucinated — and the no-text clause
+ *  blocks the gibberish pseudo-lettering diffusion models love to smuggle in.
+ *  Exported for testability and for the byte-stability contract. */
 export function buildAbstractHeroPrompt(config: WebsiteConfig): string {
   const template = SITE_TEMPLATES[config.template_key];
   const tagline = config.site.tagline;
   const intro = config.site.collection_intro;
   return (
-    `Abstract premium e-commerce hero backdrop for a ${template.niche} brand — "${tagline}". ` +
+    `Award-caliber e-commerce hero backdrop for a premium ${template.niche} brand — creative brief: "${tagline}". ` +
     `${intro} ` +
-    `Pure brand ATMOSPHERE only: an elegant abstract composition of refined material textures (brushed stone, silk drape, matte ceramic, soft paper grain), ` +
-    `a deep cinematic color-gradient field, one soft directional key light with gentle volumetric haze, and generous uncluttered negative space across the frame for headline typography. ` +
-    `Wide landscape framing, shallow tonal depth, quiet luxury. ` +
-    `STRICTLY NO SUBJECT: no products, no merchandise, no packaging, no bottles, no jars, no boxes, no mannequins, no furniture staging that reads as a product shot, ` +
-    `no people, no faces, no hands, no text, no lettering, no logos, no watermarks. ` +
-    `Elite Shopify storefront standard — confident, editorial, never cluttered, never discount-retailer.`
+    `Pure brand ATMOSPHERE only, art-directed for conversion: an elegant abstract composition of refined material textures native to the ${template.niche} world (brushed stone, silk drape, matte ceramic, soft paper grain), ` +
+    `a deep cinematic color-gradient field, one soft directional key light with gentle volumetric haze, and generous uncluttered negative space held open across the frame as a clean stage for overlaid headline typography and a call-to-action. ` +
+    `Wide landscape framing, shallow tonal depth, quiet-luxury confidence — the restrained polish of a flagship Shopify Plus storefront, never busy, never discount-retailer. ` +
+    `ABSOLUTE PROHIBITIONS — the image must contain no subject and no writing of any kind: ` +
+    `no products, no merchandise, no packaging, no bottles, no jars, no boxes, no mannequins, no furniture staging that reads as a product shot, no people, no faces, no hands; ` +
+    `strictly no text, no lettering, no words, no letterforms, no numerals, no typography, no calligraphy, no signage, no labels, no logos, no watermarks, and no gibberish glyphs or pseudo-lettering of any sort.`
   );
 }
 
@@ -125,13 +161,16 @@ export async function generateHeroAsset(args: {
   admin: SupabaseClient;
   shopId: string;
   config: WebsiteConfig;
+  /** Abort deadline override — the onboarding phase passes its tighter
+   *  budget; the on-demand route rides the generous 120s default. */
+  deadlineMs?: number;
 }): Promise<string> {
-  const { admin, shopId, config } = args;
+  const { admin, shopId, config, deadlineMs = HERO_DEADLINE_MS } = args;
   if (!process.env.OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY not configured — hero generation unavailable.');
   }
 
-  console.log(`[${CALLER}] Hero: gpt-image-2 abstract atmosphere for shop ${shopId}`);
+  console.log(`[${CALLER}] Hero: gpt-image-2 abstract atmosphere for shop ${shopId} (deadline ${deadlineMs}ms)`);
   const { image } = await generateImage({
     model: openai.image('gpt-image-2'),
     prompt: buildAbstractHeroPrompt(config),
@@ -139,11 +178,11 @@ export async function generateHeroAsset(args: {
     // size enum for gpt-image models.
     size: '1536x1024',
     providerOptions: {
-      // 'medium' keeps an abstract gradient field clean while staying inside
-      // the 45s abort (Law 3: render speed over max-quality stalls).
+      // 'medium' keeps an abstract gradient field clean at realistic render
+      // latency (Law 3: render speed over max-quality stalls).
       openai: { quality: 'medium' },
     },
-    abortSignal: AbortSignal.timeout(HERO_DEADLINE_MS),
+    abortSignal: AbortSignal.timeout(deadlineMs),
     maxRetries: 0,
   });
 
@@ -160,26 +199,28 @@ export async function generateHeroAsset(args: {
 
 /** Brand-identity logo prompt. A monogram emblem (not a long wordmark) —
  *  diffusion models garble long text, an initial mark stays clean. Pure
- *  function of (shopName, config): byte-stable — cache law.
+ *  function of (shopName, config): byte-stable — cache law (Hotfix 4 made
+ *  ONE intentional revision; deterministic from here on).
  *
  *  Full abstract-mark discipline (Fix 5): the mark is an abstract high-end
  *  brand symbol — never a product illustration, never a scene, never a face,
- *  and no lettering beyond the single monogram initial. */
+ *  and no lettering beyond the single monogram initial; the explicit
+ *  no-gibberish clause blocks pseudo-text artifacts around the emblem. */
 function buildLogoPrompt(shopName: string, config: WebsiteConfig): string {
   const template = SITE_TEMPLATES[config.template_key];
   const initial = shopName.trim().charAt(0).toUpperCase() || 'S';
   return (
-    `Minimalist luxury brand logo mark for "${shopName}", a ${template.niche} boutique — "${config.site.tagline}". ` +
-    `An elegant abstract "${initial}" monogram emblem inside a simple geometric frame — an abstract high-end brand mark, flat vector style, ` +
-    `two-tone palette drawn from deep charcoal and warm gold, crisp edges, centered on a plain solid off-white background. ` +
-    `Strictly an abstract symbol: no photograph, no literal products, no objects that read as merchandise, no mannequins, no people or faces, ` +
-    `no words or lettering beyond the single monogram initial, no gradient noise, no watermark.`
+    `Timeless luxury brand logo mark for "${shopName}", a premium ${template.niche} boutique — brand mood: "${config.site.tagline}". ` +
+    `A single elegant abstract "${initial}" monogram emblem inside a simple geometric frame — an abstract high-end brand mark, flat vector style, confident balanced line weight, ` +
+    `two-tone palette drawn from deep charcoal and warm gold, crisp edges, centered on a plain solid off-white background with generous margins, instantly legible at favicon size. ` +
+    `Strictly an abstract symbol: no photograph, no 3D render, no literal products, no objects that read as merchandise, no mannequins, no people or faces, no scenes, ` +
+    `no gradient noise, no watermark — and absolutely no text beyond the single "${initial}" monogram initial: no words, no taglines, no extra letters, no numerals, no gibberish glyphs or pseudo-lettering.`
   );
 }
 
 /**
  * LOGO: Vercel AI SDK generateImage() over the existing OpenAI key.
- * Throws on any failure (missing key, moderation, 30s deadline) — the
+ * Throws on any failure (missing key, moderation, the abort deadline) — the
  * onboarding orchestrator turns that into a console.warn skip.
  */
 export async function generateLogoAsset(args: {
@@ -187,25 +228,27 @@ export async function generateLogoAsset(args: {
   shopId: string;
   shopName: string | null;
   config: WebsiteConfig;
+  /** Abort deadline override — the onboarding phase passes its tighter
+   *  budget; the on-demand route rides the generous 90s default. */
+  deadlineMs?: number;
 }): Promise<string> {
-  const { admin, shopId, shopName, config } = args;
+  const { admin, shopId, shopName, config, deadlineMs = LOGO_DEADLINE_MS } = args;
   if (!process.env.OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY not configured — logo generation unavailable.');
   }
 
-  console.log(`[${CALLER}] Logo: gpt-image-2 draft for shop ${shopId}`);
+  console.log(`[${CALLER}] Logo: gpt-image-2 draft for shop ${shopId} (deadline ${deadlineMs}ms)`);
   const { image } = await generateImage({
     model: openai.image('gpt-image-2'),
     prompt: buildLogoPrompt(shopName ?? 'Sanndikaa Boutique', config),
     size: '1024x1024',
     providerOptions: {
-      // 'medium' keeps a flat two-tone monogram crisp while staying inside
-      // the 30s abort — validated against the installed provider's
+      // 'medium' keeps a flat two-tone monogram crisp at realistic render
+      // latency — validated against the installed provider's
       // openaiImageModelGenerationOptions schema.
       openai: { quality: 'medium' },
     },
-    // A logo draft is a bonus, never a blocker — hard 30s abort.
-    abortSignal: AbortSignal.timeout(LOGO_DEADLINE_MS),
+    abortSignal: AbortSignal.timeout(deadlineMs),
     maxRetries: 0,
   });
 
@@ -263,15 +306,29 @@ export async function runSiteAssetPhase(args: {
   const [heroUrl, logoUrl] = await Promise.all([
     settleWithin(
       'Hero generation',
-      HERO_PHASE_BUDGET_MS,
-      generateHeroAsset({ admin, shopId: shop.id, config })
+      // 45s abort + 10s upload slack = the 55s settle budget (the ladder
+      // above); matches the pre-hotfix phase ceiling, so generate-website's
+      // 120s envelope is untouched.
+      ONBOARDING_HERO_BUDGET_MS,
+      generateHeroAsset({
+        admin,
+        shopId: shop.id,
+        config,
+        deadlineMs: ONBOARDING_HERO_DEADLINE_MS,
+      })
     ),
     settleWithin(
       'Logo generation',
-      // The SDK's own 30s abort fires first; this outer budget only guards a
-      // stalled upload after it.
-      LOGO_DEADLINE_MS + ASSET_UPLOAD_MARGIN_MS,
-      generateLogoAsset({ admin, shopId: shop.id, shopName: shop.shop_name, config })
+      // The onboarding 30s abort fires first; this outer budget only guards
+      // a stalled upload after it.
+      ONBOARDING_LOGO_DEADLINE_MS + ASSET_UPLOAD_MARGIN_MS,
+      generateLogoAsset({
+        admin,
+        shopId: shop.id,
+        shopName: shop.shop_name,
+        config,
+        deadlineMs: ONBOARDING_LOGO_DEADLINE_MS,
+      })
     ),
   ]);
 

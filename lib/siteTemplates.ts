@@ -719,16 +719,28 @@ export function nicheArchetypeCandidates(dominantCategory: string | null | undef
 
 /** The TWO archetypes the design consultation pitches for this shop:
  *  hash-rotated within the niche-fitting candidates (deterministic variety),
- *  always two DIFFERENT bundles. */
+ *  always two DIFFERENT bundles.
+ *
+ *  variationSeed (regeneration determinism hotfix): an explicit "Regenerate"
+ *  click folds a fresh client-minted seed into the hash so the pitched PAIR
+ *  rotates across clicks — still drawn from the same niche-fitting candidate
+ *  list, still two distinct bundles. ABSENT/empty seed hashes the bare shop
+ *  id, byte-identical to the legacy behavior, so first-generation and
+ *  onboarding picks stay stable per shop. */
 export function pickConceptArchetypes(
   shopId: string,
-  dominantCategory: string | null | undefined
+  dominantCategory: string | null | undefined,
+  variationSeed?: string | number | null
 ): [SiteArchetype, SiteArchetype] {
   const candidates = nicheArchetypeCandidates(dominantCategory);
+  const seed =
+    variationSeed === undefined || variationSeed === null || variationSeed === ''
+      ? null
+      : String(variationSeed);
   // xor-fold before the small modulo: FNV-1a's LOW bits disperse poorly for
   // strings sharing a long suffix (every UUID tail collided onto one offset
   // in the compat gate) — folding the high half in restores the variety.
-  const hash = fnv1a(shopId);
+  const hash = fnv1a(seed === null ? shopId : `${shopId}::${seed}`);
   const offset = ((hash >>> 16) ^ (hash & 0xffff)) % candidates.length;
   const first = candidates[offset];
   // Second pick: the next DIFFERENT candidate in rotated order — adjacent in

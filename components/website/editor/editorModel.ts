@@ -5,6 +5,7 @@ import {
   type BlockSettingDescriptor,
   type SiteBlock,
   type SiteBlockType,
+  type TemplateKey,
 } from '@/lib/siteTemplates';
 import { z } from 'zod';
 import type { VideoHeroSelection } from '@/components/website/VideoHeroPicker';
@@ -81,6 +82,44 @@ export const SECTION_CATALOG: ReadonlyArray<{ type: SiteBlockType; description: 
   { type: 'product_tabs', description: 'Details, delivery and returns in tidy tabs' },
   { type: 'video_hero', description: 'A cinematic Ad Studio commercial on your page' },
 ];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fixed-slot dialects (Hotfix 2 — vitality's cockpit admission). Ritual and
+// Editorial map body blocks in ARRAY ORDER, so the full catalog (duplicates
+// included) always lands on the canvas. Vitality renders its anatomy in
+// DETERMINISTIC SLOTS — one section per type, first visible block of each
+// type wins (see VitalityTemplate) — with two honest editor consequences:
+//   • the add catalog offers only types the dialect can render, and only
+//     while their single slot is empty — an enabled add whose section never
+//     appears on the canvas would be a silent failure;
+//   • reorder affordances hide (SectionRail) — block order has no render
+//     surface there, so a drag that visibly does nothing would be a lie.
+// Everything else (copy fields, selects, groups, hide/remove, assets, theme)
+// rides the same generic registry machinery untouched.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function isFixedSlotTemplate(templateKey: TemplateKey): boolean {
+  return templateKey === 'vitality';
+}
+
+/** Block types with NO render slot in the vitality dialect — the tabs and
+ *  film sections belong to the array-order templates. */
+const VITALITY_UNRENDERED_TYPES: ReadonlySet<SiteBlockType> = new Set(['product_tabs', 'video_hero']);
+
+/** The add catalog a template can honestly offer for the CURRENT block array.
+ *  Array-order templates get the full SECTION_CATALOG; fixed-slot templates
+ *  get one entry per still-empty renderable slot (hidden blocks keep owning
+ *  their slot — they exist and can be un-hidden). */
+export function addableSectionCatalog(
+  templateKey: TemplateKey,
+  blocks: SiteBlock[]
+): ReadonlyArray<{ type: SiteBlockType; description: string }> {
+  if (!isFixedSlotTemplate(templateKey)) return SECTION_CATALOG;
+  const present = new Set(blocks.map((b) => b.type));
+  return SECTION_CATALOG.filter(
+    (entry) => !VITALITY_UNRENDERED_TYPES.has(entry.type) && !present.has(entry.type)
+  );
+}
 
 /** REMOVE GUARD: everything is removable EXCEPT the last product_grid — a
  *  store without its collection is a broken store (the hero CTAs and nav all

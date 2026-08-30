@@ -160,8 +160,16 @@ function CockpitBodyInner({ userId, editorShop, hasWebsiteAccess }: CockpitBodyP
     [mutate]
   );
 
-  // Same mount gates as the hub's historical Site Editor section: an editable
-  // (block-driven) template plus a schema-clean config.
+  // Mount gates. Hotfix 2: ALL THREE generated bases are cockpit surfaces now
+  // (EDITABLE_TEMPLATE_COMPONENTS includes vitality — the high-contrast-street
+  // archetype mints it, so a fresh vitality site must never be locked out).
+  // The map lookup remains as a stage-gate for any future template key. The
+  // load-bearing gate that remains is the SCHEMA parse: resolveBlocks derives
+  // an editable block array for every schema-valid config (legacy rows
+  // included), so the only rows that land in the "predates the cockpit"
+  // notice are configs that fail the CURRENT WebsiteConfigSchema — genuinely
+  // pre-schema/hand-damaged rows the editor cannot safely mutate. Regeneration
+  // is the honest remedy for those, which is exactly what the notice says.
   const editorWebsite = useMemo<ShopWebsiteRow | null>(() => {
     if (!website || !EDITABLE_TEMPLATE_COMPONENTS[website.template_key]) return null;
     const parsed = WebsiteConfigSchema.safeParse(website.config);
@@ -307,6 +315,8 @@ function CockpitBodyInner({ userId, editorShop, hasWebsiteAccess }: CockpitBodyP
             ctaLabel="Open the studio"
           />
         ) : !editorWebsite ? (
+          // Reached ONLY by schema-invalid configs (see the gate note above) —
+          // every valid config, vitality included, opens the editor.
           <CockpitNotice
             icon={<Crown size={28} className="text-[#f0a500]" />}
             title="This site's layout predates the cockpit."

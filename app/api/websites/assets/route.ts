@@ -20,7 +20,12 @@ import { WebsiteConfigSchema, type SiteAssets, type WebsiteConfig } from '@/lib/
 // the mounted editor never loses unsaved copy edits over a remount.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const maxDuration = 120;
+// Hotfix 4: 300s envelope. gpt-image-2 renders run 30–90s; the generator
+// deadlines in lib/siteAssets (hero 120s, logo 90s + 20s upload margins)
+// need worst-case ~140s of route occupancy, and the old 120s ceiling left
+// zero slack once auth + config reads + the merge-write were added. 300
+// clears the worst case with >150s of headroom.
+export const maxDuration = 300;
 
 // Tier gate: lib/tiers canUseStudio — Pro+ (Studio moved down to Pro,
 // founder matrix 2026-08-29; legacy 'advanced' payers keep access).
@@ -143,7 +148,7 @@ export async function POST(req: Request) {
     }
 
     // ── RACE CLOSURE (A1) ────────────────────────────────────────────────
-    // Generation held this request open for up to 120s. Writing back
+    // Generation held this request open for up to ~140s. Writing back
     // `{...config, assets}` from the PRE-generation read would wholesale-
     // revert any content PUT that landed in the meantime (blocks, theme,
     // copy — a seller's whole edit session). Re-read the CURRENT row
@@ -164,7 +169,7 @@ export async function POST(req: Request) {
       );
     }
     const parsedCurrent = WebsiteConfigSchema.safeParse(current.config);
-    // A row that validated 120s ago and fails now would be a concurrent
+    // A row that validated minutes ago and fails now would be a concurrent
     // corrupting write — fall back to the pre-generation config (still a
     // valid site) rather than persisting an invalid one or losing the asset.
     const freshConfig: WebsiteConfig = parsedCurrent.success ? parsedCurrent.data : config;

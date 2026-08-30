@@ -24,16 +24,17 @@ import {
   Trash2,
   type LucideIcon,
 } from 'lucide-react';
-import { BLOCK_SETTINGS, type SiteBlock, type SiteBlockType } from '@/lib/siteTemplates';
+import { BLOCK_SETTINGS, type SiteBlock, type SiteBlockType, type TemplateKey } from '@/lib/siteTemplates';
 import {
   REMOVE_GUARD_HINT,
-  SECTION_CATALOG,
   SECTION_LABELS,
+  addableSectionCatalog,
   blockExcerpt,
   canRemoveBlock,
   descriptorFields,
   groupItemCount,
   hasGroupStarter,
+  isFixedSlotTemplate,
   readBlockField,
   type EditorField,
 } from './editorModel';
@@ -67,6 +68,10 @@ import {
 
 export type SectionRailProps = {
   blocks: SiteBlock[];
+  /** The site's template — fixed-slot dialects (vitality) filter the add
+   *  catalog to still-empty renderable slots and hide reorder affordances
+   *  (block order has no render surface there). See editorModel. */
+  templateKey: TemplateKey;
   focusedId: string | null;
   isMobile: boolean;
   saving: boolean;
@@ -400,30 +405,29 @@ function DesktopTreeItem({
   block,
   index,
   focused,
+  reorderable,
   onFocus,
   onToggleHidden,
 }: {
   block: SiteBlock;
   index: number;
   focused: boolean;
+  /** Fixed-slot dialects (vitality) render without the drag grip — block
+   *  order has no render surface there, so a drag that visibly does nothing
+   *  would be a dead control. */
+  reorderable: boolean;
   onFocus: () => void;
   onToggleHidden: () => void;
 }) {
   const controls = useDragControls();
   const hidden = block.hidden === true;
-  return (
-    <Reorder.Item
-      value={block.id}
-      dragListener={false}
-      dragControls={controls}
-      className="list-none"
-      data-rail-item={block.id}
+  const row = (
+    <div
+      className={`flex items-center gap-1.5 rounded-xl border transition ${reorderable ? '' : 'pl-3'} ${
+        focused ? 'border-[#f0a500] bg-amber-50/60' : 'border-transparent hover:bg-gray-50'
+      }`}
     >
-      <div
-        className={`flex items-center gap-1.5 rounded-xl border transition ${
-          focused ? 'border-[#f0a500] bg-amber-50/60' : 'border-transparent hover:bg-gray-50'
-        }`}
-      >
+      {reorderable && (
         <button
           type="button"
           aria-label={`Reorder ${SECTION_LABELS[block.type]}`}
@@ -435,34 +439,52 @@ function DesktopTreeItem({
         >
           <GripVertical size={14} />
         </button>
-        <button
-          type="button"
-          onClick={onFocus}
-          className={`flex min-h-[44px] min-w-0 flex-1 items-center gap-2.5 py-1.5 text-left ${hidden ? 'opacity-50' : ''}`}
-        >
-          <span className="w-4 shrink-0 font-mono text-[10px] text-gray-300">{index + 1}</span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[10px] font-bold uppercase tracking-widest text-gray-500">
-              {SECTION_LABELS[block.type]}
-              {hidden && <span className="ml-1.5 text-gray-300">· Hidden</span>}
-            </span>
-            <span className="block truncate text-xs text-gray-400">{blockExcerpt(block)}</span>
+      )}
+      <button
+        type="button"
+        onClick={onFocus}
+        className={`flex min-h-[44px] min-w-0 flex-1 items-center gap-2.5 py-1.5 text-left ${hidden ? 'opacity-50' : ''}`}
+      >
+        <span className="w-4 shrink-0 font-mono text-[10px] text-gray-300">{index + 1}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[10px] font-bold uppercase tracking-widest text-gray-500">
+            {SECTION_LABELS[block.type]}
+            {hidden && <span className="ml-1.5 text-gray-300">· Hidden</span>}
           </span>
-          <ChevronRight size={14} className={`shrink-0 ${focused ? 'text-[#f0a500]' : 'text-gray-200'}`} />
-        </button>
-        {/* Visibility eye (Item 2) — ≥44px, never part of the focus click. */}
-        <button
-          type="button"
-          aria-label={hidden ? `Show ${SECTION_LABELS[block.type]}` : `Hide ${SECTION_LABELS[block.type]}`}
-          aria-pressed={hidden}
-          onClick={onToggleHidden}
-          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition hover:bg-gray-100 ${
-            hidden ? 'text-amber-600' : 'text-gray-300 hover:text-gray-500'
-          }`}
-        >
-          {hidden ? <EyeOff size={15} /> : <Eye size={15} />}
-        </button>
-      </div>
+          <span className="block truncate text-xs text-gray-400">{blockExcerpt(block)}</span>
+        </span>
+        <ChevronRight size={14} className={`shrink-0 ${focused ? 'text-[#f0a500]' : 'text-gray-200'}`} />
+      </button>
+      {/* Visibility eye (Item 2) — ≥44px, never part of the focus click. */}
+      <button
+        type="button"
+        aria-label={hidden ? `Show ${SECTION_LABELS[block.type]}` : `Hide ${SECTION_LABELS[block.type]}`}
+        aria-pressed={hidden}
+        onClick={onToggleHidden}
+        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition hover:bg-gray-100 ${
+          hidden ? 'text-amber-600' : 'text-gray-300 hover:text-gray-500'
+        }`}
+      >
+        {hidden ? <EyeOff size={15} /> : <Eye size={15} />}
+      </button>
+    </div>
+  );
+  if (!reorderable) {
+    return (
+      <li className="list-none" data-rail-item={block.id}>
+        {row}
+      </li>
+    );
+  }
+  return (
+    <Reorder.Item
+      value={block.id}
+      dragListener={false}
+      dragControls={controls}
+      className="list-none"
+      data-rail-item={block.id}
+    >
+      {row}
     </Reorder.Item>
   );
 }
@@ -470,19 +492,29 @@ function DesktopTreeItem({
 // ── The rail ─────────────────────────────────────────────────────────────────
 
 export default function SectionRail(props: SectionRailProps) {
-  const { blocks, focusedId, isMobile, saving, atCapacity } = props;
+  const { blocks, templateKey, focusedId, isMobile, saving, atCapacity } = props;
   const railRef = useRef<HTMLDivElement | null>(null);
   const focusedBlock = focusedId ? blocks.find((b) => b.id === focusedId) ?? null : null;
 
-  // Full catalog (Item 2): every block type is addable, with an honest
-  // one-line description per type. video_hero routes through the film picker.
+  // Fixed-slot dialects (vitality): one slot per type, no reorder surface —
+  // see the editorModel note. Array-order templates keep the full catalog.
+  const fixedSlot = isFixedSlotTemplate(templateKey);
+  const catalog = addableSectionCatalog(templateKey, blocks);
+
+  // Honest add catalog (Item 2 + Hotfix 2): every type the TEMPLATE can
+  // render, with a one-line description per type. video_hero routes through
+  // the film picker.
   const addButtons = (
     <div className="flex flex-col gap-2">
       <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
-        {atCapacity ? 'At the 12-section limit — remove one to add another.' : 'Add a section'}
+        {atCapacity
+          ? 'At the 12-section limit — remove one to add another.'
+          : catalog.length === 0
+            ? 'Every section this layout supports is on your page.'
+            : 'Add a section'}
       </p>
       <div className="flex flex-col gap-1.5">
-        {SECTION_CATALOG.map(({ type, description }) => {
+        {catalog.map(({ type, description }) => {
           const Icon = BLOCK_TYPE_ICONS[type];
           return (
             <button
@@ -515,6 +547,11 @@ export default function SectionRail(props: SectionRailProps) {
       <div ref={railRef} className="space-y-2">
         {props.themePanel && (
           <div className="rounded-2xl border border-gray-200 bg-white p-3.5">{props.themePanel}</div>
+        )}
+        {fixedSlot && (
+          <p className="px-1 text-[11px] leading-relaxed text-gray-400">
+            This design places its sections in a fixed arrangement — use the eye to show or hide them.
+          </p>
         )}
         {blocks.map((block, index) => {
           const focused = block.id === focusedId;
@@ -555,24 +592,30 @@ export default function SectionRail(props: SectionRailProps) {
                   >
                     {block.hidden ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
-                  <button
-                    type="button"
-                    aria-label="Move section up"
-                    disabled={index === 0}
-                    onClick={() => props.onMove(block.id, -1)}
-                    className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition active:bg-gray-100 disabled:opacity-25"
-                  >
-                    <ChevronUp size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Move section down"
-                    disabled={index === blocks.length - 1}
-                    onClick={() => props.onMove(block.id, 1)}
-                    className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition active:bg-gray-100 disabled:opacity-25"
-                  >
-                    <ChevronDown size={16} />
-                  </button>
+                  {/* Fixed-slot dialects hide the arrows — order has no
+                      render surface there (see editorModel). */}
+                  {!fixedSlot && (
+                    <>
+                      <button
+                        type="button"
+                        aria-label="Move section up"
+                        disabled={index === 0}
+                        onClick={() => props.onMove(block.id, -1)}
+                        className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition active:bg-gray-100 disabled:opacity-25"
+                      >
+                        <ChevronUp size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Move section down"
+                        disabled={index === blocks.length - 1}
+                        onClick={() => props.onMove(block.id, 1)}
+                        className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition active:bg-gray-100 disabled:opacity-25"
+                      >
+                        <ChevronDown size={16} />
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
               {focused && (
@@ -596,23 +639,46 @@ export default function SectionRail(props: SectionRailProps) {
           <div className="mb-4 border-b border-gray-100 pb-4">{props.themePanel}</div>
         )}
         <p className="px-1 pb-2 text-[10px] font-bold uppercase tracking-widest text-gray-400">Sections</p>
-        <Reorder.Group
-          axis="y"
-          values={blocks.map((b) => b.id)}
-          onReorder={(ids: string[]) => props.onReorderIds(ids)}
-          className="m-0 space-y-1 p-0"
-        >
-          {blocks.map((block, index) => (
-            <DesktopTreeItem
-              key={block.id}
-              block={block}
-              index={index}
-              focused={block.id === focusedId}
-              onFocus={() => props.onFocus(block.id)}
-              onToggleHidden={() => props.onToggleHidden(block.id)}
-            />
-          ))}
-        </Reorder.Group>
+        {fixedSlot && (
+          <p className="px-1 pb-2 text-[11px] leading-relaxed text-gray-400">
+            This design places its sections in a fixed arrangement — use the eye to show or hide them.
+          </p>
+        )}
+        {fixedSlot ? (
+          // Plain list — no Reorder.Group, no drag grips (see editorModel).
+          <ul className="m-0 list-none space-y-1 p-0">
+            {blocks.map((block, index) => (
+              <DesktopTreeItem
+                key={block.id}
+                block={block}
+                index={index}
+                focused={block.id === focusedId}
+                reorderable={false}
+                onFocus={() => props.onFocus(block.id)}
+                onToggleHidden={() => props.onToggleHidden(block.id)}
+              />
+            ))}
+          </ul>
+        ) : (
+          <Reorder.Group
+            axis="y"
+            values={blocks.map((b) => b.id)}
+            onReorder={(ids: string[]) => props.onReorderIds(ids)}
+            className="m-0 space-y-1 p-0"
+          >
+            {blocks.map((block, index) => (
+              <DesktopTreeItem
+                key={block.id}
+                block={block}
+                index={index}
+                focused={block.id === focusedId}
+                reorderable
+                onFocus={() => props.onFocus(block.id)}
+                onToggleHidden={() => props.onToggleHidden(block.id)}
+              />
+            ))}
+          </Reorder.Group>
+        )}
 
         <div className="mt-4 border-t border-gray-100 pt-4">{addButtons}</div>
 

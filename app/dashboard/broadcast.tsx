@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 import { TIER_BY_ID, canUseBroadcast } from '@/lib/tiers';
@@ -77,6 +77,20 @@ export default function BroadcastPage() {
   );
 
   const router = useRouter();
+
+  // Back-affordance seam: this component mounts as the /dashboard?tab=broadcast
+  // pane, and /dashboard reads ?tab= ONCE on mount (repo idiom: replaceState,
+  // no useSearchParams). A plain <Link href="/dashboard"> client-nav from here
+  // would rewrite the URL but leave the pane stranded on Broadcast — the exact
+  // failure class DashboardSidebar.handleCommandCenterClick guards. Force a
+  // full navigation when already on /dashboard; modified clicks (new tab) and
+  // any future non-/dashboard mount keep native <Link> behavior.
+  const handleBackToDashboard = useCallback((event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+    if (window.location.pathname !== '/dashboard') return;
+    event.preventDefault();
+    window.location.assign('/dashboard');
+  }, []);
 
   useEffect(() => {
     fetchData();
@@ -273,10 +287,11 @@ export default function BroadcastPage() {
   const messageCharCount = message.length;
   const maxChars = 1024;
 
-  // Loading state
+  // Loading state — pane-height, not min-h-screen: this renders inside the
+  // command center's <main>, which already owns page padding and background.
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 size={40} className="text-green-600 animate-spin" />
       </div>
     );
@@ -285,13 +300,14 @@ export default function BroadcastPage() {
   // Not found state
   if (!shopData) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="flex min-h-[50vh] items-center justify-center">
         <div className="bg-white rounded-2xl shadow-lg p-8 text-center max-w-md">
           <AlertCircle size={48} className="mx-auto text-red-500 mb-4" />
           <p className="text-gray-900 font-bold text-lg mb-2">Unable to Load</p>
           <p className="text-gray-600 mb-6">We couldn't load your shop data. Please try again.</p>
           <Link
             href="/dashboard"
+            onClick={handleBackToDashboard}
             className="w-full block bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl transition-colors"
           >
             Back to Dashboard
@@ -304,15 +320,16 @@ export default function BroadcastPage() {
   // lib/tiers canUseBroadcast — Flagship (legacy 'advanced' payers keep it).
   const hasAccess = canUseBroadcast(shopData.subscription_tier);
 
-  // Tier gate - lock screen
+  // Tier gate - lock screen (pane-embedded: <main> owns padding/background)
   if (!hasAccess) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4 md:p-8">
+      <div className="font-sans text-gray-900">
         <div className="max-w-6xl mx-auto">
-          {/* Back Button */}
+          {/* Back Button — 44px touch target, full-nav seam */}
           <Link
             href="/dashboard"
-            className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-8 font-semibold transition-colors"
+            onClick={handleBackToDashboard}
+            className="mb-6 inline-flex min-h-[44px] items-center gap-2 font-semibold text-gray-600 transition-colors hover:text-gray-900"
           >
             <ArrowLeft size={20} />
             Back to Dashboard
@@ -321,7 +338,7 @@ export default function BroadcastPage() {
           {/* Lock Screen */}
           <div className="bg-white rounded-3xl shadow-2xl overflow-hidden max-w-2xl mx-auto border border-gray-200">
             {/* Lock Icon Section */}
-            <div className="bg-gradient-to-br from-amber-50 to-orange-50 p-12 text-center border-b border-gray-200">
+            <div className="bg-gradient-to-br from-amber-50 to-orange-50 p-6 sm:p-12 text-center border-b border-gray-200">
               <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-white border-4 border-red-500 mb-6">
                 <Lock size={48} className="text-red-500" />
               </div>
@@ -330,7 +347,7 @@ export default function BroadcastPage() {
             </div>
 
             {/* Content Section */}
-            <div className="p-12 text-center">
+            <div className="p-6 sm:p-12 text-center">
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-8">
                 <p className="text-blue-900 text-sm font-semibold">
                   ✨ Reach all your customers with one powerful message
@@ -388,32 +405,38 @@ export default function BroadcastPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-8 font-sans text-gray-900">
+    <div className="font-sans text-gray-900">
       <div className="max-w-7xl mx-auto">
-        {/* Header with Back Button */}
-        <div className="flex items-center gap-4 mb-8">
+        {/* Header — wrap-safe flex row: back → identity → tier pill. The
+            identity block claims a 13rem flex-basis and grows, so on narrow
+            viewports (≤ ~430px) the shrink-proof pill wraps onto its own row
+            BELOW the title instead of compressing over it; the back button is
+            a 44px touch target. No absolute positioning, nothing to collide. */}
+        <header className="mb-8 flex flex-wrap items-center gap-x-4 gap-y-3">
           <Link
             href="/dashboard"
-            className="p-2 bg-white rounded-full border hover:bg-gray-100 transition-colors"
+            onClick={handleBackToDashboard}
+            aria-label="Back to dashboard"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border bg-white transition-colors hover:bg-gray-100"
           >
             <ArrowLeft size={20} className="text-gray-600" />
           </Link>
-          <div className="flex-1">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-green-100 rounded-full">
-                <MessageCircle size={24} className="text-green-700" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-black">WhatsApp Broadcast Engine</h1>
-                <p className="text-gray-600 text-sm">Send personalized messages to all your customers instantly</p>
-              </div>
-              <div className="ml-auto flex items-center gap-2 bg-amber-100 text-amber-800 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider">
-                <span className="w-2 h-2 bg-amber-600 rounded-full"></span>
-                Flagship Feature
-              </div>
+
+          <div className="flex min-w-0 grow basis-52 items-center gap-3">
+            <div className="hidden shrink-0 rounded-full bg-green-100 p-3 sm:block">
+              <MessageCircle size={24} className="text-green-700" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-2xl font-black leading-tight md:text-3xl">WhatsApp Broadcast Engine</h1>
+              <p className="mt-0.5 text-sm text-gray-600">Send personalized messages to all your customers instantly</p>
             </div>
           </div>
-        </div>
+
+          <div className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-amber-100 px-4 py-2 text-xs font-bold uppercase tracking-wider text-amber-800">
+            <span className="h-2 w-2 rounded-full bg-amber-600"></span>
+            Flagship Feature
+          </div>
+        </header>
 
         {/* Error Banner */}
         {error && (
@@ -437,7 +460,7 @@ export default function BroadcastPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
           {/* Composer Section */}
           <div className="lg:col-span-2">
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 sm:p-8">
               <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
                 <Send size={24} className="text-green-600" />
                 Compose Message

@@ -45,6 +45,7 @@ import { GatedVideoPreviewScope } from '@/components/site-templates/GatedVideo';
 import { RevealPreviewScope } from '@/components/site-templates/Reveal';
 import { StoryClampPreviewScope } from '@/components/site-templates/StoryClamp';
 import RitualTemplate from '@/components/site-templates/RitualTemplate';
+import VitalityTemplate from '@/components/site-templates/VitalityTemplate';
 import BottomSheet from '@/components/website/BottomSheet';
 import VideoHeroPicker, { type VideoHeroSelection } from '@/components/website/VideoHeroPicker';
 import AssetSlots, { type AssetBusyState, type AssetSlotKind } from '@/components/website/editor/AssetSlots';
@@ -55,9 +56,9 @@ import {
   BLOCK_ID_PREFIXES,
   MAX_BLOCKS,
   REMOVE_GUARD_HINT,
-  SECTION_CATALOG,
   SECTION_LABELS,
   addGroupItem,
+  addableSectionCatalog,
   blocksAreValid,
   buildVideoHeroBlock,
   canRemoveBlock,
@@ -141,12 +142,20 @@ import {
 // /api/websites/assets and reconciles both local and SWR state.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Only the block-driven templates are editable surfaces. Vitality stays
-// legacy-driven by design (Phase 3 spec) and is never offered here — the
-// parent gates on this map, so no dead editor ever renders.
+// Every GENERATED base is an editable surface (Hotfix 2): the archetype pass
+// made vitality a first-class generated template (high-contrast-street), so
+// its exclusion here falsely told freshly minted vitality sites they
+// "predate the cockpit". Ritual and Editorial render body blocks in array
+// order; Vitality is a FIXED-SLOT dialect — its sections are block-anchored
+// with the same data-block markers, and its fixed-slot editing rules
+// (add catalog, no reorder surface) live in editorModel
+// (addableSectionCatalog / isFixedSlotTemplate). The map stays Partial so a
+// future template key can stage before its cockpit admission — the parent
+// gates on it, so no dead editor ever renders.
 export const EDITABLE_TEMPLATE_COMPONENTS: Partial<Record<TemplateKey, ComponentType<SiteTemplateProps>>> = {
   ritual: RitualTemplate,
   editorial: EditorialTemplate,
+  vitality: VitalityTemplate,
 };
 
 // Desktop width the preview is laid out at before scaling (matches
@@ -168,10 +177,14 @@ const MOBILE_DESIGN_WIDTH = 390;
 // it (owner-authenticated browser upload, public read).
 const BRAND_BUCKET = 'brand';
 
-// Generation can ride the same ceiling as the site generator (route
-// maxDuration 120s + margin) — the transport default of 12s is for ordinary
-// API calls, not diffusion pipelines.
-const ASSET_GENERATION_TIMEOUT_MS = 125_000;
+// Hotfix 4: must outlive the assets route's FULL envelope (maxDuration 300s
+// + 10s margin) so the client never aborts a healthy gpt-image-2 render —
+// every real failure inside that window arrives as an honest classified
+// 'server' error (429/422/504/500) from the route itself; a client-side
+// 'timeout' now only means the gateway itself hung past the platform kill.
+// The transport default of 12s is for ordinary API calls, not diffusion
+// pipelines.
+const ASSET_GENERATION_TIMEOUT_MS = 310_000;
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 
 // Mobile settings-sheet labels. Item 2: EVERY section now opens the sheet
@@ -634,6 +647,15 @@ export default function SiteCopyEditor({
   }, [dirty, onDirtyChange]);
 
   const payloadValid = useMemo(() => blocksAreValid(blocks), [blocks]);
+
+  // Honest add catalog (Hotfix 2): fixed-slot dialects (vitality) offer only
+  // block types with a still-empty render slot — an add whose section never
+  // appears on the canvas would be a silent failure. Array-order templates
+  // keep the full catalog. See editorModel addableSectionCatalog.
+  const addCatalog = useMemo(
+    () => addableSectionCatalog(website.template_key, blocks),
+    [website.template_key, blocks]
+  );
 
   const Template = EDITABLE_TEMPLATE_COMPONENTS[website.template_key];
 
@@ -1207,6 +1229,7 @@ export default function SiteCopyEditor({
   const sectionRail = (
     <SectionRail
       blocks={blocks}
+      templateKey={website.template_key}
       focusedId={focusedId}
       isMobile={isMobile}
       saving={saving}
@@ -1426,13 +1449,15 @@ export default function SiteCopyEditor({
                   <p className="mt-0.5 text-xs text-gray-500">
                     {atBlockCapacity
                       ? 'Your page is at its 12-section limit — remove a section to add another.'
-                      : 'New sections drop straight into the preview — tap a section for its settings, then save to publish.'}
+                      : addCatalog.length === 0
+                        ? 'Every section this layout supports is already on your page.'
+                        : 'New sections drop straight into the preview — tap a section for its settings, then save to publish.'}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setAddSheet(true)}
-                  disabled={atBlockCapacity || saving}
+                  disabled={atBlockCapacity || saving || addCatalog.length === 0}
                   className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-5 py-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition active:bg-gray-100 disabled:opacity-40"
                 >
                   <Plus size={14} /> Add a section
@@ -1637,11 +1662,13 @@ export default function SiteCopyEditor({
 
           {addSheet && (
             <BottomSheet key="add-sheet" label="Add a section" onDismiss={() => setAddSheet(false)}>
-              {/* Full catalog (Item 2) — one ≥56px row per block type with an
-                  honest description; the film row hands off to the Ad Studio
-                  picker (one sheet at a time on a phone). */}
+              {/* Honest catalog (Item 2 + Hotfix 2) — one ≥56px row per block
+                  type the TEMPLATE can render (fixed-slot dialects offer only
+                  still-empty slots), with an honest description; the film row
+                  hands off to the Ad Studio picker (one sheet at a time on a
+                  phone). */}
               <div className="space-y-1 px-3 pb-2">
-                {SECTION_CATALOG.map(({ type, description }) => {
+                {addCatalog.map(({ type, description }) => {
                   const Icon = BLOCK_TYPE_ICONS[type];
                   const opensPicker = type === 'video_hero';
                   return (

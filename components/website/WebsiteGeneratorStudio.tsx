@@ -200,13 +200,22 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
     setError(null);
     setPhase('consulting');
     const controller = beginStep();
+    // Regeneration determinism hotfix: a FRESH seed per consultation click.
+    // The server folds it into the archetype-pair rotation and the concept
+    // prompt, so "Design New Concepts" genuinely designs new concepts instead
+    // of replaying the shop-id-deterministic pair. Onboarding's one-click
+    // builder never posts a seed, so its legacy stable behavior is untouched.
+    const variationSeed =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : String(Date.now());
     try {
       const data = await fetchJSON<GenerateWebsiteResponse>(
         '/api/ai/generate-website',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ step: 'concepts' }),
+          body: JSON.stringify({ step: 'concepts', variationSeed }),
           signal: controller.signal,
         },
         { timeoutMs: STEP_TIMEOUT_MS }

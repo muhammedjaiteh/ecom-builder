@@ -98,6 +98,31 @@ export async function POST(req: Request) {
       );
     }
 
+    // ── Variation seed (regeneration determinism hotfix) ──────────────────
+    // OPTIONAL, concepts step only: an explicit "Regenerate"/"Design New
+    // Concepts" click mints a fresh seed client-side so the archetype pair
+    // AND the pitch copy vary per click. Absent → the legacy deterministic
+    // behavior (onboarding and pre-seed clients stay byte-stable). Validated
+    // to a short safe token: it is folded into the pick hash AND echoed into
+    // the DYNAMIC LLM prompt, so it must never carry free-form text.
+    const rawSeed: unknown = body?.variationSeed;
+    let variationSeed: string | null = null;
+    if (rawSeed !== undefined && rawSeed !== null) {
+      const asString =
+        typeof rawSeed === 'number' && Number.isFinite(rawSeed)
+          ? String(rawSeed)
+          : typeof rawSeed === 'string'
+            ? rawSeed.trim()
+            : null;
+      if (asString === null || !/^[A-Za-z0-9._-]{1,64}$/.test(asString)) {
+        return NextResponse.json(
+          { error: 'variationSeed must be a short alphanumeric string or number.' },
+          { status: 400 }
+        );
+      }
+      variationSeed = asString;
+    }
+
     let concept: SiteConcept | null = null;
     if (step === 'execute' && body?.concept != null) {
       const parsedConcept = SiteConceptSchema.safeParse(body.concept);
@@ -169,10 +194,12 @@ export async function POST(req: Request) {
     // An archetype = (template base × theme preset × block mix) bundle; the
     // TWO pitched per shop come from pickConceptArchetypes — niche-fitting
     // candidates rotated by the shop-id hash, so two cosmetics shops are
-    // pitched different pairs (deterministic variety, stable per shop).
+    // pitched different pairs (deterministic variety, stable per shop). A
+    // variationSeed (explicit regeneration) folds into that hash so repeat
+    // clicks rotate the pair instead of replaying it.
     // ═══════════════════════════════════════════════════════════════════════
     if (step === 'concepts') {
-      const [primary, secondary] = pickConceptArchetypes(shop.id, dominantCategory);
+      const [primary, secondary] = pickConceptArchetypes(shop.id, dominantCategory, variationSeed);
 
       // STATIC block (cachedSystem): byte-identical on every request — role,
       // the FULL archetype catalog (built from ARCHETYPES constants), copy
@@ -208,6 +235,13 @@ Return a JSON object:
     "hero_subheadline" : 1-2 sentence sample hero support line (max 200 chars)
   }`;
 
+      // CRITICAL CACHE LAW: the variation directive rides ONLY this dynamic
+      // prompt — cachedSystem above stays byte-identical across requests so
+      // the ephemeral prompt cache keeps hitting.
+      const variationDirective = variationSeed
+        ? `\n\nVARIATION SEED ${variationSeed} — this is an explicit REGENERATION: an earlier draft exists for this shop. Take a distinctly different creative angle this time (fresh concept names, fresh imagery, a different emotional register on the same inventory) — never repeat a previous pitch.`
+        : '';
+
       const prompt = `SHOP:
 - Name: ${shop.shop_name}
 ${shop.bio ? `- Bio: ${shop.bio}` : ''}
@@ -219,7 +253,7 @@ PITCH THESE TWO ARCHETYPES, IN THIS ORDER:
 1. "${primary.key}" — ${primary.name}
 2. "${secondary.key}" — ${secondary.name}
 
-NICHE CONTEXT: dominant category "${dominantCategory ?? 'unknown'}".`;
+NICHE CONTEXT: dominant category "${dominantCategory ?? 'unknown'}".${variationDirective}`;
 
       const { data: pair, provider } = await generateWithFallback({
         schema: ConceptPairSchema,

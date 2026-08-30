@@ -25,6 +25,21 @@ import { siteThemeStyle } from '@/lib/siteTheme';
 // the moving banner, edited from the SectionRail inspector) → stats band
 // (large numerals) → benefit-led horizontal product rows → brand story
 // (3-line StoryClamp teaser) → CTA → footer. Near-black + electric gold.
+//
+// COCKPIT ADMISSION (Hotfix 2): the high-contrast-street archetype made
+// vitality a first-class GENERATED base, so this template is now an editable
+// cockpit surface (EDITABLE_TEMPLATE_COMPONENTS). The FIXED-SLOT contract
+// stays — sections render in this file's deterministic positions (first
+// visible block of each type wins, never array order) — but every section is
+// now ANCHORED to its block: data-block-section on the wrapper and
+// EditableText/data-block-field on every copy node (inert data attributes on
+// the public site, exactly like RitualTemplate's), and a hidden/removed block
+// skips its slot via resolveVisibleBlocks. Copy reads from the block — the
+// writers keep it byte-identical to the retired site.* reads
+// (blocksToLegacySite mirror), so every stored row renders unchanged.
+// value_props stay marquee-only (rail-edited — an animated track is a hostile
+// edit target); product_tabs/video_hero have NO slot in this dialect, so the
+// editor's add catalog excludes them here (editorModel addableSectionCatalog).
 
 function price(p: number | null) {
   return p == null ? '' : `D${Number(p).toLocaleString()}`;
@@ -34,8 +49,10 @@ type TestimonialsBlock = Extract<SiteBlock, { type: 'testimonials' }>;
 type SplitCtaBlock = Extract<SiteBlock, { type: 'split_cta' }>;
 
 // ── Inspector depth (Pillar 4): per-dialect padding/align class maps ─────────
-// Coverage in the VITALITY dialect: the classic anatomy is site.*-driven
-// (no per-block params by construction), so ONLY the archetype-slot sections
+// Coverage in the VITALITY dialect: the classic anatomy keeps its fixed
+// street spacing (block-anchored since the cockpit admission, but padding/
+// align stay unconsumed there — the documented editorial-cta precedent for a
+// dialect that owns its own rhythm), so ONLY the archetype-slot sections
 // consume — padding + align (heading) on testimonials, padding on split_cta.
 type PadKey = 'compact' | 'default' | 'spacious';
 function vitalityPad(p: PadKey | undefined, map: Record<PadKey, string>): string {
@@ -129,12 +146,17 @@ function VitalitySplitCta({ block, shopName, collectionsHref }: {
 }
 
 export default function VitalityTemplate({ shop, products, config, heroMedia }: SiteTemplateProps) {
-  const { site } = config;
-  // Archetype pass: Vitality's classic anatomy stays site.*-driven and
-  // byte-identical, but the NEW block types render in deterministic slots —
-  // testimonials after the Brand story, the split spread after that (before
-  // the CTA). Legacy rows carry neither, so nothing changes for them.
+  // Cockpit admission (see header): EVERY section is block-anchored now. The
+  // classic anatomy reads its copy from the first VISIBLE block of each type
+  // (byte-identical to the retired site.* reads on every stored row — the
+  // writers keep the mirror in sync); the archetype slots keep their
+  // deterministic positions — testimonials after the Brand story, the split
+  // spread after that (before the CTA). A hidden/removed block skips its slot.
   const visibleBlocks = resolveVisibleBlocks(config);
+  const heroBlock = findBlock(visibleBlocks, 'hero_banner');
+  const gridBlock = findBlock(visibleBlocks, 'product_grid');
+  const storyBlock = findBlock(visibleBlocks, 'story_text');
+  const ctaBlock = findBlock(visibleBlocks, 'cta_banner');
   const testimonialsBlock = findBlock(visibleBlocks, 'testimonials');
   const splitCtaBlock = findBlock(visibleBlocks, 'split_cta');
   // Omnichannel hygiene (Phase 9): primary journeys stay on the branded site.
@@ -176,8 +198,12 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
         </div>
       </nav>
 
-      {/* Dark hero with diagonal bottom edge */}
-      <header className="relative overflow-hidden" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 92%, 0 100%)' }}>
+      {/* Dark hero with diagonal bottom edge — anchored to the hero_banner
+          block (data-block-section + copy markers) for the cockpit canvas;
+          hiding/removing the block skips the whole header, marquee tagline
+          falls back to the site.* mirror (SiteMarquee). */}
+      {heroBlock && (
+      <header data-block-section={heroBlock.id} className="relative overflow-hidden" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 92%, 0 100%)' }}>
         <div className="absolute inset-0">
           {heroMedia?.type === 'video' ? (
             // 2G media gate: unconstrained networks autoplay exactly as
@@ -215,16 +241,38 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
         </div>
 
         <div className="relative mx-auto max-w-7xl px-5 pb-32 pt-20 md:px-10 md:pb-44 md:pt-28">
-          <p className="inline-block rounded-sm bg-[var(--site-accent,#f0a500)] px-3 py-1 text-[10px] font-black uppercase tracking-[0.3em] text-black">
-            {site.tagline}
-          </p>
+          {/* tagline is schema-optional on the block (every stored row carries
+              it — the legacy projection copies site.tagline); clearing it in
+              the cockpit drops the chip, exactly like Ritual's. */}
+          {heroBlock.tagline && (
+            <EditableText
+              as="p"
+              blockId={heroBlock.id}
+              field="tagline"
+              className="inline-block rounded-sm bg-[var(--site-accent,#f0a500)] px-3 py-1 text-[10px] font-black uppercase tracking-[0.3em] text-black"
+            >
+              {heroBlock.tagline}
+            </EditableText>
+          )}
           {/* Quiet-luxury type cap (Beta QA pass): 6xl/8xl → 5xl/6xl with
               breathing leading — the condensed dialect survives, the shout
               does not. */}
-          <h1 className="mt-6 max-w-4xl text-5xl font-black uppercase leading-[1.02] tracking-tight md:text-6xl">
-            {site.hero_headline}
-          </h1>
-          <p className="mt-6 max-w-xl text-lg leading-relaxed text-[color-mix(in_srgb,var(--site-text,#fff)_70%,transparent)]">{site.hero_subheadline}</p>
+          <EditableText
+            as="h1"
+            blockId={heroBlock.id}
+            field="headline"
+            className="mt-6 max-w-4xl text-5xl font-black uppercase leading-[1.02] tracking-tight md:text-6xl"
+          >
+            {heroBlock.headline}
+          </EditableText>
+          <EditableText
+            as="p"
+            blockId={heroBlock.id}
+            field="subheadline"
+            className="mt-6 max-w-xl text-lg leading-relaxed text-[color-mix(in_srgb,var(--site-text,#fff)_70%,transparent)]"
+          >
+            {heroBlock.subheadline}
+          </EditableText>
           <a
             href="#lineup"
             className="mt-10 inline-block skew-x-[-6deg] bg-[var(--site-accent,#f0a500)] px-10 py-4 text-xs font-black uppercase tracking-[0.25em] text-black shadow-[6px_6px_0_color-mix(in_srgb,var(--site-accent,#f0a500)_25%,transparent)] transition hover:brightness-110 active:translate-y-0.5"
@@ -233,6 +281,7 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
           </a>
         </div>
       </header>
+      )}
 
       {/* Kinetic marquee on the hero→stats seam — pure CSS, never wrapped in
           Reveal (it is already motion). Fix 2: this ribbon IS the value-props
@@ -259,11 +308,23 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
         </Reveal>
       </section>
 
-      {/* Benefit-led product rows */}
-      <section id="lineup" className="mx-auto max-w-7xl px-5 py-20 md:px-10 md:py-24">
+      {/* Benefit-led product rows — anchored to the product_grid block. The
+          rows themselves are this dialect's fixed anatomy (displayMode has no
+          surface here — the grid/carousel switch belongs to ritual/editorial). */}
+      {gridBlock && (
+      <section id="lineup" data-block-section={gridBlock.id} className="mx-auto max-w-7xl px-5 py-20 md:px-10 md:py-24">
         <Reveal>
-          <h2 className="text-4xl font-black uppercase tracking-tight md:text-5xl">{site.collection_title}</h2>
-          <p className="mt-3 max-w-xl text-sm leading-relaxed text-[color-mix(in_srgb,var(--site-text,#fff)_60%,transparent)]">{site.collection_intro}</p>
+          <EditableText as="h2" blockId={gridBlock.id} field="title" className="text-4xl font-black uppercase tracking-tight md:text-5xl">
+            {gridBlock.title}
+          </EditableText>
+          <EditableText
+            as="p"
+            blockId={gridBlock.id}
+            field="intro"
+            className="mt-3 max-w-xl text-sm leading-relaxed text-[color-mix(in_srgb,var(--site-text,#fff)_60%,transparent)]"
+          >
+            {gridBlock.intro}
+          </EditableText>
         </Reveal>
 
         <div className="mt-14 space-y-8">
@@ -302,20 +363,31 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
           ))}
         </div>
       </section>
+      )}
 
-      {/* Brand story */}
-      <section className="border-y border-white/10 bg-[#111] py-20 md:py-24">
+      {/* Brand story — anchored to the story_text block. */}
+      {storyBlock && (
+      <section data-block-section={storyBlock.id} className="border-y border-white/10 bg-[#111] py-20 md:py-24">
         <Reveal className="mx-auto max-w-3xl px-5 md:px-10">
           <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[var(--site-accent,#f0a500)]">The Mission</p>
           {/* Fix 1: 3-line teaser + Read-the-full-story reveal (fade matches
-              this section's #111 panel). */}
+              this section's #111 panel). StoryClamp renders the bare copy node
+              in editor previews, so the data-block targeting stays intact. */}
           <div className="mt-6">
             <StoryClamp tone="vitality">
-              <p className="text-2xl font-bold leading-relaxed text-[color-mix(in_srgb,var(--site-text,#fff)_90%,transparent)] md:text-3xl">{site.brand_story}</p>
+              <EditableText
+                as="p"
+                blockId={storyBlock.id}
+                field="body"
+                className="text-2xl font-bold leading-relaxed text-[color-mix(in_srgb,var(--site-text,#fff)_90%,transparent)] md:text-3xl"
+              >
+                {storyBlock.body}
+              </EditableText>
             </StoryClamp>
           </div>
         </Reveal>
       </section>
+      )}
 
       {/* Archetype slots — render ONLY when the config carries the blocks. */}
       {testimonialsBlock && (
@@ -329,19 +401,35 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
         </Reveal>
       )}
 
-      {/* CTA */}
-      <section className="py-24 text-center">
+      {/* CTA — anchored to the cta_banner block. Button copy carries the two
+          data attributes on the Link itself (the documented interactive-node
+          pattern — see EditableText's header); the click-capture's closest()
+          walk resolves clicks on the inner skew span to it. */}
+      {ctaBlock && (
+      <section data-block-section={ctaBlock.id} className="py-24 text-center">
         <Reveal className="mx-auto max-w-2xl px-5 md:px-10">
-          <h2 className="text-4xl font-black uppercase tracking-tight md:text-5xl">{site.cta_banner.headline}</h2>
-          <p className="mx-auto mt-4 max-w-lg text-base leading-relaxed text-[color-mix(in_srgb,var(--site-text,#fff)_60%,transparent)]">{site.cta_banner.subtext}</p>
+          <EditableText as="h2" blockId={ctaBlock.id} field="headline" className="text-4xl font-black uppercase tracking-tight md:text-5xl">
+            {ctaBlock.headline}
+          </EditableText>
+          <EditableText
+            as="p"
+            blockId={ctaBlock.id}
+            field="subtext"
+            className="mx-auto mt-4 max-w-lg text-base leading-relaxed text-[color-mix(in_srgb,var(--site-text,#fff)_60%,transparent)]"
+          >
+            {ctaBlock.subtext}
+          </EditableText>
           <Link
             href={collectionsHref}
+            data-block-id={ctaBlock.id}
+            data-block-field="button_label"
             className="mt-10 inline-block skew-x-[-6deg] bg-[var(--site-accent,#f0a500)] px-12 py-5 text-sm font-black uppercase tracking-[0.25em] text-black shadow-[8px_8px_0_color-mix(in_srgb,var(--site-accent,#f0a500)_25%,transparent)] transition hover:brightness-110 active:translate-y-0.5"
           >
-            <span className="inline-block skew-x-[6deg]">{site.cta_banner.button_label}</span>
+            <span className="inline-block skew-x-[6deg]">{ctaBlock.button_label}</span>
           </Link>
         </Reveal>
       </section>
+      )}
 
       <footer className="border-t border-white/10 py-10">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-5 md:flex-row md:px-10">
