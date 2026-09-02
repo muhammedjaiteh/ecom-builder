@@ -52,11 +52,27 @@ type StudioProps = {
 // Tier gate: lib/tiers canUseStudio — Pro+ (Studio moved down to Pro,
 // founder matrix 2026-08-29; legacy 'advanced' payers keep access).
 
-// Client-side ceiling for either AI step — the route's maxDuration (120s)
-// plus a small network margin, so a hung provider can never lock the UI.
-// Passed to fetchJSON as the per-call deadline override (the transport
-// default of 12s is for ordinary API calls, not generation).
-const STEP_TIMEOUT_MS = 125_000;
+// Client-side ceilings for the AI steps — fetchJSON per-call deadline
+// overrides, so a hung provider can never lock the UI (the transport default
+// of 12s is for ordinary API calls, not generation). The route's maxDuration
+// is 300s (claude-fable-5-1 primary + the zero-click asset phase), and BOTH
+// steps must outlive that FULL server envelope: the concepts step runs the
+// same generateWithFallback cascade the route budgets at ≈235s worst case
+// (a multi-minute Fable adaptive-thinking turn, then serial fall-through
+// fable → sonnet → gemini → 4o-mini), so a shorter consult deadline would
+// self-author a timeout while the server is still legitimately working —
+// abandoning a run the server would have self-reported on within 300s.
+// 300s + 20s network/serialization margin = 320s: the server's honest error
+// body (or result) always lands before we give up. Two names are kept so
+// each call site documents which step it deadlines.
+const CONSULT_TIMEOUT_MS = 320_000;
+const EXECUTE_TIMEOUT_MS = 320_000;
+
+// Multi-minute-safe elapsed label: "47s" until the first minute, then
+// "3m 05s" — Fable builds legitimately run past 60s and a raw three-digit
+// seconds counter reads like a hang.
+const formatElapsed = (sec: number) =>
+  sec >= 60 ? `${Math.floor(sec / 60)}m ${String(sec % 60).padStart(2, '0')}s` : `${sec}s`;
 
 // Loose response shape for /api/ai/generate-website — fields are validated
 // individually (SiteConceptSchema, syncShopSlug's typeof gate) before use.
@@ -218,7 +234,7 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
           body: JSON.stringify({ step: 'concepts', variationSeed }),
           signal: controller.signal,
         },
-        { timeoutMs: STEP_TIMEOUT_MS }
+        { timeoutMs: CONSULT_TIMEOUT_MS }
       );
       if (controller.signal.aborted) return;
       // Defensive contract check: never enter 'choosing' without two
@@ -294,7 +310,7 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
           body: JSON.stringify({ step: 'execute', concept }),
           signal: controller.signal,
         },
-        { timeoutMs: STEP_TIMEOUT_MS }
+        { timeoutMs: EXECUTE_TIMEOUT_MS }
       );
       if (controller.signal.aborted) return;
       syncShopSlug(data.shop_slug);
@@ -483,7 +499,7 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
                     className="flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#1a2e1a] to-gray-900 px-8 py-3.5 text-[10px] font-bold uppercase tracking-widest text-white shadow-md transition-all hover:opacity-90 hover:shadow-lg active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {phase === 'consulting'
-                      ? <><Loader2 size={13} className="animate-spin" /> Consulting… {elapsedSec}s</>
+                      ? <><Loader2 size={13} className="animate-spin" /> Consulting… {formatElapsed(elapsedSec)}</>
                       : website
                         ? <><RefreshCw size={13} /> Design New Concepts</>
                         : <><Compass size={13} /> Start Design Consultation</>}
@@ -594,10 +610,10 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
                 </h3>
                 <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-gray-500">
                   Injecting your products, logo, and inventory into the chosen layout and writing
-                  every line of your site copy. About 20 seconds.
+                  every line of your site copy. A considered build can take a few minutes.
                 </p>
                 <p className="mt-5 text-[10px] font-bold uppercase tracking-widest text-gray-400">
-                  Elapsed {elapsedSec}s
+                  Elapsed {formatElapsed(elapsedSec)}
                 </p>
                 <button
                   onClick={handleCancelBuild}
@@ -616,7 +632,8 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
               <p className="text-sm font-bold">No website generated yet.</p>
               <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-gray-500">
                 Start the design consultation to see two live storefront previews built around your
-                inventory — then pick one and the AI builds the whole site. Each step takes seconds.
+                inventory — then pick one and the AI builds the whole site. The consultation is
+                usually quick; the full build can take a few minutes.
               </p>
             </div>
           )}

@@ -59,11 +59,12 @@ const BRAND_BUCKET = 'brand';
 //     abort at these deadlines now means a genuinely stalled render — the
 //     504 the route classifies from it is finally honest.
 //
-//   ONBOARDING (runSiteAssetPhase inside generate-website's 120s
-//     maxDuration, which has ALREADY spent time on the LLM step + upsert):
+//   ONBOARDING (runSiteAssetPhase inside generate-website's 300s
+//     maxDuration, which has ALREADY spent time on the LLM step + upsert —
+//     multi-minute since the claude-fable-5-1 primary, 2026-09-02):
 //     keeps its OWN tighter budgets — hero abort 45s inside a 55s settle
 //     budget, logo abort 30s inside a 50s settle budget (abort + upload
-//     margin). Phase ceiling: max(55s, 50s) = 55s of the 120s envelope. A
+//     margin). Phase ceiling: max(55s, 50s) = 55s of the 300s envelope. A
 //     slow render there is a graceful settleWithin skip (the seller
 //     regenerates from the Site Editor's slots, which ride the generous
 //     on-demand envelope), never a dead generation request.
@@ -73,8 +74,9 @@ const BRAND_BUCKET = 'brand';
 const HERO_DEADLINE_MS = 120_000;
 /** On-demand logo abort — default for the Site Editor slot route (300s). */
 const LOGO_DEADLINE_MS = 90_000;
-/** Onboarding hero abort — must resolve into a skip well inside
- *  generate-website's 120s maxDuration. */
+/** Onboarding hero abort — must resolve into a skip well inside the asset
+ *  slice of generate-website's 300s envelope (the LLM step spends most of
+ *  it; assets are never allowed to grow just because the envelope did). */
 const ONBOARDING_HERO_DEADLINE_MS = 45_000;
 /** Onboarding settle budget for the hero task (abort + storage upload). */
 const ONBOARDING_HERO_BUDGET_MS = 55_000;
@@ -307,8 +309,8 @@ export async function runSiteAssetPhase(args: {
     settleWithin(
       'Hero generation',
       // 45s abort + 10s upload slack = the 55s settle budget (the ladder
-      // above); matches the pre-hotfix phase ceiling, so generate-website's
-      // 120s envelope is untouched.
+      // above); matches the pre-hotfix phase ceiling — the phase stays a
+      // fixed 55s slice of generate-website's envelope (now 300s).
       ONBOARDING_HERO_BUDGET_MS,
       generateHeroAsset({
         admin,

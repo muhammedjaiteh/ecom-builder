@@ -3,7 +3,7 @@ import { revalidatePath, revalidateTag } from 'next/cache';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
-import { generateWithFallback } from '@/lib/llm';
+import { FLAGSHIP_CREATIVE_PROVIDER, generateWithFallback } from '@/lib/llm';
 import { ELITE_COPY_RULES } from '@/lib/adCopy';
 import { repairShopSlug, slugify } from '@/lib/slugify';
 import { canUseStudio } from '@/lib/tiers';
@@ -37,7 +37,27 @@ import {
 //     The dashboard fires this on load when the stored slug is not canonical.
 // Legacy contract preserved: a body without `step` executes directly (with the
 // optional templateOverride), exactly as the original single-step generator.
-export const maxDuration = 120;
+//
+// ── INVOCATION ENVELOPE (raised 120 → 300 on 2026-09-02, claude-fable-5-1
+// primary) ── one invocation carries everything below; the budgets must fit:
+//   · LLM call (generateWithFallback, Fable primaryOverride): Fable's
+//     adaptive-thinking turns run multi-minute, and a refusal/transient
+//     cascade may serially fall through anthropic-fable → sonnet-5 → gemini
+//     → gpt-4o-mini — budget ≈ 235s worst case.
+//   · Config upsert + snapshot ritual + reviews read: single-digit seconds.
+//   · Zero-click asset phase (runSiteAssetPhase): hero + logo in PARALLEL,
+//     hard-capped by settle budgets at max(55s, 50s) = 55s — never more.
+//   · Revalidation + response serialization: seconds.
+//   ≈ 235 + 5 + 55 + 5 = 300. Clients must deadline ABOVE this envelope —
+//   ALL steps, since the concepts step runs the same ≈235s-worst-case LLM
+//   cascade (WebsiteGeneratorStudio CONSULT_TIMEOUT_MS 320s and
+//   EXECUTE_TIMEOUT_MS 320s, MagicStorefrontBuilder GENERATION_TIMEOUT_MS
+//   320s) so the server always self-reports first.
+// PROMPT/CACHE LAW: the model switch alone opens a fresh prompt-cache
+// namespace — prompt text stays BYTE-IDENTICAL, so the Fable namespace warms
+// from the second call. cachedSystem + providerOptions.anthropic.cacheControl
+// directives work unchanged on Fable.
+export const maxDuration = 300;
 
 // Tier gate: lib/tiers canUseStudio — Pro+ (Studio moved down to Pro,
 // founder matrix 2026-08-29; legacy 'advanced' payers keep access).
@@ -260,6 +280,9 @@ NICHE CONTEXT: dominant category "${dominantCategory ?? 'unknown'}".${variationD
         prompt,
         cachedSystem,
         callerName: 'generate-website:concepts',
+        // Flagship creative primary (claude-fable-5-1, website generation
+        // only): refusals/transients cascade to sonnet-5 → gemini → 4o-mini.
+        primaryOverride: FLAGSHIP_CREATIVE_PROVIDER,
       });
 
       // Belt-and-suspenders: deterministically PIN both concepts to the two
@@ -374,6 +397,9 @@ ${templateConstraint}`;
       prompt,
       cachedSystem,
       callerName: 'generate-website',
+      // Flagship creative primary (claude-fable-5-1, website generation
+      // only): refusals/transients cascade to sonnet-5 → gemini → 4o-mini.
+      primaryOverride: FLAGSHIP_CREATIVE_PROVIDER,
     });
 
     // Deterministic assembly: block array with stable ids PLUS the legacy

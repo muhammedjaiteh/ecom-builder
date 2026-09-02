@@ -5,7 +5,7 @@ import { openai } from '@ai-sdk/openai';
 import type { ZodSchema } from 'zod';
 
 // Provider cascade: try in order. Adding a 4th provider or reordering is a one-line change.
-type ProviderEntry = { name: string; model: LanguageModel };
+export type ProviderEntry = { name: string; model: LanguageModel };
 
 const PROVIDERS: ProviderEntry[] = [
   { name: 'anthropic', model: anthropic('claude-sonnet-5') },
@@ -13,7 +13,65 @@ const PROVIDERS: ProviderEntry[] = [
   { name: 'openai',    model: openai('gpt-4o-mini') },
 ];
 
+/**
+ * FLAGSHIP CREATIVE — claude-fable-5-1 (live-verified against the Models API
+ * 2026-08-30: released 2026-08-28, 1M context, 128K output, adaptive-only
+ * thinking). WEBSITE GENERATION ONLY per founder decision — passed as
+ * primaryOverride by app/api/ai/generate-website (concepts + execute); every
+ * other AI route stays on the standard PROVIDERS cascade above. ~5x Sonnet
+ * pricing — do NOT add it to the default cascade. Refusal/content-filter
+ * outcomes provably fall through to sonnet-5: see isRefusalOutcome below.
+ */
+export const FLAGSHIP_CREATIVE_PROVIDER: ProviderEntry = {
+  name: 'anthropic-fable',
+  model: anthropic('claude-fable-5-1'),
+};
+
 const SAME_PROVIDER_RETRY_MS = 500;
+
+/**
+ * Safety-classifier refusal / content-filter detection (added 2026-09-02 with
+ * the claude-fable-5-1 primary — its classifiers decline more assertively
+ * than sonnet's). Three surfaces via the installed AI SDK ('ai' v6.0.197):
+ *   (a) generateObject throws AI_NoObjectGeneratedError when a refusal yields
+ *       no parsable object (already cascadeable via the name check) — it
+ *       carries finishReason 'content-filter' (@ai-sdk/anthropic maps
+ *       Anthropic stop_reason 'refusal' → 'content-filter');
+ *   (b) that finishReason on the error or its cause, checked here directly;
+ *   (c) an APICallError whose body says the output was blocked by the content
+ *       filtering policy — Anthropic serves these as HTTP 400, which the
+ *       status branch in isCascadeable would otherwise fail-fast as a
+ *       config bug.
+ * A refusal is model-specific, not request-invalid: the next provider in the
+ * cascade routinely completes the same prompt. So refusals must CASCADE and
+ * must NOT same-provider retry (the same model re-refuses the same prompt).
+ *
+ * SCOPE: consulted ONLY for the caller's primaryOverride provider (the
+ * `refusalCascades` flag threaded through isCascadeable/isRetryWorthy).
+ * The default PROVIDERS cascade — every route that passes no override —
+ * keeps its historical classification byte-for-byte: an Anthropic 400
+ * still fails fast there, and refusal-shaped messages still take the same
+ * retry/fail paths they always did. Fable is the only model in this repo
+ * whose classifier posture justified the new branch; widening it to the
+ * default chain would be an unreviewed behavior change on every AI route.
+ */
+function isRefusalOutcome(err: unknown): boolean {
+  const e = err as {
+    finishReason?: unknown;
+    message?: unknown;
+    responseBody?: unknown;
+    cause?: { finishReason?: unknown; message?: unknown };
+  } | null | undefined;
+  const finish = e?.finishReason ?? e?.cause?.finishReason;
+  if (finish === 'content-filter') return true;
+  const text = `${e?.message ?? ''} ${e?.responseBody ?? ''} ${e?.cause?.message ?? ''}`.toLowerCase();
+  return (
+    text.includes('content filter') ||   // "content filter" / "content filtering policy"
+    text.includes('content_filter') ||
+    text.includes('output blocked') ||
+    /\brefusal\b/.test(text)             // \b guards: never matches ECONNREFUSED / "connection refused"
+  );
+}
 
 /**
  * Should we move on to the NEXT provider after this error?
@@ -21,8 +79,12 @@ const SAME_PROVIDER_RETRY_MS = 500;
  * NO for auth, billing, and malformed-request errors — these are configuration bugs
  * that won't go away by trying a different provider, and cascading would silently
  * mask them while burning fallback credits.
+ *
+ * `refusalCascades` is true only when the erroring provider is the caller's
+ * primaryOverride (Fable) — see isRefusalOutcome. With it false, this function
+ * is byte-identical to the pre-Fable classifier.
  */
-function isCascadeable(err: any): boolean {
+function isCascadeable(err: any, refusalCascades: boolean): boolean {
   // Zod / structured-output failures — different providers may conform to the schema differently.
   const name = err?.name ?? err?.cause?.name;
   if (
@@ -32,6 +94,15 @@ function isCascadeable(err: any): boolean {
   ) {
     return true;
   }
+
+  // Safety-classifier refusals / content-filter outcomes — CASCADE to the
+  // next provider (sonnet-5 first when the Fable primaryOverride refused).
+  // Deliberately checked BEFORE the HTTP-status branch: Anthropic serves
+  // classifier declines as 400, which would otherwise fail fast below.
+  // Gated on refusalCascades so the un-overridden default cascade keeps its
+  // historical fail-fast-on-400 behavior (isRefusalOutcome is not even
+  // evaluated there).
+  if (refusalCascades && isRefusalOutcome(err)) return true;
 
   // Network errors (no HTTP status) — cascadeable
   const code = err?.code;
@@ -66,7 +137,7 @@ function isCascadeable(err: any): boolean {
  * NO for Zod/shape failures — the same prompt will produce the same bad output from
  * the same model, so the wait is wasted; we should immediately cascade.
  */
-function isRetryWorthy(err: any): boolean {
+function isRetryWorthy(err: any, refusalCascades: boolean): boolean {
   const name = err?.name ?? err?.cause?.name;
   if (
     name === 'AI_TypeValidationError' || name === 'TypeValidationError' ||
@@ -75,7 +146,12 @@ function isRetryWorthy(err: any): boolean {
   ) {
     return false;
   }
-  return isCascadeable(err);
+  // Refusals from the primaryOverride: same prompt → same decline from the
+  // same model. The 500ms wait is pure waste — cascade immediately
+  // (isCascadeable says yes). Gated like isCascadeable's refusal branch so
+  // the default cascade's retry decisions are untouched.
+  if (refusalCascades && isRefusalOutcome(err)) return false;
+  return isCascadeable(err, refusalCascades);
 }
 
 function buildMessages(
@@ -121,12 +197,13 @@ async function callOneProvider<T>(
   schema: ZodSchema<T>,
   messages: ModelMessage[],
   callerName: string,
+  refusalCascades: boolean,
 ): Promise<T> {
   try {
     const { object } = await generateObject({ model: provider.model, schema, messages });
     return object as T;
   } catch (err: any) {
-    if (!isRetryWorthy(err)) throw err; // outer loop decides whether to cascade or fail fast
+    if (!isRetryWorthy(err, refusalCascades)) throw err; // outer loop decides whether to cascade or fail fast
     console.warn(
       `[${callerName}] ${provider.name} transient hiccup — retrying once in ${SAME_PROVIDER_RETRY_MS}ms:`,
       err?.message ?? err
@@ -148,6 +225,16 @@ export type GenerateWithFallbackOpts<T> = {
    * for the cache to hit — never interpolate per-request data into it.
    */
   cachedSystem?: string;
+  /**
+   * Optional per-call PRIMARY provider, prepended ahead of the standard
+   * cascade: effective order becomes [primaryOverride, ...PROVIDERS], so any
+   * cascadeable failure on the override (refusal, transient, shape) falls
+   * through to the default chain (sonnet-5 first). Refusal/content-filter
+   * classification (isRefusalOutcome) applies to the override entry ONLY:
+   * absent this field — or once the cascade has fallen past it — error
+   * handling is byte-identical to the historical PROVIDERS cascade.
+   */
+  primaryOverride?: ProviderEntry;
 };
 
 export type GenerateWithFallbackResult<T> = {
@@ -169,12 +256,18 @@ export async function generateWithFallback<T>(
   const messages = buildMessages(opts.prompt, opts.images, opts.cachedSystem);
   let lastError: any;
 
-  for (const provider of PROVIDERS) {
+  const cascade = opts.primaryOverride ? [opts.primaryOverride, ...PROVIDERS] : PROVIDERS;
+  for (const provider of cascade) {
+    // Refusal-cascade classification is scoped to the primaryOverride entry
+    // itself (reference identity — cascade[0] IS opts.primaryOverride). The
+    // default PROVIDERS run — and the fallback tail of an overridden run —
+    // classify errors exactly as the pre-Fable cascade did.
+    const refusalCascades = provider === opts.primaryOverride;
     try {
-      const data = await callOneProvider(provider, opts.schema, messages, opts.callerName);
+      const data = await callOneProvider(provider, opts.schema, messages, opts.callerName, refusalCascades);
       return { data, provider: provider.name };
     } catch (err: any) {
-      if (!isCascadeable(err)) {
+      if (!isCascadeable(err, refusalCascades)) {
         console.error(
           `[${opts.callerName}] ${provider.name} returned a non-cascadeable error — failing fast:`,
           err?.message ?? err

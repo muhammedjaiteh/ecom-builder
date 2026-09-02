@@ -48,11 +48,20 @@ import { createPersistedSwrProvider, websiteContentKey } from '@/lib/swrCache';
 // Tier gate: lib/tiers canUseStudio — Pro+ (Studio moved down to Pro,
 // founder matrix 2026-08-29; legacy 'advanced' payers keep access).
 
-// Same client-side ceiling as WebsiteGeneratorStudio's AI steps: the route's
-// maxDuration (120s) plus a small network margin, passed to fetchJSON as the
-// per-call deadline override. The transport default of 12s is for ordinary
-// API calls, not generation.
-const GENERATION_TIMEOUT_MS = 125_000;
+// Same client-side ceiling as WebsiteGeneratorStudio's EXECUTE step: the
+// route's maxDuration (300s — claude-fable-5-1 primary + the zero-click asset
+// phase) plus a 20s network/serialization margin, so the server always
+// self-reports before we self-author a timeout. Passed to fetchJSON as the
+// per-call deadline override (the transport default of 12s is for ordinary
+// API calls, not generation). The one-click legacy path runs the FULL execute
+// pipeline — LLM + upsert + hero/logo — so it rides the full envelope.
+const GENERATION_TIMEOUT_MS = 320_000;
+
+// Multi-minute-safe elapsed label: "47s" until the first minute, then
+// "3m 05s" — Fable builds legitimately run past 60s and a raw three-digit
+// seconds counter reads like a hang.
+const formatElapsed = (sec: number) =>
+  sec >= 60 ? `${Math.floor(sec / 60)}m ${String(sec % 60).padStart(2, '0')}s` : `${sec}s`;
 
 // Rotating loader copy — cycled every ~2.5s with an AnimatePresence crossfade.
 const GENERATION_MESSAGES = [
@@ -380,10 +389,10 @@ export default function MagicStorefrontBuilder({
                   </AnimatePresence>
                 </div>
                 <p className="mt-2 text-sm leading-relaxed text-gray-500">
-                  Building your complete storefront — usually under a minute.
+                  Building your complete storefront — this can take a few minutes.
                 </p>
                 <p className="mt-5 text-[10px] font-bold uppercase tracking-widest text-gray-400">
-                  Elapsed {elapsedSec}s
+                  Elapsed {formatElapsed(elapsedSec)}
                 </p>
                 <button
                   onClick={handleCancel}
