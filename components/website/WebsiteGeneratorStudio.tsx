@@ -101,6 +101,13 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
   const [elapsedSec, setElapsedSec] = useState(0);
   const [isWarningModalOpen, setIsWarningModalOpen] = useState(false);
 
+  // Entropy-engine seed coherence: the seed the on-screen concepts were
+  // pitched under is held here and re-posted with the EXECUTE step, so the
+  // concept pitched under seed S is BUILT under S — one creative identity per
+  // consultation. Set only when a consultation succeeds; the next consult
+  // replaces it.
+  const [variationSeed, setVariationSeed] = useState<string | null>(null);
+
   // Cancel is the safe default — focus lands on it when the overwrite
   // warning opens, and Escape dismisses without firing anything.
   const warningCancelRef = useRef<HTMLButtonElement | null>(null);
@@ -216,12 +223,13 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
     setError(null);
     setPhase('consulting');
     const controller = beginStep();
-    // Regeneration determinism hotfix: a FRESH seed per consultation click.
-    // The server folds it into the archetype-pair rotation and the concept
-    // prompt, so "Design New Concepts" genuinely designs new concepts instead
-    // of replaying the shop-id-deterministic pair. Onboarding's one-click
-    // builder never posts a seed, so its legacy stable behavior is untouched.
-    const variationSeed =
+    // Entropy engine: a FRESH seed per consultation click. The server folds it
+    // into the archetype-pair rotation and the concept prompt, so "Design New
+    // Concepts" genuinely designs new concepts instead of replaying the
+    // shop-id-deterministic pair — and the SAME seed is re-posted with the
+    // execute step (handleBuild) so the build stays coherent with the pitch.
+    // Onboarding's one-click builder mints its own seed per click.
+    const seed =
       typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
         ? crypto.randomUUID()
         : String(Date.now());
@@ -231,7 +239,7 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ step: 'concepts', variationSeed }),
+          body: JSON.stringify({ step: 'concepts', variationSeed: seed }),
           signal: controller.signal,
         },
         { timeoutMs: CONSULT_TIMEOUT_MS }
@@ -249,6 +257,7 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
       }
       syncShopSlug(data.shop_slug);
       setConcepts(received);
+      setVariationSeed(seed);
       setConceptReasoning(typeof data.niche_reasoning === 'string' ? data.niche_reasoning : null);
       setSelectedConcept(null);
       setPhase('choosing');
@@ -302,12 +311,14 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
     setPhase('building');
     const controller = beginStep();
     try {
+      // The consult seed rides along (when held) so the build's structural
+      // and copy variation is the same creative identity the seller approved.
       const data = await fetchJSON<ShopWebsiteRow & { shop_slug?: unknown }>(
         '/api/ai/generate-website',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ step: 'execute', concept }),
+          body: JSON.stringify({ step: 'execute', concept, ...(variationSeed ? { variationSeed } : {}) }),
           signal: controller.signal,
         },
         { timeoutMs: EXECUTE_TIMEOUT_MS }

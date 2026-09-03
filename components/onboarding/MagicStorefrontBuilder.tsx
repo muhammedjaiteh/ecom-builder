@@ -262,12 +262,26 @@ export default function MagicStorefrontBuilder({
       // site in ONE call. Onboarding is one click by design: no concept step,
       // no choice paralysis. The studio's richer two-step flow is one screen
       // away once the seller lands in the Website Studio.
+      //
+      // ENTROPY ENGINE (founder mandate: no two generations identical): a
+      // fresh seed per click. This deliberately ENDS onboarding's legacy
+      // deterministic behavior — two sellers with twin inventories, or one
+      // seller retrying after a failure, no longer receive the same build;
+      // the server folds the seed into the dynamic prompt so copy AND the
+      // structural levers (section order, grid/carousel, rhythm, accent
+      // preset, face) vary per run. The body stays step-less: the legacy
+      // execute contract is unchanged, and a body with no seed remains valid
+      // server-side (it simply runs unseeded).
+      const variationSeed =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : String(Date.now());
       const row = await fetchJSON<ShopWebsiteRow & { shop_slug?: unknown }>(
         '/api/ai/generate-website',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
+          body: JSON.stringify({ variationSeed }),
           signal: controller.signal,
         },
         { timeoutMs: GENERATION_TIMEOUT_MS }

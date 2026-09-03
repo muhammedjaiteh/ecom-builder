@@ -9,6 +9,7 @@ import { repairShopSlug, slugify } from '@/lib/slugify';
 import { canUseStudio } from '@/lib/tiers';
 import { runSiteAssetPhase } from '@/lib/siteAssets';
 import {
+  ACCENT_PRESET_SLOTS,
   ARCHETYPES,
   ConceptPairSchema,
   SITE_TEMPLATES,
@@ -16,10 +17,14 @@ import {
   TEMPLATE_KEYS,
   WebsiteGenerationSchema,
   applyArchetype,
+  applyGenerationLayout,
+  archetypeLayoutBounds,
   buildPreviousDesign,
+  classicLayoutBounds,
   generationToConfig,
   pickConceptArchetypes,
   templateFromCategory,
+  type LayoutBounds,
   type SiteArchetype,
   type SiteConcept,
   type TemplateKey,
@@ -61,6 +66,30 @@ export const maxDuration = 300;
 
 // Tier gate: lib/tiers canUseStudio — Pro+ (Studio moved down to Pro,
 // founder matrix 2026-08-29; legacy 'advanced' payers keep access).
+
+/** Per-build lever bounds for the DYNAMIC prompt (entropy engine): the
+ *  archetype's — or the classic template's — composition, accent presets,
+ *  display faces, and the dialect facts, so the model is never promised a
+ *  lever its layout does not render. Per-request by nature (depends on the
+ *  chosen archetype/template) — it must NEVER enter cachedSystem. */
+function describeLayoutBounds(bounds: LayoutBounds): string {
+  const gated = bounds.serverGated.length > 0
+    ? ` — ${bounds.serverGated.join(', ')} is filled from this shop's REAL reviews and dropped when none exist; name where it should sit if it does`
+    : '';
+  return [
+    `- Sections available, default order: ${bounds.blockMix.join(' → ')}${gated}`,
+    bounds.orderHonored
+      ? '- block_order: honored — the page renders sections in your order (hero_banner first, product_grid present, no repeats; omitted sections ship hidden).'
+      : '- block_order: this layout renders a FIXED anatomy — your order controls inclusion only (hero_banner first, product_grid present; omitted sections ship hidden).',
+    bounds.carouselHonored
+      ? '- product_grid_display: "grid" | "carousel"'
+      : '- product_grid_display: not rendered on this layout (fixed benefit rows) — omit it.',
+    `- theme_preset_index: ${bounds.accentPresets.map((p, i) => `${i} = ${p.name}${i === 0 ? ' (default)' : ''}`).join(' · ')}`,
+    bounds.displayFonts.length > 0
+      ? `- display_font: ${bounds.displayFonts.map((f, i) => `${f}${i === 0 ? ' (default)' : ''}`).join(' | ')}`
+      : '- display_font: fixed on this layout (native grotesque) — omit it.',
+  ].join('\n');
+}
 
 export async function POST(req: Request) {
   try {
@@ -118,13 +147,17 @@ export async function POST(req: Request) {
       );
     }
 
-    // ── Variation seed (regeneration determinism hotfix) ──────────────────
-    // OPTIONAL, concepts step only: an explicit "Regenerate"/"Design New
-    // Concepts" click mints a fresh seed client-side so the archetype pair
-    // AND the pitch copy vary per click. Absent → the legacy deterministic
-    // behavior (onboarding and pre-seed clients stay byte-stable). Validated
+    // ── Variation seed (entropy engine — BOTH AI steps) ───────────────────
+    // OPTIONAL on concepts AND execute. Concepts: a "Design New Concepts"
+    // click mints a fresh seed client-side so the archetype pair AND the pitch
+    // copy vary per click. Execute: the studio re-posts the SAME seed its
+    // concepts were pitched under (coherence — the concept pitched under S is
+    // built under S), and onboarding's one-click builder mints its own per
+    // click, so no two generations are identical (founder mandate). Absent →
+    // the unseeded legacy behavior (pre-seed clients stay valid). Validated
     // to a short safe token: it is folded into the pick hash AND echoed into
-    // the DYNAMIC LLM prompt, so it must never carry free-form text.
+    // the DYNAMIC LLM prompt — never the cached block — so it must never
+    // carry free-form text.
     const rawSeed: unknown = body?.variationSeed;
     let variationSeed: string | null = null;
     if (rawSeed !== undefined && rawSeed !== null) {
@@ -339,18 +372,44 @@ APPROVED CREATIVE DIRECTION — honor it precisely, refine and expand it into th
 
     // ── Prompt split for Anthropic cache_control ──────────────────────────
     // STATIC block (cachedSystem): every instruction that is byte-identical on
-    // all requests — role, template catalog (built from SITE_TEMPLATES
-    // constants), elite copy rules, and the full output field spec. This is
-    // the massive stable prefix the ephemeral cache keys on. Changed ONCE for
-    // the Phase-3 block model, ONCE for the Phase-8 brevity mandate, and ONCE
-    // MORE for the archetype pass (the optional split_cta field spec below) —
-    // byte-stable again from here, no per-request data inside. The archetype
-    // itself is per-request and rides ONLY the dynamic prompt
-    // (archetypeDirection inside templateConstraint).
-    // DYNAMIC block (prompt): shop identity, inventory, and the per-request
-    // template constraint / approved concept — anything here in the cached
-    // block would silently kill every cache hit.
-    const cachedSystem = `You are the brand director for Sanndikaa, generating a COMPLETE premium storefront website for one of our sellers. The site is assembled from content blocks — you write the copy for every block.
+    // all requests — the founder's ENTROPY ENGINE framing (<system_context>,
+    // <architectural_rules>, <generation_task>), the template catalog (built
+    // from SITE_TEMPLATES constants), elite copy rules, the brevity mandate,
+    // and the full output field spec including the optional "layout" levers.
+    // This is the massive stable prefix the ephemeral cache keys on. Changed
+    // ONCE for the Phase-3 block model, ONCE for the Phase-8 brevity mandate,
+    // ONCE for the archetype pass (split_cta), and ONCE MORE for the entropy
+    // engine (founder sections + layout spec) — byte-stable again from here.
+    // CACHE LAW: no per-request data inside. The only interpolations are
+    // module constants (templateCatalog, TEMPLATE_KEYS, ELITE_COPY_RULES,
+    // ACCENT_PRESET_SLOTS). The seed, the archetype, the shop, the inventory
+    // and the layout BOUNDS are per-request and ride ONLY the dynamic prompt.
+    // DYNAMIC block (prompt): <seller_data>, <chosen_archetype> (template
+    // constraint / approved concept / archetype direction), <layout_bounds>,
+    // and — when a seed was posted — the <entropy_engine> block. Anything
+    // from there in the cached block would silently kill every cache hit.
+    const cachedSystem = `<system_context>
+Role: Principal E-Commerce Architect (Sanndikaa Studio).
+Objective: Generate an elite, top 1% global e-commerce storefront for the provided seller.
+Mandate: You are not filling out a template. You are engineering a bespoke, high-converting software interface. No two generations should ever be identical.
+</system_context>
+
+<architectural_rules>
+1. Top-of-Food-Chain UX — already engineered; write for it:
+   - Every page ships mobile-first: each product detail page carries a sticky bottom buy bar (price, variant chip, action button), the cart is a slide-out drawer (never a cart page), and every touch target is at least 44px. None of this is a field you output. Write copy that assumes this execution: lines that survive a phone screen, headlines that land above the fold, button labels that fit a thumb-width pill.
+2. Dynamic Structural Permutation:
+   - Analyze the <seller_data>. Do not just change the words — change the layout hierarchy to the seller's strengths through the "layout" object (field spec below): section order and inclusion, grid vs carousel for the collection, spacing and alignment rhythm per section, the accent preset, the display face. The <layout_bounds> in the user message state exactly what this build may draw from.
+   - Visual-led inventory (fashion, craft, beauty, objects that sell on imagery): carousel collection, spacious rhythm, story late — let the products carry the page.
+   - Spec-led inventory (tech, supplements, tools, anything bought on facts): grid collection, compact rhythm, value_props directly after the hero, story late.
+3. Zero-Clutter Integrity:
+   - NEVER use placeholder text (lorem ipsum) or generic marketing gibberish.
+   - Write highly persuasive, niche-specific copy.
+   - Use honest data. No fake countdown timers, invented counts, or fabricated reviews — testimonials are filled server-side from real reviews only.
+</architectural_rules>
+
+<generation_task>
+Given the <seller_data> and <chosen_archetype> in the user message, output the complete, production-ready JSON structure mapping to our Next.js template anatomy — the field spec below. The user message also carries the <layout_bounds> and, when present, the <entropy_engine> seed.
+</generation_task>
 
 AVAILABLE TEMPLATES:
 ${templateCatalog}
@@ -367,7 +426,7 @@ BREVITY MANDATE — BINDING FOR EVERY FIELD:
 
 Return a JSON object:
 - "template_key"     : one of ${TEMPLATE_KEYS.map((k) => `"${k}"`).join(' | ')}
-- "niche_reasoning"  : 1-2 sentences on why this template fits this inventory
+- "niche_reasoning"  : 1-2 sentences on why this template and your structural choices fit this inventory
 - "hero"             : the opening banner block — {
     "tagline"     : 3-6 word brand essence line (target ~30 chars, max 80)
     "headline"    : 4-8 word headline (target ~45 chars, max 90) — sensory, not salesy
@@ -381,16 +440,58 @@ Return a JSON object:
 - "story"            : the brand-story block — { "body": 2-3 short sentences of origin/craft in the brand's voice (target ~280 chars, max 600) }
 - "cta"              : the closing banner block — { "headline": target ~40 chars, max 90; "subtext": one sentence, target ~90 chars, max 200; "button_label": 2-5 words }
 - "seo"              : { "title": max 70 chars including the shop name, "description": target ~140 chars, max 170 }
-- "split_cta"        : OPTIONAL — write it ONLY when the user's instructions ask for it. A two-panel conversion spread, distinct from "cta" (never repeat its copy): { "headline": target ~40 chars, max 90; "body": one sentence, target ~90 chars, max 200; "button_label": 2-5 words }`;
+- "split_cta"        : OPTIONAL — write it ONLY when the user's instructions ask for it. A two-panel conversion spread, distinct from "cta" (never repeat its copy): { "headline": target ~40 chars, max 90; "body": one sentence, target ~90 chars, max 200; "button_label": 2-5 words }
+- "layout"           : OPTIONAL structural choices — every key optional, each validated against the <layout_bounds>; anything absent or outside them falls back to the default, so choose deliberately: {
+    "block_order"          : ordered section types to show — hero_banner MUST be first, product_grid MUST be present, only types the bounds list, no repeats. Types you leave out ship hidden (the seller can restore them)
+    "product_grid_display" : "grid" | "carousel"
+    "block_padding"        : { <section type>: "compact" | "default" | "spacious" } — rhythm per section
+    "block_align"          : { <section type>: "left" | "center" }
+    "theme_preset_index"   : integer 0-${ACCENT_PRESET_SLOTS - 1} into the bounds' accent presets (0 = the default) — never a color value
+    "display_font"         : one of the bounds' display faces
+  }`;
 
-    const prompt = `SHOP:
+    // ── Layout bounds (per-request → dynamic prompt) ───────────────────────
+    // The archetype's blockMix/presets/faces, or the classic template's. When
+    // the model picks the template itself (onboarding's one-click path) every
+    // template's bounds are listed and the server applies the set matching
+    // the returned template_key.
+    const layoutBoundsText = archetype
+      ? describeLayoutBounds(archetypeLayoutBounds(archetype))
+      : chosenTemplate
+        ? describeLayoutBounds(classicLayoutBounds(chosenTemplate))
+        : TEMPLATE_KEYS
+            .map((k) => `IF template_key is "${k}":\n${describeLayoutBounds(classicLayoutBounds(k))}`)
+            .join('\n\n');
+
+    // ── Entropy engine (per-request → dynamic prompt) ──────────────────────
+    // The founder's block, mapped onto the REAL levers. Absent seed (a legacy
+    // step-less body) → no block; the layout bounds still ride, so the
+    // structural levers stay available to the model either way.
+    const entropyEngine = variationSeed
+      ? `
+
+<entropy_engine>
+Variation Seed: ${variationSeed}
+Instruction: Use this seed to uniquely shuffle the section placements (block_order), alternate the accent mapping (theme_preset_index), rotate the typographic register (display_font) and the spacing/alignment rhythm (block_padding, block_align), and choose grid or carousel — all within the <layout_bounds> above. The resulting interface must be distinct from any previous generation for this niche, and the copy must take its own angle on the same inventory.
+</entropy_engine>`
+      : '';
+
+    const prompt = `<seller_data>
+SHOP:
 - Name: ${shop.shop_name}
 ${shop.bio ? `- Bio: ${shop.bio}` : ''}
 
 INVENTORY (${products.length} products, first 15 shown):
 ${inventorySummary}
+</seller_data>
 
-${templateConstraint}`;
+<chosen_archetype>
+${templateConstraint}
+</chosen_archetype>
+
+<layout_bounds>
+${layoutBoundsText}
+</layout_bounds>${entropyEngine}`;
 
     const { data: generation, provider } = await generateWithFallback({
       schema: WebsiteGenerationSchema,
@@ -413,12 +514,16 @@ ${templateConstraint}`;
       config.template_key = chosenTemplate;
     }
 
-    // ── Archetype application (Pillar 3) ──────────────────────────────────
+    // ── Archetype application (Pillar 3) + entropy engine ─────────────────
     // Theme preset + block mix + the conditional new sections:
     //   · split_cta from the model's optional object (skipped when absent);
     //   · testimonials from REAL product reviews (rating ≥ 4 with substance)
     //     — the read is best-effort and a failure/empty result just means NO
-    //     testimonials section (integrity law: never a fabricated quote).
+    //     testimonials section (integrity law: never a fabricated quote —
+    //     and the model's layout can only PLACE the slot, never conjure it).
+    //   · the model's VALIDATED layout levers layered last (applyArchetype →
+    //     applyGenerationLayout); anything absent/invalid falls back to the
+    //     bundle default, so the pre-engine assembly is always the floor.
     // The classic path (no archetype) never enters this branch.
     if (archetype) {
       let reviewRows: TestimonialSourceReview[] | null = null;
@@ -443,6 +548,21 @@ ${templateConstraint}`;
       }
       config = applyArchetype(config, archetype, generation, reviewRows);
       console.log(`[generate-website] Archetype "${archetype.key}" applied for shop ${shop.id}: blocks=[${(config.blocks ?? []).map((b) => b.type).join(', ')}]`);
+    } else if (generation.layout) {
+      // ── Entropy engine on the classic path ─────────────────────────────
+      // No bundle to apply, but the structural levers still count — validated
+      // against the CHOSEN template's classic bounds (five-block anatomy, the
+      // template's own guard-cleared swatch table, curated faces). Absent
+      // layout → this branch is skipped and the classic config is
+      // byte-identical to the pre-engine pipeline.
+      config = applyGenerationLayout(config, generation.layout, classicLayoutBounds(config.template_key));
+    }
+
+    if (generation.layout) {
+      console.log(
+        `[generate-website] Layout levers for shop ${shop.id} (${archetype ? archetype.key : `classic/${config.template_key}`}): ` +
+        `${JSON.stringify(generation.layout)} → blocks=[${(config.blocks ?? []).map((b) => `${b.type}${b.hidden ? '(hidden)' : ''}`).join(', ')}] theme=${JSON.stringify(config.theme ?? null)}`
+      );
     }
 
     console.log(`[generate-website] Config by ${provider} for shop ${shop.id}: template=${config.template_key} — ${config.niche_reasoning}`);

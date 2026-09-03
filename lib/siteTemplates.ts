@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import type { ReactNode } from 'react';
 import { slugify } from './slugify';
+// Runtime-safe: siteTheme imports ONLY types from this module, so the value
+// import here creates no cycle at runtime (classicLayoutBounds reads the
+// template swatch tables as the classic path's guard-cleared accent presets).
+import { TEMPLATE_THEMES } from './siteTheme';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AI Website Generator — template registry + generated-config schema.
@@ -623,6 +627,17 @@ export const ARCHETYPE_KEYS = [
 
 export type ArchetypeKey = (typeof ARCHETYPE_KEYS)[number];
 
+/** A curated, guard-cleared accent swatch the entropy engine may pick BY
+ *  INDEX (theme_preset_index). The model never emits a color value. */
+export type AccentPreset = { name: string; hex: string };
+
+/** Every archetype AND every classic template exposes exactly this many
+ *  accent presets, so the generation schema's theme_preset_index bound
+ *  (0..ACCENT_PRESET_SLOTS-1) is one static integer that is byte-stable in the
+ *  cached prompt. scripts/verifyConfigCompat.ts asserts the count on every
+ *  bundle and every swatch table. */
+export const ACCENT_PRESET_SLOTS = 5;
+
 export type SiteArchetype = {
   key: ArchetypeKey;
   name: string;
@@ -632,6 +647,16 @@ export type SiteArchetype = {
   theme: SiteTheme;
   /** Ordered home-page composition (conditional slots noted above). */
   blockMix: SiteBlockType[];
+  /** Entropy-engine accent bounds: index 0 IS theme.accent (the bundle
+   *  default); every entry clears the 4.5:1 CTA-label guard AND 3:1 against
+   *  the bundle's EFFECTIVE paper (theme.background, else the template paper)
+   *  — verified by the compat gate, so a model pick can never land an
+   *  unreadable accent. */
+  accentPresets: ReadonlyArray<AccentPreset>;
+  /** Entropy-engine face bounds: index 0 is theme.display_font. EMPTY means
+   *  the face is fixed for this bundle (vitality's native grotesque) and any
+   *  display_font request is ignored. */
+  displayFonts: ReadonlyArray<SiteFontKey>;
   /** One-line creative direction handed to the LLM (dynamic prompt). */
   copyDirection: string;
   /** Mood line for the concept pitch. */
@@ -647,6 +672,17 @@ export const ARCHETYPES: Record<ArchetypeKey, SiteArchetype> = {
     // deep enough to carry white CTA labels (guard-verified). Pill corners.
     theme: { accent: '#a15c6e', display_font: 'cormorant', background: '#f7f0ec', text: '#3d3430', button_radius: 'pill' },
     blockMix: ['hero_banner', 'value_props', 'product_grid', 'split_cta', 'story_text', 'testimonials', 'cta_banner'],
+    // Deep-muted pastel companions — every hex ≥ 4.9:1 on white labels and
+    // ≥ 4.3:1 against the blush paper (#f7f0ec).
+    accentPresets: [
+      { name: 'Dusty Rose', hex: '#a15c6e' },
+      { name: 'Slate Blue', hex: '#5c6b8a' },
+      { name: 'Mauve', hex: '#7a5c7a' },
+      { name: 'Sage', hex: '#4f6b58' },
+      { name: 'Honey', hex: '#8a6a3f' },
+    ],
+    // Feather-to-warm serifs only — a razor didone contradicts the register.
+    displayFonts: ['cormorant', 'lora', 'fraunces', 'playfair'],
     copyDirection:
       'Soft-spoken, airy, feminine-leaning luxury: short sentences, gentle sensory words (petal, glow, calm), zero hype.',
     vibe: 'Powder-soft minimalism — blush tones, feather serifs, generous air.',
@@ -657,6 +693,18 @@ export const ARCHETYPES: Record<ArchetypeKey, SiteArchetype> = {
     template_key: 'vitality',
     theme: { accent: '#c6f04a' },
     blockMix: ['hero_banner', 'value_props', 'product_grid', 'split_cta', 'story_text', 'testimonials', 'cta_banner'],
+    // The shipped vitality swatch set, volt-first — all ≥ 9:1 on black labels
+    // and against the #0C0C0C canvas.
+    accentPresets: [
+      { name: 'Volt', hex: '#c6f04a' },
+      { name: 'Gold', hex: '#f0a500' },
+      { name: 'Ice', hex: '#7dd3fc' },
+      { name: 'Coral', hex: '#ff8a5c' },
+      { name: 'Mint', hex: '#5ce8a4' },
+    ],
+    // Fixed face on purpose (see the bundle note above): no serif may soften
+    // the street anatomy, so the engine has no face lever here.
+    displayFonts: [],
     copyDirection:
       'Loud, kinetic, street-poster energy: punchy verbs, uppercase-worthy fragments, confident swagger — never corporate.',
     vibe: 'Black-and-white with a neon-volt strike — condensed, dense, unapologetic.',
@@ -668,6 +716,16 @@ export const ARCHETYPES: Record<ArchetypeKey, SiteArchetype> = {
     // Warm paper + espresso ink (12.7:1) under the terracotta accent.
     theme: { accent: '#8a3412', display_font: 'fraunces', background: '#f4ede2', text: '#2b2015' },
     blockMix: ['hero_banner', 'value_props', 'story_text', 'product_grid', 'testimonials', 'split_cta', 'cta_banner'],
+    // Sun-baked inks — all ≥ 6.9:1 on the paper-toned label and ≥ 6.4:1
+    // against the warm paper (#f4ede2).
+    accentPresets: [
+      { name: 'Terracotta', hex: '#8a3412' },
+      { name: 'Oxblood', hex: '#5f1a1a' },
+      { name: 'Olive', hex: '#4a5a2a' },
+      { name: 'Espresso', hex: '#3a2a1a' },
+      { name: 'Prussian', hex: '#1a2a4a' },
+    ],
+    displayFonts: ['fraunces', 'lora', 'playfair', 'cormorant'],
     copyDirection:
       'Long-table storytelling: warm, earthy, human — lead with origin and craft, terracotta-and-olive imagery, print-magazine cadence.',
     vibe: 'Sun-baked print pages — terracotta ink, olive undertones, stories first.',
@@ -680,6 +738,19 @@ export const ARCHETYPES: Record<ArchetypeKey, SiteArchetype> = {
     // museum-label corners.
     theme: { accent: '#7a5c33', display_font: 'bodoni', background: '#12100d', text: '#e8e2d6', primary: '#1d1a15', button_radius: 'sharp' },
     blockMix: ['hero_banner', 'value_props', 'product_grid', 'split_cta', 'story_text', 'testimonials', 'cta_banner'],
+    // The obsidian paper is the hard constraint here: a metallic must sit in
+    // the narrow luminance window that clears BOTH 4.5:1 on white labels and
+    // 3:1 against #12100d. All five do (bronze 6.2/3.1, verdigris 4.8/4.0,
+    // slate 5.4/3.5, moss 5.5/3.5, garnet 6.1/3.1); brighter golds and wines
+    // fail one side or the other and were rejected.
+    accentPresets: [
+      { name: 'Antique Bronze', hex: '#7a5c33' },
+      { name: 'Verdigris', hex: '#4f7a7a' },
+      { name: 'Slate', hex: '#5a6b8a' },
+      { name: 'Moss', hex: '#5f6f3f' },
+      { name: 'Garnet', hex: '#9a4a4a' },
+    ],
+    displayFonts: ['bodoni', 'playfair', 'cormorant'],
     copyDirection:
       'Obsidian-quiet luxury: sparse, declarative, museum-label restraint — every word costs something, nothing pleads.',
     vibe: 'Obsidian and charcoal with a bronze thread — a minimalist showcase.',
@@ -960,6 +1031,73 @@ export function findBlock<T extends SiteBlockType>(
 // stored config carrying BOTH representations.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ENTROPY ENGINE — structural levers (the founder's Rule 2, made real). The
+// model may return an OPTIONAL `layout` object choosing among the levers the
+// templates ACTUALLY render: section order/inclusion, grid vs carousel,
+// spacing/alignment rhythm, an accent PRESET INDEX, a curated display face.
+// Every choice is validated server-side against LayoutBounds (the archetype's
+// blockMix/presets/faces, or the classic template's) and anything absent or
+// out of bounds falls back to the bundle default — so a strange model output
+// can never break a site, and a generation WITHOUT `layout` assembles
+// byte-identically to the pre-engine pipeline. Stored-config writes use ONLY
+// existing block/theme fields (blocks[].hidden/padding/align/displayMode,
+// theme.accent/display_font): the strict-superset law is untouched and
+// `layout` itself is never persisted.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Block types the generation pipeline can seat. Seller-added
+ *  product_tabs/video_hero are never generated (the model must not invent tab
+ *  structures or video URLs), so they are not orderable here either. */
+export const GENERATION_BLOCK_TYPES = [
+  'hero_banner',
+  'value_props',
+  'product_grid',
+  'story_text',
+  'cta_banner',
+  'split_cta',
+  'testimonials',
+] as const;
+
+export type GenerationBlockType = (typeof GENERATION_BLOCK_TYPES)[number];
+
+const layoutPadding = z.enum(['compact', 'default', 'spacious']);
+const layoutAlign = z.enum(['left', 'center']);
+
+/** One optional pick per generation block type. A PLAIN object (never a
+ *  record/propertyNames schema): every provider in the cascade — Anthropic
+ *  tool schemas, Gemini's OpenAPI subset, OpenAI json_schema — accepts it. */
+const perBlock = <T extends z.ZodType>(value: T) => z.object({
+  hero_banner: value.optional(),
+  value_props: value.optional(),
+  product_grid: value.optional(),
+  story_text: value.optional(),
+  cta_banner: value.optional(),
+  split_cta: value.optional(),
+  testimonials: value.optional(),
+});
+
+export const WebsiteLayoutSchema = z.object({
+  /** Ordered section types to SHOW. Server law (resolveLayoutBlockOrder):
+   *  hero_banner first, product_grid present, only types from the bounds, no
+   *  repeats — otherwise the whole order falls back to the bundle default.
+   *  Omitted in-bounds types ship hidden (content preserved). */
+  block_order: z.array(z.enum(GENERATION_BLOCK_TYPES)).min(2).max(GENERATION_BLOCK_TYPES.length).optional(),
+  /** Collection presentation — honored only where the dialect renders it. */
+  product_grid_display: z.enum(['grid', 'carousel']).optional(),
+  /** Rhythm per section — applied only to types whose templates consume the
+   *  switch (BLOCK_SETTINGS is the truthful registry). 'default' = the
+   *  canonical absent form. */
+  block_padding: perBlock(layoutPadding).optional(),
+  block_align: perBlock(layoutAlign).optional(),
+  /** Index into the bounds' accent presets (0 = bundle default). NEVER a hex. */
+  theme_preset_index: z.number().int().min(0).max(ACCENT_PRESET_SLOTS - 1).optional(),
+  /** Curated face — honored only when inside the bounds' displayFonts. */
+  display_font: z.enum(SITE_FONT_KEYS).optional(),
+});
+
+export type WebsiteLayout = z.infer<typeof WebsiteLayoutSchema>;
+
 export const WebsiteGenerationSchema = z.object({
   template_key: z.enum(TEMPLATE_KEYS),
   niche_reasoning: z.string().min(1),
@@ -999,6 +1137,12 @@ export const WebsiteGenerationSchema = z.object({
     body: copy(SITE_COPY_LIMITS.cta_subtext),
     button_label: copy(SITE_COPY_LIMITS.cta_button_label),
   }).optional(),
+  /** Entropy engine (see WebsiteLayoutSchema): OPTIONAL structural choices,
+   *  a strict superset of the pre-engine shape — every cascade provider that
+   *  omits it still validates and the assembler simply keeps the defaults.
+   *  Applied by applyGenerationLayout (via applyArchetype on the archetype
+   *  path); never stored on the config. */
+  layout: WebsiteLayoutSchema.optional(),
 });
 
 export type WebsiteGeneration = z.infer<typeof WebsiteGenerationSchema>;
@@ -1013,7 +1157,9 @@ export type WebsiteGeneration = z.infer<typeof WebsiteGenerationSchema>;
  *  anatomy and drops any seller-added product_tabs/video_hero blocks along
  *  with every copy edit, exactly as copy edits were already dropped pre-Phase
  *  4. The generation schema stays classic-only on purpose: the model never
- *  invents video URLs or tab structures. */
+ *  invents video URLs or tab structures. The optional `layout` object is
+ *  STRUCTURAL, not content — this assembler ignores it; applyGenerationLayout
+ *  (or applyArchetype, which calls it) reorders/themes the result afterwards. */
 export function generationToConfig(gen: WebsiteGeneration): WebsiteConfig {
   const blocks: SiteBlock[] = [
     {
@@ -1126,14 +1272,17 @@ export function buildTestimonialsFromReviews(
  *    4. blocks reordered to the archetype's blockMix — first block per type
  *       takes the slot, unfilled conditional slots drop out, and any block
  *       the mix doesn't name (impossible today, defensive forever) appends in
- *       original order so content is never silently lost.
+ *       original order so content is never silently lost;
+ *    5. the entropy engine's VALIDATED layout choices layered on top through
+ *       applyGenerationLayout — a generation without `layout` returns the
+ *       step-4 bundle untouched (byte-identical pre-engine assembly).
  *  The site.* mirror is already consistent (new types have no mirror fields —
  *  blocksToLegacySite ignores them by construction). Pure: returns a new
  *  config object. */
 export function applyArchetype(
   config: WebsiteConfig,
   archetype: SiteArchetype,
-  gen: Pick<WebsiteGeneration, 'split_cta'>,
+  gen: Pick<WebsiteGeneration, 'split_cta' | 'layout'>,
   reviews: TestimonialSourceReview[] | null | undefined
 ): WebsiteConfig {
   const pool: SiteBlock[] = (config.blocks ?? legacySiteToBlocks(config.site)).map((b) => ({ ...b }));
@@ -1164,12 +1313,213 @@ export function applyArchetype(
     if (!used.has(block.id)) ordered.push(block);
   }
 
-  return {
+  const bundled: WebsiteConfig = {
     ...config,
     template_key: archetype.template_key,
     blocks: ordered,
     theme: { ...archetype.theme },
   };
+
+  return applyGenerationLayout(bundled, gen.layout, archetypeLayoutBounds(archetype));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Entropy engine — lever bounds + validated application (pure helpers).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Dialect facts the levers depend on — what each base template's body
+ *  ACTUALLY renders (documented at each template's header):
+ *    ritual / editorial — body iterates blocks in array order; product_grid
+ *                         honors displayMode 'carousel'.
+ *    vitality           — FIXED-SLOT anatomy (first visible block per type,
+ *                         never array order); the benefit rows have no
+ *                         grid/carousel surface. Order → inclusion only. */
+export const TEMPLATE_LAYOUT_FACTS: Record<TemplateKey, { orderedBody: boolean; carousel: boolean }> = {
+  ritual: { orderedBody: true, carousel: true },
+  editorial: { orderedBody: true, carousel: true },
+  vitality: { orderedBody: false, carousel: false },
+};
+
+/** Everything a `layout` object is validated against for one build. */
+export type LayoutBounds = {
+  templateKey: TemplateKey;
+  /** Default ordered composition — block_order must be a hero-first,
+   *  grid-bearing, repeat-free subset of it. */
+  blockMix: ReadonlyArray<SiteBlockType>;
+  /** Curated guard-cleared swatches; index 0 = the bundle default. */
+  accentPresets: ReadonlyArray<AccentPreset>;
+  /** Curated faces; index 0 = the bundle default; EMPTY = face is fixed. */
+  displayFonts: ReadonlyArray<SiteFontKey>;
+  /** Slots whose PRESENCE the server decides regardless of the model
+   *  (testimonials: real reviews or nothing — integrity law). The model may
+   *  only place them. */
+  serverGated: ReadonlyArray<SiteBlockType>;
+  /** Dialect facts surfaced to the prompt so it never over-promises. */
+  orderHonored: boolean;
+  carouselHonored: boolean;
+};
+
+/** The classic five-block anatomy (legacySiteToBlocks order) — the bounds'
+ *  blockMix on the no-archetype path (onboarding's one-click build, manual
+ *  templateOverride, pre-archetype concepts). */
+export const CLASSIC_BLOCK_MIX: ReadonlyArray<SiteBlockType> = [
+  'hero_banner',
+  'value_props',
+  'product_grid',
+  'story_text',
+  'cta_banner',
+];
+
+export function archetypeLayoutBounds(archetype: SiteArchetype): LayoutBounds {
+  const facts = TEMPLATE_LAYOUT_FACTS[archetype.template_key];
+  return {
+    templateKey: archetype.template_key,
+    blockMix: archetype.blockMix,
+    accentPresets: archetype.accentPresets,
+    displayFonts: archetype.displayFonts,
+    serverGated: ['testimonials'],
+    orderHonored: facts.orderedBody,
+    carouselHonored: facts.carousel,
+  };
+}
+
+/** Bounds for the classic (no-archetype) path: the template's shipped swatch
+ *  table (index 0 = the template's default accent — every swatch clears the
+ *  cockpit guard by construction) and the full curated face list, except
+ *  vitality whose native grotesque is fixed. No server-gated slots: the
+ *  classic anatomy never carried testimonials. */
+export function classicLayoutBounds(templateKey: TemplateKey): LayoutBounds {
+  const facts = TEMPLATE_LAYOUT_FACTS[templateKey];
+  return {
+    templateKey,
+    blockMix: CLASSIC_BLOCK_MIX,
+    accentPresets: TEMPLATE_THEMES[templateKey].swatches,
+    displayFonts: templateKey === 'vitality' ? [] : SITE_FONT_KEYS,
+    serverGated: [],
+    orderHonored: facts.orderedBody,
+    carouselHonored: facts.carousel,
+  };
+}
+
+/** The block_order law: hero_banner first, product_grid present, every entry
+ *  inside the bounds' blockMix, no repeats. Returns the validated order or
+ *  null — null means "use the bundle default", never a partial repair, so a
+ *  malformed request can only ever yield the proven default composition. */
+export function resolveLayoutBlockOrder(
+  bounds: Pick<LayoutBounds, 'blockMix'>,
+  requested: ReadonlyArray<string> | null | undefined
+): SiteBlockType[] | null {
+  if (!Array.isArray(requested) || requested.length === 0) return null;
+  if (requested[0] !== 'hero_banner') return null;
+  if (!requested.includes('product_grid')) return null;
+  const allowed = new Set<string>(bounds.blockMix);
+  const seen = new Set<string>();
+  for (const type of requested) {
+    if (typeof type !== 'string' || !allowed.has(type) || seen.has(type)) return null;
+    seen.add(type);
+  }
+  return [...requested] as SiteBlockType[];
+}
+
+/** Truthful-control check: does the inspector registry offer this switch on
+ *  this block type? Only then does a model pick get written — hero_banner and
+ *  value_props register no spacing control, so their picks are dropped. */
+function blockConsumesSetting(type: SiteBlockType, path: 'padding' | 'align'): boolean {
+  return BLOCK_SETTINGS[type].some((d) => d.kind === 'select' && d.path === path);
+}
+
+function generationKey(type: SiteBlockType): GenerationBlockType | null {
+  return (GENERATION_BLOCK_TYPES as ReadonlyArray<string>).includes(type) ? (type as GenerationBlockType) : null;
+}
+
+/** Layer VALIDATED layout choices onto an assembled config. Pure. Contract:
+ *    · `layout` absent → the SAME config object back (reference identity),
+ *      so every pre-engine caller path stays byte-identical;
+ *    · block_order valid → sections in that order; server-gated slots the
+ *      model left unnamed are seated at their bundle-relative position (right
+ *      after the nearest preceding blockMix neighbour it kept); in-bounds
+ *      types it omitted ship HIDDEN (content preserved — the seller restores
+ *      them with the eye toggle); anything outside the bounds appends visible
+ *      so content is never silently lost. Invalid → bundle default order;
+ *    · product_grid_display written only where the dialect renders it;
+ *    · padding/align written only on types whose templates consume them;
+ *      'default' deletes the key (canonical absent form);
+ *    · theme.accent = accentPresets[theme_preset_index] when in range;
+ *      theme.display_font honored only inside displayFonts. Every other
+ *      theme token (background/text/primary/radius) is retained untouched. */
+export function applyGenerationLayout(
+  config: WebsiteConfig,
+  layout: WebsiteLayout | null | undefined,
+  bounds: LayoutBounds
+): WebsiteConfig {
+  if (!layout) return config;
+
+  const pool: SiteBlock[] = (config.blocks ?? legacySiteToBlocks(config.site)).map((b) => ({ ...b }));
+  const requested = resolveLayoutBlockOrder(bounds, layout.block_order);
+  const order: SiteBlockType[] = requested ? [...requested] : [...bounds.blockMix];
+
+  if (requested) {
+    for (const gated of bounds.serverGated) {
+      if (order.includes(gated) || !pool.some((b) => b.type === gated)) continue;
+      let insertAt = order.length;
+      for (let i = bounds.blockMix.indexOf(gated) - 1; i >= 0; i -= 1) {
+        const pos = order.indexOf(bounds.blockMix[i]);
+        if (pos !== -1) {
+          insertAt = pos + 1;
+          break;
+        }
+      }
+      order.splice(insertAt, 0, gated);
+    }
+  }
+
+  const used = new Set<string>();
+  const ordered: SiteBlock[] = [];
+  for (const type of order) {
+    const block = pool.find((b) => b.type === type && !used.has(b.id));
+    if (block) {
+      used.add(block.id);
+      ordered.push(block);
+    }
+  }
+  for (const block of pool) {
+    if (used.has(block.id)) continue;
+    const omittedByModel = requested !== null && bounds.blockMix.includes(block.type);
+    ordered.push(omittedByModel ? { ...block, hidden: true } : block);
+  }
+
+  if (bounds.carouselHonored && layout.product_grid_display) {
+    for (const block of ordered) {
+      if (block.type !== 'product_grid') continue;
+      if (layout.product_grid_display === 'carousel') block.displayMode = 'carousel';
+      else delete block.displayMode;
+    }
+  }
+
+  for (const block of ordered) {
+    const key = generationKey(block.type);
+    if (!key) continue;
+    const pad = layout.block_padding?.[key];
+    if (pad && blockConsumesSetting(block.type, 'padding')) {
+      if (pad === 'default') delete block.padding;
+      else block.padding = pad;
+    }
+    const align = layout.block_align?.[key];
+    if (align && blockConsumesSetting(block.type, 'align')) block.align = align;
+  }
+
+  const theme: SiteTheme = { ...(config.theme ?? {}) };
+  const idx = layout.theme_preset_index;
+  if (typeof idx === 'number' && Number.isInteger(idx) && idx >= 0 && idx < bounds.accentPresets.length) {
+    theme.accent = bounds.accentPresets[idx].hex;
+  }
+  if (layout.display_font && bounds.displayFonts.includes(layout.display_font)) {
+    theme.display_font = layout.display_font;
+  }
+
+  const next: WebsiteConfig = { ...config, blocks: ordered };
+  if (Object.keys(theme).length > 0) next.theme = theme;
+  return next;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

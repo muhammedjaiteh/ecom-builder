@@ -12,22 +12,29 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
+  ACCENT_PRESET_SLOTS,
   ARCHETYPES,
+  ARCHETYPE_KEYS,
+  TEMPLATE_KEYS,
   WebsiteConfigSchema,
   WebsiteGenerationSchema,
   applyArchetype,
+  applyGenerationLayout,
+  archetypeLayoutBounds,
   blocksToLegacySite,
   buildPreviousDesign,
   buildTestimonialsFromReviews,
+  classicLayoutBounds,
   generationToConfig,
   legacySiteToBlocks,
   pickConceptArchetypes,
   resolveBlocks,
+  resolveLayoutBlockOrder,
   resolveVisibleBlocks,
   type SiteBlock,
   type WebsiteConfig,
 } from '../lib/siteTemplates';
-import { judgeAccent, judgeThemeTokens, siteThemeVars } from '../lib/siteTheme';
+import { TEMPLATE_THEMES, contrastRatio, judgeAccent, judgeThemeTokens, siteThemeVars } from '../lib/siteTheme';
 
 let failures = 0;
 
@@ -455,7 +462,9 @@ check('review seeding refuses thin evidence (1 quote → no block)',
 // ── Full archetype assembly: generation → applyArchetype → strict validation
 console.log('Archetype assembly checks:');
 
-const generationSample = WebsiteGenerationSchema.parse({
+// Raw (pre-parse) generation sample — reused below as the base for the
+// entropy-engine layout variants, so every variant shares identical copy.
+const generationSampleRaw = {
   template_key: 'ritual',
   niche_reasoning: 'Beauty oils suit the minimal ritual anatomy.',
   hero: { tagline: 'Skin Rituals, Perfected', headline: 'Skin Drinks Golden Light', subheadline: 'Cold-pressed oils for skin that keeps its glow.' },
@@ -468,7 +477,8 @@ const generationSample = WebsiteGenerationSchema.parse({
   cta: { headline: 'Your Skin Remembers Ritual', subtext: 'Order before noon and it ships the same day.', button_label: 'Begin The Ritual' },
   seo: { title: 'Golden Ritual Oils', description: 'Cold-pressed marula and baobab skincare, blended in small batches.' },
   split_cta: { headline: 'Kept In Amber Glass', body: 'Light-proof bottles keep every active potent to the last drop.', button_label: 'See The Oils' },
-});
+};
+const generationSample = WebsiteGenerationSchema.parse(generationSampleRaw);
 
 for (const key of Object.keys(ARCHETYPES) as Array<keyof typeof ARCHETYPES>) {
   const archetype = ARCHETYPES[key];
@@ -572,6 +582,206 @@ check('padding/align do not perturb the site.* mirror',
   JSON.stringify(blocksToLegacySite(paddedBlocks, legacyParsedP3.site)) === JSON.stringify(legacyParsedP3.site));
 check('legacy row (no new keys anywhere) STILL validates untouched',
   WebsiteConfigSchema.safeParse(legacyConfig).success);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENTROPY ENGINE — structural levers: bounds integrity (every preset clears
+// the WCAG guards), generation-schema superset, the block_order law, and
+// permuted/partial layouts through applyArchetype AND the classic path. Every
+// assembled result must validate strictly and keep hero-first/grid-present.
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('Entropy engine checks (structural levers):');
+
+const sampleReviews = [
+  { rating: 5, comment: 'Absolutely stunning craftsmanship, worth every dalasi.', reviewer_name: 'Awa', verified_purchase: true },
+  { rating: 5, comment: 'Fast delivery and the glow is real — my third order.', reviewer_name: 'Mariama' },
+];
+
+// Bounds integrity — every bundle ships exactly ACCENT_PRESET_SLOTS presets,
+// index 0 IS the bundle accent, every preset clears the CTA-label guard AND
+// 3:1 against the bundle's EFFECTIVE paper; faces start at the bundle default
+// (an empty list ⇔ no display_font on the bundle — the fixed-face case).
+for (const key of ARCHETYPE_KEYS) {
+  const a = ARCHETYPES[key];
+  check(`"${key}" ships ${ACCENT_PRESET_SLOTS} accent presets`,
+    a.accentPresets.length === ACCENT_PRESET_SLOTS, `got ${a.accentPresets.length}`);
+  check(`"${key}" preset 0 is the bundle accent`, a.accentPresets[0]?.hex === a.theme.accent);
+  const paper = a.theme.background ?? TEMPLATE_THEMES[a.template_key].paper;
+  for (const p of a.accentPresets) {
+    const verdict = judgeAccent(a.template_key, p.hex);
+    const surface = contrastRatio(p.hex, paper);
+    check(`"${key}" preset ${p.name} clears label 4.5:1 and surface 3:1`,
+      verdict !== null && !verdict.blocked && surface !== null && surface >= 3,
+      `label ${verdict?.vsLabel.toFixed(2) ?? '?'}:1 surface ${surface?.toFixed(2) ?? '?'}:1`);
+  }
+  check(`"${key}" faces start at the bundle default`,
+    a.theme.display_font ? a.displayFonts[0] === a.theme.display_font : a.displayFonts.length === 0);
+}
+for (const t of TEMPLATE_KEYS) {
+  const b = classicLayoutBounds(t);
+  check(`classic "${t}" ships ${ACCENT_PRESET_SLOTS} presets with index 0 = the template accent`,
+    b.accentPresets.length === ACCENT_PRESET_SLOTS && b.accentPresets[0].hex === TEMPLATE_THEMES[t].accent);
+  for (const p of b.accentPresets) {
+    const verdict = judgeAccent(t, p.hex);
+    check(`classic "${t}" preset ${p.name} clears the label guard`, verdict !== null && !verdict.blocked);
+  }
+  check(`classic "${t}" faces are ${t === 'vitality' ? 'fixed (none)' : 'the playfair-first curated list'}`,
+    t === 'vitality' ? b.displayFonts.length === 0 : b.displayFonts[0] === 'playfair');
+}
+
+// Generation-schema superset: the pre-engine shape still parses, the
+// layout-bearing shape parses, and out-of-bounds shapes stop at the gate.
+const layoutSample = {
+  block_order: ['hero_banner', 'product_grid', 'story_text', 'value_props', 'cta_banner'],
+  product_grid_display: 'carousel',
+  block_padding: { product_grid: 'spacious', story_text: 'default', hero_banner: 'compact' },
+  block_align: { product_grid: 'left', story_text: 'center' },
+  theme_preset_index: 2,
+  display_font: 'lora',
+};
+check('generation WITHOUT layout still parses (superset)',
+  WebsiteGenerationSchema.safeParse(generationSampleRaw).success);
+const genWithLayoutParse = WebsiteGenerationSchema.safeParse({ ...generationSampleRaw, layout: layoutSample });
+check('generation WITH layout parses', genWithLayoutParse.success,
+  genWithLayoutParse.success ? undefined : JSON.stringify(genWithLayoutParse.error.issues).slice(0, 300));
+check('layout naming a non-generation block type (video_hero) is rejected',
+  !WebsiteGenerationSchema.safeParse({ ...generationSampleRaw, layout: { block_order: ['hero_banner', 'video_hero', 'product_grid'] } }).success);
+check(`theme_preset_index ${ACCENT_PRESET_SLOTS} (beyond the slots) is rejected`,
+  !WebsiteGenerationSchema.safeParse({ ...generationSampleRaw, layout: { theme_preset_index: ACCENT_PRESET_SLOTS } }).success);
+const hexAttempt = WebsiteGenerationSchema.safeParse({ ...generationSampleRaw, layout: { accent: '#ff0000', theme_preset_index: 1 } });
+check('a raw hex smuggled into layout is stripped (the index is the ONLY accent lever)',
+  hexAttempt.success &&
+  !('accent' in ((hexAttempt.data.layout ?? {}) as Record<string, unknown>)) &&
+  hexAttempt.data.layout?.theme_preset_index === 1);
+
+// The block_order law.
+const pastel = ARCHETYPES['pastel-minimalist'];
+const pastelBounds = archetypeLayoutBounds(pastel);
+check('order law: valid hero-first permutation accepted',
+  resolveLayoutBlockOrder(pastelBounds, ['hero_banner', 'product_grid', 'story_text', 'value_props', 'cta_banner']) !== null);
+check('order law: hero not first → default', resolveLayoutBlockOrder(pastelBounds, ['product_grid', 'hero_banner']) === null);
+check('order law: grid missing → default', resolveLayoutBlockOrder(pastelBounds, ['hero_banner', 'story_text']) === null);
+check('order law: repeated type → default', resolveLayoutBlockOrder(pastelBounds, ['hero_banner', 'product_grid', 'product_grid']) === null);
+check('order law: type outside the bounds → default',
+  resolveLayoutBlockOrder(classicLayoutBounds('ritual'), ['hero_banner', 'product_grid', 'split_cta']) === null);
+check('order law: empty → default', resolveLayoutBlockOrder(pastelBounds, []) === null);
+
+if (genWithLayoutParse.success) {
+  const genWithLayout = genWithLayoutParse.data;
+
+  // Permuted + partial layout through applyArchetype (pastel: ordered body,
+  // carousel honored, curated faces).
+  const permuted = applyArchetype(generationToConfig(genWithLayout), pastel, genWithLayout, sampleReviews);
+  const permutedParse = WebsiteConfigSchema.safeParse(permuted);
+  check('permuted layout assembly validates strictly', permutedParse.success,
+    permutedParse.success ? undefined : JSON.stringify(permutedParse.error.issues).slice(0, 300));
+  const permutedBlocks = permuted.blocks ?? [];
+  const visibleTypes = resolveVisibleBlocks(permuted).map((b) => b.type);
+  check('permuted: hero_banner renders first', visibleTypes[0] === 'hero_banner');
+  check('permuted: product_grid present and visible', visibleTypes.includes('product_grid'));
+  check('permuted: named sections follow the model order',
+    JSON.stringify(visibleTypes.filter((t) => t !== 'testimonials')) === JSON.stringify(layoutSample.block_order),
+    visibleTypes.join(','));
+  check('permuted: server-gated testimonials seated after story (bundle-relative), never dropped',
+    visibleTypes.indexOf('testimonials') === visibleTypes.indexOf('story_text') + 1, visibleTypes.join(','));
+  const omittedSplit = permutedBlocks.find((b) => b.type === 'split_cta');
+  check('permuted: omitted split_cta ships hidden (content preserved)',
+    omittedSplit !== undefined && omittedSplit.hidden === true);
+  check('permuted: no content lost (7 blocks pooled, 7 stored)', permutedBlocks.length === 7, `got ${permutedBlocks.length}`);
+  const permutedGrid = permutedBlocks.find((b) => b.type === 'product_grid');
+  check('permuted: carousel + spacious + left applied to the grid',
+    permutedGrid?.type === 'product_grid' && permutedGrid.displayMode === 'carousel' &&
+    permutedGrid.padding === 'spacious' && permutedGrid.align === 'left');
+  const permutedStory = permutedBlocks.find((b) => b.type === 'story_text');
+  check("permuted: 'default' padding is the canonical absent form; center align stored",
+    permutedStory !== undefined && permutedStory.padding === undefined && permutedStory.align === 'center');
+  const permutedHero = permutedBlocks.find((b) => b.type === 'hero_banner');
+  check('permuted: hero padding pick dropped (hero registers no spacing control)',
+    permutedHero !== undefined && permutedHero.padding === undefined);
+  check('permuted: accent = preset[2] (Mauve) — an index, never a model hex',
+    permuted.theme?.accent === pastel.accentPresets[2].hex);
+  check('permuted: display face honored inside the bounds (lora)', permuted.theme?.display_font === 'lora');
+  check('permuted: bundle tokens retained beneath the levers',
+    permuted.theme?.background === pastel.theme.background && permuted.theme?.button_radius === pastel.theme.button_radius);
+  check('permuted: site.* mirror unperturbed by structure',
+    JSON.stringify(permuted.site) === JSON.stringify(generationToConfig(genWithLayout).site));
+
+  // Absent layout → the pre-engine assembly, byte-for-byte.
+  const genNoLayout = WebsiteGenerationSchema.parse(generationSampleRaw);
+  const plain = applyArchetype(generationToConfig(genNoLayout), pastel, genNoLayout, sampleReviews);
+  check('no layout: blocks follow blockMix exactly',
+    JSON.stringify((plain.blocks ?? []).map((b) => b.type)) === JSON.stringify(pastel.blockMix));
+  check('no layout: theme is the bare archetype preset', JSON.stringify(plain.theme) === JSON.stringify(pastel.theme));
+  check('no layout: no hidden flags minted', (plain.blocks ?? []).every((b) => b.hidden === undefined));
+
+  // Invalid picks fall back INDIVIDUALLY — one bad lever never poisons the rest.
+  const fellGen = WebsiteGenerationSchema.parse({
+    ...generationSampleRaw,
+    layout: { block_order: ['product_grid', 'hero_banner'], theme_preset_index: 4, display_font: 'bodoni' },
+  });
+  const fell = applyArchetype(generationToConfig(fellGen), pastel, fellGen, sampleReviews);
+  check('fallback: invalid order → blockMix default',
+    JSON.stringify((fell.blocks ?? []).map((b) => b.type)) === JSON.stringify(pastel.blockMix));
+  check('fallback: nothing hidden when the order fell back', (fell.blocks ?? []).every((b) => b.hidden === undefined));
+  check('fallback: in-range preset 4 (Honey) still honored', fell.theme?.accent === pastel.accentPresets[4].hex);
+  check('fallback: face outside the bundle (bodoni ∉ pastel) → bundle face',
+    fell.theme?.display_font === pastel.theme.display_font);
+  check('fallback assembly validates strictly', WebsiteConfigSchema.safeParse(fell).success);
+
+  // Fixed-anatomy dialect (vitality / high-contrast-street): order → inclusion
+  // only; carousel and face have no surface, so neither is stored.
+  const street = ARCHETYPES['high-contrast-street'];
+  const streetGen = WebsiteGenerationSchema.parse({
+    ...generationSampleRaw,
+    layout: { block_order: ['hero_banner', 'product_grid', 'cta_banner'], product_grid_display: 'carousel', display_font: 'bodoni', theme_preset_index: 1 },
+  });
+  const streetBuilt = applyArchetype(generationToConfig(streetGen), street, streetGen, sampleReviews);
+  const streetVisible = resolveVisibleBlocks(streetBuilt).map((b) => b.type);
+  check('street: assembly validates strictly', WebsiteConfigSchema.safeParse(streetBuilt).success);
+  check('street: hero first, grid present, testimonials seated (real reviews), cta kept',
+    JSON.stringify(streetVisible) === JSON.stringify(['hero_banner', 'product_grid', 'testimonials', 'cta_banner']),
+    streetVisible.join(','));
+  check('street: omitted value_props/story/split ship hidden',
+    (streetBuilt.blocks ?? []).filter((b) => b.hidden).map((b) => b.type).sort().join(',') === 'split_cta,story_text,value_props');
+  const streetGrid = (streetBuilt.blocks ?? []).find((b) => b.type === 'product_grid');
+  check('street: carousel NOT stored (dialect renders fixed rows)',
+    streetGrid?.type === 'product_grid' && streetGrid.displayMode === undefined);
+  check('street: face request ignored (fixed grotesque)', streetBuilt.theme?.display_font === undefined);
+  check('street: accent = preset[1] (Gold)', streetBuilt.theme?.accent === street.accentPresets[1].hex);
+
+  // Integrity law: naming the testimonials slot cannot conjure it without
+  // real reviews — and the rest of the order still assembles.
+  const namedGen = WebsiteGenerationSchema.parse({
+    ...generationSampleRaw,
+    layout: { block_order: ['hero_banner', 'product_grid', 'testimonials', 'cta_banner'] },
+  });
+  const noReviews = applyArchetype(generationToConfig(namedGen), pastel, namedGen, []);
+  const noReviewsVisible = resolveVisibleBlocks(noReviews).map((b) => b.type);
+  check('integrity: testimonials named by the model but no real reviews → no block',
+    !(noReviews.blocks ?? []).some((b) => b.type === 'testimonials'));
+  check('integrity: the rest of the order assembles hero-first/grid-present and validates',
+    JSON.stringify(noReviewsVisible) === JSON.stringify(['hero_banner', 'product_grid', 'cta_banner']) &&
+    WebsiteConfigSchema.safeParse(noReviews).success, noReviewsVisible.join(','));
+
+  // Classic path (onboarding's one-click build): the same levers against the
+  // chosen template's own bounds; absent layout is a reference-identity no-op.
+  const classicBase = generationToConfig(genWithLayout);
+  const classicBuilt = applyGenerationLayout(classicBase, genWithLayout.layout, classicLayoutBounds('ritual'));
+  check('classic: assembly validates strictly', WebsiteConfigSchema.safeParse(classicBuilt).success);
+  const classicVisible = resolveVisibleBlocks(classicBuilt).map((b) => b.type);
+  check('classic: hero first, grid present, order honored',
+    JSON.stringify(classicVisible) === JSON.stringify(layoutSample.block_order), classicVisible.join(','));
+  check('classic: accent = ritual swatch[2] (Terracotta)',
+    classicBuilt.theme?.accent === TEMPLATE_THEMES.ritual.swatches[2].hex);
+  check('classic: face honored (lora ∈ curated list)', classicBuilt.theme?.display_font === 'lora');
+  check('classic: absent layout returns the config untouched (reference identity)',
+    applyGenerationLayout(classicBase, undefined, classicLayoutBounds('ritual')) === classicBase);
+  const classicVitality = applyGenerationLayout(classicBase, genWithLayout.layout, classicLayoutBounds('vitality'));
+  check('classic vitality: face ignored, carousel not stored, accent = swatch[2] (Ice)',
+    classicVitality.theme?.display_font === undefined &&
+    (classicVitality.blocks ?? []).every((b) => b.type !== 'product_grid' || b.displayMode === undefined) &&
+    classicVitality.theme?.accent === TEMPLATE_THEMES.vitality.swatches[2].hex);
+  check('classic vitality: assembly validates strictly', WebsiteConfigSchema.safeParse(classicVitality).success);
+}
 
 if (failures > 0) {
   console.error(`\n${failures} check(s) FAILED`);
