@@ -1,0 +1,32 @@
+{
+  "step": "execute",
+  "dryRun": true,
+  "variationSeed": "8f4b2c9",
+  "archetype": "high-contrast-street",
+  "sellerData": {
+    "shop_name": "TechPulse Gambia",
+    "bio": "Premium consumer electronics for The Gambia — flagship phones, audio, and accessories with regional warranty.",
+    "products": [
+      {
+        "name": "Samsung Galaxy S24 Ultra 5G — 256GB Titanium Gray",
+        "category": "electronics",
+        "price": 71000,
+        "description": "Titanium exterior, 6.8\" flat Dynamic AMOLED 2X at 120Hz, Snapdragon 8 Gen 3 for Galaxy, integrated S Pen. 200MP main + 50MP periscope + 12MP ultrawide. 5000mAh with 45W fast charging. 1-year regional warranty. 15 in stock."
+      },
+      {
+        "name": "Samsung Galaxy S24 Ultra 5G — 512GB Titanium Black",
+        "category": "electronics",
+        "price": 71000,
+        "description": "The same flagship in Titanium Black with 512GB storage. Only 2 units in stock."
+      }
+    ],
+    "reviews": [
+      {
+        "rating": 5,
+        "comment": "The camera quality is unmatched, and the battery easily lasts a full heavy workday in Banjul. Incredible device.",
+        "reviewer_name": "Verified Buyer",
+        "verified_purchase": true
+      }
+    ]
+  }
+}

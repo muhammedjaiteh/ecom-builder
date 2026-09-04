@@ -5,7 +5,15 @@ import { openai } from '@ai-sdk/openai';
 import type { ZodSchema } from 'zod';
 
 // Provider cascade: try in order. Adding a 4th provider or reordering is a one-line change.
-export type ProviderEntry = { name: string; model: LanguageModel };
+type GenerateObjectProviderOptions = Parameters<typeof generateObject>[0]['providerOptions'];
+export type ProviderEntry = {
+  name: string;
+  model: LanguageModel;
+  /** Per-provider call options forwarded to generateObject (e.g. the
+   *  Anthropic structured-output mode). Non-matching providers ignore
+   *  foreign namespaces, so this is a no-op for Gemini/OpenAI entries. */
+  providerOptions?: GenerateObjectProviderOptions;
+};
 
 const PROVIDERS: ProviderEntry[] = [
   { name: 'anthropic', model: anthropic('claude-sonnet-5') },
@@ -25,6 +33,17 @@ const PROVIDERS: ProviderEntry[] = [
 export const FLAGSHIP_CREATIVE_PROVIDER: ProviderEntry = {
   name: 'anthropic-fable',
   model: anthropic('claude-fable-5-1'),
+  // STRUCTURED OUTPUT MODE — REQUIRED for this model (found 2026-09-05 via the
+  // dev harness): claude-fable-5-1 rejects forced tool_choice ("type 'tool'
+  // and 'any' are not supported for this model"). @ai-sdk/anthropic 3.0.81's
+  // default 'auto' mode only uses Anthropic's native output_config.format
+  // for model ids on its hardcoded known-model list — which predates Fable
+  // 5.1 — so 'auto' silently fell back to the forced `json` tool and the
+  // request 400'd before any generation. 'outputFormat' pins the native
+  // json_schema structured output (capabilities.structured_outputs.supported
+  // = true per the live Models API). Sonnet-5 on the default cascade stays on
+  // 'auto' — untouched request shape, untouched cache namespace.
+  providerOptions: { anthropic: { structuredOutputMode: 'outputFormat' } },
 };
 
 const SAME_PROVIDER_RETRY_MS = 500;
@@ -74,6 +93,32 @@ function isRefusalOutcome(err: unknown): boolean {
 }
 
 /**
+ * Override-specific REQUEST-SHAPE rejection (added 2026-09-05). The flagship
+ * primaryOverride is an optimization layered over the default chain, so a
+ * request shape the override's model rejects — HTTP 400/404/422 or an
+ * explicit "not supported for this model" — is routinely accepted by sonnet-5
+ * next in line (the canonical case: claude-fable-5-1 refusing forced
+ * tool_choice before structuredOutputMode was pinned). These must CASCADE and
+ * must never same-provider retry (the same request re-fails identically).
+ * Auth/billing (401/402/403) are deliberately EXCLUDED — the same key would
+ * fail on every Anthropic entry, so failing fast there is still correct.
+ * SCOPE: consulted ONLY for the primaryOverride entry, like isRefusalOutcome.
+ */
+function isOverrideRequestRejection(err: unknown): boolean {
+  const e = err as {
+    statusCode?: unknown;
+    status?: unknown;
+    response?: { status?: unknown };
+    message?: unknown;
+    responseBody?: unknown;
+  } | null | undefined;
+  const status = e?.statusCode ?? e?.status ?? e?.response?.status;
+  if (status === 400 || status === 404 || status === 422) return true;
+  const text = `${e?.message ?? ''} ${e?.responseBody ?? ''}`.toLowerCase();
+  return text.includes('not supported for this model');
+}
+
+/**
  * Should we move on to the NEXT provider after this error?
  * YES for transient availability/network problems and Zod-shape mismatches.
  * NO for auth, billing, and malformed-request errors — these are configuration bugs
@@ -103,6 +148,12 @@ function isCascadeable(err: any, refusalCascades: boolean): boolean {
   // historical fail-fast-on-400 behavior (isRefusalOutcome is not even
   // evaluated there).
   if (refusalCascades && isRefusalOutcome(err)) return true;
+
+  // Override-specific request-shape rejections — CASCADE to the default chain
+  // (see isOverrideRequestRejection). Also before the status branch: these are
+  // 400-class errors that the default cascade rightly fails fast on, but that
+  // the override must degrade through, never surface to the seller.
+  if (refusalCascades && isOverrideRequestRejection(err)) return true;
 
   // Network errors (no HTTP status) — cascadeable
   const code = err?.code;
@@ -151,6 +202,9 @@ function isRetryWorthy(err: any, refusalCascades: boolean): boolean {
   // (isCascadeable says yes). Gated like isCascadeable's refusal branch so
   // the default cascade's retry decisions are untouched.
   if (refusalCascades && isRefusalOutcome(err)) return false;
+  // Same for override request-shape rejections: identical request, identical
+  // 400 — cascade immediately instead of burning the 500ms retry.
+  if (refusalCascades && isOverrideRequestRejection(err)) return false;
   return isCascadeable(err, refusalCascades);
 }
 
@@ -199,8 +253,9 @@ async function callOneProvider<T>(
   callerName: string,
   refusalCascades: boolean,
 ): Promise<T> {
+  const callOptions = provider.providerOptions ? { providerOptions: provider.providerOptions } : {};
   try {
-    const { object } = await generateObject({ model: provider.model, schema, messages });
+    const { object } = await generateObject({ model: provider.model, schema, messages, ...callOptions });
     return object as T;
   } catch (err: any) {
     if (!isRetryWorthy(err, refusalCascades)) throw err; // outer loop decides whether to cascade or fail fast
@@ -209,7 +264,7 @@ async function callOneProvider<T>(
       err?.message ?? err
     );
     await new Promise((r) => setTimeout(r, SAME_PROVIDER_RETRY_MS));
-    const { object } = await generateObject({ model: provider.model, schema, messages });
+    const { object } = await generateObject({ model: provider.model, schema, messages, ...callOptions });
     return object as T;
   }
 }

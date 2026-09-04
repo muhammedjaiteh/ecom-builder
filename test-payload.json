@@ -1,0 +1,31 @@
+{
+  "sellerName": "TechPulse Gambia",
+  "niche": "Premium Consumer Electronics",
+  "chosen_archetype": "The Bento Market",
+  "catalog": {
+    "productName": "Samsung Galaxy S24 Ultra 5G",
+    "description": "The ultimate form of Galaxy Ultra featuring a new titanium exterior, a 6.8\" flat AMOLED display, and the revolutionary Snapdragon 8 Gen 3 for Galaxy. Designed for absolute precision with the integrated S Pen.",
+    "price": "D71,000",
+    "currency": "GMD",
+    "variants": [
+      { "name": "256GB / Titanium Gray", "stock_quantity": 15 },
+      { "name": "512GB / Titanium Black", "stock_quantity": 2 }
+    ],
+    "specifications": {
+      "display": "6.8-inch Dynamic AMOLED 2X, 120Hz",
+      "processor": "Snapdragon 8 Gen 3",
+      "camera": "200MP Main + 50MP Periscope + 12MP Ultrawide",
+      "battery": "5000mAh, 45W Fast Charging",
+      "warranty": "1 Year Regional Warranty"
+    },
+    "reviews": {
+      "average_rating": 4.9,
+      "review_count": 128,
+      "featured_quote": "The camera quality is unmatched, and the battery easily lasts a full heavy workday in Banjul. Incredible device."
+    },
+    "media": {
+      "images": ["hero-titanium.jpg", "s-pen-action.jpg", "camera-array.jpg", "side-profile.jpg"],
+      "video": null
+    }
+  }
+}

@@ -10,6 +10,7 @@ import { canUseStudio } from '@/lib/tiers';
 import { runSiteAssetPhase } from '@/lib/siteAssets';
 import {
   ACCENT_PRESET_SLOTS,
+  ARCHETYPE_KEYS,
   ARCHETYPES,
   ConceptPairSchema,
   SITE_TEMPLATES,
@@ -24,6 +25,7 @@ import {
   generationToConfig,
   pickConceptArchetypes,
   templateFromCategory,
+  type ArchetypeKey,
   type LayoutBounds,
   type SiteArchetype,
   type SiteConcept,
@@ -109,23 +111,62 @@ export async function POST(req: Request) {
       }
     );
 
+    // ── DEV HARNESS (local dry-run) ───────────────────────────────────────
+    // Reachable ONLY when NODE_ENV !== 'production' AND the request carries
+    // the header `x-sanndikaa-dev-harness: 1`. Production builds (Vercel,
+    // `next build`/`next start`) set NODE_ENV=production, so this branch is
+    // unreachable there BY CONSTRUCTION — it is not a runtime toggle and no
+    // env var can enable it in a deployed build. In harness mode: the auth +
+    // tier gates are skipped, seller data comes INLINE from body.sellerData,
+    // and NOTHING is persisted — no slug repair, no upsert, no asset
+    // generation, no revalidation. The LLM call is real (it costs real
+    // tokens) so the entropy engine's structural decisions can be inspected
+    // exactly as production would assemble them.
+    const devHarness =
+      process.env.NODE_ENV !== 'production' && req.headers.get('x-sanndikaa-dev-harness') === '1';
+    const harnessBody: Record<string, unknown> | null = devHarness
+      ? await req.clone().json().catch(() => ({}))
+      : null;
+    const harnessSeller = (harnessBody?.sellerData ?? null) as
+      | { shop_name?: unknown; bio?: unknown; products?: unknown; reviews?: unknown }
+      | null;
+    if (devHarness) {
+      console.warn('[generate-website] DEV HARNESS ACTIVE — gates skipped, dry-run, no writes.');
+    }
+
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
+    if (!user && !devHarness) {
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
     }
 
     // ── Tier gate ─────────────────────────────────────────────────────────
-    const { data: shop } = await supabase
-      .from('shops')
-      .select('id, shop_name, shop_slug, logo_url, banner_url, bio, subscription_tier')
-      .eq('id', user.id)
-      .single();
+    const harnessShopName =
+      typeof harnessSeller?.shop_name === 'string' && harnessSeller.shop_name.trim()
+        ? harnessSeller.shop_name.trim()
+        : 'Harness Boutique';
+    const shop = devHarness
+      ? {
+          id: 'dev-harness-shop',
+          shop_name: harnessShopName,
+          shop_slug: slugify(harnessShopName),
+          logo_url: null as string | null,
+          banner_url: null as string | null,
+          bio: typeof harnessSeller?.bio === 'string' ? harnessSeller.bio : null,
+          subscription_tier: 'pro',
+        }
+      : (
+          await supabase
+            .from('shops')
+            .select('id, shop_name, shop_slug, logo_url, banner_url, bio, subscription_tier')
+            .eq('id', user!.id)
+            .single()
+        ).data;
 
     if (!shop) {
       return NextResponse.json({ error: 'Shop profile not found.' }, { status: 404 });
     }
 
-    if (!canUseStudio(shop.subscription_tier)) {
+    if (!devHarness && !canUseStudio(shop.subscription_tier)) {
       return NextResponse.json(
         { error: 'The AI Website Studio is a Pro-tier feature. Upgrade to unlock your generated storefront.' },
         { status: 403 }
@@ -198,7 +239,8 @@ export async function POST(req: Request) {
     // signup trigger) to the canonical lowercase-hyphenated form BEFORE the
     // client mints any /site link from this response. Runs ahead of the
     // inventory gate so a repair succeeds even for a shop with zero products.
-    const canonicalSlug = await repairShopSlug(admin, shop);
+    // Dev harness: never write — the synthesized slug is already canonical.
+    const canonicalSlug = devHarness ? shop.shop_slug : await repairShopSlug(admin, shop);
 
     // ── Fast path: dashboard-initiated slug repair (no AI, no writes beyond
     // the repair itself). Lets "View Live Site" work for pre-existing
@@ -210,12 +252,41 @@ export async function POST(req: Request) {
     }
 
     // ── Inventory ─────────────────────────────────────────────────────────
-    const { data: products } = await supabase
-      .from('products')
-      .select('id, name, description, category, price, image_url, ad_video_url, ad_hero_image_url')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .limit(30);
+    type InventoryRow = {
+      id: string;
+      name: string;
+      description: string | null;
+      category: string | null;
+      price: number | string | null;
+      image_url: string | null;
+      ad_video_url: string | null;
+      ad_hero_image_url: string | null;
+    };
+    let products: InventoryRow[] | null = null;
+    if (devHarness) {
+      // Inline inventory from the harness body — synthesized ids, no media.
+      const raw = Array.isArray(harnessSeller?.products) ? (harnessSeller!.products as unknown[]) : [];
+      products = raw
+        .filter((p): p is Record<string, unknown> => !!p && typeof p === 'object' && typeof (p as Record<string, unknown>).name === 'string')
+        .map((p, i) => ({
+          id: `harness-product-${i + 1}`,
+          name: p.name as string,
+          description: typeof p.description === 'string' ? p.description : null,
+          category: typeof p.category === 'string' ? p.category : null,
+          price: typeof p.price === 'number' || typeof p.price === 'string' ? p.price : null,
+          image_url: null,
+          ad_video_url: null,
+          ad_hero_image_url: null,
+        }));
+    } else {
+      const { data } = await supabase
+        .from('products')
+        .select('id, name, description, category, price, image_url, ad_video_url, ad_hero_image_url')
+        .eq('user_id', user!.id)
+        .order('created_at', { ascending: false })
+        .limit(30);
+      products = data as InventoryRow[] | null;
+    }
 
     if (!products || products.length === 0) {
       return NextResponse.json(
@@ -345,8 +416,15 @@ NICHE CONTEXT: dominant category "${dominantCategory ?? 'unknown'}".${variationD
     // templateOverride, the legacy no-step path) run the classic pipeline
     // byte-identically.
     // ═══════════════════════════════════════════════════════════════════════
+    // Dev harness may name an archetype directly (no concept object needed).
+    const harnessArchetypeKey =
+      devHarness && typeof harnessBody?.archetype === 'string' ? harnessBody.archetype : null;
     const archetype: SiteArchetype | null =
-      concept?.archetype_key ? ARCHETYPES[concept.archetype_key] ?? null : null;
+      concept?.archetype_key
+        ? ARCHETYPES[concept.archetype_key] ?? null
+        : harnessArchetypeKey && (ARCHETYPE_KEYS as readonly string[]).includes(harnessArchetypeKey)
+          ? ARCHETYPES[harnessArchetypeKey as ArchetypeKey]
+          : null;
 
     // The archetype's base template ALWAYS wins over a drifted concept key —
     // the bundle is the contract the seller approved.
@@ -527,7 +605,19 @@ ${layoutBoundsText}
     // The classic path (no archetype) never enters this branch.
     if (archetype) {
       let reviewRows: TestimonialSourceReview[] | null = null;
-      try {
+      if (devHarness) {
+        // Inline reviews from the harness body stand in for the reviews table.
+        const raw = Array.isArray(harnessSeller?.reviews) ? (harnessSeller!.reviews as unknown[]) : [];
+        reviewRows = raw
+          .filter((r): r is Record<string, unknown> => !!r && typeof r === 'object')
+          .map((r) => ({
+            rating: Number(r.rating),
+            comment: typeof r.comment === 'string' ? r.comment : null,
+            reviewer_name: typeof r.reviewer_name === 'string' ? r.reviewer_name : null,
+            external_author: null,
+            verified_purchase: r.verified_purchase === true,
+          })) as TestimonialSourceReview[];
+      } else try {
         const productIds = products.map((p) => p.id).filter(Boolean);
         if (productIds.length > 0) {
           const { data: reviews, error: reviewsError } = await admin
@@ -566,6 +656,22 @@ ${layoutBoundsText}
     }
 
     console.log(`[generate-website] Config by ${provider} for shop ${shop.id}: template=${config.template_key} — ${config.niche_reasoning}`);
+
+    // ── DEV HARNESS dry-run exit: return the assembled storefront BEFORE any
+    // persistence (no upsert, no snapshot, no assets, no revalidation).
+    if (devHarness) {
+      return NextResponse.json({
+        step: 'execute',
+        dryRun: true,
+        provider,
+        archetype: archetype?.key ?? null,
+        template_key: config.template_key,
+        variationSeed,
+        layout_bounds: layoutBoundsText,
+        generation, // raw validated model output — including its "layout" levers
+        config, // the assembled storefront config exactly as it would be upserted
+      });
+    }
 
     // ── Upsert draft (preserve published status on regeneration) ──────────
     const { data: existing } = await admin
@@ -685,12 +791,22 @@ ${layoutBoundsText}
       err?.status === 429 || err?.status === 503 ||
       msg.includes('429') || msg.includes('503') ||
       msg.toLowerCase().includes('overloaded') || msg.toLowerCase().includes('unavailable');
+    // Non-production builds surface the underlying error so local debugging
+    // never has to guess behind the generic message. Production keeps the
+    // generic copy only (NODE_ENV=production is set by every deployed build).
+    const devDetail =
+      process.env.NODE_ENV !== 'production'
+        ? { detail: msg || String(error), status: err?.status ?? null }
+        : {};
     if (isBusy) {
       return NextResponse.json(
-        { error: 'The AI assistant is currently busy. Please try again in a moment.' },
+        { error: 'The AI assistant is currently busy. Please try again in a moment.', ...devDetail },
         { status: 429 }
       );
     }
-    return NextResponse.json({ error: 'Failed to generate the website. Please try again.' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Failed to generate the website. Please try again.', ...devDetail },
+      { status: 500 }
+    );
   }
 }
