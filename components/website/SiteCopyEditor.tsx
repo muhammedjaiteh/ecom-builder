@@ -492,7 +492,7 @@ export default function SiteCopyEditor({
       );
       const { data } = await supabase
         .from('products')
-        .select('id, name, price, description, image_url, ad_video_url, ad_hero_image_url, category, stock_quantity')
+        .select('id, name, price, description, image_url, ad_video_url, ad_hero_image_url, category, stock_quantity, image_urls, created_at')
         .or(`shop_id.eq.${shop.id},user_id.eq.${shop.id}`)
         .order('created_at', { ascending: false })
         .limit(12);

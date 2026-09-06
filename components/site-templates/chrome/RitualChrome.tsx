@@ -1,9 +1,11 @@
 import Link from 'next/link';
 import SmartImage from '@/components/SmartImage';
 import {
+  LOW_STOCK_MAX,
   findBlock,
   resolveVisibleBlocks,
   resolveLogoUrl,
+  secondaryProductImage,
   siteBasePath,
   siteCollectionsPath,
   siteProductPath,
@@ -14,6 +16,7 @@ import { buildWhatsAppLink } from '@/lib/orderFlow';
 import { siteThemeStyle } from '@/lib/siteTheme';
 import CartBagButton from '../CartBagButton';
 import EditableText from '../EditableText';
+import ProductCardXfade from '../ProductCardXfade';
 import SiteSearch from '../SiteSearch';
 
 // MINIMAL (template_key 'ritual') chrome — the sticky logo nav and structured
@@ -28,11 +31,12 @@ export function ritualPrice(p: number | null) {
 }
 
 // Stock is optional/additive: undefined (not loaded) renders nothing, so every
-// legacy caller keeps its exact output. 0 = sold out, 1-5 = urgency badge.
+// legacy caller keeps its exact output. 0 = sold out, 1..LOW_STOCK_MAX =
+// urgency badge (the same ceiling the hero offer pill uses).
 export function ritualStockBadge(stock: number | null | undefined): { label: string; tone: 'out' | 'low' } | null {
   if (stock == null) return null;
   if (stock <= 0) return { label: 'Sold Out', tone: 'out' };
-  if (stock <= 5) return { label: `Only ${stock} left`, tone: 'low' };
+  if (stock <= LOW_STOCK_MAX) return { label: `Only ${stock} left`, tone: 'low' };
   return null;
 }
 
@@ -45,6 +49,9 @@ const FALLBACK_TILES = [
   'bg-gradient-to-br from-stone-300 via-stone-200 to-[#EFEAE2]',
   'bg-gradient-to-br from-[#E7E2D8] via-white to-stone-200',
 ];
+
+/** Responsive `sizes` for a card in the shared 2/3/4-column grid. */
+export const RITUAL_CARD_SIZES = '(min-width: 1024px) 25vw, (min-width: 768px) 33vw, 50vw';
 
 export function RitualProductVisual({ src, alt, index, sizes }: {
   src: string | null;
@@ -59,7 +66,7 @@ export function RitualProductVisual({ src, alt, index, sizes }: {
         src={src}
         alt={alt}
         fill
-        sizes={sizes ?? '(min-width: 1024px) 25vw, (min-width: 768px) 33vw, 50vw'}
+        sizes={sizes ?? RITUAL_CARD_SIZES}
         className="object-cover transition-transform duration-700 group-hover:scale-[1.05]"
       />
     );
@@ -75,13 +82,51 @@ export function RitualProductVisual({ src, alt, index, sizes }: {
 export const RITUAL_COLLECTION_GRID =
   'grid grid-cols-2 gap-x-5 gap-y-12 md:grid-cols-3 md:gap-x-8 md:gap-y-16 lg:grid-cols-4';
 
-/** One product card of the airy grid — shared by home and /collections. */
-export function RitualProductCard({ product, index, href }: { product: SiteProduct; index: number; href: string }) {
+/**
+ * One product card of the airy grid — shared by home and /collections.
+ *
+ * Micro-Homepage anatomy: the root is an <article> carrying a STRETCHED
+ * <Link> (absolute inset-0, z-10) rather than a <Link> root — the hover state
+ * must live on an ancestor of BOTH image layers, and the cross-fade toggle
+ * must be a sibling of the anchor (a button inside a link is invalid HTML).
+ * Cards with a DISTINCT second photo (secondaryProductImage) mount the
+ * ProductCardXfade island plus the alt image layer; single-photo cards —
+ * every /collections card, whose select omits image_urls — render the plain
+ * server article: identical visuals, zero JavaScript. No data-block-* attrs
+ * are added here (the grid SECTION owns editor targeting).
+ */
+export function RitualProductCard({ product, index, href, sizes }: {
+  product: SiteProduct;
+  index: number;
+  href: string;
+  /** Slot-tuned sizes; defaults to the shared grid breakpoints. */
+  sizes?: string;
+}) {
   const badge = ritualStockBadge(product.stock_quantity);
-  return (
-    <Link href={href} className="group block">
+  const altSrc = secondaryProductImage(product);
+  const imgSizes = sizes ?? RITUAL_CARD_SIZES;
+  const inner = (
+    <>
+      <Link href={href} className="absolute inset-0 z-10 rounded-2xl">
+        <span className="sr-only">{product.name}</span>
+      </Link>
       <div className="relative aspect-[3/4] overflow-hidden rounded-2xl bg-stone-100">
-        <RitualProductVisual src={product.ad_hero_image_url ?? product.image_url} alt={product.name} index={index} />
+        <RitualProductVisual src={product.ad_hero_image_url ?? product.image_url} alt={product.name} index={index} sizes={imgSizes} />
+        {altSrc && (
+          // Second photo — revealed by hover (pointer devices) or the toggle
+          // (globals.css .sndk-xfade). Mirrors the primary's zoom so the two
+          // layers never drift apart mid-fade.
+          <div aria-hidden className="sndk-xfade-alt absolute inset-0">
+            <SmartImage
+              src={altSrc}
+              alt=""
+              fill
+              sizes={imgSizes}
+              blurTone="none"
+              className="object-cover transition-transform duration-700 group-hover:scale-[1.05]"
+            />
+          </div>
+        )}
         {badge && (
           <span
             className={`absolute left-3 top-3 rounded-full px-3 py-1 text-[9px] font-bold uppercase tracking-widest ${
@@ -101,8 +146,21 @@ export function RitualProductCard({ product, index, href }: { product: SiteProdu
         <p className="text-sm font-medium leading-snug text-[var(--site-text,oklch(26.8%_0.007_34.298))]">{product.name}</p>
         <p className="shrink-0 text-sm text-[var(--site-muted,oklch(55.3%_0.013_58.071))]">{ritualPrice(product.price)}</p>
       </div>
-    </Link>
+    </>
   );
+  if (altSrc) {
+    return (
+      <ProductCardXfade
+        className="group relative"
+        toggleClassName="right-1 top-1 text-stone-900"
+        chipClassName="rounded-full bg-white/90 px-2 py-1.5 shadow-sm ring-1 ring-stone-200 backdrop-blur"
+        toggleLabel={`Show another photo of ${product.name}`}
+      >
+        {inner}
+      </ProductCardXfade>
+    );
+  }
+  return <article className="group relative">{inner}</article>;
 }
 
 /** Internal PDP href with an honest fallback for slugless previews. */

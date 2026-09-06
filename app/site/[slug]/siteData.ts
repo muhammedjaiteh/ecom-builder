@@ -204,10 +204,13 @@ async function readWebsiteRow(shopId: string): Promise<SiteWebsite | null> {
 
 // Cached anon home-products read (12 newest — the home page's slice). THROWS
 // on error so an outage degrades per-request instead of caching as "empty".
+// Micro-Homepage: image_urls + created_at feed the card cross-fade and the
+// hero pill's recency rung. Cache entries warmed before this widen (≤300s)
+// lack both fields — the pill and cross-fade skip gracefully, no errors.
 async function readHomeProducts(shopId: string): Promise<SiteProduct[]> {
   const { data, error } = await getSupabase()
     .from('products')
-    .select('id, name, price, description, image_url, ad_video_url, ad_hero_image_url, category, stock_quantity')
+    .select('id, name, price, description, image_url, ad_video_url, ad_hero_image_url, category, stock_quantity, image_urls, created_at')
     .or(`shop_id.eq.${shopId},user_id.eq.${shopId}`)
     .order('created_at', { ascending: false })
     .limit(12);

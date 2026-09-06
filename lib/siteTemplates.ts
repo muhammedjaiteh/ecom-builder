@@ -1582,6 +1582,12 @@ export type SiteProduct = {
   /** Live inventory count. Optional/additive — undefined means "not loaded"
    *  and the templates render no stock badge at all. */
   stock_quantity?: number | null;
+  /** Insert contract: image_urls[0] === image_url; the DISTINCT second photo
+   *  (if any) drives the card cross-fade. Optional/additive — home select only;
+   *  catalog/PDP selects omit it and stay single-layer by data. */
+  image_urls?: string[] | null;
+  /** Row creation time — the offer pill's recency rung. Optional/additive. */
+  created_at?: string | null;
 };
 
 export type SiteShop = {
@@ -1683,4 +1689,90 @@ export function resolveLogoUrl(
   shop: Pick<SiteShop, 'logo_url'>
 ): string | null {
   return config.assets?.logo_url ?? shop.logo_url ?? null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Micro-Homepage anatomy (Ritual + Editorial) — pure helpers shared by the
+// hero_banner and product_grid renderers. ONE featured selection feeds both
+// the hero's offer pill and the showcase grid, so the pill always describes
+// what sits directly beneath it. Zero DB schema change: every input is an
+// optional/additive SiteProduct field that older cache entries simply lack.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Inventory ceiling for the "Only N left" urgency rung — shared with the
+ *  chrome stock badges so the pill and the card badge never disagree. */
+export const LOW_STOCK_MAX = 5;
+/** Showcase cap: a premium micro-homepage shows 3–4 pieces, never a wall. */
+export const FEATURED_MAX = 4;
+/** Recency window for the "New this week" rung. */
+export const RECENT_DAYS = 7;
+
+export type HeroSignal = { kind: 'stock' | 'new' | 'fulfillment'; label: string };
+
+// Safari rejects >3 fractional digits in Date.parse (Postgres emits 6) and the
+// Site Editor runs this in-browser — trim to milliseconds before parsing.
+function parseTimestamp(v?: string | null): number {
+  return v ? Date.parse(v.replace(/(\.\d{3})\d+/, '$1')) : NaN;
+}
+
+/**
+ * Honest-signal ladder for the hero offer pill: low stock on the anchor
+ * (first featured) piece → a piece added this week → fulfillment fact → null
+ * (the pill is simply not rendered — never a gray placeholder). NEVER
+ * discount/countdown copy: lib/adCopy.ts bans it and coupons are not
+ * redeemed at checkout.
+ */
+export function resolveHeroSignal({ shop, featured, now = Date.now() }: {
+  shop: Pick<SiteShop, 'offers_delivery' | 'offers_pickup'>;
+  featured: SiteProduct[];
+  now?: number;
+}): HeroSignal | null {
+  const stock = featured[0]?.stock_quantity;
+  if (typeof stock === 'number' && stock > 0 && stock <= LOW_STOCK_MAX) {
+    return { kind: 'stock', label: `Only ${stock} left` };
+  }
+  const cutoff = now - RECENT_DAYS * 86_400_000;
+  if (featured.some((p) => { const t = parseTimestamp(p.created_at); return Number.isFinite(t) && t >= cutoff; })) {
+    return { kind: 'new', label: 'New this week' };
+  }
+  // DEFERRED rung: review proof ("★ 4.9 · 128 reviews") slots here once
+  // siteData reads review stats (aggregator: lib/feedRanking.ts
+  // buildReviewStats). /site never reads reviews today, so the rung is
+  // documented rather than faked.
+  if (shop.offers_delivery) return { kind: 'fulfillment', label: 'Local delivery available' };
+  if (shop.offers_pickup) return { kind: 'fulfillment', label: 'Pickup available' };
+  return null;
+}
+
+/**
+ * Deterministic showcase selection: Ad Studio media leads, then real product
+ * photos, then gradient tiles; ties keep array order (the home read is
+ * newest-first); duplicates by id are dropped; capped at `max`.
+ */
+export function selectFeaturedProducts(products: SiteProduct[], max = FEATURED_MAX): SiteProduct[] {
+  const seen = new Set<string>();
+  const ranked: Array<{ rank: number; i: number; p: SiteProduct }> = [];
+  products.forEach((p, i) => {
+    if (seen.has(p.id)) return;
+    seen.add(p.id);
+    ranked.push({ rank: p.ad_video_url || p.ad_hero_image_url ? 0 : p.image_url ? 1 : 2, i, p });
+  });
+  return ranked
+    .sort((a, b) => a.rank - b.rank || a.i - b.i)
+    .slice(0, max)
+    .map((r) => r.p);
+}
+
+/**
+ * The DISTINCT second photo for a card cross-fade, else null — null means the
+ * card renders exactly ONE image layer and mounts no client island.
+ */
+export function secondaryProductImage(
+  p: Pick<SiteProduct, 'image_url' | 'image_urls' | 'ad_hero_image_url'>
+): string | null {
+  const primary = p.ad_hero_image_url ?? p.image_url;
+  for (const url of p.image_urls ?? []) {
+    if (url && url !== primary) return url;
+  }
+  return null;
 }

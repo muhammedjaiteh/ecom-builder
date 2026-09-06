@@ -2,9 +2,13 @@ import { Fragment } from 'react';
 import Link from 'next/link';
 import SmartImage from '@/components/SmartImage';
 import {
+  FEATURED_MAX,
+  resolveHeroSignal,
   resolveVisibleBlocks,
+  selectFeaturedProducts,
   siteCollectionsPath,
   type HeroMedia,
+  type HeroSignal,
   type SiteBlock,
   type SiteProduct,
   type SiteShop,
@@ -30,15 +34,25 @@ import EditorialChrome, {
 } from './chrome/EditorialChrome';
 
 // EDITORIAL (template_key 'editorial') — Layout B.
-// Magazine anatomy, structurally distinct from the Minimal layout:
-// hairline top bar + oversized serif masthead → asymmetric split hero
-// (media 7 columns, copy 5) → kinetic value-props marquee (Fix 2: the pinned
+// Magazine anatomy, structurally distinct from the Minimal layout, in its
+// Micro-Homepage cut: hairline top bar + oversized serif masthead → compact
+// asymmetric split hero (media 7 columns at ≈40vh, copy 5: one-sentence hook
+// + honest offer pill) → kinetic value-props marquee (Fix 2: the pinned
 // numbered index row was retired — the value_props block renders as the
 // moving brand ribbon on the hero→features seam, edited from the SectionRail
-// inspector) → alternating full-width product features → dense hairline
-// collection grid with hover reveals → pull-quote brand story (clamped to a
-// 3-line teaser with a Read-the-full-story reveal — StoryClamp) → dark serif
-// sign-off footer. Paper `#F7F5F0`, near-black ink, deep-green accent.
+// inspector) → two alternating full-width product features (the spread) →
+// dense hairline showcase grid (≤4 plates, none repeating the spread, image
+// cross-fade) → "Explore Collection" bridge → pull-quote brand story (clamped
+// to a 3-line teaser with a Read-the-full-story reveal — StoryClamp) → dark
+// serif sign-off footer. Paper `#F7F5F0`, near-black ink, deep-green accent.
+//
+// Micro-Homepage: the spread takes the top 2 of selectFeaturedProducts, the
+// showcase the next ≤4 from what remains (zero repeats), and the hero pill
+// (resolveHeroSignal) reads that same ordered union — it always describes
+// what sits beneath it. Every new element (pill, bridge, cross-fade toggle)
+// is conditionally rendered — no gray placeholders — and carries NO
+// data-block-* attrs: the hero/grid SECTION owns editor targeting. New motion
+// is CSS-only with a reduced-motion block (globals.css).
 //
 // Phase 3 block rendering: the body iterates resolveBlocks(config) in array
 // order, with one fixed DESIGN SLOT that is part of the Editorial anatomy
@@ -108,19 +122,21 @@ const PAD_SPLIT: Record<PadKey, string> = {
 };
 
 
-function EditorialHero({ block, shop, heroMedia }: {
+function EditorialHero({ block, shop, heroMedia, signal }: {
   block: HeroBlock;
   shop: SiteShop;
   heroMedia: HeroMedia;
+  /** Honest offer pill (resolveHeroSignal) — null renders NO pill, no gap. */
+  signal: HeroSignal | null;
 }) {
   const initial = (shop.shop_name ?? 'S').trim().charAt(0).toUpperCase() || 'S';
   return (
     <section data-block-section={block.id} className="grid grid-cols-1 border-b border-neutral-900 md:grid-cols-12">
-      {/* Fold discipline (Fix 5): the md media pane caps at min(580px,62vh) —
-          on short laptop viewports the hero no longer swallows the fold, and
-          large desktops keep the exact historical 580px. The copy column
-          still grows the section (min-h clip-fix semantics preserved). */}
-      <div className="relative min-h-[340px] border-neutral-900 md:col-span-7 md:min-h-[min(580px,62vh)] md:border-r">
+      {/* Micro-Homepage: a compact niche opener — the md media pane sits at
+          ≈40vh with a 360px content floor (was min(580px,62vh)); mobile drops
+          to a 240px plate so the hook + pill + features peek above the fold.
+          The copy column still grows the section (min-h clip-fix semantics). */}
+      <div className="relative min-h-[240px] border-neutral-900 md:col-span-7 md:min-h-[max(360px,40vh)] md:border-r">
         {heroMedia?.type === 'video' ? (
           // 2G media gate: unconstrained networks autoplay exactly as before;
           // save-data/2g/3g/reduced-motion get the ad poster (or the monogram
@@ -157,33 +173,51 @@ function EditorialHero({ block, shop, heroMedia }: {
           <HeroBrandPlate tone="editorial" shopName={shop.shop_name} />
         )}
       </div>
-      <div className="flex flex-col justify-center gap-6 px-5 py-14 md:col-span-5 md:px-12 md:py-20">
+      <div className="flex flex-col justify-center gap-4 px-5 py-9 md:col-span-5 md:gap-5 md:px-10 md:py-12">
         <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-[var(--site-accent,#1a2e1a)]">No. 01 — The Opening</p>
         <EditableText
           as="h1"
           blockId={block.id}
           field="headline"
-          className="font-serif text-4xl italic leading-[1.12] tracking-tight md:text-5xl lg:text-6xl"
+          className="font-serif text-3xl italic leading-[1.1] tracking-tight md:text-4xl lg:text-5xl"
         >
           {block.headline}
         </EditableText>
-        <EditableText as="p" blockId={block.id} field="subheadline" className="max-w-md text-base leading-relaxed text-[var(--site-muted,oklch(43.9%_0_0))]">
+        {/* The one-sentence hook. */}
+        <EditableText as="p" blockId={block.id} field="subheadline" className="max-w-md text-sm leading-relaxed text-[var(--site-muted,oklch(43.9%_0_0))] md:text-base">
           {block.subheadline}
         </EditableText>
+        {/* Offer pill — hairline chip in the print dialect. Honest-signal
+            ladder (low stock → new this week → fulfillment fact); null →
+            nothing rendered. .sndk-rise never touches an LCP/editor node. */}
+        {signal && (
+          <span className="sndk-rise inline-flex min-h-8 items-center gap-2 self-start border border-neutral-900 px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.3em] text-[var(--site-text,oklch(20.5%_0_0))]">
+            <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${signal.kind === 'stock' ? 'bg-amber-700' : 'bg-[var(--site-accent,#1a2e1a)]'}`} />
+            {signal.label}
+          </span>
+        )}
+        {/* Solid accent fill in the print dialect (square --site-radius,
+            paper ink) — the same token the chrome CTAs ride, so the theme
+            cascade recolors the hero button with the rest of the site.
+            Fallback #171717 IS neutral-900 (the existing Editorial CTA law). */}
         <a
           href="#collection"
-          className="group inline-flex items-center gap-3 self-start border-b-2 border-[var(--site-text,oklch(20.5%_0_0))] pb-1.5 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-text,oklch(20.5%_0_0))] transition hover:border-[var(--site-accent,#1a2e1a)] hover:text-[var(--site-accent,#1a2e1a)]"
+          className="group inline-flex min-h-11 items-center gap-3 self-start rounded-[var(--site-radius,0px)] bg-[var(--site-accent,#171717)] px-8 text-[10px] font-bold uppercase tracking-[0.3em] text-[#F7F5F0] transition hover:brightness-125 active:scale-95"
         >
           Read The Collection
-          <span aria-hidden className="transition-transform group-hover:translate-x-1.5">&rarr;</span>
+          <span aria-hidden className="transition-transform group-hover:translate-x-1.5 motion-reduce:transition-none">&rarr;</span>
         </a>
       </div>
     </section>
   );
 }
 
-function EditorialFeatures({ shop, products }: { shop: SiteShop; products: SiteProduct[] }) {
-  const featured = products.slice(0, 2);
+function EditorialFeatures({ shop, featured }: {
+  shop: SiteShop;
+  /** The 2-piece spread (selectFeaturedProducts(products, 2)) — selected by
+   *  the body so the showcase grid can exclude exactly these ids. */
+  featured: SiteProduct[];
+}) {
   if (featured.length === 0) {
     // Keep the #features anchor alive (the masthead nav always links to it)
     // with a minimal section header instead of a dead jump — the cleaner of
@@ -246,11 +280,18 @@ function EditorialFeatures({ shop, products }: { shop: SiteShop; products: SiteP
   );
 }
 
-function EditorialGrid({ block, shop, products }: {
+function EditorialGrid({ block, shop, products, catalogSize }: {
   block: ProductGridBlock;
   shop: SiteShop;
+  /** The showcase (≤FEATURED_MAX pieces, none repeating the features spread). */
   products: SiteProduct[];
+  /** Full home-slice size — distinguishes "empty catalog" (branded empty
+   *  state) from "the spread already shows everything" (header + bridge only). */
+  catalogSize: number;
 }) {
+  const showcase = products.slice(0, FEATURED_MAX);
+  // Bridge target: null in slugless studio previews → no bridge rendered.
+  const collectionsPath = siteCollectionsPath(shop);
   return (
     // padding/align consumption (Pillar 4): grid header zone spacing + layout.
     <section id="collection" data-block-section={block.id} className="border-b border-neutral-900">
@@ -262,31 +303,48 @@ function EditorialGrid({ block, shop, products }: {
           {block.intro}
         </EditableText>
       </div>
-      {products.length === 0 ? (
+      {catalogSize === 0 ? (
         // Branded empty state (mirrors /collections): the hero's
         // "Read The Collection" anchor lands on something dignified.
         <div className="border-t border-neutral-900 px-5 py-20 text-center md:px-10">
           <p className="font-serif text-2xl italic text-neutral-900">The collection is being prepared.</p>
           <p className="mt-3 text-sm leading-relaxed text-neutral-500">New pieces are on their way — check back soon.</p>
         </div>
+      ) : showcase.length === 0 ? (
+        // 1–2 piece shops: the features spread already shows every piece —
+        // no repeats by design, so the header hands straight to the bridge.
+        null
       ) : block.displayMode === 'carousel' ? (
         <CarouselTrack
           ariaLabel={block.title}
           trackClassName="gap-px border-t border-neutral-900 bg-neutral-900"
           itemClassName="w-[64vw] max-w-[300px] bg-[#F7F5F0] sm:w-[300px]"
           buttonClassName="h-11 w-11 border border-neutral-900 bg-[#F7F5F0] text-neutral-900 shadow-lg hover:bg-neutral-900 hover:text-[#F7F5F0] active:scale-95"
-          items={products.slice(0, 12).map((p, i) => ({
+          items={showcase.map((p, i) => ({
             key: p.id,
-            node: <EditorialProductCard product={p} index={i} href={editorialProductHref(shop, p.id)} />,
+            node: <EditorialProductCard product={p} index={i} href={editorialProductHref(shop, p.id)} sizes="(min-width: 640px) 300px, 64vw" />,
           }))}
         />
       ) : (
         <div className={EDITORIAL_COLLECTION_GRID}>
-          {products.slice(0, 12).map((p, i) => (
+          {showcase.map((p, i) => (
             <EditorialProductCard key={p.id} product={p} index={i} href={editorialProductHref(shop, p.id)} />
           ))}
-          <EditorialGridFillers itemCount={Math.min(products.length, 12)} />
+          <EditorialGridFillers itemCount={showcase.length} />
         </div>
+      )}
+
+      {/* "Explore Collection" bridge — a full-width hairline row from the
+          showcase to the full catalog. Conditional: needs a catalog AND a
+          real /site path (slugless previews render none). No data-block attrs. */}
+      {catalogSize > 0 && collectionsPath && (
+        <Link
+          href={collectionsPath}
+          className="group flex min-h-14 items-center justify-between border-t border-neutral-900 bg-[var(--site-accent,#171717)] px-5 text-[10px] font-bold uppercase tracking-[0.3em] text-[#F7F5F0] transition hover:brightness-125 md:px-10"
+        >
+          <span>Explore Collection</span>
+          <span aria-hidden className="transition-transform duration-300 group-hover:translate-x-1.5 motion-reduce:transition-none">&rarr;</span>
+        </Link>
       )}
     </section>
   );
@@ -490,6 +548,14 @@ export default function EditorialTemplate({ shop, products, config, heroMedia }:
   // sign-off; value_props render as the marquee ribbon. Everything else flows
   // in block-array order.
   const flowBlocks = blocks.filter((b) => b.type !== 'value_props' && b.type !== 'cta_banner');
+  // Micro-Homepage: the spread takes the top 2 of the deterministic ranking,
+  // the showcase the next ≤FEATURED_MAX from what remains — NO product ever
+  // repeats between the two. The hero pill reads the same ordered union, so
+  // it always describes what sits beneath it (anchor = the first feature).
+  const spread = selectFeaturedProducts(products, 2);
+  const spreadIds = new Set(spread.map((p) => p.id));
+  const showcase = selectFeaturedProducts(products.filter((p) => !spreadIds.has(p.id)), FEATURED_MAX);
+  const heroSignal = resolveHeroSignal({ shop, featured: [...spread, ...showcase] });
 
   return (
     <EditorialChrome shop={shop} config={config} active="home">
@@ -501,20 +567,20 @@ export default function EditorialTemplate({ shop, products, config, heroMedia }:
           case 'hero_banner':
             return (
               <Fragment key={block.id}>
-                <EditorialHero block={block} shop={shop} heroMedia={heroMedia} />
+                <EditorialHero block={block} shop={shop} heroMedia={heroMedia} signal={heroSignal} />
                 {/* Kinetic marquee on the hero→features seam — never inside a
                     Reveal (it is already motion), no data-block markers, so
                     the Site Editor's rect math is untouched. */}
                 <SiteMarquee config={config} tone="editorial" />
                 <Reveal>
-                  <EditorialFeatures shop={shop} products={products} />
+                  <EditorialFeatures shop={shop} featured={spread} />
                 </Reveal>
               </Fragment>
             );
           case 'product_grid':
             return (
               <Reveal key={block.id} delay={Math.min(i * 0.05, 0.15)}>
-                <EditorialGrid block={block} shop={shop} products={products} />
+                <EditorialGrid block={block} shop={shop} products={showcase} catalogSize={products.length} />
               </Reveal>
             );
           case 'story_text':

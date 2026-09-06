@@ -1,8 +1,10 @@
 import Link from 'next/link';
 import SmartImage from '@/components/SmartImage';
 import {
+  LOW_STOCK_MAX,
   findBlock,
   resolveVisibleBlocks,
+  secondaryProductImage,
   siteBasePath,
   siteCollectionsPath,
   siteProductPath,
@@ -12,6 +14,7 @@ import {
 import { siteThemeStyle } from '@/lib/siteTheme';
 import CartBagButton from '../CartBagButton';
 import EditableText from '../EditableText';
+import ProductCardXfade from '../ProductCardXfade';
 import SiteSearch from '../SiteSearch';
 
 // EDITORIAL (template_key 'editorial') chrome — the serif masthead and dark
@@ -26,11 +29,12 @@ export function editorialPrice(p: number | null) {
 }
 
 // Stock is optional/additive: undefined (not loaded) renders nothing, so every
-// legacy caller keeps its exact output. 0 = sold out, 1-5 = urgency badge.
+// legacy caller keeps its exact output. 0 = sold out, 1..LOW_STOCK_MAX =
+// urgency badge (the same ceiling the hero offer pill uses).
 export function editorialStockBadge(stock: number | null | undefined): { label: string; tone: 'out' | 'low' } | null {
   if (stock == null) return null;
   if (stock <= 0) return { label: 'Sold Out', tone: 'out' };
-  if (stock <= 5) return { label: `Only ${stock} left`, tone: 'low' };
+  if (stock <= LOW_STOCK_MAX) return { label: `Only ${stock} left`, tone: 'low' };
   return null;
 }
 
@@ -42,6 +46,9 @@ const FALLBACK_PLATES = [
   'bg-gradient-to-br from-neutral-300 via-[#EFEBE3] to-neutral-200',
   'bg-gradient-to-br from-[#DDD8CC] via-white to-neutral-200',
 ];
+
+/** Responsive `sizes` for a plate in the hairline 2/4-column grid. */
+export const EDITORIAL_CARD_SIZES = '(min-width: 768px) 25vw, 50vw';
 
 export function EditorialProductPlate({ src, alt, index, sizes }: {
   src: string | null;
@@ -56,7 +63,7 @@ export function EditorialProductPlate({ src, alt, index, sizes }: {
         src={src}
         alt={alt}
         fill
-        sizes={sizes ?? '(min-width: 768px) 25vw, 50vw'}
+        sizes={sizes ?? EDITORIAL_CARD_SIZES}
         className="object-cover transition-transform duration-700 group-hover:scale-[1.04]"
       />
     );
@@ -100,32 +107,88 @@ export function EditorialGridFillers({ itemCount }: { itemCount: number }) {
   );
 }
 
-/** One plate of the hairline grid — shared by home and /collections. */
-export function EditorialProductCard({ product, index, href }: { product: SiteProduct; index: number; href: string }) {
+/**
+ * One plate of the hairline grid — shared by home and /collections.
+ *
+ * Micro-Homepage anatomy: the root is an <article> carrying a STRETCHED
+ * <Link> (absolute inset-0, z-10) rather than a <Link> root — the hover state
+ * must live on an ancestor of BOTH image layers, and the cross-fade toggle
+ * must be a sibling of the anchor (a button inside a link is invalid HTML).
+ * Cards with a DISTINCT second photo (secondaryProductImage) mount the
+ * ProductCardXfade island plus the alt image layer — the second photo IS the
+ * hover, so the 80%-ink overlay renders only on single-layer cards. Every
+ * /collections card (its select omits image_urls) stays single-layer:
+ * identical visuals, zero JavaScript. No data-block-* attrs are added here
+ * (the grid SECTION owns editor targeting).
+ */
+export function EditorialProductCard({ product, index, href, sizes }: {
+  product: SiteProduct;
+  index: number;
+  href: string;
+  /** Slot-tuned sizes; defaults to the hairline grid breakpoints. */
+  sizes?: string;
+}) {
   const badge = editorialStockBadge(product.stock_quantity);
-  return (
-    <Link href={href} className="group block bg-[var(--site-bg,#F7F5F0)]">
+  const altSrc = secondaryProductImage(product);
+  const imgSizes = sizes ?? EDITORIAL_CARD_SIZES;
+  const root = 'group relative bg-[var(--site-bg,#F7F5F0)]';
+  const inner = (
+    <>
+      <Link href={href} className="absolute inset-0 z-10">
+        <span className="sr-only">{product.name}</span>
+      </Link>
       <div className="relative aspect-square overflow-hidden">
-        <EditorialProductPlate src={product.ad_hero_image_url ?? product.image_url} alt={product.name} index={index} />
+        <EditorialProductPlate src={product.ad_hero_image_url ?? product.image_url} alt={product.name} index={index} sizes={imgSizes} />
+        {altSrc ? (
+          // Second photo — revealed by hover (pointer devices) or the toggle
+          // (globals.css .sndk-xfade). Mirrors the plate's zoom so the two
+          // layers never drift apart mid-fade.
+          <div aria-hidden className="sndk-xfade-alt absolute inset-0">
+            <SmartImage
+              src={altSrc}
+              alt=""
+              fill
+              sizes={imgSizes}
+              blurTone="none"
+              className="object-cover transition-transform duration-700 group-hover:scale-[1.04]"
+            />
+          </div>
+        ) : (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-neutral-900/80 px-3 text-center opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+            <p className="font-serif text-lg italic leading-snug text-white md:text-xl">{product.name}</p>
+            <p className="text-xs text-white/70">{editorialPrice(product.price)}</p>
+            <span className="mt-2 text-[9px] font-bold uppercase tracking-[0.3em] text-white underline underline-offset-4">View</span>
+          </div>
+        )}
+        {/* z-[1]: above the ink overlay / alt layer, below the stretched link
+            (z-10) so the badge never carves a dead zone out of the tap area. */}
         {badge && (
-          <span className={`absolute right-2 top-2 z-10 px-2 py-1 text-[8px] font-bold uppercase tracking-[0.2em] ${
+          <span className={`absolute right-2 top-2 z-[1] px-2 py-1 text-[8px] font-bold uppercase tracking-[0.2em] ${
             badge.tone === 'out' ? 'bg-neutral-900 text-white' : 'bg-[#F7F5F0]/95 text-amber-800'
           }`}>
             {badge.label}
           </span>
         )}
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-neutral-900/80 px-3 text-center opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-          <p className="font-serif text-lg italic leading-snug text-white md:text-xl">{product.name}</p>
-          <p className="text-xs text-white/70">{editorialPrice(product.price)}</p>
-          <span className="mt-2 text-[9px] font-bold uppercase tracking-[0.3em] text-white underline underline-offset-4">View</span>
-        </div>
       </div>
       <div className="flex items-baseline justify-between gap-2 border-t border-neutral-900 px-3 py-2.5">
         <p className="truncate font-serif text-sm italic">{product.name}</p>
         <p className="shrink-0 text-[11px] text-[var(--site-muted,oklch(55.6%_0_0))]">{editorialPrice(product.price)}</p>
       </div>
-    </Link>
+    </>
   );
+  if (altSrc) {
+    return (
+      <ProductCardXfade
+        className={root}
+        toggleClassName="left-1 top-1 text-neutral-900"
+        chipClassName="border border-neutral-900 bg-[#F7F5F0]/95 px-2 py-1.5"
+        toggleLabel={`Show another photo of ${product.name}`}
+      >
+        {inner}
+      </ProductCardXfade>
+    );
+  }
+  return <article className={root}>{inner}</article>;
 }
 
 /** Internal PDP href with an honest fallback for slugless previews. */

@@ -2,9 +2,13 @@ import { Fragment } from 'react';
 import Link from 'next/link';
 import SmartImage from '@/components/SmartImage';
 import {
+  FEATURED_MAX,
+  resolveHeroSignal,
   resolveVisibleBlocks,
+  selectFeaturedProducts,
   siteCollectionsPath,
   type HeroMedia,
+  type HeroSignal,
   type SiteBlock,
   type SiteShop,
   type SiteProduct,
@@ -20,21 +24,28 @@ import SiteMarquee from './SiteMarquee';
 import StoryClamp from './StoryClamp';
 import VideoHeroMedia from './VideoHeroMedia';
 import RitualChrome, {
-  RITUAL_COLLECTION_GRID,
   RitualProductCard,
   ritualProductHref,
 } from './chrome/RitualChrome';
 
 // MINIMAL (template_key 'ritual') — Layout A.
-// The anatomy of a premium minimal Shopify theme:
-// sticky logo nav → full-bleed cinematic hero with dual CTAs → kinetic
-// value-props marquee (Fix 2: the static numbered band was retired — the
-// value_props block renders as the moving brand ribbon under the hero, edited
-// from the SectionRail inspector) → airy spacious product grid with
-// quick-view hovers and live stock badges → brand-story strip (clamped to a
+// The anatomy of a premium minimal Shopify theme, in its Micro-Homepage cut:
+// sticky logo nav → compact niche hero (≈40vh: one-sentence hook, an honest
+// offer pill, ONE CTA) → kinetic value-props marquee (Fix 2: the static
+// numbered band was retired — the value_props block renders as the moving
+// brand ribbon under the hero, edited from the SectionRail inspector) →
+// featured showcase (≤4 premium cards with image cross-fade, live stock
+// badges) → "Explore Collection" bridge → brand-story strip (clamped to a
 // 3-line teaser with a Read-the-full-story reveal — StoryClamp) → dark CTA
 // banner → structured footer (shop info, delivery & pickup, contact).
 // Warm off-white, stone ink.
+//
+// Micro-Homepage: ONE featured selection (selectFeaturedProducts) feeds both
+// the hero pill (resolveHeroSignal on featured[0]) and the showcase grid, so
+// the pill always describes what sits beneath it. Every new element (pill,
+// bridge, cross-fade toggle) is conditionally rendered — no gray placeholders
+// — and carries NO data-block-* attrs: the hero/grid SECTION owns editor
+// targeting. New motion is CSS-only with a reduced-motion block (globals.css).
 //
 // Phase 3: the body renders from resolveBlocks(config) — one section per
 // block, in block-array order. The deterministic legacy projection equals
@@ -87,20 +98,21 @@ const PAD_16_24: Record<PadKey, string> = {
 };
 
 
-function RitualHero({ block, shop, heroMedia, collectionsHref }: {
+function RitualHero({ block, shop, heroMedia, signal }: {
   block: HeroBlock;
   shop: SiteShop;
   heroMedia: HeroMedia;
-  collectionsHref: string;
+  /** Honest offer pill (resolveHeroSignal) — null renders NO pill, no gap. */
+  signal: HeroSignal | null;
 }) {
   return (
     // min-h (not fixed h): budget-length copy at 360px can outgrow the frame —
     // the hero grows with it instead of clipping against overflow-hidden.
-    // Fold discipline (Fix 5): the viewport-driven component is capped at 62vh
-    // (was 82vh) so the marquee + first grid row peek above the fold on
-    // desktop; the 560px content floor stays, and min-h preserves the
-    // clip-fix semantics — copy can still grow the frame past the cap.
-    <header data-block-section={block.id} className="relative flex min-h-[max(560px,62vh)] w-full items-end overflow-hidden bg-stone-900 md:items-center">
+    // Micro-Homepage: the hero is a compact niche opener — ≈40vh with a 360px
+    // content floor (was max(560px,62vh)) so the marquee AND the showcase's
+    // first row sit above the fold on mobile; min-h keeps the clip-fix
+    // semantics — copy can still grow the frame past the cap.
+    <header data-block-section={block.id} className="relative flex min-h-[max(360px,40vh)] w-full items-end overflow-hidden bg-stone-900 md:items-center">
       {heroMedia?.type === 'video' ? (
         // 2G media gate: unconstrained networks autoplay exactly as before;
         // save-data/2g/3g/reduced-motion get the ad poster (or the template
@@ -135,7 +147,7 @@ function RitualHero({ block, shop, heroMedia, collectionsHref }: {
       )}
       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/25 to-black/10" />
 
-      <div className="relative mx-auto w-full max-w-7xl px-5 pb-16 pt-24 md:px-10 md:pb-0 md:pt-0">
+      <div className="relative mx-auto w-full max-w-7xl px-5 pb-10 pt-20 md:px-10 md:py-12">
         {block.tagline && (
           <EditableText as="p" blockId={block.id} field="tagline" className="text-[11px] font-bold uppercase tracking-[0.35em] text-white/70">
             {block.tagline}
@@ -145,26 +157,39 @@ function RitualHero({ block, shop, heroMedia, collectionsHref }: {
           as="h1"
           blockId={block.id}
           field="headline"
-          className="mt-6 max-w-2xl font-serif text-4xl font-bold leading-[1.1] tracking-tight text-white md:text-5xl lg:text-6xl"
+          className="mt-4 max-w-2xl font-serif text-3xl font-bold leading-[1.1] tracking-tight text-white md:text-5xl"
         >
           {block.headline}
         </EditableText>
-        <EditableText as="p" blockId={block.id} field="subheadline" className="mt-6 max-w-xl text-base leading-relaxed text-white/80 md:text-lg">
+        {/* The one-sentence hook. */}
+        <EditableText as="p" blockId={block.id} field="subheadline" className="mt-4 max-w-xl text-sm leading-relaxed text-white/80 md:text-base">
           {block.subheadline}
         </EditableText>
-        <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
+        {/* Offer pill — honest-signal ladder (low stock → new this week →
+            fulfillment fact); null → nothing rendered. .sndk-rise is the only
+            motion here and never touches an LCP or editor-measured node. */}
+        {signal && (
+          <span className="sndk-rise mt-4 inline-flex min-h-8 items-center gap-2 rounded-full border border-white/25 bg-white/10 px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-white backdrop-blur-sm">
+            <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${signal.kind === 'stock' ? 'bg-amber-300' : 'bg-white/80'}`} />
+            {signal.label}
+          </span>
+        )}
+        {/* ONE CTA (flagged default): the secondary "View The Full Collection"
+            link was removed — the Explore Collection bridge under the showcase
+            owns that journey, and the stacked button cost ~50px of the mobile
+            fold. To restore it, add a sibling <Link href={collectionsHref}>
+            here with the historical border-white/50 outline styling. */}
+        {/* Solid accent fill — same token + hover as the chrome's "Shop Now"
+            nav button so the theme cascade recolors both together. The
+            ring-white/20 hairline keeps the themeless stone-900 fallback
+            legible against the dark hero plate. */}
+        <div className="mt-7">
           <a
             href="#collection"
-            className="rounded-[var(--site-radius,9999px)] bg-white px-8 py-4 text-center text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--site-accent,#1c1917)] shadow-lg transition hover:bg-stone-100 active:scale-95"
+            className="inline-flex min-h-11 items-center rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#1c1917)] px-8 text-center text-[10px] font-bold uppercase tracking-[0.25em] text-white shadow-lg ring-1 ring-white/20 transition hover:brightness-125 active:scale-95"
           >
             Shop The Collection
           </a>
-          <Link
-            href={collectionsHref}
-            className="rounded-[var(--site-radius,9999px)] border border-white/50 px-8 py-4 text-center text-[10px] font-bold uppercase tracking-[0.25em] text-white transition hover:border-white hover:bg-white/10 active:scale-95"
-          >
-            View The Full Collection
-          </Link>
         </div>
       </div>
     </header>
@@ -175,15 +200,40 @@ function RitualHero({ block, shop, heroMedia, collectionsHref }: {
 // block now renders exclusively as the SiteMarquee ribbon (the block itself
 // stays in the schema/rail; its editing home is the SectionRail inspector).
 
+// Count-aware showcase layouts (Micro-Homepage): 1–2 pieces never stretch to
+// a wall, 3 never strands an orphan at md, 4 keeps a 2×2 through md and opens
+// to the classic four-across at lg. `sizes` is tuned per slot so no card
+// downloads a wider image than it can paint.
+function ritualFeaturedLayout(count: number): { grid: string; sizes: string } {
+  switch (count) {
+    case 1:
+      return { grid: 'mx-auto grid max-w-sm grid-cols-1 gap-y-12', sizes: '(min-width: 640px) 384px, 100vw' };
+    case 2:
+      return { grid: 'mx-auto grid max-w-3xl grid-cols-2 gap-x-5 gap-y-12 md:gap-x-8', sizes: '(min-width: 768px) 384px, 50vw' };
+    case 3:
+      return { grid: 'grid grid-cols-2 gap-x-5 gap-y-12 md:grid-cols-3 md:gap-x-8 md:gap-y-16', sizes: '(min-width: 768px) 33vw, 50vw' };
+    default:
+      return { grid: 'grid grid-cols-2 gap-x-5 gap-y-12 md:gap-x-8 md:gap-y-16 lg:grid-cols-4', sizes: '(min-width: 1024px) 25vw, 50vw' };
+  }
+}
+
 function RitualProductGrid({ block, shop, products }: {
   block: ProductGridBlock;
   shop: SiteShop;
+  /** The showcase selection (selectFeaturedProducts) — capped again here so a
+   *  wider caller can never turn the showcase back into a wall. */
   products: SiteProduct[];
 }) {
+  const featured = products.slice(0, FEATURED_MAX);
+  const count = featured.length;
+  const alignLeft = block.align === 'left';
+  const layout = ritualFeaturedLayout(count);
+  // Bridge target: null in slugless studio previews → no bridge rendered.
+  const collectionsPath = siteCollectionsPath(shop);
   return (
     // padding/align consumption (Pillar 4): grid section spacing + header alignment.
     <section id="collection" data-block-section={block.id} className={`mx-auto max-w-7xl px-5 md:px-10 ${ritualPad(block.padding, PAD_20_28)}`}>
-      <div className={block.align === 'left' ? 'max-w-xl text-left' : 'mx-auto max-w-xl text-center'}>
+      <div className={alignLeft ? 'max-w-xl text-left' : 'mx-auto max-w-xl text-center'}>
         <EditableText as="h2" blockId={block.id} field="title" className="font-serif text-3xl font-bold tracking-tight text-[var(--site-text,oklch(21.6%_0.006_56.043))] md:text-5xl">
           {block.title}
         </EditableText>
@@ -192,7 +242,7 @@ function RitualProductGrid({ block, shop, products }: {
         </EditableText>
       </div>
 
-      {products.length === 0 ? (
+      {count === 0 ? (
         // Branded empty state (mirrors /collections): the hero's
         // "Shop The Collection" anchor lands on something dignified.
         <div className="mx-auto mt-14 max-w-md rounded-2xl border border-dashed border-stone-300 px-8 py-14 text-center md:mt-20">
@@ -206,17 +256,32 @@ function RitualProductGrid({ block, shop, products }: {
             trackClassName="gap-5 pb-2 md:gap-8"
             itemClassName="w-[68vw] max-w-[300px] sm:w-[300px]"
             buttonClassName="h-11 w-11 rounded-full bg-white text-stone-900 shadow-lg ring-1 ring-stone-200 hover:bg-stone-100 active:scale-95"
-            items={products.slice(0, 12).map((p, i) => ({
+            items={featured.map((p, i) => ({
               key: p.id,
-              node: <RitualProductCard product={p} index={i} href={ritualProductHref(shop, p.id)} />,
+              node: <RitualProductCard product={p} index={i} href={ritualProductHref(shop, p.id)} sizes="(min-width: 640px) 300px, 68vw" />,
             }))}
           />
         </div>
       ) : (
-        <div className={`mt-14 md:mt-20 ${RITUAL_COLLECTION_GRID}`}>
-          {products.slice(0, 12).map((p, i) => (
-            <RitualProductCard key={p.id} product={p} index={i} href={ritualProductHref(shop, p.id)} />
+        <div className={`mt-14 md:mt-20 ${layout.grid}`}>
+          {featured.map((p, i) => (
+            <RitualProductCard key={p.id} product={p} index={i} href={ritualProductHref(shop, p.id)} sizes={layout.sizes} />
           ))}
+        </div>
+      )}
+
+      {/* "Explore Collection" bridge — the journey from the showcase to the
+          full catalog. Conditional: needs pieces to explore AND a real
+          /site path (slugless previews render none). No data-block attrs. */}
+      {count > 0 && collectionsPath && (
+        <div className={`mt-12 flex md:mt-14 ${alignLeft ? 'justify-start' : 'justify-center'}`}>
+          <Link
+            href={collectionsPath}
+            className="group inline-flex min-h-11 items-center gap-3 rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#1c1917)] px-8 text-[10px] font-bold uppercase tracking-[0.25em] text-white shadow-sm transition hover:brightness-125 active:scale-95"
+          >
+            Explore Collection
+            <span aria-hidden className="transition-transform duration-300 group-hover:translate-x-1 motion-reduce:transition-none">&rarr;</span>
+          </Link>
         </div>
       )}
     </section>
@@ -422,6 +487,12 @@ export default function RitualTemplate({ shop, products, config, heroMedia }: Si
   // Internal routes, with honest fallbacks for slugless studio previews:
   // the preview renders this home layout, so bare anchors stay correct there.
   const collectionsHref = siteCollectionsPath(shop) ?? '#collection';
+  // Micro-Homepage: ONE showcase selection feeds both the hero pill (anchored
+  // on featured[0]) and the grid — the pill always describes what sits
+  // beneath it. Deterministic: Ad Studio media → real photos → gradient
+  // tiles, newest-first ties, deduped, capped at FEATURED_MAX.
+  const featured = selectFeaturedProducts(products, FEATURED_MAX);
+  const heroSignal = resolveHeroSignal({ shop, featured });
 
   return (
     <RitualChrome shop={shop} config={config} active="home">
@@ -432,11 +503,11 @@ export default function RitualTemplate({ shop, products, config, heroMedia }: Si
         const section = (() => {
           switch (block.type) {
             case 'hero_banner':
-              return <RitualHero block={block} shop={shop} heroMedia={heroMedia} collectionsHref={collectionsHref} />;
+              return <RitualHero block={block} shop={shop} heroMedia={heroMedia} signal={heroSignal} />;
             // value_props: no body section (Fix 2) — the block renders as the
             // SiteMarquee ribbon after the hero.
             case 'product_grid':
-              return <RitualProductGrid block={block} shop={shop} products={products} />;
+              return <RitualProductGrid block={block} shop={shop} products={featured} />;
             case 'story_text':
               return <RitualStory block={block} shopName={shop.shop_name} />;
             case 'cta_banner':

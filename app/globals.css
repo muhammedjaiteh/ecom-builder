@@ -123,3 +123,46 @@ body {
     }
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Micro-Homepage (Ritual + Editorial) — paint-safe, CSS-only motion.
+   .sndk-rise: the hero offer pill's entrance (opacity + 6px rise). Applied to
+   the PILL ONLY — never an LCP node, never an editor-measured copy node.
+   .sndk-xfade: a product card whose second photo cross-fades in on hover
+   (pointer devices only — no sticky touch hover) or when the card's
+   data-xfade="alt" toggle is set by the ProductCardXfade island.
+   prefers-reduced-motion: the pill appears in place; the cross-fade swaps
+   instantly. Zero JavaScript in this file.
+   ───────────────────────────────────────────────────────────────────────── */
+@keyframes sndk-rise-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.sndk-rise {
+  animation: sndk-rise-in 420ms cubic-bezier(0.22, 1, 0.36, 1) 120ms both;
+}
+
+.sndk-xfade-alt {
+  opacity: 0;
+  transition: opacity 480ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sndk-xfade[data-xfade="alt"] .sndk-xfade-alt {
+  opacity: 1;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .sndk-xfade:hover .sndk-xfade-alt {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sndk-rise {
+    animation: none;
+  }
+  .sndk-xfade-alt {
+    transition: none;
+  }
+}
