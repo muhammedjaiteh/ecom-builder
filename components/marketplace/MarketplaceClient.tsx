@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
@@ -117,6 +117,11 @@ function categoryMatchesShelf(category: string | null | undefined, keywords: str
 // takes only the first film-bearing product per shelf).
 const INTERLUDE_EVERY_N_SHELVES = 2;
 
+// The mobile menu drawer collapses via a `duration-300` max-height transition
+// (see MOBILE MENU PANEL). Category jumps wait this long before scrolling so
+// the target is measured AFTER the drawer has released its layout height.
+const MOBILE_MENU_COLLAPSE_MS = 300;
+
 function toCinematicTile(p: ProductWithShop, withVideo: boolean): CinematicTileData {
   return {
     id: p.id,
@@ -202,11 +207,17 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
       .map((ranked) => ranked.product);
   }, [shops, reviewStats]);
 
-  const categoryShelves = useMemo(
-    () => CATEGORY_SHELVES.map((shelf) => ({
-      ...shelf,
-      products: marketplaceProducts.filter((p) => categoryMatchesShelf(p.category, shelf.keywords)),
-    })),
+  // Only shelves with live products exist on the page. An empty category
+  // renders NOTHING — no section, no placeholder boutique cards — and is
+  // likewise absent from every category nav (drawer, footer, search chips) so
+  // a jump never targets a section that isn't in the DOM.
+  const visibleShelves = useMemo(
+    () => CATEGORY_SHELVES
+      .map((shelf) => ({
+        ...shelf,
+        products: marketplaceProducts.filter((p) => categoryMatchesShelf(p.category, shelf.keywords)),
+      }))
+      .filter((shelf) => shelf.products.length > 0),
     [marketplaceProducts]
   );
 
@@ -214,14 +225,13 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
   // already flagship/advanced-first). One pass assigns every living slot so a
   // product never appears in two curation surfaces at once:
   //   1. feature tiles: first film-bearing product per shelf (max 1/section);
-  //   2. interludes: cadence-capped queue between shelves — films first,
-  //      still-life editions (ad hero stills) fill when no film remains;
-  //   3. empty-shelf fills: still-life editorial curation, never an apology.
+  //   2. interludes: cadence-capped queue between VISIBLE shelves — films
+  //      first, still-life editions (ad hero stills) fill when no film remains.
   const curation = useMemo(() => {
     const used = new Set<string>();
 
     const featureByShelf = new Map<string, ProductWithShop>();
-    for (const shelf of categoryShelves) {
+    for (const shelf of visibleShelves) {
       const candidate = shelf.products.find((p) => p.ad_video_url && !used.has(p.id));
       if (candidate) {
         featureByShelf.set(shelf.id, candidate);
@@ -237,43 +247,50 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
     const next = () => (cursor < queue.length ? queue[cursor++] : null);
 
     const interludeByIndex = new Map<number, ProductWithShop>();
-    categoryShelves.forEach((_, i) => {
+    visibleShelves.forEach((_, i) => {
       if ((i + 1) % INTERLUDE_EVERY_N_SHELVES !== 0) return;
       const pick = next();
       if (pick) interludeByIndex.set(i, pick);
     });
 
-    const fillByShelf = new Map<string, ProductWithShop>();
-    for (const shelf of categoryShelves) {
-      if (shelf.products.length > 0) continue;
-      const pick = next();
-      if (pick) fillByShelf.set(shelf.id, pick);
-    }
+    return { featureByShelf, interludeByIndex };
+  }, [visibleShelves, marketplaceProducts]);
 
-    return { featureByShelf, interludeByIndex, fillByShelf };
-  }, [categoryShelves, marketplaceProducts]);
-
-  // LCP target: the topmost shelf that actually has products. Its leading
-  // cards are the first product pixels a visitor sees, so they alone carry
-  // Next/Image `priority` (preload + fetchpriority=high). Also the hero's
-  // "Shop the edit" scroll target.
-  const lcpShelfId = useMemo(
-    () => categoryShelves.find((shelf) => shelf.products.length > 0)?.id ?? null,
-    [categoryShelves]
-  );
+  // LCP target: the topmost rendered shelf. Its leading cards are the first
+  // product pixels a visitor sees, so they alone carry Next/Image `priority`
+  // (preload + fetchpriority=high).
+  const lcpShelfId = visibleShelves[0]?.id ?? null;
   const LCP_PRIORITY_CARDS = 2; // ≈ the cards visible on a 375px viewport
 
+  // Pending category-jump timer — a second tap cancels the first so two
+  // smooth scrolls never fight over the viewport.
+  const jumpTimerRef = useRef<number | null>(null);
+
   const handleCategoryJump = (sectionId: string) => {
+    // Captured BEFORE the state update: the drawer is about to collapse, and
+    // its 300ms max-height transition shifts everything below the header.
+    const drawerWasOpen = isMobileMenuOpen;
+
     setSearchQuery('');
     setIsSearching(false);
     setSearchResults(null);
     setSearchRelated(false);
-    setIsMobileMenuOpen(false);
-    if (typeof window !== 'undefined') {
+    setIsMobileMenuOpen(false); // close immediately — never wait on the scroll
+
+    if (typeof window === 'undefined') return;
+    if (jumpTimerRef.current !== null) window.clearTimeout(jumpTimerRef.current);
+
+    // Wait for layout to settle before measuring the target: the full drawer
+    // collapse when it was open (plus one frame of slack), otherwise just the
+    // next frame so React has committed the shelves (e.g. after clearing a
+    // search). Measuring mid-collapse is what produced the overshoot.
+    const settleMs = drawerWasOpen ? MOBILE_MENU_COLLAPSE_MS + 50 : 0;
+    jumpTimerRef.current = window.setTimeout(() => {
+      jumpTimerRef.current = null;
       window.requestAnimationFrame(() => {
         document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
-    }
+    }, settleMs);
   };
 
   const handleSearchChange = (value: string) => {
@@ -615,64 +632,27 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
             >
               Open Your Boutique
             </Link>
-            <div className="my-2 border-t border-black/5" />
-            <p className="px-4 pb-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">
-              Categories
-            </p>
-            {CATEGORY_SHELVES.map((shelf) => (
-              <button
-                key={shelf.id}
-                onClick={() => handleCategoryJump(shelf.id)}
-                className="flex items-center justify-between rounded-xl px-4 py-2.5 text-left text-sm font-medium text-gray-700 transition hover:bg-neutral-50"
-              >
-                {shelf.title}
-                <ArrowRight size={14} className="text-gray-400" />
-              </button>
-            ))}
+            {visibleShelves.length > 0 && (
+              <>
+                <div className="my-2 border-t border-black/5" />
+                <p className="px-4 pb-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                  Categories
+                </p>
+                {visibleShelves.map((shelf) => (
+                  <button
+                    key={shelf.id}
+                    onClick={() => handleCategoryJump(shelf.id)}
+                    className="flex items-center justify-between rounded-xl px-4 py-2.5 text-left text-sm font-medium text-gray-700 transition hover:bg-neutral-50"
+                  >
+                    {shelf.title}
+                    <ArrowRight size={14} className="text-gray-400" />
+                  </button>
+                ))}
+              </>
+            )}
           </div>
         </div>
       </header>
-
-      {/* ═══════════════════════════════════════════════════════
-          EDITORIAL HERO — the mall's opening statement
-      ═══════════════════════════════════════════════════════ */}
-      {/* Text-only by design: no image, no video, fixed copy → the block's
-          height is known at first paint (zero CLS) and it costs nothing on
-          2G. Hidden while a search is live so results stay above the fold.
-          Also the page's single <h1> (the logo is an <img>). */}
-      {!isSearching && searchResults === null && (
-        <section aria-labelledby="mall-hero-title" className="border-b border-black/5 bg-mall-bone">
-          <div className="mx-auto max-w-7xl px-4 py-8 md:px-10 md:py-14">
-            <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-mall-gold">
-              Sanndikaa &middot; The Marketplace
-            </p>
-            <h1
-              id="mall-hero-title"
-              className="mt-3 max-w-2xl font-serif text-3xl font-semibold leading-[1.1] tracking-tight text-mall-forest md:text-5xl"
-            >
-              Africa&apos;s finest boutiques, under one roof.
-            </h1>
-            <p className="mt-3 max-w-lg text-sm leading-relaxed text-gray-600 md:text-base">
-              Independent designers, artisans, and makers &mdash; curated, not crowded.
-            </p>
-            <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-3">
-              <button
-                type="button"
-                onClick={() => handleCategoryJump(lcpShelfId ?? CATEGORY_SHELVES[0].id)}
-                className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-mall-forest px-6 text-sm font-semibold text-white transition hover:bg-black"
-              >
-                Shop the edit <ArrowRight size={14} />
-              </button>
-              <Link
-                href="/pricing"
-                className="inline-flex min-h-[44px] items-center text-sm font-medium text-mall-forest underline-offset-4 transition hover:underline"
-              >
-                Open your boutique
-              </Link>
-            </div>
-          </div>
-        </section>
-      )}
 
       {/* ═══════════════════════════════════════════════════════
           TRUST MARQUEE — every claim feature-verified (Pillar 3)
@@ -680,9 +660,12 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
       <MarketplaceMarquee />
 
       {/* ═══════════════════════════════════════════════════════
-          MAIN CONTENT
+          MAIN CONTENT — shelves open the page; no hero slab above them
       ═══════════════════════════════════════════════════════ */}
       <main className="pb-0 pt-6 md:pt-8" id="category-shelves">
+        {/* The page's single <h1> (the logo is an <img>) — visually silent so
+            products are the first pixels, still present for SEO + screen readers. */}
+        <h1 className="sr-only">Sanndikaa Marketplace &mdash; Africa&apos;s finest boutiques, under one roof.</h1>
         {isSearching ? (
 
           /* ── AI LOADING STATE ────────────────────────────── */
@@ -746,7 +729,7 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                   We couldn&apos;t find an exact match for that vibe. Try another search, or browse a category below.
                 </p>
                 <div className="mt-6 flex flex-wrap justify-center gap-2">
-                  {CATEGORY_SHELVES.map((shelf) => (
+                  {visibleShelves.map((shelf) => (
                     <button
                       key={shelf.id}
                       onClick={() => handleCategoryJump(shelf.id)}
@@ -793,7 +776,9 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
           <PlaybackCoordinator>
           <div className="space-y-2 pb-0 md:space-y-4">
 
-            {categoryShelves.map((shelf, shelfIndex) => {
+            {/* visibleShelves is pre-filtered to products.length > 0: an empty
+                category renders no section and no placeholder cards. */}
+            {visibleShelves.map((shelf, shelfIndex) => {
               const featured = curation.featureByShelf.get(shelf.id) ?? null;
               const shelfProducts = featured
                 ? shelf.products.filter((p) => p.id !== featured.id)
@@ -801,16 +786,17 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
               // The feature tile occupies carousel slot 0, so the LCP budget
               // (the leading LCP_PRIORITY_CARDS slots) is shared: tile + 1 card.
               const leadSlots = featured ? 1 : 0;
-              const fill = curation.fillByShelf.get(shelf.id) ?? null;
               const interlude = curation.interludeByIndex.get(shelfIndex) ?? null;
               return (
               <div key={shelf.id}>
-              {/* scroll-mt clears the sticky header on category jumps: mobile
-                  header is 140px (84px logo row + 56px search row) plus the
-                  safe-area inset; desktop is 97px. */}
+              {/* scroll-mt clears the sticky header on category jumps with
+                  breathing room so the heading is never covered or clipped:
+                  mobile header is 140px (84px logo row + 56px search row) plus
+                  the safe-area inset → 10rem (160px) + inset; desktop header is
+                  97px → 8rem (128px). */}
               <section
                 id={shelf.id}
-                className="scroll-mt-[calc(9.5rem_+_env(safe-area-inset-top))] bg-white py-5 md:scroll-mt-28 md:py-6"
+                className="scroll-mt-[calc(10rem_+_env(safe-area-inset-top))] bg-white py-5 md:scroll-mt-32 md:py-6"
               >
 
                 {/* Shelf header */}
@@ -823,101 +809,50 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                       {shelf.description}
                     </p>
                   </div>
-                  {shelf.products.length > 0 && (
-                    <span className="flex-shrink-0 rounded-full bg-neutral-100 px-2.5 py-1 text-[10px] font-medium text-gray-600">
-                      {shelf.products.length} item{shelf.products.length !== 1 ? 's' : ''}
-                    </span>
-                  )}
+                  <span className="flex-shrink-0 rounded-full bg-neutral-100 px-2.5 py-1 text-[10px] font-medium text-gray-600">
+                    {shelf.products.length} item{shelf.products.length !== 1 ? 's' : ''}
+                  </span>
                 </div>
 
-                {shelf.products.length === 0 ? (
-                  /* An empty shelf renders CURATION, never an apology:
-                     still-life editorial fill from the marketplace edit →
-                     featured boutiques → an invitation to open the shelf. */
-                  fill ? (
-                    <div className="mx-4 overflow-hidden rounded-2xl md:mx-10">
+                {/*
+                  Horizontal carousel — fixed 160px card width on mobile.
+                  On a 375px screen with 16px left padding and 12px gap:
+                  First card ends at 16+160=176px, gap at 188px, second card
+                  visible from 188px → 348px (full), third card starts at 360px
+                  → 15px of third card visible. Net effect: ~2 full + sliver,
+                  giving a clear swipe affordance.
+                */}
+                <div className="hide-scrollbar flex gap-3 overflow-x-auto snap-x snap-mandatory px-4 pb-4 md:gap-5 md:px-10">
+                  {/* Feature tile — max ONE per shelf section (cadence cap):
+                      double-width, same card anatomy, living media box. */}
+                  {featured && (
+                    <div className="w-[332px] flex-shrink-0 snap-start sm:w-[396px] md:w-[436px] lg:w-[468px]">
+                      {/* Slot 0 of the carousel — on the LCP shelf this poster
+                          IS the largest above-the-fold pixel. */}
                       <CinematicTile
-                        variant="interlude"
-                        data={toCinematicTile(fill, false)}
-                        kicker={`From the marketplace edit — ${fill.shop?.shop_name ?? 'Sanndikaa'}`}
+                        variant="feature"
+                        data={toCinematicTile(featured, true)}
+                        priority={shelf.id === lcpShelfId}
                       />
                     </div>
-                  ) : shops.length > 0 ? (
-                    <div className="grid grid-cols-1 gap-4 px-4 sm:grid-cols-2 md:px-10">
-                      {shops.slice(0, 2).map((shop) => (
-                        <Link
-                          key={`${shelf.id}-fill-${shop.id}`}
-                          href={shopHref(shop)}
-                          className="group flex min-h-[88px] items-center gap-4 rounded-2xl border border-black/5 bg-neutral-50 p-4 transition hover:-translate-y-0.5 hover:shadow-md"
-                        >
-                          <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-full border border-black/10 bg-white">
-                            {shop.logo_url ? (
-                              <SmartImage src={shop.logo_url} alt={shop.shop_name} fill blurTone="none" className="rounded-full object-cover" sizes="48px" />
-                            ) : (
-                              <div className="flex h-full items-center justify-center text-gray-300"><Store size={18} /></div>
-                            )}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Featured boutique</p>
-                            <p className="truncate text-sm font-semibold text-gray-900 group-hover:underline">{shop.shop_name}</p>
-                          </div>
-                          <ArrowRight size={14} className="ml-auto flex-shrink-0 text-gray-400" />
-                        </Link>
-                      ))}
+                  )}
+                  {shelfProducts.map((product, cardIndex) => (
+                    <div
+                      key={`${shelf.id}-${product.id}-${product.shop.shop_slug}`}
+                      className="w-[160px] flex-shrink-0 snap-start sm:w-48 md:w-52 lg:w-56"
+                    >
+                      {renderProductCard(product, {
+                        priority: shelf.id === lcpShelfId && cardIndex + leadSlots < LCP_PRIORITY_CARDS,
+                      })}
                     </div>
-                  ) : (
-                    <div className="mx-4 flex min-h-[160px] flex-col items-center justify-center rounded-2xl bg-[#1a2e1a] px-6 py-10 text-center md:mx-10">
-                      <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-mall-gold">The First Edit</p>
-                      <h4 className="mt-2 text-lg font-semibold text-white">This shelf opens with the first boutique.</h4>
-                      <Link
-                        href="/pricing"
-                        className="mt-4 inline-flex min-h-[44px] items-center rounded-full bg-white px-6 text-xs font-semibold text-[#1a2e1a] transition hover:bg-neutral-100"
-                      >
-                        Open your boutique
-                      </Link>
-                    </div>
-                  )
-                ) : (
-                  /*
-                    Horizontal carousel — fixed 160px card width on mobile.
-                    On a 375px screen with 16px left padding and 12px gap:
-                    First card ends at 16+160=176px, gap at 188px, second card
-                    visible from 188px → 348px (full), third card starts at 360px
-                    → 15px of third card visible. Net effect: ~2 full + sliver,
-                    giving a clear swipe affordance.
-                  */
-                  <div className="hide-scrollbar flex gap-3 overflow-x-auto snap-x snap-mandatory px-4 pb-4 md:gap-5 md:px-10">
-                    {/* Feature tile — max ONE per shelf section (cadence cap):
-                        double-width, same card anatomy, living media box. */}
-                    {featured && (
-                      <div className="w-[332px] flex-shrink-0 snap-start sm:w-[396px] md:w-[436px] lg:w-[468px]">
-                        {/* Slot 0 of the carousel — on the LCP shelf this poster
-                            IS the largest above-the-fold pixel. */}
-                        <CinematicTile
-                          variant="feature"
-                          data={toCinematicTile(featured, true)}
-                          priority={shelf.id === lcpShelfId}
-                        />
-                      </div>
-                    )}
-                    {shelfProducts.map((product, cardIndex) => (
-                      <div
-                        key={`${shelf.id}-${product.id}-${product.shop.shop_slug}`}
-                        className="w-[160px] flex-shrink-0 snap-start sm:w-48 md:w-52 lg:w-56"
-                      >
-                        {renderProductCard(product, {
-                          priority: shelf.id === lcpShelfId && cardIndex + leadSlots < LCP_PRIORITY_CARDS,
-                        })}
-                      </div>
-                    ))}
-                    {/* Right-edge spacer so last card doesn't hug the scroll edge */}
-                    <div className="w-4 flex-shrink-0 md:w-6" aria-hidden="true" />
-                  </div>
-                )}
+                  ))}
+                  {/* Right-edge spacer so last card doesn't hug the scroll edge */}
+                  <div className="w-4 flex-shrink-0 md:w-6" aria-hidden="true" />
+                </div>
               </section>
 
               {/* Full-bleed interlude — cadence-capped to one per
-                  ~viewport of shelf content (every second shelf). */}
+                  ~viewport of shelf content (every second visible shelf). */}
               {interlude && (
                 <CinematicTile variant="interlude" data={toCinematicTile(interlude, true)} />
               )}
@@ -1172,7 +1107,7 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                     Homepage
                   </button>
                 </li>
-                {CATEGORY_SHELVES.map((shelf) => (
+                {visibleShelves.map((shelf) => (
                   <li key={shelf.id}>
                     <button
                       onClick={() => handleCategoryJump(shelf.id)}
