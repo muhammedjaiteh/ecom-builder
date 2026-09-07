@@ -253,6 +253,16 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
     return { featureByShelf, interludeByIndex, fillByShelf };
   }, [categoryShelves, marketplaceProducts]);
 
+  // LCP target: the topmost shelf that actually has products. Its leading
+  // cards are the first product pixels a visitor sees, so they alone carry
+  // Next/Image `priority` (preload + fetchpriority=high). Also the hero's
+  // "Shop the edit" scroll target.
+  const lcpShelfId = useMemo(
+    () => categoryShelves.find((shelf) => shelf.products.length > 0)?.id ?? null,
+    [categoryShelves]
+  );
+  const LCP_PRIORITY_CARDS = 2; // ≈ the cards visible on a 375px viewport
+
   const handleCategoryJump = (sectionId: string) => {
     setSearchQuery('');
     setIsSearching(false);
@@ -331,7 +341,10 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
   // a plain article, zero extra JS. Layer contract: alt z-[1] · badge z-[2] ·
   // link z-10 · toggle z-50.
   const MARKETPLACE_CARD_SIZES = '(max-width: 640px) 160px, (max-width: 1024px) 192px, 208px';
-  const renderProductCard = (product: ProductWithShop) => {
+  // `priority` marks the LCP candidates: the first cards of the topmost
+  // populated shelf get a <link rel=preload> + fetchpriority=high so the
+  // above-the-fold product pixels land before the rest of the mall loads.
+  const renderProductCard = (product: ProductWithShop, options: { priority?: boolean } = {}) => {
     const imgUrl = product.image_urls?.[0] || product.image_url;
     const altSrc = secondaryProductImage({ image_url: imgUrl ?? null, image_urls: product.image_urls });
     const tier = (product.shop?.subscription_tier || 'starter').toLowerCase().trim();
@@ -349,16 +362,15 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
         <Link href={`/product/${product.id}`} className="absolute inset-0 z-10 rounded-xl">
           <span className="sr-only">{product.name}</span>
         </Link>
-        <div
-          className={`relative aspect-square overflow-hidden rounded-xl border bg-neutral-100 ${
-            isAdvanced ? 'border-yellow-300' : isPro ? 'border-purple-300' : 'border-black/5'
-          }`}
-        >
+        {/* The photo is never outlined by tier — a coloured 1px ring reads as
+            clutter against the product. Tier lives in the micro-pill below. */}
+        <div className="relative aspect-square overflow-hidden rounded-xl border border-black/5 bg-neutral-100">
           {imgUrl ? (
             <SmartImage
               src={imgUrl}
               alt={product.name}
               fill
+              priority={options.priority === true}
               className="object-cover transition-transform duration-700 group-hover:scale-105"
               sizes={MARKETPLACE_CARD_SIZES}
             />
@@ -383,9 +395,10 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
             </div>
           )}
           {(isAdvanced || isPro) && (
-            <div className="absolute left-2 top-2 z-[2] flex items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 text-[10px] font-semibold shadow-sm backdrop-blur">
+            // Discreet tier micro-pill — the only tier signal on the card.
+            <div className="absolute left-2 top-2 z-[2] flex items-center gap-1 rounded-full bg-white/90 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider shadow-sm backdrop-blur">
               {isAdvanced ? (
-                <><BadgeCheck size={10} className="text-yellow-500" /><span className="text-yellow-700">Featured</span></>
+                <><BadgeCheck size={10} className="text-mall-gold" /><span className="text-mall-forest">Featured</span></>
               ) : (
                 <><BadgeCheck size={10} className="text-purple-500" /><span className="text-purple-700">Pro</span></>
               )}
@@ -621,6 +634,47 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
       </header>
 
       {/* ═══════════════════════════════════════════════════════
+          EDITORIAL HERO — the mall's opening statement
+      ═══════════════════════════════════════════════════════ */}
+      {/* Text-only by design: no image, no video, fixed copy → the block's
+          height is known at first paint (zero CLS) and it costs nothing on
+          2G. Hidden while a search is live so results stay above the fold.
+          Also the page's single <h1> (the logo is an <img>). */}
+      {!isSearching && searchResults === null && (
+        <section aria-labelledby="mall-hero-title" className="border-b border-black/5 bg-mall-bone">
+          <div className="mx-auto max-w-7xl px-4 py-8 md:px-10 md:py-14">
+            <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-mall-gold">
+              Sanndikaa &middot; The Marketplace
+            </p>
+            <h1
+              id="mall-hero-title"
+              className="mt-3 max-w-2xl font-serif text-3xl font-semibold leading-[1.1] tracking-tight text-mall-forest md:text-5xl"
+            >
+              Africa&apos;s finest boutiques, under one roof.
+            </h1>
+            <p className="mt-3 max-w-lg text-sm leading-relaxed text-gray-600 md:text-base">
+              Independent designers, artisans, and makers &mdash; curated, not crowded.
+            </p>
+            <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-3">
+              <button
+                type="button"
+                onClick={() => handleCategoryJump(lcpShelfId ?? CATEGORY_SHELVES[0].id)}
+                className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-mall-forest px-6 text-sm font-semibold text-white transition hover:bg-black"
+              >
+                Shop the edit <ArrowRight size={14} />
+              </button>
+              <Link
+                href="/pricing"
+                className="inline-flex min-h-[44px] items-center text-sm font-medium text-mall-forest underline-offset-4 transition hover:underline"
+              >
+                Open your boutique
+              </Link>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════
           TRUST MARQUEE — every claim feature-verified (Pillar 3)
       ═══════════════════════════════════════════════════════ */}
       <MarketplaceMarquee />
@@ -810,7 +864,7 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                     </div>
                   ) : (
                     <div className="mx-4 flex min-h-[160px] flex-col items-center justify-center rounded-2xl bg-[#1a2e1a] px-6 py-10 text-center md:mx-10">
-                      <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#f0a500]">The First Edit</p>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-mall-gold">The First Edit</p>
                       <h4 className="mt-2 text-lg font-semibold text-white">This shelf opens with the first boutique.</h4>
                       <Link
                         href="/pricing"
@@ -837,12 +891,14 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                         <CinematicTile variant="feature" data={toCinematicTile(featured, true)} />
                       </div>
                     )}
-                    {shelfProducts.map((product) => (
+                    {shelfProducts.map((product, cardIndex) => (
                       <div
                         key={`${shelf.id}-${product.id}-${product.shop.shop_slug}`}
                         className="w-[160px] flex-shrink-0 snap-start sm:w-48 md:w-52 lg:w-56"
                       >
-                        {renderProductCard(product)}
+                        {renderProductCard(product, {
+                          priority: shelf.id === lcpShelfId && cardIndex < LCP_PRIORITY_CARDS,
+                        })}
                       </div>
                     ))}
                     {/* Right-edge spacer so last card doesn't hug the scroll edge */}
@@ -877,7 +933,7 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                 /* Curation, never an apology: the empty boutique floor is a
                    designed invitation (conversion surface, Law 1). */
                 <div className="mx-4 flex flex-col items-center justify-center rounded-2xl bg-[#1a2e1a] px-6 py-16 text-center md:mx-10">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#f0a500]">Opening Soon</p>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-mall-gold">Opening Soon</p>
                   <h3 className="mt-3 max-w-md font-serif text-xl font-semibold text-white">
                     The first boutiques are being fitted. Yours could open the floor.
                   </h3>
@@ -899,17 +955,13 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                     return (
                       <div
                         key={shop.id}
-                        className={`group flex flex-col rounded-2xl border bg-white p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md ${
-                          isAdvanced ? 'border-yellow-300' : isPro ? 'border-purple-300' : 'border-black/5'
-                        }`}
+                        // Tier is a label (BadgeCheck + tinted Visit pill), never
+                        // a coloured outline around the card or the photos.
+                        className="group flex flex-col rounded-2xl border border-black/5 bg-white p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md"
                       >
                         <div className="mb-4 flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            <div
-                              className={`relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-full border bg-gray-50 ${
-                                isAdvanced ? 'border-yellow-400' : isPro ? 'border-purple-400' : 'border-black/10'
-                              }`}
-                            >
+                            <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-full border border-black/10 bg-gray-50">
                               {shop.logo_url ? (
                                 <SmartImage
                                   src={shop.logo_url}
@@ -928,7 +980,7 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                             <div>
                               <h3 className="flex items-center gap-1 text-sm font-medium text-gray-900">
                                 {shop.shop_name}
-                                {isAdvanced && <BadgeCheck size={13} className="text-yellow-500" />}
+                                {isAdvanced && <BadgeCheck size={13} className="text-mall-gold" />}
                                 {isPro && <BadgeCheck size={13} className="text-purple-500" />}
                               </h3>
                               <p className="text-xs text-gray-500">
@@ -940,7 +992,7 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                             href={shopHref(shop)}
                             className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition ${
                               isAdvanced
-                                ? 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100'
+                                ? 'bg-mall-gold/10 text-mall-forest hover:bg-mall-gold/20'
                                 : isPro
                                   ? 'bg-purple-50 text-purple-700 hover:bg-purple-100'
                                   : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
@@ -963,11 +1015,7 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                                 <Link href={`/product/${product.id}`} className="absolute inset-0 z-10 rounded-xl">
                                   <span className="sr-only">{product.name}</span>
                                 </Link>
-                                <div
-                                  className={`relative aspect-[4/5] overflow-hidden rounded-xl border bg-gray-50 ${
-                                    isAdvanced ? 'border-yellow-100' : isPro ? 'border-purple-100' : 'border-black/5'
-                                  }`}
-                                >
+                                <div className="relative aspect-[4/5] overflow-hidden rounded-xl border border-black/5 bg-gray-50">
                                   {imgUrl ? (
                                     <SmartImage
                                       src={imgUrl}
