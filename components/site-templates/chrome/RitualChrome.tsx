@@ -114,9 +114,10 @@ export function RitualProductCard({ product, index, href, sizes }: {
         <RitualProductVisual src={product.ad_hero_image_url ?? product.image_url} alt={product.name} index={index} sizes={imgSizes} />
         {altSrc && (
           // Second photo — revealed by hover (pointer devices) or the toggle
-          // (globals.css .sndk-xfade). Mirrors the primary's zoom so the two
-          // layers never drift apart mid-fade.
-          <div aria-hidden className="sndk-xfade-alt absolute inset-0">
+          // (globals.css .sndk-xfade). z-[1] pins it ABOVE the primary image
+          // (ProductCardXfade layer contract); mirrors the primary's zoom so
+          // the two layers never drift apart mid-fade.
+          <div aria-hidden className="sndk-xfade-alt absolute inset-0 z-[1]">
             <SmartImage
               src={altSrc}
               alt=""
@@ -127,9 +128,11 @@ export function RitualProductCard({ product, index, href, sizes }: {
             />
           </div>
         )}
+        {/* z-[2]: badge + chip stay legible over EITHER photo, below the
+            stretched link (z-10) so they never carve a dead tap zone. */}
         {badge && (
           <span
-            className={`absolute left-3 top-3 rounded-full px-3 py-1 text-[9px] font-bold uppercase tracking-widest ${
+            className={`absolute left-3 top-3 z-[2] rounded-full px-3 py-1 text-[9px] font-bold uppercase tracking-widest ${
               badge.tone === 'out'
                 ? 'bg-stone-900/90 text-white'
                 : 'bg-white/90 text-amber-700 ring-1 ring-amber-200 backdrop-blur'
@@ -138,7 +141,7 @@ export function RitualProductCard({ product, index, href, sizes }: {
             {badge.label}
           </span>
         )}
-        <span className="absolute inset-x-3 bottom-3 translate-y-2 rounded-full bg-white/95 py-2.5 text-center text-[10px] font-bold uppercase tracking-[0.2em] text-stone-900 opacity-0 shadow-lg backdrop-blur transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
+        <span className="absolute inset-x-3 bottom-3 z-[2] translate-y-2 rounded-full bg-white/95 py-2.5 text-center text-[10px] font-bold uppercase tracking-[0.2em] text-stone-900 opacity-0 shadow-lg backdrop-blur transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
           View Product
         </span>
       </div>

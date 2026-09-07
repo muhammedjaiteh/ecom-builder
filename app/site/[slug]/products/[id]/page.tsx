@@ -4,10 +4,10 @@ import type { Metadata } from 'next';
 import { SITE_CHROMES, type SiteTone } from '@/components/site-templates/chrome';
 import SiteThemeCascade from '@/components/site-templates/SiteThemeCascade';
 import {
+  LOW_STOCK_MAX,
   WebsiteConfigSchema,
   siteBasePath,
   siteCollectionsPath,
-  type SiteShop,
 } from '@/lib/siteTemplates';
 import { siteThemeVars } from '@/lib/siteTheme';
 import {
@@ -20,6 +20,7 @@ import {
   type SiteRoute,
 } from '../../siteData';
 import SiteDraftBadge from '../../SiteDraftBadge';
+import SiteFulfillmentPane from './SiteFulfillmentPane';
 import SiteProductGallery, { type GalleryMedia } from './SiteProductGallery';
 import SiteProductPurchase from './SiteProductPurchase';
 
@@ -29,6 +30,20 @@ import SiteProductPurchase from './SiteProductPurchase';
 // buyer completes the purchase without ever leaving the branded site.
 // Ownership gate: a product that does not belong to this shop redirects to
 // the site's own collections page (never render another seller's product).
+//
+// PDP OVERHAUL (Phase 2 — the Sanndikaa luxury aesthetic):
+//   • Gallery-led 7/5 split (the Editorial hero ratio): a vertical thumbnail
+//     rail + tall 4:5 frame on desktop, a full-bleed swipe frame on mobile,
+//     with a live "01 / 04" counter (SiteProductGallery).
+//   • The purchase column is sticky on desktop so the price + CTAs stay in
+//     view while the buyer studies the gallery.
+//   • Typography + color ride the theme cascade: font-serif resolves through
+//     --site-serif; every ink/muted/accent spot is var(--site-*, <historical
+//     literal>) — the same tokens the committed Micro-Homepage buttons use.
+//   • Beat 5: a scroll-revealed STICKY BUY BAR on every viewport
+//     (SiteProductPurchase) — safe-area padded, both CTAs, same order logic.
+//   • "Delivery & Pickup" is a dedicated data pane (SiteFulfillmentPane)
+//     rendered from the validated shop facts, never invented copy.
 
 // CACHED DATA, DYNAMIC SHELL: force-dynamic stays (owner-draft cookie gate +
 // per-viewer redirect outcomes in requireSite). The product row and the site
@@ -63,10 +78,11 @@ function buildGalleryMedia(product: SitePdpProduct): GalleryMedia[] {
   return media;
 }
 
+// Same ceiling as the chrome badges and the hero offer pill (LOW_STOCK_MAX).
 function stockStatus(stock: number | null | undefined): { label: string; kind: 'in' | 'low' | 'out' } | null {
   if (stock == null) return null;
   if (stock <= 0) return { label: 'Sold Out', kind: 'out' };
-  if (stock <= 5) return { label: `Only ${stock} left`, kind: 'low' };
+  if (stock <= LOW_STOCK_MAX) return { label: `Only ${stock} left`, kind: 'low' };
   return { label: 'In Stock', kind: 'in' };
 }
 
@@ -76,90 +92,80 @@ type PdpStyles = {
   breadcrumbLink: string;
   breadcrumbCurrent: string;
   grid: string;
+  galleryCol: string;
+  infoCol: string;
   eyebrow: string;
   title: string;
   price: string;
   stock: Record<'in' | 'low' | 'out', string>;
   divider: string;
   description: string;
-  factsLabel: string;
-  factLine: string;
-  factNote: string;
 };
 
+// Every ink/muted/accent literal below is the template's historical value,
+// wrapped as a var() fallback so the theme cascade recolors the PDP exactly
+// like the home page (FALLBACK LAW: themeless renders stay byte-stable).
 const PDP_STYLES: Record<SiteTone, PdpStyles> = {
   ritual: {
-    section: 'mx-auto max-w-7xl px-5 py-10 md:px-10 md:py-16',
-    breadcrumb: 'flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-[0.25em] text-stone-400',
-    breadcrumbLink: 'transition hover:text-stone-900',
-    breadcrumbCurrent: 'truncate text-stone-900',
-    grid: 'mt-8 grid grid-cols-1 items-start gap-10 md:mt-12 md:grid-cols-2 md:gap-16',
-    eyebrow: 'text-[10px] font-bold uppercase tracking-[0.3em] text-stone-400',
-    title: 'mt-3 font-serif text-3xl font-bold leading-tight tracking-tight text-stone-900 md:text-5xl',
-    price: 'text-2xl font-light text-stone-900',
+    section: 'mx-auto max-w-7xl px-5 pb-16 pt-6 md:px-10 md:pb-24 md:pt-10',
+    breadcrumb: 'flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--site-muted,oklch(70.9%_0.01_56.259))]',
+    breadcrumbLink: 'transition hover:text-[var(--site-text,oklch(21.6%_0.006_56.043))]',
+    breadcrumbCurrent: 'truncate text-[var(--site-text,oklch(21.6%_0.006_56.043))]',
+    grid: 'mt-6 grid grid-cols-1 items-start gap-10 md:mt-10 md:grid-cols-12 md:gap-12 lg:gap-16',
+    galleryCol: 'md:col-span-7',
+    // Sticky under the h-20 sticky nav (top-24 = 96px clears it).
+    infoCol: 'md:col-span-5 md:sticky md:top-24 md:self-start',
+    eyebrow: 'text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-muted,oklch(70.9%_0.01_56.259))]',
+    title: 'mt-3 font-serif text-3xl font-bold leading-[1.1] tracking-tight text-[var(--site-text,oklch(21.6%_0.006_56.043))] md:text-4xl lg:text-5xl',
+    price: 'text-2xl font-light tracking-tight text-[var(--site-text,oklch(21.6%_0.006_56.043))]',
     stock: {
       in: 'rounded-full border border-emerald-700/30 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-800',
       low: 'rounded-full bg-white px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-700 ring-1 ring-amber-200',
-      out: 'rounded-full bg-stone-900 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white',
+      out: 'rounded-full bg-[var(--site-text,#1c1917)] px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white',
     },
-    divider: 'my-7 h-px w-16 bg-stone-300',
-    description: 'max-w-md text-base font-light leading-relaxed text-stone-600',
-    factsLabel: 'text-[10px] font-bold uppercase tracking-[0.3em] text-stone-400',
-    factLine: 'text-sm text-stone-600',
-    factNote: 'text-xs leading-relaxed text-stone-400',
+    divider: 'my-7 h-px w-16 bg-[var(--site-accent,#1c1917)]',
+    description: 'max-w-md text-[15px] font-light leading-relaxed text-[var(--site-muted,oklch(44.4%_0.011_73.639))]',
   },
   editorial: {
-    section: 'mx-auto max-w-7xl border-b border-neutral-900 px-5 py-10 md:px-10 md:py-16',
-    breadcrumb: 'flex flex-wrap items-center gap-2 text-[9px] font-bold uppercase tracking-[0.3em] text-neutral-400',
-    breadcrumbLink: 'transition hover:text-neutral-900',
-    breadcrumbCurrent: 'truncate text-neutral-900',
-    grid: 'mt-8 grid grid-cols-1 items-start gap-10 md:mt-12 md:grid-cols-2 md:gap-16',
-    eyebrow: 'text-[10px] font-bold uppercase tracking-[0.35em] text-[#1a2e1a]',
-    title: 'mt-3 font-serif text-3xl italic leading-[1.08] tracking-tight text-neutral-900 md:text-5xl',
-    price: 'font-serif text-2xl italic text-neutral-900',
+    section: 'mx-auto max-w-7xl border-b border-neutral-900 px-5 pb-16 pt-6 md:px-10 md:pb-24 md:pt-10',
+    breadcrumb: 'flex flex-wrap items-center gap-2 text-[9px] font-bold uppercase tracking-[0.3em] text-[var(--site-muted,oklch(70.8%_0_0))]',
+    breadcrumbLink: 'transition hover:text-[var(--site-text,oklch(20.5%_0_0))]',
+    breadcrumbCurrent: 'truncate text-[var(--site-text,oklch(20.5%_0_0))]',
+    grid: 'mt-6 grid grid-cols-1 items-start gap-10 md:mt-10 md:grid-cols-12 md:gap-12 lg:gap-16',
+    galleryCol: 'md:col-span-7',
+    // The masthead is static, so the column only needs to clear the top edge.
+    infoCol: 'md:col-span-5 md:sticky md:top-10 md:self-start',
+    eyebrow: 'text-[10px] font-bold uppercase tracking-[0.35em] text-[var(--site-accent,#1a2e1a)]',
+    title: 'mt-3 font-serif text-3xl italic leading-[1.08] tracking-tight text-[var(--site-text,oklch(20.5%_0_0))] md:text-4xl lg:text-5xl',
+    price: 'font-serif text-2xl italic text-[var(--site-text,oklch(20.5%_0_0))]',
     stock: {
-      in: 'border border-neutral-900 px-3 py-1 text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-900',
+      in: 'border border-neutral-900 px-3 py-1 text-[9px] font-bold uppercase tracking-[0.2em] text-[var(--site-text,oklch(20.5%_0_0))]',
       low: 'bg-[#F7F5F0] px-3 py-1 text-[9px] font-bold uppercase tracking-[0.2em] text-amber-800 ring-1 ring-neutral-900',
       out: 'bg-neutral-900 px-3 py-1 text-[9px] font-bold uppercase tracking-[0.2em] text-white',
     },
-    divider: 'my-7 h-px w-20 bg-neutral-900',
-    description: 'max-w-md text-base leading-relaxed text-neutral-600',
-    factsLabel: 'text-[10px] font-bold uppercase tracking-[0.35em] text-neutral-400',
-    factLine: 'text-sm text-neutral-600',
-    factNote: 'text-xs leading-relaxed text-neutral-400',
+    divider: 'my-7 h-px w-20 bg-[var(--site-text,#171717)]',
+    description: 'max-w-md text-[15px] leading-relaxed text-[var(--site-muted,oklch(43.9%_0_0))]',
   },
   neutral: {
-    section: 'mx-auto max-w-7xl px-5 py-10 md:px-10 md:py-16',
+    section: 'mx-auto max-w-7xl px-5 pb-16 pt-6 md:px-10 md:pb-24 md:pt-10',
     breadcrumb: 'flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.25em] text-white/40',
-    breadcrumbLink: 'transition hover:text-white',
-    breadcrumbCurrent: 'truncate text-white',
-    grid: 'mt-8 grid grid-cols-1 items-start gap-10 md:mt-12 md:grid-cols-2 md:gap-16',
-    eyebrow: 'text-[10px] font-black uppercase tracking-[0.25em] text-[#f0a500]',
-    title: 'mt-3 text-3xl font-black uppercase leading-tight tracking-tighter text-white md:text-5xl',
-    price: 'text-2xl font-black text-[#f0a500]',
+    breadcrumbLink: 'transition hover:text-[var(--site-text,#ffffff)]',
+    breadcrumbCurrent: 'truncate text-[var(--site-text,#ffffff)]',
+    grid: 'mt-6 grid grid-cols-1 items-start gap-10 md:mt-10 md:grid-cols-12 md:gap-12 lg:gap-16',
+    galleryCol: 'md:col-span-7',
+    infoCol: 'md:col-span-5 md:sticky md:top-24 md:self-start',
+    eyebrow: 'text-[10px] font-black uppercase tracking-[0.25em] text-[var(--site-accent,#f0a500)]',
+    title: 'mt-3 text-3xl font-black uppercase leading-tight tracking-tighter text-[var(--site-text,#ffffff)] md:text-4xl lg:text-5xl',
+    price: 'text-2xl font-black text-[var(--site-accent,#f0a500)]',
     stock: {
       in: 'rounded-sm border border-white/25 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-white/80',
-      low: 'rounded-sm bg-[#f0a500] px-3 py-1 text-[10px] font-black uppercase tracking-wider text-black',
+      low: 'rounded-sm bg-[var(--site-accent,#f0a500)] px-3 py-1 text-[10px] font-black uppercase tracking-wider text-black',
       out: 'rounded-sm bg-white px-3 py-1 text-[10px] font-black uppercase tracking-wider text-black',
     },
     divider: 'my-7 h-px w-16 bg-white/15',
-    description: 'max-w-md text-base leading-relaxed text-white/70',
-    factsLabel: 'text-[10px] font-black uppercase tracking-[0.25em] text-white/50',
-    factLine: 'text-sm text-white/70',
-    factNote: 'text-xs leading-relaxed text-white/40',
+    description: 'max-w-md text-[15px] leading-relaxed text-white/70',
   },
 };
-
-function fulfillmentFacts(shop: SiteShop): { lines: string[]; note: string | null } {
-  const lines: string[] = [];
-  if (shop.offers_delivery) lines.push('Local delivery available');
-  if (shop.offers_pickup) lines.push('In-person pickup available');
-  if (lines.length === 0) lines.push('Fulfillment arranged when you order');
-  const note = shop.offers_pickup && shop.pickup_instructions?.trim()
-    ? shop.pickup_instructions.trim().slice(0, 140)
-    : null;
-  return { lines, note };
-}
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug, id } = await params;
@@ -215,7 +221,6 @@ export default async function SiteProductPage({ params }: PageProps) {
 
   const media = buildGalleryMedia(product);
   const stock = stockStatus(product.stock_quantity);
-  const facts = fulfillmentFacts(site.shop);
   const description = product.description?.trim() || null;
   const priceLabel = product.price == null ? 'Price on request' : `D${Number(product.price).toLocaleString()}`;
 
@@ -240,9 +245,11 @@ export default async function SiteProductPage({ params }: PageProps) {
           </nav>
 
           <div className={s.grid}>
-            <SiteProductGallery name={product.name} media={media} tone={tone} />
+            <div className={s.galleryCol}>
+              <SiteProductGallery name={product.name} media={media} tone={tone} />
+            </div>
 
-            <div>
+            <div className={s.infoCol}>
               {product.category && <p className={s.eyebrow}>{product.category}</p>}
               <h1 className={s.title}>{product.name}</h1>
               <div className="mt-5 flex flex-wrap items-center gap-4">
@@ -276,14 +283,9 @@ export default async function SiteProductPage({ params }: PageProps) {
                 />
               </div>
 
+              {/* Delivery & Pickup — the validated shop facts as a data pane. */}
               <div className="mt-10">
-                <p className={s.factsLabel}>Delivery & Pickup</p>
-                <div className="mt-3 flex flex-col gap-1.5">
-                  {facts.lines.map((line) => (
-                    <p key={line} className={s.factLine}>{line}</p>
-                  ))}
-                  {facts.note && <p className={s.factNote}>{facts.note}</p>}
-                </div>
+                <SiteFulfillmentPane shop={site.shop} productName={product.name} tone={tone} />
               </div>
             </div>
           </div>

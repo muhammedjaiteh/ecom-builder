@@ -38,13 +38,15 @@ import type { Product } from '@/lib/types';
 //                         paid tiers always survive the cut; the real ranking
 //                         (tier strictly primary, Σ member reviewScores) is
 //                         recomputed below via lib/feedRanking.
-//   PRODUCTS_LIMIT 96   — newest-first. LEAN COLUMNS: image_urls is DROPPED
-//                         from this select — every mall renderer (product
-//                         cards, cinematic tiles, boutique mini-grids) falls
-//                         back to image_url, which the insert path always
-//                         writes as image_urls[0] (app/dashboard/add:449), so
-//                         the rendered pixel is identical without shipping
-//                         the gallery arrays to the feed.
+//   PRODUCTS_LIMIT 96   — newest-first, lean columns. image_urls RIDES ALONG
+//                         (cross-fade pass): it is the ONLY source of a
+//                         product's DISTINCT second photo, which the mall's
+//                         product cards cross-fade to on hover/toggle
+//                         (components/site-templates/ProductCardXfade). The
+//                         insert path writes image_url === image_urls[0]
+//                         (app/dashboard/add:449), so every renderer's
+//                         primary pixel is unchanged; the array is small
+//                         (a few URLs per row, ≤96 rows) and cached 120s.
 //   REVIEWS_LIMIT 5000  — newest-first (product_id, rating) window, then
 //                         aggregated INSIDE the cached fetcher into compact
 //                         [productId, stats] entries (a Map is not
@@ -133,7 +135,7 @@ async function readMarketplaceShelf(): Promise<MarketplaceShop[]> {
       .limit(SHOPS_LIMIT),
     supabase
       .from('products')
-      .select('id, name, price, image_url, category, stock_quantity, ad_video_url, ad_hero_image_url, shop_id, user_id')
+      .select('id, name, price, image_url, image_urls, category, stock_quantity, ad_video_url, ad_hero_image_url, shop_id, user_id')
       .order('created_at', { ascending: false })
       .limit(PRODUCTS_LIMIT),
   ]);

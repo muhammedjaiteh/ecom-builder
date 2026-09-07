@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
-import { AnimatePresence, motion } from 'framer-motion';
 import { Banknote, Check, Copy, Minus, Plus, ShoppingBag, Smartphone, X } from 'lucide-react';
 import { buildCartLineId, useCart } from '@/components/CartProvider';
+import SmartImage from '@/components/SmartImage';
 import {
   DEFAULT_ORDER_PHONE,
   buildDirectOrderMessage,
@@ -21,6 +21,21 @@ import type { SiteTone } from '@/components/site-templates/chrome';
 //     to WhatsApp — the buyer never navigates away from the branded site.
 //   - Order via WhatsApp → lib/orderFlow: lead capture + the platform's
 //     direct-order message + sanitized wa.me link (Cash / Wave two-step).
+//
+// PDP OVERHAUL (Phase 2):
+//   • Both CTAs are prominent, equal-width, ≥48px: "Order via WhatsApp" is
+//     the solid --site-accent fill (the committed Micro-Homepage recipe —
+//     same token + hover as the chrome "Shop Now" button); "Add to Bag" is
+//     the accent outline that inverts on hover.
+//   • BEAT 5 — STICKY BUY BAR on EVERY viewport: fixed to the bottom of the
+//     PDP viewport, safe-area padded (pb-[env(safe-area-inset-bottom)]),
+//     revealed the moment the in-page CTA row leaves the viewport and kept
+//     there while the buyer scrolls the rest of the page. It carries the
+//     product thumb, name, live price and BOTH CTAs, wired to the exact same
+//     handlers (no forked order logic). Motion is CSS-only (transform
+//     transition + motion-reduce) — framer-motion is no longer loaded on the
+//     PDP at all. While hidden the bar is `inert` (React 19) so it is
+//     unfocusable and invisible to assistive tech.
 
 export type PurchaseProduct = {
   id: string;
@@ -41,52 +56,66 @@ type PurchaseStyles = {
   stepper: string;
   stepperButton: string;
   stepperValue: string;
+  /** "Order via WhatsApp" — solid --site-accent fill. */
   primaryButton: string;
+  /** "Add to Bag" — --site-accent outline, inverts on hover. */
   secondaryButton: string;
   hint: string;
   soldOut: string;
   soldOutTitle: string;
   soldOutBody: string;
-  /** Sticky mobile buy bar (Phase 5) — tone-matched shell + CTA. */
+  /** Beat 5 sticky buy bar — shell + parts. */
   buyBar: string;
+  buyBarThumb: string;
+  buyBarName: string;
   buyBarPrice: string;
+  buyBarQty: string;
+  buyBarBag: string;
   buyBarButton: string;
 };
 
 const PURCHASE_STYLES: Record<SiteTone, PurchaseStyles> = {
   ritual: {
-    label: 'text-[10px] font-bold uppercase tracking-[0.3em] text-stone-400',
-    pill: 'rounded-full border border-stone-300 bg-white px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-stone-600 transition hover:border-stone-900',
-    pillActive: 'rounded-full border border-stone-900 bg-stone-900 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-white',
+    label: 'text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-muted,oklch(70.9%_0.01_56.259))]',
+    pill: 'rounded-full border border-stone-300 bg-white px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-stone-600 transition hover:border-[var(--site-accent,#1c1917)]',
+    pillActive: 'rounded-full border border-[var(--site-accent,#1c1917)] bg-[var(--site-accent,#1c1917)] px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-white',
     stepper: 'inline-flex items-center rounded-full border border-stone-300 bg-white',
     stepperButton: 'flex h-11 w-11 items-center justify-center text-stone-500 transition hover:text-stone-900 disabled:opacity-30',
-    stepperValue: 'w-10 text-center text-sm font-bold text-stone-900',
-    primaryButton: 'flex w-full items-center justify-center gap-3 rounded-[var(--site-radius,9999px)] bg-[var(--site-primary,oklch(21.6%_0.006_56.043))] px-8 py-4 text-[10px] font-bold uppercase tracking-[0.25em] text-white shadow-lg transition hover:bg-[var(--site-primary,oklch(37.4%_0.01_67.558))] active:scale-95 sm:w-auto',
-    secondaryButton: 'flex w-full items-center justify-center gap-3 rounded-full border border-stone-900 bg-white px-8 py-4 text-[10px] font-bold uppercase tracking-[0.25em] text-stone-900 transition hover:bg-stone-900 hover:text-white active:scale-95 sm:w-auto',
+    stepperValue: 'w-10 text-center text-sm font-bold text-[var(--site-text,oklch(21.6%_0.006_56.043))]',
+    primaryButton: 'flex min-h-12 w-full flex-1 items-center justify-center gap-3 rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#1c1917)] px-8 text-[10px] font-bold uppercase tracking-[0.25em] text-white shadow-lg transition hover:brightness-125 active:scale-95',
+    secondaryButton: 'flex min-h-12 w-full flex-1 items-center justify-center gap-3 rounded-[var(--site-radius,9999px)] border-2 border-[var(--site-accent,#1c1917)] px-8 text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--site-accent,#1c1917)] transition hover:bg-[var(--site-accent,#1c1917)] hover:text-white active:scale-95',
     hint: 'text-xs font-medium text-amber-700',
     soldOut: 'rounded-2xl border border-stone-300 bg-white px-6 py-5 text-center',
     soldOutTitle: 'text-sm font-bold uppercase tracking-widest text-stone-900',
     soldOutBody: 'mt-1 text-xs text-stone-500',
-    buyBar: 'border-t border-stone-200 bg-white/95 backdrop-blur',
-    buyBarPrice: 'text-lg font-light text-stone-900',
-    buyBarButton: 'flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-[var(--site-radius,9999px)] bg-[var(--site-primary,oklch(21.6%_0.006_56.043))] px-6 text-[10px] font-bold uppercase tracking-[0.25em] text-white shadow-lg transition active:scale-95',
+    buyBar: 'border-t border-stone-200 bg-[color-mix(in_srgb,var(--site-bg,#FBFAF7)_92%,transparent)] shadow-[0_-12px_32px_rgba(28,25,23,0.08)] backdrop-blur-md',
+    buyBarThumb: 'relative hidden h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-stone-100 ring-1 ring-stone-200 sm:block',
+    buyBarName: 'truncate text-xs font-medium text-[var(--site-text,oklch(21.6%_0.006_56.043))]',
+    buyBarPrice: 'truncate text-base font-light text-[var(--site-text,oklch(21.6%_0.006_56.043))]',
+    buyBarQty: 'text-[10px] text-[var(--site-muted,oklch(55.3%_0.013_58.071))]',
+    buyBarBag: 'flex h-12 w-12 shrink-0 items-center justify-center gap-2 rounded-[var(--site-radius,9999px)] border-2 border-[var(--site-accent,#1c1917)] text-[var(--site-accent,#1c1917)] transition hover:bg-[var(--site-accent,#1c1917)] hover:text-white active:scale-95 sm:w-auto sm:px-6 sm:text-[10px] sm:font-bold sm:uppercase sm:tracking-[0.25em]',
+    buyBarButton: 'flex min-h-12 flex-1 items-center justify-center gap-2 rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#1c1917)] px-5 text-[10px] font-bold uppercase tracking-[0.25em] text-white shadow-lg transition hover:brightness-125 active:scale-95 sm:flex-none sm:px-8',
   },
   editorial: {
-    label: 'text-[10px] font-bold uppercase tracking-[0.35em] text-neutral-400',
+    label: 'text-[10px] font-bold uppercase tracking-[0.35em] text-[var(--site-muted,oklch(55.6%_0_0))]',
     pill: 'border border-neutral-300 bg-[#F7F5F0] px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-neutral-600 transition hover:border-neutral-900',
-    pillActive: 'border border-neutral-900 bg-neutral-900 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-[#F7F5F0]',
+    pillActive: 'border border-[var(--site-accent,#171717)] bg-[var(--site-accent,#171717)] px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-[#F7F5F0]',
     stepper: 'inline-flex items-center border border-neutral-900 bg-[#F7F5F0]',
     stepperButton: 'flex h-11 w-11 items-center justify-center text-neutral-500 transition hover:text-neutral-900 disabled:opacity-30',
-    stepperValue: 'w-10 text-center text-sm font-bold text-neutral-900',
-    primaryButton: 'flex w-full items-center justify-center gap-3 rounded-[var(--site-radius,0px)] bg-[var(--site-primary,oklch(20.5%_0_0))] px-9 py-4 text-[10px] font-bold uppercase tracking-[0.3em] text-[#F7F5F0] transition hover:bg-[var(--site-primary,#1a2e1a)] active:scale-95 sm:w-auto',
-    secondaryButton: 'flex w-full items-center justify-center gap-3 border border-neutral-900 px-9 py-4 text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-900 transition hover:bg-neutral-900 hover:text-[#F7F5F0] active:scale-95 sm:w-auto',
+    stepperValue: 'w-10 text-center text-sm font-bold text-[var(--site-text,oklch(20.5%_0_0))]',
+    primaryButton: 'flex min-h-12 w-full flex-1 items-center justify-center gap-3 rounded-[var(--site-radius,0px)] bg-[var(--site-accent,#171717)] px-9 text-[10px] font-bold uppercase tracking-[0.3em] text-[#F7F5F0] transition hover:brightness-125 active:scale-95',
+    secondaryButton: 'flex min-h-12 w-full flex-1 items-center justify-center gap-3 rounded-[var(--site-radius,0px)] border-2 border-[var(--site-accent,#171717)] px-9 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-accent,#171717)] transition hover:bg-[var(--site-accent,#171717)] hover:text-[#F7F5F0] active:scale-95',
     hint: 'text-xs font-medium text-amber-800',
     soldOut: 'border border-neutral-900 bg-[#F7F5F0] px-6 py-5 text-center',
     soldOutTitle: 'font-serif text-lg italic text-neutral-900',
     soldOutBody: 'mt-1 text-xs text-neutral-500',
-    buyBar: 'border-t border-neutral-900 bg-[#F7F5F0]/95 backdrop-blur',
-    buyBarPrice: 'font-serif text-lg italic text-neutral-900',
-    buyBarButton: 'flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-[var(--site-radius,0px)] bg-[var(--site-primary,oklch(20.5%_0_0))] px-6 text-[10px] font-bold uppercase tracking-[0.3em] text-[#F7F5F0] transition active:scale-95',
+    buyBar: 'border-t border-neutral-900 bg-[color-mix(in_srgb,var(--site-bg,#F7F5F0)_94%,transparent)] backdrop-blur-md',
+    buyBarThumb: 'relative hidden h-12 w-12 shrink-0 overflow-hidden border border-neutral-900 bg-[#EDEAE2] sm:block',
+    buyBarName: 'truncate font-serif text-sm italic text-[var(--site-text,oklch(20.5%_0_0))]',
+    buyBarPrice: 'truncate text-sm text-[var(--site-text,oklch(20.5%_0_0))]',
+    buyBarQty: 'text-[10px] text-[var(--site-muted,oklch(55.6%_0_0))]',
+    buyBarBag: 'flex h-12 w-12 shrink-0 items-center justify-center gap-2 rounded-[var(--site-radius,0px)] border-2 border-[var(--site-accent,#171717)] text-[var(--site-accent,#171717)] transition hover:bg-[var(--site-accent,#171717)] hover:text-[#F7F5F0] active:scale-95 sm:w-auto sm:px-6 sm:text-[10px] sm:font-bold sm:uppercase sm:tracking-[0.3em]',
+    buyBarButton: 'flex min-h-12 flex-1 items-center justify-center gap-2 rounded-[var(--site-radius,0px)] bg-[var(--site-accent,#171717)] px-5 text-[10px] font-bold uppercase tracking-[0.3em] text-[#F7F5F0] transition hover:brightness-125 active:scale-95 sm:flex-none sm:px-8',
   },
   neutral: {
     label: 'text-[10px] font-black uppercase tracking-[0.25em] text-white/50',
@@ -95,15 +124,19 @@ const PURCHASE_STYLES: Record<SiteTone, PurchaseStyles> = {
     stepper: 'inline-flex items-center rounded-full border border-white/20 bg-[#111]',
     stepperButton: 'flex h-11 w-11 items-center justify-center text-white/60 transition hover:text-white disabled:opacity-30',
     stepperValue: 'w-10 text-center text-sm font-black text-white',
-    primaryButton: 'flex w-full items-center justify-center gap-3 rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#f0a500)] px-8 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-black shadow-lg transition hover:bg-[var(--site-accent,oklch(82.8%_0.189_84.429))] active:scale-95 sm:w-auto',
-    secondaryButton: 'flex w-full items-center justify-center gap-3 rounded-[var(--site-radius,9999px)] border border-[var(--site-accent,#f0a500)] px-8 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-[var(--site-accent,#f0a500)] transition hover:bg-[var(--site-accent,#f0a500)] hover:text-black active:scale-95 sm:w-auto',
+    primaryButton: 'flex min-h-12 w-full flex-1 items-center justify-center gap-3 rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#f0a500)] px-8 text-[10px] font-black uppercase tracking-[0.2em] text-black shadow-lg transition hover:brightness-110 active:scale-95',
+    secondaryButton: 'flex min-h-12 w-full flex-1 items-center justify-center gap-3 rounded-[var(--site-radius,9999px)] border-2 border-[var(--site-accent,#f0a500)] px-8 text-[10px] font-black uppercase tracking-[0.2em] text-[var(--site-accent,#f0a500)] transition hover:bg-[var(--site-accent,#f0a500)] hover:text-black active:scale-95',
     hint: 'text-xs font-bold text-[var(--site-accent,#f0a500)]',
     soldOut: 'rounded-2xl border border-white/15 bg-[#111] px-6 py-5 text-center',
     soldOutTitle: 'text-sm font-black uppercase tracking-widest text-white',
     soldOutBody: 'mt-1 text-xs text-white/50',
-    buyBar: 'border-t border-white/10 bg-[#0C0C0C]/95 backdrop-blur',
-    buyBarPrice: 'text-lg font-black text-[var(--site-accent,#f0a500)]',
-    buyBarButton: 'flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#f0a500)] px-6 text-[10px] font-black uppercase tracking-[0.2em] text-black shadow-lg transition active:scale-95',
+    buyBar: 'border-t border-white/10 bg-[color-mix(in_srgb,var(--site-bg,#0C0C0C)_92%,transparent)] backdrop-blur-md',
+    buyBarThumb: 'relative hidden h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-black ring-1 ring-white/15 sm:block',
+    buyBarName: 'truncate text-xs font-bold uppercase tracking-wider text-white',
+    buyBarPrice: 'truncate text-base font-black text-[var(--site-accent,#f0a500)]',
+    buyBarQty: 'text-[10px] text-white/50',
+    buyBarBag: 'flex h-12 w-12 shrink-0 items-center justify-center gap-2 rounded-[var(--site-radius,9999px)] border-2 border-[var(--site-accent,#f0a500)] text-[var(--site-accent,#f0a500)] transition hover:bg-[var(--site-accent,#f0a500)] hover:text-black active:scale-95 sm:w-auto sm:px-6 sm:text-[10px] sm:font-black sm:uppercase sm:tracking-[0.2em]',
+    buyBarButton: 'flex min-h-12 flex-1 items-center justify-center gap-2 rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#f0a500)] px-5 text-[10px] font-black uppercase tracking-[0.2em] text-black shadow-lg transition hover:brightness-110 active:scale-95 sm:flex-none sm:px-8',
   },
 };
 
@@ -135,9 +168,10 @@ export default function SiteProductPurchase({
   const [paymentStep, setPaymentStep] = useState<'SELECT' | 'WAVE_INFO'>('SELECT');
   const [copied, setCopied] = useState(false);
 
-  // STICKY MOBILE BUY BAR (Phase 5): observe the primary CTA row — when it
-  // scrolls out of view the bottom bar slides in. Rendering is gated to
-  // <768px via md:hidden; the observer itself is viewport-agnostic and cheap.
+  // BEAT 5 — STICKY BUY BAR: observe the in-page CTA row; whenever it is out
+  // of the viewport (above OR below — on a phone the gallery fills the first
+  // screen, so the bar is present from the first scroll) the fixed bar is
+  // revealed. Every viewport; the observer is cheap and viewport-agnostic.
   const purchaseRootRef = useRef<HTMLDivElement | null>(null);
   const ctaRowRef = useRef<HTMLDivElement | null>(null);
   const [ctaInView, setCtaInView] = useState(true);
@@ -201,8 +235,16 @@ export default function SiteProductPurchase({
     return true;
   };
 
-  const handleAddToBag = () => {
-    if (!requireVariants()) return;
+  /** Buy-bar gate: same requireVariants; when a variant is still unpicked we
+   *  scroll the purchase block back into view so the hint and the pills are
+   *  visible instead of failing silently from the bottom of the screen. */
+  const requireVariantsOrReveal = (): boolean => {
+    if (requireVariants()) return true;
+    purchaseRootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return false;
+  };
+
+  const addToBag = () => {
     addToCart({
       // Composite line id: each color/size combination is its own cart line
       // (variantless products keep the bare product id — legacy-compatible).
@@ -218,6 +260,11 @@ export default function SiteProductPurchase({
       shop_whatsapp: sellerPhone,
       variant_details: variantDetails,
     });
+  };
+
+  const handleAddToBag = () => {
+    if (!requireVariants()) return;
+    addToBag();
   };
 
   const handleDirectOrder = (method: DirectOrderMethod) => {
@@ -260,15 +307,13 @@ export default function SiteProductPurchase({
     setShowTerminal(true);
   };
 
-  /** Buy-bar CTA — the SAME purchase flow as the in-page button (no forked
-   *  order logic): requireVariants gates it identically, and when a variant
-   *  is still unpicked we scroll the purchase block back into view so the
-   *  hint and the pills are visible instead of opening a doomed terminal. */
+  // Buy-bar CTAs — the SAME purchase flows as the in-page buttons.
+  const addFromBuyBar = () => {
+    if (!requireVariantsOrReveal()) return;
+    addToBag();
+  };
   const orderFromBuyBar = () => {
-    if (!requireVariants()) {
-      purchaseRootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      return;
-    }
+    if (!requireVariantsOrReveal()) return;
     setShowTerminal(true);
   };
 
@@ -281,10 +326,11 @@ export default function SiteProductPurchase({
     );
   }
 
+  const unitLabel = product.price == null ? null : `D${Number(product.price).toLocaleString()}`;
   const priceLabel =
     product.price == null ? 'Price on request' : `D${(product.price * quantity).toLocaleString()}`;
-  // Slide the bar in only while the real CTA row is off-screen and no
-  // checkout terminal is up (the terminal carries its own WhatsApp buttons).
+  // Show the bar only while the real CTA row is off-screen and no checkout
+  // terminal is up (the terminal carries its own WhatsApp buttons).
   const showBuyBar = !ctaInView && !showTerminal;
 
   return (
@@ -357,6 +403,7 @@ export default function SiteProductPurchase({
 
       {variantHint && <p className={styles.hint}>{variantHint}</p>}
 
+      {/* Primary CTA row — both prominent, equal width, ≥48px. */}
       <div ref={ctaRowRef} className="flex flex-col gap-3 pt-1 sm:flex-row">
         <button type="button" onClick={handleAddToBag} className={styles.secondaryButton}>
           <ShoppingBag size={16} />
@@ -368,37 +415,47 @@ export default function SiteProductPurchase({
         </button>
       </div>
 
-      {/* STICKY MOBILE BUY BAR — mobile only (md:hidden), slides in when the
-          CTA row above leaves the viewport. Z-ORDER CONTRACT: z-[60] sits
-          BELOW the checkout terminal (z-[70], which carries the WhatsApp
-          payment buttons — the bar also unmounts while it is open) and BELOW
-          the global cart drawer + overlay (z-[110]/z-[100] in
-          components/Cart.tsx), so it can never overlap either. Safe-area
-          padded for home-indicator phones; CTA ≥48px. */}
-      <AnimatePresence>
-        {showBuyBar && (
-          <motion.div
-            initial={{ y: '110%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '110%' }}
-            transition={{ type: 'tween', duration: 0.25, ease: 'easeOut' }}
-            className={`fixed inset-x-0 bottom-0 z-[60] px-4 pt-3 pb-[calc(0.75rem_+_env(safe-area-inset-bottom))] md:hidden ${styles.buyBar}`}
-          >
-            <div className="mx-auto flex max-w-md items-center gap-4">
-              <div className="min-w-0">
-                <p className={`truncate ${styles.buyBarPrice}`}>{priceLabel}</p>
-                {quantity > 1 && product.price != null && (
-                  <p className={styles.label}>{quantity} × D{Number(product.price).toLocaleString()}</p>
-                )}
-              </div>
-              <button type="button" onClick={orderFromBuyBar} className={styles.buyBarButton}>
-                <Smartphone size={15} />
-                Order Now
-              </button>
+      {/* BEAT 5 — STICKY BUY BAR (every viewport). Fixed to the PDP viewport
+          bottom, safe-area padded, CSS transform reveal. Z-ORDER CONTRACT:
+          z-[60] sits BELOW the checkout terminal (z-[70], which carries the
+          WhatsApp payment buttons — the bar also hides while it is open) and
+          BELOW the global cart drawer + overlay (z-[110]/z-[100] in
+          components/Cart.tsx), so it can never overlap either. `inert` while
+          hidden: no stray tab stops, nothing announced. */}
+      <div
+        role="region"
+        aria-label="Quick purchase"
+        inert={!showBuyBar}
+        className={`fixed inset-x-0 bottom-0 z-[60] pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out motion-reduce:transition-none ${
+          showBuyBar ? 'translate-y-0' : 'translate-y-full'
+        } ${styles.buyBar}`}
+      >
+        <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 md:gap-5 md:px-10">
+          {product.image_url && (
+            <div className={styles.buyBarThumb}>
+              <SmartImage src={product.image_url} alt="" fill sizes="48px" blurTone="none" className="object-cover" />
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+          <div className="min-w-0 flex-1">
+            <p className={styles.buyBarName}>{product.name}</p>
+            <p className={styles.buyBarPrice}>
+              {priceLabel}
+              {quantity > 1 && unitLabel && (
+                <span className={styles.buyBarQty}> · {quantity} × {unitLabel}</span>
+              )}
+            </p>
+          </div>
+          <button type="button" onClick={addFromBuyBar} aria-label="Add to bag" className={styles.buyBarBag}>
+            <ShoppingBag size={16} />
+            <span className="hidden sm:inline">Add to Bag</span>
+          </button>
+          <button type="button" onClick={orderFromBuyBar} className={styles.buyBarButton}>
+            <Smartphone size={15} />
+            <span className="sm:hidden">Order</span>
+            <span className="hidden sm:inline">Order via WhatsApp</span>
+          </button>
+        </div>
+      </div>
 
       {/* Secure order terminal — same Cash / Wave mechanics as the marketplace */}
       {showTerminal && (

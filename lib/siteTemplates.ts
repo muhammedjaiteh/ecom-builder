@@ -1763,16 +1763,7 @@ export function selectFeaturedProducts(products: SiteProduct[], max = FEATURED_M
     .map((r) => r.p);
 }
 
-/**
- * The DISTINCT second photo for a card cross-fade, else null — null means the
- * card renders exactly ONE image layer and mounts no client island.
- */
-export function secondaryProductImage(
-  p: Pick<SiteProduct, 'image_url' | 'image_urls' | 'ad_hero_image_url'>
-): string | null {
-  const primary = p.ad_hero_image_url ?? p.image_url;
-  for (const url of p.image_urls ?? []) {
-    if (url && url !== primary) return url;
-  }
-  return null;
-}
+// The DISTINCT-second-photo resolver lives in the dependency-free
+// lib/productMedia (the marketplace client bundle consumes it too and must not
+// pull this module's zod schemas); re-exported here for the /site chromes.
+export { secondaryProductImage } from './productMedia';

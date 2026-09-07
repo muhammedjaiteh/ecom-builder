@@ -141,9 +141,10 @@ export function EditorialProductCard({ product, index, href, sizes }: {
         <EditorialProductPlate src={product.ad_hero_image_url ?? product.image_url} alt={product.name} index={index} sizes={imgSizes} />
         {altSrc ? (
           // Second photo — revealed by hover (pointer devices) or the toggle
-          // (globals.css .sndk-xfade). Mirrors the plate's zoom so the two
-          // layers never drift apart mid-fade.
-          <div aria-hidden className="sndk-xfade-alt absolute inset-0">
+          // (globals.css .sndk-xfade). z-[1] pins it ABOVE the plate
+          // (ProductCardXfade layer contract); mirrors the plate's zoom so
+          // the two layers never drift apart mid-fade.
+          <div aria-hidden className="sndk-xfade-alt absolute inset-0 z-[1]">
             <SmartImage
               src={altSrc}
               alt=""
@@ -160,10 +161,10 @@ export function EditorialProductCard({ product, index, href, sizes }: {
             <span className="mt-2 text-[9px] font-bold uppercase tracking-[0.3em] text-white underline underline-offset-4">View</span>
           </div>
         )}
-        {/* z-[1]: above the ink overlay / alt layer, below the stretched link
-            (z-10) so the badge never carves a dead zone out of the tap area. */}
+        {/* z-[2]: above the ink overlay AND the alt layer (z-[1]), below the
+            stretched link (z-10) so the badge never carves a dead tap zone. */}
         {badge && (
-          <span className={`absolute right-2 top-2 z-[1] px-2 py-1 text-[8px] font-bold uppercase tracking-[0.2em] ${
+          <span className={`absolute right-2 top-2 z-[2] px-2 py-1 text-[8px] font-bold uppercase tracking-[0.2em] ${
             badge.tone === 'out' ? 'bg-neutral-900 text-white' : 'bg-[#F7F5F0]/95 text-amber-800'
           }`}>
             {badge.label}

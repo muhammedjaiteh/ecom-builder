@@ -13,12 +13,14 @@ import SmartImage from '@/components/SmartImage';
 import CinematicTile, { type CinematicTileData } from '@/components/marketplace/CinematicTile';
 import MarketplaceMarquee from '@/components/marketplace/MarketplaceMarquee';
 import PlaybackCoordinator from '@/components/marketplace/PlaybackCoordinator';
+import ProductCardXfade from '@/components/site-templates/ProductCardXfade';
 import {
   compareTierThenReviewScore,
   getTierRank,
   reviewScoreOf,
   type ReviewStats,
 } from '@/lib/feedRanking';
+import { secondaryProductImage } from '@/lib/productMedia';
 import { fetchJSON } from '@/lib/transport';
 import type { Product } from '@/lib/types';
 import type { MarketplaceShop, ReviewScoreEntry } from '@/app/marketplaceData';
@@ -122,8 +124,8 @@ function toCinematicTile(p: ProductWithShop, withVideo: boolean): CinematicTileD
     price: p.price ?? null,
     shopName: p.shop?.shop_name || 'Sanndikaa boutique',
     // The seller's best pixels: Ad Studio hero still first, then the photo.
-    // (The lean feed select drops image_urls; image_url IS image_urls[0] by
-    // the insert contract, so the fallback chain renders the same pixel.)
+    // (image_url IS image_urls[0] by the insert contract, so the fallback
+    // chain renders the same pixel whether or not the feed carried the array.)
     posterUrl: p.ad_hero_image_url ?? p.image_urls?.[0] ?? p.image_url ?? null,
     videoUrl: withVideo ? p.ad_video_url ?? null : null,
   };
@@ -319,8 +321,19 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
   };
 
   // ── Product card ─────────────────────────────────────────────────────────
+  // CROSS-FADE (the /site Micro-Homepage card idiom, verbatim from
+  // chrome/RitualChrome): the root is an <article> with a STRETCHED <Link>
+  // (absolute inset-0 z-10) so the hover state lives on an ancestor of both
+  // image layers and the toggle can be a sibling of the anchor. Cards with a
+  // DISTINCT second photo (secondaryProductImage — needs the feed's
+  // image_urls; search results without it stay single-layer) mount the
+  // ProductCardXfade island + the .sndk-xfade-alt layer; every other card is
+  // a plain article, zero extra JS. Layer contract: alt z-[1] · badge z-[2] ·
+  // link z-10 · toggle z-50.
+  const MARKETPLACE_CARD_SIZES = '(max-width: 640px) 160px, (max-width: 1024px) 192px, 208px';
   const renderProductCard = (product: ProductWithShop) => {
     const imgUrl = product.image_urls?.[0] || product.image_url;
+    const altSrc = secondaryProductImage({ image_url: imgUrl ?? null, image_urls: product.image_urls });
     const tier = (product.shop?.subscription_tier || 'starter').toLowerCase().trim();
     // Gold "Featured" family = flagship + legacy advanced (Blind Spot fix:
     // flagship ranks ABOVE advanced in the feed but historically rendered
@@ -328,13 +341,14 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
     const isAdvanced = tier === 'advanced' || tier === 'flagship';
     const isPro = tier === 'pro';
     const stats = reviewStats.get(product.id);
+    const key = `${product.id}-${product.shop?.shop_slug}`;
+    const root = 'group relative flex flex-col';
 
-    return (
-      <Link
-        href={`/product/${product.id}`}
-        key={`${product.id}-${product.shop?.shop_slug}`}
-        className="group flex flex-col"
-      >
+    const inner = (
+      <>
+        <Link href={`/product/${product.id}`} className="absolute inset-0 z-10 rounded-xl">
+          <span className="sr-only">{product.name}</span>
+        </Link>
         <div
           className={`relative aspect-square overflow-hidden rounded-xl border bg-neutral-100 ${
             isAdvanced ? 'border-yellow-300' : isPro ? 'border-purple-300' : 'border-black/5'
@@ -346,15 +360,30 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
               alt={product.name}
               fill
               className="object-cover transition-transform duration-700 group-hover:scale-105"
-              sizes="(max-width: 640px) 160px, (max-width: 1024px) 192px, 208px"
+              sizes={MARKETPLACE_CARD_SIZES}
             />
           ) : (
             <div className="flex h-full items-center justify-center text-gray-300">
               <ShoppingBag size={22} />
             </div>
           )}
+          {altSrc && (
+            // Second photo — hover (pointer devices) or the dot toggle
+            // (globals.css .sndk-xfade); z-[1] pins it above the primary and
+            // it mirrors the primary's zoom so the layers never drift apart.
+            <div aria-hidden className="sndk-xfade-alt absolute inset-0 z-[1]">
+              <SmartImage
+                src={altSrc}
+                alt=""
+                fill
+                blurTone="none"
+                className="object-cover transition-transform duration-700 group-hover:scale-105"
+                sizes={MARKETPLACE_CARD_SIZES}
+              />
+            </div>
+          )}
           {(isAdvanced || isPro) && (
-            <div className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 text-[10px] font-semibold shadow-sm backdrop-blur">
+            <div className="absolute left-2 top-2 z-[2] flex items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 text-[10px] font-semibold shadow-sm backdrop-blur">
               {isAdvanced ? (
                 <><BadgeCheck size={10} className="text-yellow-500" /><span className="text-yellow-700">Featured</span></>
               ) : (
@@ -376,7 +405,26 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
           )}
           <p className="truncate text-[11px] text-gray-500">{product.shop?.shop_name}</p>
         </div>
-      </Link>
+      </>
+    );
+
+    if (altSrc) {
+      return (
+        <ProductCardXfade
+          key={key}
+          className={root}
+          toggleClassName="right-1 top-1 text-gray-900"
+          chipClassName="rounded-full bg-white/95 px-2 py-1.5 shadow-sm ring-1 ring-black/5 backdrop-blur"
+          toggleLabel={`Show another photo of ${product.name}`}
+        >
+          {inner}
+        </ProductCardXfade>
+      );
+    }
+    return (
+      <article key={key} className={root}>
+        {inner}
+      </article>
     );
   };
 
@@ -893,12 +941,16 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                         <div className="grid grid-cols-3 gap-2">
                           {shop.products.slice(0, 3).map((product) => {
                             const imgUrl = product.image_urls?.[0] || product.image_url;
-                            return (
-                              <Link
-                                href={`/product/${product.id}`}
-                                key={product.id}
-                                className="group/item flex flex-col gap-1.5"
-                              >
+                            // Same cross-fade idiom as renderProductCard (stretched
+                            // link + alt layer + sibling toggle), on the boutique
+                            // mini-grid's named group.
+                            const altSrc = secondaryProductImage({ image_url: imgUrl ?? null, image_urls: product.image_urls });
+                            const miniRoot = 'group/item relative flex flex-col gap-1.5';
+                            const miniInner = (
+                              <>
+                                <Link href={`/product/${product.id}`} className="absolute inset-0 z-10 rounded-xl">
+                                  <span className="sr-only">{product.name}</span>
+                                </Link>
                                 <div
                                   className={`relative aspect-[4/5] overflow-hidden rounded-xl border bg-gray-50 ${
                                     isAdvanced ? 'border-yellow-100' : isPro ? 'border-purple-100' : 'border-black/5'
@@ -917,12 +969,39 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                                       <ShoppingBag size={18} />
                                     </div>
                                   )}
+                                  {altSrc && (
+                                    <div aria-hidden className="sndk-xfade-alt absolute inset-0 z-[1]">
+                                      <SmartImage
+                                        src={altSrc}
+                                        alt=""
+                                        fill
+                                        blurTone="none"
+                                        className="object-cover transition-transform duration-700 group-hover/item:scale-105"
+                                        sizes="(max-width: 768px) 33vw, 16vw"
+                                      />
+                                    </div>
+                                  )}
                                 </div>
                                 <div>
                                   <p className="truncate text-xs font-medium text-gray-900">{product.name}</p>
                                   <p className="text-xs font-semibold text-gray-700">D{product.price}</p>
                                 </div>
-                              </Link>
+                              </>
+                            );
+                            return altSrc ? (
+                              <ProductCardXfade
+                                key={product.id}
+                                className={miniRoot}
+                                toggleClassName="right-0.5 top-0.5 text-gray-900"
+                                chipClassName="rounded-full bg-white/95 px-1.5 py-1 shadow-sm ring-1 ring-black/5 backdrop-blur"
+                                toggleLabel={`Show another photo of ${product.name}`}
+                              >
+                                {miniInner}
+                              </ProductCardXfade>
+                            ) : (
+                              <article key={product.id} className={miniRoot}>
+                                {miniInner}
+                              </article>
                             );
                           })}
                         </div>

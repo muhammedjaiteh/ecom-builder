@@ -34,7 +34,10 @@ const PRIMARY_FETCH_LIMIT = 120;
 const RESULT_LIMIT = 24;
 
 // Same field parity as the homepage's product cards (id/name/price/images for
-// the card, user_id/shop_id for the client's shop enrichment).
+// the card, user_id/shop_id for the client's shop enrichment). image_urls is
+// the card cross-fade's ONLY source of a distinct second photo
+// (components/site-templates/ProductCardXfade) — both search paths below
+// deliver it, so search results and the feed render identically.
 const PRODUCT_COLUMNS =
   'id, name, price, image_url, image_urls, category, stock_quantity, ad_video_url, ad_hero_image_url, user_id, shop_id';
 
@@ -135,14 +138,36 @@ export async function POST(request: Request) {
       const result = await embeddingModel.embedContent(query.trim());
       const queryEmbedding = result.embedding.values;
 
-      const { data: products, error } = await supabase.rpc('match_products', {
+      const { data: matches, error } = await supabase.rpc('match_products', {
         query_embedding: queryEmbedding,
         match_threshold,
         match_count,
       });
       if (error) throw error;
 
-      return NextResponse.json({ products: products ?? [], related: true });
+      // XFADE PARITY: match_products is an out-of-repo function whose column
+      // list this repo does not control, so re-read the matched ids through
+      // PRODUCT_COLUMNS (the exact card contract, image_urls included) and
+      // keep the RPC's similarity order. One bounded read (≤ match_count
+      // ids); a failed hydration serves the raw RPC rows so the fallback
+      // stays best-effort.
+      const rpcRows = (matches ?? []) as Array<{ id: string } & Record<string, unknown>>;
+      const ids = rpcRows.map((r) => r.id).filter(Boolean);
+      let products: unknown[] = rpcRows;
+      if (ids.length > 0) {
+        const { data: hydrated, error: hydrateError } = await supabase
+          .from('products')
+          .select(PRODUCT_COLUMNS)
+          .in('id', ids);
+        if (hydrateError) {
+          console.error('[search] semantic hydration failed (serving raw RPC rows):', hydrateError.message);
+        } else if (hydrated) {
+          const byId = new Map<string, unknown>(hydrated.map((p) => [String(p.id), p]));
+          products = rpcRows.map((r) => byId.get(r.id) ?? r);
+        }
+      }
+
+      return NextResponse.json({ products, related: true });
     } catch (fallbackError) {
       // The fallback is best-effort by definition: degrade to the designed
       // zero-results state instead of a 500 (quota, cold model, RPC drift).
