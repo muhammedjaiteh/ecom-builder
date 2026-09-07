@@ -10,10 +10,10 @@
 // This file is client-safe — no server-only imports.
 
 /**
- * Ad Studio deep link. VideoManager mounts on /dashboard behind the
- * URL-synced `?tab=videos` tab (see app/dashboard/page.tsx).
+ * Ad Studio deep link. VideoManager mounts on its own route,
+ * app/dashboard/ad-studio/page.tsx (the former /dashboard?tab=videos pane).
  */
-export const AD_STUDIO_PATH = '/dashboard?tab=videos';
+export const AD_STUDIO_PATH = '/dashboard/ad-studio';
 
 // Fallback polling — drives completion in environments the Creatomate
 // webhook can't reach (local dev, tunneled previews): one sweep every ~15s

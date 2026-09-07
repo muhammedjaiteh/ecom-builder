@@ -1,31 +1,36 @@
 'use client';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Home — the thin dashboard overview.
+//
+// Headline metrics (Total Sales, Gross Revenue, Best Seller) and Recent
+// Activity, all derived from the shared orders seam (lib/useOrders). Nothing
+// else lives here: Customers, Ad Studio, Broadcast, Discounts and Reviews are
+// real routes under /dashboard/* (see components/dashboard/DashboardSidebar),
+// and Orders / Analytics / Products have owned their pages for a while. The
+// ?tab= state machine this page used to host is gone.
+//
+// Gates that still belong here: the auth read, and the OnboardingInterceptor —
+// a definitive owner-channel 'no website' verdict swaps this overview for the
+// Magic Storefront Builder. The subscription lock screen is NOT here: the
+// layout's VaultDoor gate renders before any /dashboard/* page can.
+// ─────────────────────────────────────────────────────────────────────────────
+
 import { createBrowserClient } from '@supabase/ssr';
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
-  Package, DollarSign, TrendingUp, Plus, Edit, Trash2, ExternalLink,
-  BarChart3, Eye, Truck, LogOut, Lock, Ban,
-  ShoppingCart, Clock, CheckCircle2, Phone, User, Users, MessageCircle,
-  Settings, Loader2, Palette, Star, Globe
+  Ban, BarChart3, CheckCircle2, Clock, DollarSign, Eye, Loader2, LogOut, Plus, TrendingUp,
 } from 'lucide-react';
-import OrderActions, { OrderActionToast, useOrderToast } from '@/components/orders/OrderActions';
-import { orderStatusLabel, orderTotal } from '@/lib/orderMetrics';
-import Link from 'next/link';
-import Broadcast from './broadcast';
+import { DashboardShell } from '@/components/dashboard/DashboardShell';
 import { OnboardingInterceptor } from '@/components/onboarding/MagicStorefrontBuilder';
-import AnalyticsDashboard from '@/components/AnalyticsDashboard';
-import DiscountManager from '@/components/DiscountManager';
-import VideoManager from '@/components/VideoManager';
-import ReviewForm from '@/components/ReviewForm';
-import ReviewList from '@/components/ReviewList';
 import { resolveDashboardUser } from '@/lib/dashboardAuth';
+import { orderTotal } from '@/lib/orderMetrics';
 import { useOrders } from '@/lib/useOrders';
 import { useShopRow } from '@/lib/useShopRow';
 import { useStorefrontUrl } from '@/lib/useStorefrontUrl';
-import type { Product, Shop, CustomerCRM } from '@/lib/types';
-
-type DashboardTab = 'overview' | 'analytics' | 'orders' | 'customers' | 'discounts' | 'videos' | 'reviews' | 'inventory' | 'broadcast';
+import type { Shop } from '@/lib/types';
 
 // Site-aware "View Shop": custom domain → premium /site → classic /shop
 // (lib/useStorefrontUrl priority). Rendered INSIDE OnboardingInterceptor's
@@ -51,126 +56,52 @@ function ViewShopButton({ shop }: { shop: Shop | null }) {
   );
 }
 
-function sanitizePhoneNumber(rawNumber?: string | null) {
-  if (!rawNumber) return null;
-  let cleanNumber = rawNumber.replace(/\D/g, '');
-  if (!cleanNumber) return null;
-  if (cleanNumber.length === 7) cleanNumber = `220${cleanNumber}`;
-  return cleanNumber;
-}
-
-function ReviewsPanel({ products }: { products: Product[] }) {
-  const [selectedProductId, setSelectedProductId] = useState<string | null>(products[0]?.id ?? null);
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
-
-  const selectedProduct = products.find((product) => product.id === selectedProductId) ?? products[0];
-
-  if (!selectedProduct) {
-    return (
-      <div className="animate-in fade-in duration-300 rounded-[2rem] border border-dashed border-gray-200 bg-white p-12 text-center">
-        <Star className="mx-auto mb-4 h-10 w-10 text-gray-200" />
-        <p className="text-sm font-medium text-gray-500">Add a product first to collect and manage reviews.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="animate-in fade-in duration-300 space-y-6">
-      <div className="rounded-[2rem] border border-gray-100 bg-white p-6 shadow-sm md:p-8">
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div>
-            <h3 className="text-lg font-bold text-gray-900">Reviews</h3>
-            <p className="mt-1 text-sm text-gray-500">Choose a product to view feedback or add external seller-verified reviews.</p>
-          </div>
-          <label className="block">
-            <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-400">Active Product</span>
-            <select
-              value={selectedProduct.id}
-              onChange={(event) => setSelectedProductId(event.target.value)}
-              className="w-full min-w-[260px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base font-medium text-gray-900 outline-none transition focus:border-gray-900"
-            >
-              {products.map((product) => (
-                <option key={product.id} value={product.id}>
-                  {product.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(360px,1fr)]">
-        <div className="rounded-[2rem] border border-gray-100 bg-white p-6 shadow-sm md:p-8">
-          <ReviewList productId={selectedProduct.id} refreshTrigger={refreshTrigger} />
-        </div>
-        <div>
-          <ReviewForm productId={selectedProduct.id} onReviewSubmitted={() => setRefreshTrigger((prev) => prev + 1)} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export default function Dashboard() {
-  const [loading, setLoading] = useState(true);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [userId, setUserId] = useState<string | null>(null);
-  
-  const [activeTab, setActiveTabState] = useState<DashboardTab>('overview');
-
-  // URL-synced tab: ?tab=videos survives refresh. history.replaceState avoids
-  // the Suspense boundary useSearchParams() would require on this client page.
-  useEffect(() => {
-    const VALID_TABS: DashboardTab[] = ['overview', 'analytics', 'orders', 'customers', 'discounts', 'videos', 'reviews', 'inventory', 'broadcast'];
-    const fromUrl = new URLSearchParams(window.location.search).get('tab');
-    if (fromUrl && VALID_TABS.includes(fromUrl as DashboardTab)) {
-      setActiveTabState(fromUrl as DashboardTab);
-    }
-  }, []);
-
-  const setActiveTab = (tab: DashboardTab) => {
-    setActiveTabState(tab);
-    const url = new URL(window.location.href);
-    url.searchParams.set('tab', tab);
-    window.history.replaceState(null, '', url.toString());
-  };
-
-  const { toast, showToast } = useOrderToast();
-
-  const supabase = createBrowserClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+export default function DashboardHomePage() {
   const router = useRouter();
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
+  const [userId, setUserId] = useState<string | null>(null);
+  const [productsCount, setProductsCount] = useState(0);
+  const [loading, setLoading] = useState(true);
 
   const handleLogout = async () => { await supabase.auth.signOut(); router.push('/login'); };
 
   // Shops-row seam (lib/useShopRow): the layout's provider scope guarantees a
   // cached verdict before this page renders, so this is a pure cache read —
-  // and a brand save on Themes updates this header instantly via shopRowKey.
+  // and a brand save on Themes updates the storefront link instantly.
   const { shop } = useShopRow(userId);
 
   // Orders seam (lib/useOrders): the same shop-keyed cache /dashboard/orders
   // reads and OrderActions commits into. Warm cache → instant paint; every
-  // Mark-Paid / Undo / Cancel repaints the tiles, Recent Activity, the orders
-  // tab, and the CRM in the same frame. `isError` is the honest-failure flag:
+  // Mark-Paid / Undo / Cancel on the orders page repaints these tiles and
+  // Recent Activity in the same frame. `isError` is the honest-failure flag:
   // a failed read must never render as "D0 revenue".
   const { orders, isLoading: ordersLoading, isError: ordersLoadError } = useOrders(userId ?? undefined);
 
   useEffect(() => {
-    async function loadDashboard() {
+    let cancelled = false;
+    (async () => {
       // Non-evicting offline auth (lib/dashboardAuth) — transport failure with
       // a local session never redirects; only a genuine no-session does.
       const auth = await resolveDashboardUser(supabase);
+      if (cancelled) return;
       if (auth.status === 'unauthenticated') { router.push('/login'); return; }
-      const user = auth.user;
-      setUserId(user.id);
+      setUserId(auth.user.id);
 
-      const { data: productData } = await supabase.from('products').select('id, image_url, name, price, category').eq('user_id', user.id).order('created_at', { ascending: false });
-      setProducts((productData as Product[]) || []);
+      // Only the COUNT is needed here (OnboardingInterceptor's productsCount);
+      // the product lists live on the routes that render them.
+      const { count } = await supabase
+        .from('products')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', auth.user.id);
+      if (cancelled) return;
+      setProductsCount(count ?? 0);
       setLoading(false);
-    }
-    loadDashboard();
+    })();
+    return () => { cancelled = true; };
   }, [router, supabase]);
 
   // Vocabulary-aware headline metrics (sql/analytics.sql): cancelled orders
@@ -179,7 +110,7 @@ export default function Dashboard() {
   // two different numbers. orderTotal() covers pre-backfill rows whose
   // total_amount is still NULL. Derived from the cache, so a status commit in
   // OrderActions moves these numbers without any state to keep in sync.
-  const { totalOrders, totalRevenue, topProduct, customersCRM } = useMemo(() => {
+  const { totalOrders, totalRevenue, topProduct } = useMemo(() => {
     const activeOrders = orders.filter((o) => o.status !== 'cancelled');
     const revenue = orders
       .filter((o) => o.status === 'completed')
@@ -192,30 +123,10 @@ export default function Dashboard() {
       bestSeller = Object.keys(counts).reduce((a, b) => (counts[a] > counts[b] ? a : b), 'None');
     }
 
-    // CRM spend: cancelled orders never count toward Total Spent.
-    const crmMap = new Map<string, CustomerCRM>();
-    activeOrders.forEach((order) => {
-      const phone = order.customers.phone_number;
-      if (!crmMap.has(phone)) crmMap.set(phone, { phone, name: order.customers.name, location: order.customers.location, totalSpent: 0, orderCount: 0, lastOrderDate: order.created_at });
-      const c = crmMap.get(phone)!;
-      c.totalSpent += orderTotal(order);
-      c.orderCount += 1;
-      if (new Date(order.created_at) > new Date(c.lastOrderDate)) c.lastOrderDate = order.created_at;
-    });
-
-    return {
-      totalOrders: activeOrders.length,
-      totalRevenue: revenue,
-      topProduct: bestSeller,
-      customersCRM: Array.from(crmMap.values()).sort((a, b) => b.totalSpent - a.totalSpent),
-    };
+    return { totalOrders: activeOrders.length, totalRevenue: revenue, topProduct: bestSeller };
   }, [orders]);
 
-  // Status writes live in the shared OrderActions component (owner-scoped
-  // browser-client updates under orders_owner_update RLS, race-guarded) and
-  // are committed straight into the orders cache — nothing to thread back.
-
-  // Honest-failure notice for the panes that render order money/counts.
+  // Honest-failure notice for the tiles that render order money/counts.
   // SWR keeps retrying in the background; a warm cache stays on screen.
   const ordersLoadNotice = ordersLoadError ? (
     <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800">
@@ -225,348 +136,85 @@ export default function Dashboard() {
     </div>
   ) : null;
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this product?')) return;
-    await supabase.from('products').delete().eq('id', id);
-    // Bust the owner's cached /site catalog before the reload (browser-client
-    // delete has no server route to fire the tag itself). keepalive lets the
-    // request survive the immediate navigation.
-    fetch('/api/site-revalidate', { method: 'POST', keepalive: true }).catch(() => {});
-    window.location.reload();
-  };
-
-  const analyticsOrders = orders.map((order) => ({
-    id: order.id,
-    total_amount: order.total_amount,
-    status: order.status,
-    created_at: order.created_at,
-    customers: { name: order.customers.name },
-    order_items: order.order_items.map((item) => ({
-      quantity: item.quantity,
-      price_at_time: item.price_at_time ?? null,
-      products: {
-        name: item.products?.name || 'Unknown Item',
-        image_url: item.products?.image_url ?? null,
-      },
-    })),
-  }));
-
-  const analyticsProducts = products.map((product) => ({
-    id: product.id,
-    name: product.name,
-    price: product.price,
-    image_url: product.image_url ?? null,
-  }));
-
-  // Gate on auth + products (this effect) AND the seam's first orders verdict.
-  // ordersLoading is false on a warm persisted cache, so revisits paint at
-  // once; on a cold cache this waits exactly as the inline read used to.
-  if (loading || ordersLoading) return <div className="min-h-screen bg-[#F9F8F6] flex justify-center items-center"><Loader2 className="animate-spin text-gray-400" /></div>;
-
-  // 🛑 THE VAULT DOOR: Zero-Trust Security Check
-  if (shop?.subscription_tier === 'pending' || shop?.subscription_tier === 'suspended') {
+  // Gate on auth + product count (this effect) AND the seam's first orders
+  // verdict. ordersLoading is false on a warm persisted cache, so revisits
+  // paint at once; on a cold cache this waits exactly as the inline read did.
+  if (loading || ordersLoading) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-[#F9F8F6] px-4 text-center selection:bg-gray-900 selection:text-white">
-        <div className="w-full max-w-md rounded-[2rem] bg-white p-10 shadow-2xl border border-red-100">
-          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-red-50 text-red-500">
-            <Lock size={32} />
-          </div>
-          <h1 className="mb-2 text-2xl font-black tracking-tight text-gray-900">Account Locked</h1>
-          <p className="mb-8 text-sm leading-relaxed text-gray-500">
-            Your boutique is currently <strong className="text-gray-900 uppercase">Pending Activation</strong>. 
-            To unlock your Command Center and start selling, please complete your subscription payment via WhatsApp.
-          </p>
-          
-          <div className="space-y-3">
-            <a 
-              href="https://wa.me/447599710468?text=Hello%20Admin!%20I%20need%20to%20pay%20for%20my%20Sanndikaa%20subscription%20to%20unlock%20my%20dashboard." 
-              target="_blank"
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1a2e1a] py-4 text-xs font-bold uppercase tracking-widest text-white shadow-md transition hover:bg-black"
-            >
-              Contact Admin to Pay
-            </a>
-            
-            <button 
-              onClick={handleLogout} 
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gray-50 py-4 text-xs font-bold uppercase tracking-widest text-gray-500 transition hover:bg-gray-100 hover:text-gray-900"
-            >
-              Sign Out
-            </button>
-          </div>
-          
-          <p className="mt-8 text-[10px] font-bold uppercase tracking-widest text-gray-400">
-            Already paid? Please wait a few minutes for the Admin to verify your transaction.
-          </p>
+      <DashboardShell title="Home">
+        <div role="status" aria-label="Loading" className="flex justify-center py-24">
+          <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
         </div>
-      </div>
+      </DashboardShell>
     );
   }
 
   // THE "AHA!" INTERCEPTOR — a definitive owner-channel 'no website' verdict
-  // (cached or fresh) swaps the entire command center for the Magic
-  // Storefront Builder; any other verdict (row exists, or still unknown)
-  // renders the dashboard below exactly as before. Props reuse this page's
-  // already-loaded state — no duplicate queries. userId is non-null here:
-  // the loading gate above only clears after auth resolves.
+  // (cached or fresh) swaps the whole overview for the Magic Storefront
+  // Builder; any other verdict (row exists, or still unknown) renders the
+  // overview below. userId is non-null here: the loading gate above only
+  // clears after auth resolves.
   return (
-    <OnboardingInterceptor userId={userId!} productsCount={products.length} tier={shop?.subscription_tier ?? null}>
-    <div className="min-h-screen bg-[#F9F8F6] font-sans text-gray-900 selection:bg-gray-900 selection:text-white pb-24">
-      <OrderActionToast toast={toast} />
-
-      {/* 1. LUXURY HEADER */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-100 px-4 py-4 md:px-10">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-serif font-bold text-gray-900">Command Center</h1>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mt-0.5">{shop?.shop_name || 'Boutique Partner'}</p>
-          </div>
-          
-          <div className="flex items-center gap-2 md:gap-3 overflow-x-auto hide-scrollbar pb-1 md:pb-0">
+    <OnboardingInterceptor userId={userId!} productsCount={productsCount} tier={shop?.subscription_tier ?? null}>
+      <DashboardShell
+        title="Home"
+        actions={
+          <>
             <ViewShopButton shop={shop} />
-
-            <Link href="/dashboard/online-store/themes" className="flex shrink-0 items-center gap-1.5 rounded-full bg-gray-50 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:bg-gray-100">
-              <Palette size={14} /> Customize
-            </Link>
-
-            <Link href="/dashboard/online-store/themes" className="flex shrink-0 items-center gap-1.5 rounded-full bg-gradient-to-r from-amber-50 to-yellow-50 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-amber-800 ring-1 ring-amber-200 transition hover:from-amber-100 hover:to-yellow-100">
-              <Globe size={14} /> Website Studio
-            </Link>
-
-            <Link href="/dashboard/settings" className="flex shrink-0 items-center gap-1.5 rounded-full bg-gray-50 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:bg-gray-100">
-              <Settings size={14} /> Settings
-            </Link>
-
             <Link href="/dashboard/add" className="flex shrink-0 items-center gap-1.5 rounded-full bg-[#1a2e1a] px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-white shadow-md transition hover:bg-black">
               <Plus size={14} /> Add Item
             </Link>
-            <button onClick={handleLogout} className="flex shrink-0 items-center gap-1.5 rounded-full border border-red-100 bg-red-50 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-red-600 transition hover:bg-red-100">
+            <button
+              onClick={handleLogout}
+              aria-label="Sign out"
+              className="flex shrink-0 items-center gap-1.5 rounded-full border border-red-100 bg-red-50 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-red-600 transition hover:bg-red-100"
+            >
               <LogOut size={14} />
             </button>
+          </>
+        }
+      >
+        {ordersLoadNotice}
+
+        <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
+          <div className="relative overflow-hidden rounded-[2rem] bg-[#1a2e1a] p-6 text-white shadow-lg">
+            <div className="absolute -mr-4 -mt-4 h-24 w-24 rounded-full bg-white/10 blur-2xl" />
+            <div className="relative z-10">
+              <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-emerald-400"><BarChart3 size={14} /> Total Sales</p>
+              <div className="font-serif text-4xl font-medium">{totalOrders}</div>
+            </div>
+          </div>
+
+          <div className="rounded-[2rem] border border-gray-100 bg-white p-6 shadow-sm">
+            <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-400"><DollarSign size={14} className="text-green-600" /> Gross Revenue</p>
+            <div className="font-serif text-3xl font-medium text-gray-900">D{totalRevenue.toLocaleString()}</div>
+          </div>
+
+          <div className="rounded-[2rem] border border-gray-100 bg-white p-6 shadow-sm">
+            <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-400"><TrendingUp size={14} className="text-orange-500" /> Best Seller</p>
+            <div className="truncate text-xl font-bold text-gray-900">{topProduct}</div>
           </div>
         </div>
 
-        {/* The horizontal tab-button strip that lived here is retired (Beta QA
-            pass): DashboardSidebar (rail + mobile drawer) carries every
-            DashboardTab destination — overview (Home), customers, discounts,
-            videos (Ad Studio), reviews, inventory, broadcast via ?tab= deep
-            links; orders and analytics via their richer dedicated pages. The
-            DashboardTab state machine and the ?tab= URL-sync contract below
-            (AD_STUDIO_PATH, notifier jumps, sidebar deep links) are untouched. */}
-      </header>
-
-      {/* 2. DYNAMIC TAB CONTENT — freed of the strip, the active pane breathes. */}
-      <main className="max-w-7xl mx-auto px-4 py-8 md:px-10 md:py-12">
-        
-        {/* OVERVIEW TAB */}
-        {activeTab === 'overview' && (
-          <div className="animate-in fade-in duration-300">
-            {ordersLoadNotice}
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6 mb-8">
-              <div className="rounded-[2rem] bg-[#1a2e1a] p-6 text-white shadow-lg relative overflow-hidden">
-                <div className="absolute -mr-4 -mt-4 h-24 w-24 rounded-full bg-white/10 blur-2xl" />
-                <div className="relative z-10">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-400 mb-2 flex items-center gap-1.5"><BarChart3 size={14} /> Total Sales</p>
-                  <div className="text-4xl font-serif font-medium">{totalOrders}</div>
+        <h2 className="mb-4 text-sm font-bold uppercase tracking-widest text-gray-900">Recent Activity</h2>
+        <div className="overflow-hidden rounded-[2rem] border border-gray-100 bg-white shadow-sm">
+          {orders.slice(0, 3).map((order) => (
+            <div key={order.id} className="flex items-center justify-between border-b border-gray-50 p-5 last:border-0">
+              <div className="flex items-center gap-4">
+                <div className={`flex h-10 w-10 items-center justify-center rounded-full ${order.status === 'pending' ? 'bg-orange-50 text-orange-500' : order.status === 'cancelled' ? 'bg-gray-100 text-gray-400' : 'bg-green-50 text-green-500'}`}>
+                  {order.status === 'pending' ? <Clock size={16} /> : order.status === 'cancelled' ? <Ban size={16} /> : <CheckCircle2 size={16} />}
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-gray-900">{order.customers.name}</p>
+                  <p className="text-xs tabular-nums text-gray-500">D{orderTotal(order).toLocaleString()}</p>
                 </div>
               </div>
-
-              <div className="rounded-[2rem] bg-white border border-gray-100 p-6 shadow-sm">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2 flex items-center gap-1.5"><DollarSign size={14} className="text-green-600" /> Gross Revenue</p>
-                <div className="text-3xl font-serif font-medium text-gray-900">D{totalRevenue.toLocaleString()}</div>
-              </div>
-
-              <div className="rounded-[2rem] bg-white border border-gray-100 p-6 shadow-sm">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2 flex items-center gap-1.5"><TrendingUp size={14} className="text-orange-500" /> Best Seller</p>
-                <div className="text-xl font-bold text-gray-900 truncate">{topProduct}</div>
-              </div>
+              <Link href="/dashboard/orders" className="text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-gray-900">View</Link>
             </div>
-
-            <h3 className="text-sm font-bold uppercase tracking-widest text-gray-900 mb-4">Recent Activity</h3>
-            <div className="rounded-[2rem] bg-white border border-gray-100 shadow-sm overflow-hidden">
-              {orders.slice(0, 3).map((order) => (
-                <div key={order.id} className="flex items-center justify-between p-5 border-b border-gray-50 last:border-0">
-                  <div className="flex items-center gap-4">
-                    <div className={`flex h-10 w-10 items-center justify-center rounded-full ${order.status === 'pending' ? 'bg-orange-50 text-orange-500' : order.status === 'cancelled' ? 'bg-gray-100 text-gray-400' : 'bg-green-50 text-green-500'}`}>
-                      {order.status === 'pending' ? <Clock size={16} /> : order.status === 'cancelled' ? <Ban size={16} /> : <CheckCircle2 size={16} />}
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-gray-900">{order.customers.name}</p>
-                      <p className="text-xs tabular-nums text-gray-500">D{orderTotal(order).toLocaleString()}</p>
-                    </div>
-                  </div>
-                  <button onClick={() => setActiveTab('orders')} className="text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-gray-900">View</button>
-                </div>
-              ))}
-              {orders.length === 0 && <div className="p-8 text-center text-sm text-gray-400">No recent orders.</div>}
-            </div>
-          </div>
-        )}
-
-        {/* ANALYTICS TAB */}
-        {activeTab === 'analytics' && (
-          <AnalyticsDashboard orders={analyticsOrders} products={analyticsProducts} loadError={ordersLoadError} />
-        )}
-
-        {/* ORDERS TAB */}
-        {activeTab === 'orders' && (
-          <div className="animate-in fade-in duration-300 space-y-4">
-            {ordersLoadNotice}
-            {orders.length === 0 ? (
-              <div className="rounded-[2rem] bg-white border border-dashed border-gray-200 p-12 text-center">
-                <ShoppingCart className="mx-auto mb-4 h-10 w-10 text-gray-200" />
-                <p className="text-sm font-medium text-gray-500">No orders yet.</p>
-              </div>
-            ) : (
-              orders.map((order) => (
-                <div key={order.id} className="rounded-[2rem] bg-white border border-gray-100 p-5 md:p-6 shadow-sm">
-                  <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className={`px-2.5 py-1 text-[9px] font-bold uppercase tracking-widest rounded-full ${order.status === 'pending' ? 'bg-orange-100 text-orange-700' : order.status === 'cancelled' ? 'bg-gray-100 text-gray-500' : 'bg-green-100 text-green-700'}`}>
-                          {orderStatusLabel(order.status)}
-                        </span>
-                        <span className="text-[10px] font-bold text-gray-400 uppercase">#{order.id.split('-')[0]}</span>
-                      </div>
-                      <h4 className="text-base font-bold text-gray-900 flex items-center gap-1.5"><User size={14} className="text-gray-400" /> {order.customers.name}</h4>
-                      <p className="text-xs text-gray-500 mt-1 flex items-center gap-1.5"><Phone size={12} /> {order.customers.phone_number}</p>
-                      <p className="text-xs text-gray-500 mt-1 flex items-center gap-1.5"><Truck size={12} /> {order.fulfillment_method === 'delivery' ? order.customers.location : 'Store Pickup'}</p>
-                    </div>
-
-                    <div className="flex-1 md:px-8 border-y md:border-y-0 md:border-l border-gray-50 py-4 md:py-0">
-                      {order.order_items.map((item, idx) => (
-                        <div key={idx} className="flex items-center gap-3 mb-3 last:mb-0">
-                          <div className="h-12 w-10 rounded-lg bg-gray-50 overflow-hidden">
-                            {item.products?.image_url ? (
-                              <img src={item.products.image_url} alt={item.products?.name || 'Ordered item'} className="w-full h-full object-cover" />
-                            ) : (
-                              <Package className="h-full w-full p-3 text-gray-300" />
-                            )}
-                          </div>
-                          <div>
-                            <p className="text-xs font-bold text-gray-900">{item.quantity}x {item.products?.name}</p>
-                            {item.variant_details !== 'None' && <p className="text-[10px] text-gray-400 uppercase tracking-wider">{item.variant_details}</p>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="flex items-center justify-between md:flex-col md:items-end md:justify-center gap-3">
-                      <div className="text-lg font-black tabular-nums text-gray-900">D{orderTotal(order).toLocaleString()}</div>
-                      {userId && (
-                        <OrderActions
-                          order={order}
-                          userId={userId}
-                          supabase={supabase}
-                          onToast={showToast}
-                        />
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        )}
-
-        {/* CUSTOMERS TAB */}
-        {activeTab === 'customers' && (
-          <div className="animate-in fade-in duration-300">
-            <div className="rounded-[2rem] bg-white border border-gray-100 shadow-sm overflow-hidden">
-              {customersCRM.length === 0 ? (
-                <div className="p-12 text-center"><Users className="mx-auto mb-4 h-10 w-10 text-gray-200" /><p className="text-sm text-gray-500">No customers yet.</p></div>
-              ) : (
-                <div className="divide-y divide-gray-50">
-                  {customersCRM.map((c, idx) => (
-                    <div key={idx} className="flex flex-col md:flex-row md:items-center justify-between p-5 md:p-6 hover:bg-gray-50 transition">
-                      <div className="flex items-center gap-4">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#1a2e1a] text-sm font-bold text-white">{c.name.substring(0, 2).toUpperCase()}</div>
-                        <div>
-                          <h4 className="text-sm font-bold text-gray-900">{c.name}</h4>
-                          <p className="text-xs text-gray-500 mt-0.5">{c.phone}</p>
-                        </div>
-                      </div>
-                      <div className="mt-4 md:mt-0 flex items-center justify-between md:gap-8">
-                        <div className="text-left md:text-right">
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Total Spent</p>
-                          <p className="text-lg font-black text-gray-900">D{c.totalSpent.toLocaleString()}</p>
-                        </div>
-                        <a href={`https://wa.me/${sanitizePhoneNumber(c.phone)}`} target="_blank" className="flex items-center gap-1.5 rounded-full bg-green-50 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-green-700 hover:bg-green-100 transition">
-                          <MessageCircle size={14} /> Retarget
-                        </a>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* REVIEWS TAB */}
-        {activeTab === 'reviews' && (
-          <ReviewsPanel products={products} />
-        )}
-
-        {/* DISCOUNTS TAB */}
-        {activeTab === 'discounts' && (
-          <DiscountManager userId={userId!} products={products} />
-        )}
-
-        {/* AD STUDIO TAB */}
-        {activeTab === 'videos' && (
-          <VideoManager userId={userId!} products={products} />
-        )}
-
-        {/* INVENTORY TAB */}
-        {activeTab === 'inventory' && (
-          <div className="animate-in fade-in duration-300">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-bold uppercase tracking-widest text-gray-900">Active Listings ({products.length})</h3>
-              <Link href="/dashboard/add" className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 hover:text-emerald-700">+ Add Product</Link>
-            </div>
-            
-            <div className="rounded-[2rem] bg-white border border-gray-100 shadow-sm overflow-hidden">
-              {products.length === 0 ? (
-                <div className="p-12 text-center"><Package className="mx-auto mb-4 h-10 w-10 text-gray-200" /><p className="text-sm text-gray-500">Your inventory is empty.</p></div>
-              ) : (
-                <div className="divide-y divide-gray-50">
-                  {products.map((product) => (
-                    <div key={product.id} className="flex items-center justify-between p-4 md:p-5 hover:bg-gray-50 transition">
-                      <div className="flex items-center gap-4">
-                        <div className="h-14 w-12 rounded-lg bg-gray-100 overflow-hidden shrink-0">
-                          {product.image_url ? <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" /> : <Package className="h-full w-full p-3 text-gray-300" />}
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-bold text-gray-900">{product.name}</h4>
-                          <p className="text-xs text-gray-500 mt-0.5">D{product.price.toLocaleString()} • <span className="uppercase text-[9px] font-bold tracking-widest text-gray-400">{product.category}</span></p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 md:gap-2">
-                        <Link href={`/product/${product.id}`} target="_blank" className="p-2 text-gray-400 hover:text-gray-900 rounded-full hover:bg-gray-100 transition"><ExternalLink size={16} /></Link>
-                        <Link href={`/dashboard/edit/${product.id}`} className="p-2 text-gray-400 hover:text-blue-600 rounded-full hover:bg-blue-50 transition"><Edit size={16} /></Link>
-                        <button onClick={() => handleDelete(product.id)} className="p-2 text-gray-400 hover:text-red-600 rounded-full hover:bg-red-50 transition"><Trash2 size={16} /></button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* BROADCAST TAB — extra safe-area bottom clearance below lg: the
-            floating sidebar trigger (DashboardSidebar, fixed left-4 z-50 at
-            bottom max(1.25rem, safe-area)) must never cover the pane's
-            full-width left-edge Send buttons / footer at end of scroll. The
-            page-level pb-24 is static; this adds the env() inset headroom. */}
-        {activeTab === 'broadcast' && (
-          <div className="animate-in fade-in duration-300 pb-[calc(3.5rem+env(safe-area-inset-bottom))] lg:pb-0">
-            <Broadcast />
-          </div>
-        )}
-
-      </main>
-    </div>
+          ))}
+          {orders.length === 0 && <div className="p-8 text-center text-sm text-gray-400">No recent orders.</div>}
+        </div>
+      </DashboardShell>
     </OnboardingInterceptor>
   );
 }

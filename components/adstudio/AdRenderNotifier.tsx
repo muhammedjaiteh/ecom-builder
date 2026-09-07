@@ -51,13 +51,11 @@ type NotifierRow = {
 
 const NOTIFIER_ROW_COLUMNS = 'id, status, pipeline_stage, hero_image_url, created_at';
 
-// The dashboard's tab state lives in ?tab= via history.replaceState — read
-// the URL directly instead of useSearchParams (repo idiom: avoids the
-// Suspense boundary requirement on client pages).
+// Ad Studio is a real route (lib/adNotifications AD_STUDIO_PATH). Read the
+// location directly: this helper runs from realtime/poll callbacks outside
+// React's render cycle, where usePathname() is unavailable.
 const isOnAdStudio = () =>
-  typeof window !== 'undefined' &&
-  window.location.pathname === '/dashboard' &&
-  new URLSearchParams(window.location.search).get('tab') === 'videos';
+  typeof window !== 'undefined' && window.location.pathname === AD_STUDIO_PATH;
 
 export default function AdRenderNotifier() {
   const router = useRouter();
@@ -131,17 +129,11 @@ export default function AdRenderNotifier() {
     });
   }, [persist]);
 
-  // Jump link into the Ad Studio. /dashboard reads ?tab= only on mount, so
-  // when the seller is already on /dashboard we force a full navigation to
-  // actually flip the tab; from any other dashboard page a client-side push
-  // freshly mounts the page, which then reads the param.
+  // Jump link into the Ad Studio — an ordinary client-side navigation to its
+  // route; nothing to do when the seller is already there.
   const openStudio = useCallback(() => {
     markAllSeen();
     if (typeof window === 'undefined' || isOnAdStudio()) return;
-    if (window.location.pathname === '/dashboard') {
-      window.location.assign(AD_STUDIO_PATH);
-      return;
-    }
     router.push(AD_STUDIO_PATH);
   }, [markAllSeen, router]);
 

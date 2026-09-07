@@ -4,26 +4,19 @@
 // Persistent dashboard sidebar — mounted once from app/dashboard/layout.tsx so
 // EVERY /dashboard/* page carries the same Shopify-standard navigation.
 //
-// Two link families live here, with different navigation mechanics:
-//   1. Route links (Orders, Products, Online Store, …) — ordinary <Link>s.
-//   2. Command-center tab links (?tab=customers, ?tab=videos, …) — /dashboard
-//      reads ?tab= ONCE on mount (repo idiom: no useSearchParams, tab switches
-//      use history.replaceState). So when the seller is ALREADY on /dashboard,
-//      a client-side push would silently fail to flip the tab; we force a full
-//      navigation instead — the exact contract AdRenderNotifier.openStudio()
-//      established for the ?tab=videos deep link.
-//
-// Active-state for tab links is read from window.location on mount and kept
-// fresh with a light watcher while on /dashboard (replaceState fires no event
-// we can subscribe to — same trade-off the notifier badge makes).
+// Every entry is a real route rendered as an ordinary <Link>. Active state is
+// derived from usePathname() alone — an exact match for Home, a prefix match
+// for every nested page. The former command-center seam (?tab= deep links,
+// forced full navigations and the location watcher that kept ?tab= fresh) is
+// gone: each tab now owns a route under /dashboard/*.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  BadgePercent, BarChart3, Boxes, FileText, Film, Globe, Home, ListTree,
+  BadgePercent, BarChart3, FileText, Film, Globe, Home, ListTree,
   Megaphone, Menu, Package, Palette, Settings, ShoppingCart, Star,
   Store, Users, X,
 } from 'lucide-react';
@@ -35,46 +28,32 @@ type NavEntry = {
   href: string;
   icon: IconType;
   /**
-   * Set for links whose destination is the command center's internal tab
-   * machine (/dashboard?tab=…). Drives both the full-navigation seam and
-   * tab-aware active highlighting.
+   * Match the pathname exactly instead of by prefix. Home (/dashboard) would
+   * otherwise light up on every nested /dashboard/* route.
    */
-  commandCenterTab?: string;
-  /** Route links also claiming a ?tab= alias (e.g. /dashboard?tab=orders). */
-  tabAlias?: string;
+  exact?: boolean;
 };
 
 type NavGroup = { title: string | null; entries: NavEntry[] };
-
-// Tabs the command center actually accepts — anything else falls back to
-// 'overview' inside app/dashboard/page.tsx, so Home claims those URLs too.
-const DASHBOARD_TABS = new Set([
-  'overview', 'analytics', 'orders', 'customers', 'discounts',
-  'videos', 'reviews', 'inventory', 'broadcast',
-]);
-
-// How often the sidebar re-reads ?tab= while the seller sits on /dashboard.
-const TAB_WATCH_MS = 1_500;
 
 const NAV_GROUPS: NavGroup[] = [
   {
     title: null,
     entries: [
-      { label: 'Home', href: '/dashboard', icon: Home, commandCenterTab: 'overview' },
-      { label: 'Orders', href: '/dashboard/orders', icon: ShoppingCart, tabAlias: 'orders' },
+      { label: 'Home', href: '/dashboard', icon: Home, exact: true },
+      { label: 'Orders', href: '/dashboard/orders', icon: ShoppingCart },
       { label: 'Products', href: '/dashboard/products', icon: Package },
-      { label: 'Customers', href: '/dashboard?tab=customers', icon: Users, commandCenterTab: 'customers' },
-      { label: 'Analytics', href: '/dashboard/analytics', icon: BarChart3, tabAlias: 'analytics' },
+      { label: 'Customers', href: '/dashboard/customers', icon: Users },
+      { label: 'Analytics', href: '/dashboard/analytics', icon: BarChart3 },
     ],
   },
   {
     title: 'Marketing',
     entries: [
-      { label: 'Ad Studio', href: '/dashboard?tab=videos', icon: Film, commandCenterTab: 'videos' },
-      { label: 'Broadcast', href: '/dashboard?tab=broadcast', icon: Megaphone, commandCenterTab: 'broadcast' },
-      { label: 'Discounts', href: '/dashboard?tab=discounts', icon: BadgePercent, commandCenterTab: 'discounts' },
-      { label: 'Reviews', href: '/dashboard?tab=reviews', icon: Star, commandCenterTab: 'reviews' },
-      { label: 'Inventory', href: '/dashboard?tab=inventory', icon: Boxes, commandCenterTab: 'inventory' },
+      { label: 'Ad Studio', href: '/dashboard/ad-studio', icon: Film },
+      { label: 'Broadcast', href: '/dashboard/broadcast', icon: Megaphone },
+      { label: 'Discounts', href: '/dashboard/discounts', icon: BadgePercent },
+      { label: 'Reviews', href: '/dashboard/reviews', icon: Star },
     ],
   },
   {
@@ -90,30 +69,14 @@ const NAV_GROUPS: NavGroup[] = [
 
 const SETTINGS_ENTRY: NavEntry = { label: 'Settings', href: '/dashboard/settings', icon: Settings };
 
-/** Normalizes a ?tab= value to what the command center will actually show. */
-function effectiveTab(tab: string | null): string {
-  return tab && DASHBOARD_TABS.has(tab) ? tab : 'overview';
-}
-
-function readTabFromLocation(): string | null {
-  if (typeof window === 'undefined') return null;
-  return new URLSearchParams(window.location.search).get('tab');
+function isEntryActive(pathname: string, entry: NavEntry): boolean {
+  if (entry.exact) return pathname === entry.href;
+  return pathname === entry.href || pathname.startsWith(`${entry.href}/`);
 }
 
 export default function DashboardSidebar({ shopName }: { shopName?: string | null }) {
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<string | null>(null);
-
-  // Mount-time read + light watcher while on /dashboard: in-page tab pills
-  // flip via history.replaceState, which fires no navigation event.
-  useEffect(() => {
-    const sync = () => setActiveTab(readTabFromLocation());
-    sync();
-    if (pathname !== '/dashboard') return;
-    const interval = setInterval(sync, TAB_WATCH_MS);
-    return () => clearInterval(interval);
-  }, [pathname]);
 
   // Route changes always close the drawer — even navigations this sidebar
   // didn't trigger (e.g. the Ad Studio toast's jump link). Adjust-during-
@@ -137,46 +100,15 @@ export default function DashboardSidebar({ shopName }: { shopName?: string | nul
     };
   }, [drawerOpen]);
 
-  const isEntryActive = useCallback(
-    (entry: NavEntry): boolean => {
-      if (entry.commandCenterTab) {
-        return pathname === '/dashboard' && effectiveTab(activeTab) === entry.commandCenterTab;
-      }
-      if (pathname === entry.href || pathname.startsWith(`${entry.href}/`)) return true;
-      return Boolean(entry.tabAlias) && pathname === '/dashboard' && activeTab === entry.tabAlias;
-    },
-    [pathname, activeTab]
-  );
-
-  // The ?tab= seam: already on /dashboard → full navigation (the page reads
-  // ?tab= on mount only); already showing the target tab → do nothing.
-  const handleCommandCenterClick = useCallback(
-    (event: React.MouseEvent<HTMLAnchorElement>, entry: NavEntry) => {
-      setDrawerOpen(false);
-      // Modified clicks (new tab/window) keep their native behavior.
-      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
-      if (window.location.pathname !== '/dashboard') return; // <Link> client nav mounts the page fresh
-      event.preventDefault();
-      const target = new URL(entry.href, window.location.origin);
-      if (effectiveTab(target.searchParams.get('tab')) === effectiveTab(readTabFromLocation())) return;
-      window.location.assign(entry.href);
-    },
-    []
-  );
-
   const renderEntry = (entry: NavEntry) => {
-    const active = isEntryActive(entry);
+    const active = isEntryActive(pathname, entry);
     const Icon = entry.icon;
     return (
       <Link
         key={entry.label}
         href={entry.href}
         aria-current={active ? 'page' : undefined}
-        onClick={
-          entry.commandCenterTab
-            ? (event) => handleCommandCenterClick(event, entry)
-            : () => setDrawerOpen(false)
-        }
+        onClick={() => setDrawerOpen(false)}
         className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-[12px] font-semibold transition-colors ${
           active
             ? 'bg-[#1a2e1a] text-white shadow-sm'
