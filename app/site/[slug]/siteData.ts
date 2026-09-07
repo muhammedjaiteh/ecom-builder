@@ -335,7 +335,7 @@ export function viewerLog(v: SiteViewer): string {
   return `user=${user} owner=${v.isOwner}${note}`;
 }
 
-export type SiteRoute = 'home' | 'collections' | `product:${string}`;
+export type SiteRoute = 'home' | 'collections' | 'checkout' | `product:${string}`;
 
 export type ResolvedSite = {
   shop: SiteShop;
