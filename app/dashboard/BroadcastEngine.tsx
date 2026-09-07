@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 import { TIER_BY_ID, canUseBroadcast } from '@/lib/tiers';
@@ -18,7 +18,6 @@ import {
   Loader2,
   ArrowRight,
   Users,
-  ArrowLeft,
   Sparkles
 } from 'lucide-react';
 import Link from 'next/link';
@@ -58,7 +57,7 @@ function generateWhatsAppLink(phone: string | null, message: string) {
   return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
 }
 
-export default function BroadcastPage() {
+export default function BroadcastEngine() {
   const [shopData, setShopData] = useState<ShopData | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -77,20 +76,6 @@ export default function BroadcastPage() {
   );
 
   const router = useRouter();
-
-  // Back-affordance seam: this component mounts as the /dashboard?tab=broadcast
-  // pane, and /dashboard reads ?tab= ONCE on mount (repo idiom: replaceState,
-  // no useSearchParams). A plain <Link href="/dashboard"> client-nav from here
-  // would rewrite the URL but leave the pane stranded on Broadcast — the exact
-  // failure class DashboardSidebar.handleCommandCenterClick guards. Force a
-  // full navigation when already on /dashboard; modified clicks (new tab) and
-  // any future non-/dashboard mount keep native <Link> behavior.
-  const handleBackToDashboard = useCallback((event: React.MouseEvent<HTMLAnchorElement>) => {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
-    if (window.location.pathname !== '/dashboard') return;
-    event.preventDefault();
-    window.location.assign('/dashboard');
-  }, []);
 
   useEffect(() => {
     fetchData();
@@ -288,7 +273,7 @@ export default function BroadcastPage() {
   const maxChars = 1024;
 
   // Loading state — pane-height, not min-h-screen: this renders inside the
-  // command center's <main>, which already owns page padding and background.
+  // DashboardShell, which already owns page padding and background.
   if (loading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
@@ -304,14 +289,7 @@ export default function BroadcastPage() {
         <div className="bg-white rounded-2xl shadow-lg p-8 text-center max-w-md">
           <AlertCircle size={48} className="mx-auto text-red-500 mb-4" />
           <p className="text-gray-900 font-bold text-lg mb-2">Unable to Load</p>
-          <p className="text-gray-600 mb-6">We couldn't load your shop data. Please try again.</p>
-          <Link
-            href="/dashboard"
-            onClick={handleBackToDashboard}
-            className="w-full block bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl transition-colors"
-          >
-            Back to Dashboard
-          </Link>
+          <p className="text-gray-600">We couldn't load your shop data. Please try again.</p>
         </div>
       </div>
     );
@@ -325,16 +303,6 @@ export default function BroadcastPage() {
     return (
       <div className="font-sans text-gray-900">
         <div className="max-w-6xl mx-auto">
-          {/* Back Button — 44px touch target, full-nav seam */}
-          <Link
-            href="/dashboard"
-            onClick={handleBackToDashboard}
-            className="mb-6 inline-flex min-h-[44px] items-center gap-2 font-semibold text-gray-600 transition-colors hover:text-gray-900"
-          >
-            <ArrowLeft size={20} />
-            Back to Dashboard
-          </Link>
-
           {/* Lock Screen */}
           <div className="bg-white rounded-3xl shadow-2xl overflow-hidden max-w-2xl mx-auto border border-gray-200">
             {/* Lock Icon Section */}
@@ -407,37 +375,6 @@ export default function BroadcastPage() {
   return (
     <div className="font-sans text-gray-900">
       <div className="max-w-7xl mx-auto">
-        {/* Header — wrap-safe flex row: back → identity → tier pill. The
-            identity block claims a 13rem flex-basis and grows, so on narrow
-            viewports (≤ ~430px) the shrink-proof pill wraps onto its own row
-            BELOW the title instead of compressing over it; the back button is
-            a 44px touch target. No absolute positioning, nothing to collide. */}
-        <header className="mb-8 flex flex-wrap items-center gap-x-4 gap-y-3">
-          <Link
-            href="/dashboard"
-            onClick={handleBackToDashboard}
-            aria-label="Back to dashboard"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border bg-white transition-colors hover:bg-gray-100"
-          >
-            <ArrowLeft size={20} className="text-gray-600" />
-          </Link>
-
-          <div className="flex min-w-0 grow basis-52 items-center gap-3">
-            <div className="hidden shrink-0 rounded-full bg-green-100 p-3 sm:block">
-              <MessageCircle size={24} className="text-green-700" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-2xl font-black leading-tight md:text-3xl">WhatsApp Broadcast Engine</h1>
-              <p className="mt-0.5 text-sm text-gray-600">Send personalized messages to all your customers instantly</p>
-            </div>
-          </div>
-
-          <div className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-amber-100 px-4 py-2 text-xs font-bold uppercase tracking-wider text-amber-800">
-            <span className="h-2 w-2 rounded-full bg-amber-600"></span>
-            Flagship Feature
-          </div>
-        </header>
-
         {/* Error Banner */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-start gap-3">

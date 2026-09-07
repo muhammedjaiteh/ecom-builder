@@ -6,7 +6,7 @@ import { orderStatusLabel, orderTotal } from '@/lib/orderMetrics';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AnalyticsDashboard — the shared closed-loop WhatsApp analytics surface,
-// mounted by BOTH the command center (?tab=analytics) and /dashboard/analytics.
+// mounted by the /dashboard/analytics route.
 //
 // THE THREE HERO METRICS (vocabulary: sql/analytics.sql — 'completed' is the
 // terminal paid state, labelled Paid; 'cancelled' the terminal flake state):
