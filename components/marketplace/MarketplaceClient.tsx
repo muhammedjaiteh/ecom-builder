@@ -438,7 +438,12 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
       {/* ═══════════════════════════════════════════════════════
           HEADER
       ═══════════════════════════════════════════════════════ */}
-      <header className="sticky top-0 z-50">
+      {/* z-[60]: sits above the z-50 ProductCardXfade toggle chips while cards
+          scroll under it. Safe-area padding lives on the WRAPPER, and the wrapper
+          paints its own bg (mobile forest / desktop white) so the notch and
+          status-bar strip is never a transparent window onto scrolling content
+          in standalone PWA mode (viewportFit 'cover' in app/layout.tsx). */}
+      <header className="sticky top-0 z-[60] bg-[#1a2e1a] pt-[env(safe-area-inset-top)] md:bg-white/95">
 
         {/* ── MOBILE HEADER: dark green, two-row Amazon-style (hidden on md+) ── */}
         <div className="bg-[#1a2e1a] md:hidden">
@@ -501,7 +506,8 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
               ) : (
                 <button
                   onClick={handleSearchSubmit}
-                  className="flex items-center justify-center bg-[#f0a500] px-4"
+                  className="flex items-center justify-center bg-mall-gold px-4"
+                  aria-label="Search"
                 >
                   <Search size={17} className="text-[#1a2e1a]" />
                 </button>
@@ -638,7 +644,7 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                 <Sparkles size={22} />
               </div>
             </div>
-            <h2 className="text-lg font-semibold text-gray-900">Your Personal Stylist is curating matches...</h2>
+            <h2 className="font-serif text-lg font-semibold text-gray-900">Your Personal Stylist is curating matches...</h2>
             <p className="mt-2 text-sm text-gray-500">Searching across every boutique for &ldquo;{searchQuery}&rdquo;</p>
             <div className="mt-6 flex items-center gap-1.5">
               {[0, 150, 300].map((delay) => (
@@ -663,7 +669,7 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                     {searchRelated ? 'AI Stylist — Closest Matches' : 'Marketplace Results'}
                   </span>
                 </div>
-                <h2 className="mt-1 text-lg font-semibold tracking-tight text-gray-900">
+                <h2 className="mt-1 font-serif text-lg font-semibold tracking-tight text-gray-900">
                   Matches for{' '}
                   <span className="text-gray-500">&ldquo;{searchQuery}&rdquo;</span>
                 </h2>
@@ -681,7 +687,7 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                 <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-neutral-100 text-gray-300">
                   <Search size={22} />
                 </div>
-                <h3 className="text-base font-semibold text-gray-900">No exact matches found</h3>
+                <h3 className="font-serif text-base font-semibold text-gray-900">No exact matches found</h3>
                 <p className="mt-2 max-w-sm text-sm text-gray-500">
                   We couldn&apos;t find an exact match for that vibe. Try another search, or browse a category below.
                 </p>
@@ -742,12 +748,18 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
               const interlude = curation.interludeByIndex.get(shelfIndex) ?? null;
               return (
               <div key={shelf.id}>
-              <section id={shelf.id} className="bg-white py-5 md:py-6">
+              {/* scroll-mt clears the sticky header on category jumps: mobile
+                  header is 140px (84px logo row + 56px search row) plus the
+                  safe-area inset; desktop is 97px. */}
+              <section
+                id={shelf.id}
+                className="scroll-mt-[calc(9.5rem_+_env(safe-area-inset-top))] bg-white py-5 md:scroll-mt-28 md:py-6"
+              >
 
                 {/* Shelf header */}
                 <div className="mb-3 flex items-center justify-between px-4 md:px-10">
                   <div>
-                    <h2 className="text-xl font-semibold tracking-tight text-gray-900 md:text-2xl">
+                    <h2 className="font-serif text-xl font-semibold tracking-tight text-gray-900 md:text-2xl">
                       {shelf.title}
                     </h2>
                     <p className="mt-0.5 text-xs font-medium text-gray-500 md:text-sm">
@@ -817,7 +829,7 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                     → 15px of third card visible. Net effect: ~2 full + sliver,
                     giving a clear swipe affordance.
                   */
-                  <div className="scrollbar-none flex gap-3 overflow-x-auto snap-x snap-mandatory px-4 pb-4 md:gap-5 md:px-10">
+                  <div className="hide-scrollbar flex gap-3 overflow-x-auto snap-x snap-mandatory px-4 pb-4 md:gap-5 md:px-10">
                     {/* Feature tile — max ONE per shelf section (cadence cap):
                         double-width, same card anatomy, living media box. */}
                     {featured && (
@@ -852,7 +864,7 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
             <section className="bg-white py-5 md:py-8">
               <div className="mb-5 flex items-center justify-between px-4 md:px-10">
                 <div>
-                  <h2 className="text-xl font-semibold tracking-tight text-gray-900 md:text-2xl">
+                  <h2 className="font-serif text-xl font-semibold tracking-tight text-gray-900 md:text-2xl">
                     Shop by Boutique
                   </h2>
                   <p className="mt-0.5 text-xs font-medium text-gray-500">
@@ -866,7 +878,7 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                    designed invitation (conversion surface, Law 1). */
                 <div className="mx-4 flex flex-col items-center justify-center rounded-2xl bg-[#1a2e1a] px-6 py-16 text-center md:mx-10">
                   <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#f0a500]">Opening Soon</p>
-                  <h3 className="mt-3 max-w-md text-xl font-semibold text-white">
+                  <h3 className="mt-3 max-w-md font-serif text-xl font-semibold text-white">
                     The first boutiques are being fitted. Yours could open the floor.
                   </h3>
                   <Link
@@ -1026,7 +1038,7 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
             <div className="mb-3 flex items-center justify-center">
               <Mail size={22} className="text-white/50" />
             </div>
-            <h2 className="text-2xl font-semibold tracking-tight text-white">Stay in the loop</h2>
+            <h2 className="font-serif text-2xl font-semibold tracking-tight text-white">Stay in the loop</h2>
             <p className="mt-2 text-sm text-white/60">
               New boutiques, exclusive drops, and curated edits — straight to your inbox.
             </p>
@@ -1065,7 +1077,7 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
       {/* ═══════════════════════════════════════════════════════
           FOOTER
       ═══════════════════════════════════════════════════════ */}
-      <footer className="border-t border-black/5 bg-white">
+      <footer className="border-t border-black/5 bg-white pb-[env(safe-area-inset-bottom)]">
         <div className="mx-auto max-w-7xl px-4 py-12 md:px-10">
           <div className="grid grid-cols-2 gap-10 md:grid-cols-4 lg:grid-cols-5">
 

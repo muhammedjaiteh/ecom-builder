@@ -55,6 +55,46 @@
   --radius-dash: var(--dash-radius);
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   Marketplace design system (components/marketplace/*) — Step 1 of the
+   marketplace modernization. The mall shares the dashboard's luxury palette
+   (bone/forest/gold/sage) but owns its OWN tokens: the two surfaces evolve
+   independently — a dashboard re-tint must never re-paint the public mall.
+   Stable across prefers-color-scheme for the same reason the dashboard is:
+   the mall paints its own canvas, so the site-wide --background flip above
+   never bleeds in.
+   ───────────────────────────────────────────────────────────────────────── */
+:root {
+  --mall-bone: #f4f1ea;   /* canvas — warm off-white                          */
+  --mall-ivory: #faf8f3;  /* raised surfaces — cards, sheets, the search field */
+  --mall-forest: #1b3a2d; /* ink + primary surfaces — deep forest             */
+  --mall-gold: #b99a5b;   /* accent + CTA — muted gold (search, kickers)      */
+  --mall-sage: #8fa68e;   /* secondary surfaces + positive trend              */
+}
+
+/* Tailwind v4 utilities for the tokens — bg-mall-gold, text-mall-forest/60,
+   border-mall-sage, ring-mall-gold … Opacity modifiers resolve through
+   color-mix, so one token serves every tint. */
+@theme inline {
+  --color-mall-bone: var(--mall-bone);
+  --color-mall-ivory: var(--mall-ivory);
+  --color-mall-forest: var(--mall-forest);
+  --color-mall-gold: var(--mall-gold);
+  --color-mall-sage: var(--mall-sage);
+}
+
+/* .hide-scrollbar — scroll containers that keep touch/wheel scrolling but
+   drop the visible bar (shelf carousels, cart body, review strips, dashboard
+   tab rows). scrollbar-width covers Firefox + Chromium 121+; the
+   ::-webkit-scrollbar rule covers older Chromium/WebKit. Pure CSS, no plugin.
+   Unlayered on purpose: it must always beat the layered overflow utilities. */
+.hide-scrollbar {
+  scrollbar-width: none;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
