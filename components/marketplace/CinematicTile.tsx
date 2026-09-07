@@ -40,13 +40,22 @@ function dalasi(price: number | null): string | null {
   return price == null ? null : `D${Number(price).toLocaleString()}`;
 }
 
-function PosterLayer({ data, sizes }: { data: CinematicTileData; sizes: string }) {
+function PosterLayer({
+  data,
+  sizes,
+  priority = false,
+}: {
+  data: CinematicTileData;
+  sizes: string;
+  priority?: boolean;
+}) {
   if (data.posterUrl) {
     return (
       <SmartImage
         src={data.posterUrl}
         alt={data.name}
         fill
+        priority={priority}
         sizes={sizes}
         blurTone="dark"
         className="object-cover"
@@ -69,16 +78,19 @@ type CinematicTileProps = {
   /** Optional kicker line above the interlude headline (defaults to the
    *  boutique name) — the empty-shelf fills label themselves honestly. */
   kicker?: string;
+  /** LCP hint — true only for the tile that leads the topmost populated
+   *  shelf. Forwarded to Next/Image on the poster (preload + fetchpriority). */
+  priority?: boolean;
 };
 
-export default function CinematicTile({ data, variant, kicker }: CinematicTileProps) {
+export default function CinematicTile({ data, variant, kicker, priority = false }: CinematicTileProps) {
   const price = dalasi(data.price);
   const href = `/product/${data.id}`;
 
   if (variant === 'interlude') {
     return (
       <section className="relative aspect-video w-full overflow-hidden bg-neutral-950 md:aspect-[21/9]">
-        <PosterLayer data={data} sizes="100vw" />
+        <PosterLayer data={data} sizes="100vw" priority={priority} />
         {data.videoUrl && (
           <CinematicVideo id={data.id} src={data.videoUrl} poster={data.posterUrl} alt={data.name} />
         )}
@@ -109,7 +121,11 @@ export default function CinematicTile({ data, variant, kicker }: CinematicTilePr
   return (
     <div className="group flex flex-col">
       <div className="relative aspect-square overflow-hidden rounded-xl border border-black/5 bg-neutral-950">
-        <PosterLayer data={data} sizes="(max-width: 640px) 332px, (max-width: 1024px) 396px, 468px" />
+        <PosterLayer
+          data={data}
+          sizes="(max-width: 640px) 332px, (max-width: 1024px) 396px, 468px"
+          priority={priority}
+        />
         {data.videoUrl && (
           <CinematicVideo id={data.id} src={data.videoUrl} poster={data.posterUrl} alt={data.name} />
         )}

@@ -798,6 +798,9 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
               const shelfProducts = featured
                 ? shelf.products.filter((p) => p.id !== featured.id)
                 : shelf.products;
+              // The feature tile occupies carousel slot 0, so the LCP budget
+              // (the leading LCP_PRIORITY_CARDS slots) is shared: tile + 1 card.
+              const leadSlots = featured ? 1 : 0;
               const fill = curation.fillByShelf.get(shelf.id) ?? null;
               const interlude = curation.interludeByIndex.get(shelfIndex) ?? null;
               return (
@@ -888,7 +891,13 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                         double-width, same card anatomy, living media box. */}
                     {featured && (
                       <div className="w-[332px] flex-shrink-0 snap-start sm:w-[396px] md:w-[436px] lg:w-[468px]">
-                        <CinematicTile variant="feature" data={toCinematicTile(featured, true)} />
+                        {/* Slot 0 of the carousel — on the LCP shelf this poster
+                            IS the largest above-the-fold pixel. */}
+                        <CinematicTile
+                          variant="feature"
+                          data={toCinematicTile(featured, true)}
+                          priority={shelf.id === lcpShelfId}
+                        />
                       </div>
                     )}
                     {shelfProducts.map((product, cardIndex) => (
@@ -897,7 +906,7 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                         className="w-[160px] flex-shrink-0 snap-start sm:w-48 md:w-52 lg:w-56"
                       >
                         {renderProductCard(product, {
-                          priority: shelf.id === lcpShelfId && cardIndex < LCP_PRIORITY_CARDS,
+                          priority: shelf.id === lcpShelfId && cardIndex + leadSlots < LCP_PRIORITY_CARDS,
                         })}
                       </div>
                     ))}
@@ -1091,14 +1100,20 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
               New boutiques, exclusive drops, and curated edits — straight to your inbox.
             </p>
             {newsletterSubmitted ? (
-              <div className="mt-6 rounded-2xl bg-white/10 px-6 py-4 text-sm font-medium text-white">
-                ✓ You&apos;re on the list. Welcome to the Sanndikaa community.
+              <div
+                role="status"
+                aria-live="polite"
+                className="mt-6 rounded-2xl bg-white/10 px-6 py-4 text-sm font-medium text-white"
+              >
+                ✓ Subscribed successfully. Welcome to the Sanndikaa community.
               </div>
             ) : (
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  if (newsletterEmail.trim()) setNewsletterSubmitted(true);
+                  if (!newsletterEmail.trim()) return;
+                  setNewsletterEmail('');
+                  setNewsletterSubmitted(true);
                 }}
                 className="mt-6 flex w-full flex-col gap-3 sm:flex-row"
               >
@@ -1184,9 +1199,9 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
             <div>
               <h4 className="mb-4 text-xs font-bold uppercase tracking-widest text-gray-900">Support</h4>
               <ul className="space-y-3">
-                <li><Link href="/" className="text-sm text-gray-500 transition hover:text-gray-900">Help Center</Link></li>
-                <li><Link href="/" className="text-sm text-gray-500 transition hover:text-gray-900">How Ordering Works</Link></li>
-                <li><Link href="/" className="text-sm text-gray-500 transition hover:text-gray-900">Contact Us</Link></li>
+                <li><Link href="/support" className="text-sm text-gray-500 transition hover:text-gray-900">Help Center</Link></li>
+                <li><Link href="/support/how-ordering-works" className="text-sm text-gray-500 transition hover:text-gray-900">How Ordering Works</Link></li>
+                <li><Link href="/contact" className="text-sm text-gray-500 transition hover:text-gray-900">Contact Us</Link></li>
               </ul>
             </div>
 
@@ -1197,9 +1212,9 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
               © {new Date().getFullYear()} Sanndikaa. All rights reserved.
             </p>
             <div className="flex items-center gap-5">
-              <Link href="/" className="text-xs text-gray-400 transition hover:text-gray-600">Privacy Policy</Link>
-              <Link href="/" className="text-xs text-gray-400 transition hover:text-gray-600">Terms of Service</Link>
-              <Link href="/" className="text-xs text-gray-400 transition hover:text-gray-600">Cookie Policy</Link>
+              <Link href="/legal/privacy" className="text-xs text-gray-400 transition hover:text-gray-600">Privacy Policy</Link>
+              <Link href="/legal/terms" className="text-xs text-gray-400 transition hover:text-gray-600">Terms of Service</Link>
+              <Link href="/legal/cookies" className="text-xs text-gray-400 transition hover:text-gray-600">Cookie Policy</Link>
             </div>
           </div>
         </div>
