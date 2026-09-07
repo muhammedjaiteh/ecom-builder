@@ -6,7 +6,7 @@ A premium WhatsApp Broadcast Engine for advanced/flagship sellers to reach all c
 
 ## ✅ What Was Created
 
-### New File: `/app/dashboard/broadcast.tsx`
+### New File: `/app/dashboard/BroadcastEngine.tsx`
 
 **Features Implemented:**
 
@@ -448,7 +448,7 @@ flagship          | ✅ Full access
 
 ## 📞 Support
 
-For issues or questions about the WhatsApp Broadcast Engine, refer to the code comments in `/app/dashboard/broadcast.tsx`.
+For issues or questions about the WhatsApp Broadcast Engine, refer to the code comments in `/app/dashboard/BroadcastEngine.tsx`.
 
 ---
 

@@ -8,7 +8,7 @@ A premium WhatsApp Broadcast Engine has been successfully built for advanced/fla
 
 ## 📦 What Was Created
 
-### File: `/app/dashboard/broadcast.tsx` 
+### File: `/app/dashboard/BroadcastEngine.tsx` 
 
 **Complete standalone component with:**
 - ✅ Tier-gated access control
@@ -486,7 +486,7 @@ Uses existing packages:
 
 For questions or issues:
 1. Check BROADCAST_ENGINE_DOCS.md for detailed docs
-2. Review code comments in broadcast.tsx
+2. Review code comments in BroadcastEngine.tsx
 3. Check error messages in UI
 4. Verify Supabase configuration
 

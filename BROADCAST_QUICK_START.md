@@ -8,7 +8,7 @@ A premium WhatsApp Broadcast Engine for Advanced/Flagship sellers to reach all t
 
 ## 📍 Location
 
-**File:** `/app/dashboard/broadcast.tsx` (~24 KB, 600+ lines)
+**File:** `/app/dashboard/BroadcastEngine.tsx` (~24 KB, 600+ lines)
 
 **Access:** 
 - URL: `/dashboard/broadcast`
@@ -303,7 +303,7 @@ const { data: orders } = await supabase
 
 ### For Developers
 
-1. **View** `/app/dashboard/broadcast.tsx`
+1. **View** `/app/dashboard/BroadcastEngine.tsx`
 2. **Check** authentication with `getUser()`
 3. **Verify** tier with `subscription_tier`
 4. **Query** orders with customer relations

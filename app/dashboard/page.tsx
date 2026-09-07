@@ -104,17 +104,19 @@ export default function DashboardHomePage() {
     return () => { cancelled = true; };
   }, [router, supabase]);
 
-  // Vocabulary-aware headline metrics (sql/analytics.sql): cancelled orders
-  // are not sales, and Gross Revenue counts PAID ('completed') orders only —
-  // matching the shared AnalyticsDashboard so the same label can never show
-  // two different numbers. orderTotal() covers pre-backfill rows whose
-  // total_amount is still NULL. Derived from the cache, so a status commit in
-  // OrderActions moves these numbers without any state to keep in sync.
+  // Vocabulary-aware headline metrics (sql/analytics.sql): a sale is a PAID
+  // ('completed') order. Total Sales and Gross Revenue both derive from that
+  // set alone, so they can never disagree with the Paid Orders / Gross Revenue
+  // cards on /dashboard/analytics. Pending orders are not sales yet, and
+  // cancelled ones never were. Best Seller excludes cancelled orders only
+  // (their stock was returned), matching Top Performing Products there.
+  // orderTotal() covers pre-backfill rows whose total_amount is still NULL.
+  // Derived from the cache, so a status commit in OrderActions moves these
+  // numbers without any state to keep in sync.
   const { totalOrders, totalRevenue, topProduct } = useMemo(() => {
+    const completedOrders = orders.filter((o) => o.status === 'completed');
     const activeOrders = orders.filter((o) => o.status !== 'cancelled');
-    const revenue = orders
-      .filter((o) => o.status === 'completed')
-      .reduce((acc, order) => acc + orderTotal(order), 0);
+    const revenue = completedOrders.reduce((acc, order) => acc + orderTotal(order), 0);
 
     let bestSeller = 'None';
     if (activeOrders.length > 0) {
@@ -123,7 +125,7 @@ export default function DashboardHomePage() {
       bestSeller = Object.keys(counts).reduce((a, b) => (counts[a] > counts[b] ? a : b), 'None');
     }
 
-    return { totalOrders: activeOrders.length, totalRevenue: revenue, topProduct: bestSeller };
+    return { totalOrders: completedOrders.length, totalRevenue: revenue, topProduct: bestSeller };
   }, [orders]);
 
   // Honest-failure notice for the tiles that render order money/counts.

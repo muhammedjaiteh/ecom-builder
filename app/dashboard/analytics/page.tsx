@@ -130,7 +130,7 @@ export default function AnalyticsPage() {
             page's order buttons before the WhatsApp handoff. Skeletons keep
             the section heights while the parallel reads land. */}
         <section className="mt-10">
-          <h2 className="mb-4 text-sm font-bold uppercase tracking-widest text-gray-900">WhatsApp Interest</h2>
+          <h2 className="mb-4 text-sm font-bold uppercase tracking-widest text-gray-900">Product Page Taps</h2>
 
           {loading ? (
             <>
