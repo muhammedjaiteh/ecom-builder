@@ -5,10 +5,12 @@
 //
 // Rebuilt from the legacy page, which read flat columns the live schema does
 // not carry (orders.product_name / orders.price → rendered empty cells). This
-// page uses the exact relational query the command center's orders tab is
-// verified on — customers + order_items + products joins — and mounts the
-// shared OrderActions loop (components/orders/OrderActions.tsx): optimistic
-// race-guarded Mark-Paid, and the pending-only Cancel & Restock flow.
+// page reads the shared orders seam (lib/useOrders — the one cached,
+// shop-keyed customers + order_items + products join, also consumed by the
+// command center) and mounts the shared OrderActions loop
+// (components/orders/OrderActions.tsx), whose status commits land in that
+// same cache: optimistic race-guarded Mark-Paid, and the pending-only
+// Cancel & Restock flow. This page owns NO orders state of its own.
 // Vocabulary: 'completed' = terminal paid (labelled Paid), 'cancelled' =
 // terminal flake — see sql/analytics.sql.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -23,7 +25,7 @@ import {
 } from 'lucide-react';
 import OrderActions, { OrderActionToast, useOrderToast } from '@/components/orders/OrderActions';
 import { orderStatusLabel, orderTotal } from '@/lib/orderMetrics';
-import type { Order } from '@/lib/types';
+import { useOrders } from '@/lib/useOrders';
 
 // Full status vocabulary seen across the platform (legacy checkout wrote
 // 'new'; the current flow writes 'pending' → 'completed' [labelled 'Paid'] or
@@ -56,36 +58,28 @@ export default function OrdersPage() {
   );
 
   const [userId, setUserId] = useState<string | null>(null);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<StatusFilter>('all');
-  const [error, setError] = useState<string | null>(null);
   const { toast, showToast } = useOrderToast();
 
+  // Auth only — the seller id is the seam's cache key. No orders read here.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
+      if (cancelled) return;
       if (!user) { router.push('/login'); return; }
-      if (cancelled) return;
       setUserId(user.id);
-
-      const { data, error: fetchError } = await supabase
-        .from('orders')
-        .select(`id, total_amount, status, fulfillment_method, created_at, customers (name, phone_number, location), order_items (quantity, product_id, price_at_time, variant_details, products (name, image_url))`)
-        .eq('shop_id', user.id)
-        .order('created_at', { ascending: false });
-      if (cancelled) return;
-      if (fetchError) {
-        setError('Failed to load your orders. Please refresh.');
-      } else {
-        setOrders((data as unknown as Order[]) ?? []);
-      }
-      setLoading(false);
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
+
+  // Orders seam (lib/useOrders): the key is inactive until auth resolves, then
+  // paints from the per-user persisted cache when warm and revalidates in the
+  // background. OrderActions commits every status flip into this same key, so
+  // the list, the filter counts, and the lifetime value below all follow.
+  const { orders, isLoading, isError } = useOrders(userId ?? undefined);
+  const loading = !userId || isLoading;
 
   const counts = useMemo(() => ({
     all: orders.length,
@@ -108,11 +102,8 @@ export default function OrdersPage() {
   );
 
   // Status writes live in the shared OrderActions component (owner-scoped
-  // browser-client updates under orders_owner_update RLS, race-guarded).
-  // This applies its optimistic flips / resyncs to the local list.
-  const applyStatus = (orderId: string, status: Order['status']) => {
-    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status } : o)));
-  };
+  // browser-client updates under orders_owner_update RLS, race-guarded) and
+  // are committed straight into the orders cache — nothing to thread back.
 
   if (loading) {
     return <div className="flex min-h-screen items-center justify-center bg-[#F9F8F6]"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>;
@@ -162,9 +153,13 @@ export default function OrdersPage() {
           ))}
         </div>
 
-        {error && (
+        {/* Honest failure — SWR keeps retrying in the background. With a warm
+            cache the last synced list stays on screen and is labelled as such. */}
+        {isError && (
           <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800">
-            {error}
+            {orders.length > 0
+              ? 'Could not refresh your orders — showing the last synced list. Retrying automatically.'
+              : 'Failed to load your orders. Retrying automatically — check your connection.'}
           </div>
         )}
 
@@ -235,7 +230,6 @@ export default function OrdersPage() {
                           order={order}
                           userId={userId}
                           supabase={supabase}
-                          applyStatus={applyStatus}
                           onToast={showToast}
                         />
                       )}

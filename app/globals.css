@@ -26,6 +26,35 @@
   }
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   Dashboard design system (components/dashboard/*) — Step 1 of the dashboard
+   modernization. The seller dashboard's hardcoded hex values collapse into
+   these tokens; every dashboard primitive (DashboardShell, MetricCard, …)
+   reads a token, never a literal — change a value here and every dashboard
+   page follows. The palette is intentionally STABLE across
+   prefers-color-scheme: bone/forest IS the dashboard's identity, and the
+   shell paints its own canvas, so the site-wide --background flip above
+   never bleeds into it.
+   ───────────────────────────────────────────────────────────────────────── */
+:root {
+  --dash-bone: #f4f1ea;   /* canvas — warm off-white                        */
+  --dash-forest: #1b3a2d; /* ink + primary surfaces — deep forest           */
+  --dash-gold: #b99a5b;   /* accent + attention — muted gold, never a fill  */
+  --dash-sage: #8fa68e;   /* secondary surfaces + positive trend            */
+  --dash-radius: 2rem;    /* card and shell corner radius                   */
+}
+
+/* Tailwind v4 utilities for the tokens — bg-dash-bone, text-dash-forest/60,
+   border-dash-sage, ring-dash-gold, rounded-dash … Opacity modifiers resolve
+   through color-mix, so one token serves every tint. */
+@theme inline {
+  --color-dash-bone: var(--dash-bone);
+  --color-dash-forest: var(--dash-forest);
+  --color-dash-gold: var(--dash-gold);
+  --color-dash-sage: var(--dash-sage);
+  --radius-dash: var(--dash-radius);
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

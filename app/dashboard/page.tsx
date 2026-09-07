@@ -1,7 +1,7 @@
 'use client';
 
 import { createBrowserClient } from '@supabase/ssr';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Package, DollarSign, TrendingUp, Plus, Edit, Trash2, ExternalLink,
@@ -20,9 +20,10 @@ import VideoManager from '@/components/VideoManager';
 import ReviewForm from '@/components/ReviewForm';
 import ReviewList from '@/components/ReviewList';
 import { resolveDashboardUser } from '@/lib/dashboardAuth';
+import { useOrders } from '@/lib/useOrders';
 import { useShopRow } from '@/lib/useShopRow';
 import { useStorefrontUrl } from '@/lib/useStorefrontUrl';
-import type { Product, Shop, Order, CustomerCRM } from '@/lib/types';
+import type { Product, Shop, CustomerCRM } from '@/lib/types';
 
 type DashboardTab = 'overview' | 'analytics' | 'orders' | 'customers' | 'discounts' | 'videos' | 'reviews' | 'inventory' | 'broadcast';
 
@@ -113,8 +114,6 @@ function ReviewsPanel({ products }: { products: Product[] }) {
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [customersCRM, setCustomersCRM] = useState<CustomerCRM[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   
   const [activeTab, setActiveTabState] = useState<DashboardTab>('overview');
@@ -136,10 +135,6 @@ export default function Dashboard() {
     window.history.replaceState(null, '', url.toString());
   };
 
-  const [totalOrders, setTotalOrders] = useState(0);
-  const [totalRevenue, setTotalRevenue] = useState(0);
-  const [topProduct, setTopProduct] = useState('None');
-  const [ordersLoadError, setOrdersLoadError] = useState(false);
   const { toast, showToast } = useOrderToast();
 
   const supabase = createBrowserClient(
@@ -155,6 +150,13 @@ export default function Dashboard() {
   // and a brand save on Themes updates this header instantly via shopRowKey.
   const { shop } = useShopRow(userId);
 
+  // Orders seam (lib/useOrders): the same shop-keyed cache /dashboard/orders
+  // reads and OrderActions commits into. Warm cache → instant paint; every
+  // Mark-Paid / Undo / Cancel repaints the tiles, Recent Activity, the orders
+  // tab, and the CRM in the same frame. `isError` is the honest-failure flag:
+  // a failed read must never render as "D0 revenue".
+  const { orders, isLoading: ordersLoading, isError: ordersLoadError } = useOrders(userId ?? undefined);
+
   useEffect(() => {
     async function loadDashboard() {
       // Non-evicting offline auth (lib/dashboardAuth) — transport failure with
@@ -166,57 +168,62 @@ export default function Dashboard() {
 
       const { data: productData } = await supabase.from('products').select('id, image_url, name, price, category').eq('user_id', user.id).order('created_at', { ascending: false });
       setProducts((productData as Product[]) || []);
-
-      const { data: ordersData, error: ordersError } = await supabase.from('orders').select(`id, total_amount, status, fulfillment_method, created_at, customers (name, phone_number, location), order_items (quantity, product_id, price_at_time, variant_details, products (name, image_url))`).eq('shop_id', user.id).order('created_at', { ascending: false });
-
-      // Honest failure: a silent-empty read must never render as "D0 revenue".
-      setOrdersLoadError(Boolean(ordersError));
-
-      if (ordersData) {
-        const fetchedOrders = ordersData as unknown as Order[];
-        setOrders(fetchedOrders);
-
-        // Vocabulary-aware headline metrics (sql/analytics.sql): cancelled
-        // orders are not sales, and Gross Revenue counts PAID ('completed')
-        // orders only — matching the shared AnalyticsDashboard so the same
-        // label can never show two different numbers. orderTotal() covers
-        // pre-backfill rows whose total_amount is still NULL.
-        const activeOrders = fetchedOrders.filter((o) => o.status !== 'cancelled');
-        setTotalOrders(activeOrders.length);
-        const revenue = fetchedOrders
-          .filter((o) => o.status === 'completed')
-          .reduce((acc, order) => acc + orderTotal(order), 0);
-        setTotalRevenue(revenue);
-
-        if (activeOrders.length > 0) {
-          const counts: Record<string, number> = {};
-          activeOrders.forEach((o) => o.order_items.forEach((i) => { const pName = i.products?.name || 'Unknown Item'; counts[pName] = (counts[pName] || 0) + i.quantity; }));
-          setTopProduct(Object.keys(counts).reduce((a, b) => (counts[a] > counts[b] ? a : b), 'None'));
-        }
-
-        // CRM spend: cancelled orders never count toward Total Spent.
-        const crmMap = new Map<string, CustomerCRM>();
-        activeOrders.forEach((order) => {
-          const phone = order.customers.phone_number;
-          if (!crmMap.has(phone)) crmMap.set(phone, { phone, name: order.customers.name, location: order.customers.location, totalSpent: 0, orderCount: 0, lastOrderDate: order.created_at });
-          const c = crmMap.get(phone)!;
-          c.totalSpent += orderTotal(order);
-          c.orderCount += 1;
-          if (new Date(order.created_at) > new Date(c.lastOrderDate)) c.lastOrderDate = order.created_at;
-        });
-        setCustomersCRM(Array.from(crmMap.values()).sort((a, b) => b.totalSpent - a.totalSpent));
-      }
       setLoading(false);
     }
     loadDashboard();
   }, [router, supabase]);
 
+  // Vocabulary-aware headline metrics (sql/analytics.sql): cancelled orders
+  // are not sales, and Gross Revenue counts PAID ('completed') orders only —
+  // matching the shared AnalyticsDashboard so the same label can never show
+  // two different numbers. orderTotal() covers pre-backfill rows whose
+  // total_amount is still NULL. Derived from the cache, so a status commit in
+  // OrderActions moves these numbers without any state to keep in sync.
+  const { totalOrders, totalRevenue, topProduct, customersCRM } = useMemo(() => {
+    const activeOrders = orders.filter((o) => o.status !== 'cancelled');
+    const revenue = orders
+      .filter((o) => o.status === 'completed')
+      .reduce((acc, order) => acc + orderTotal(order), 0);
+
+    let bestSeller = 'None';
+    if (activeOrders.length > 0) {
+      const counts: Record<string, number> = {};
+      activeOrders.forEach((o) => o.order_items.forEach((i) => { const pName = i.products?.name || 'Unknown Item'; counts[pName] = (counts[pName] || 0) + i.quantity; }));
+      bestSeller = Object.keys(counts).reduce((a, b) => (counts[a] > counts[b] ? a : b), 'None');
+    }
+
+    // CRM spend: cancelled orders never count toward Total Spent.
+    const crmMap = new Map<string, CustomerCRM>();
+    activeOrders.forEach((order) => {
+      const phone = order.customers.phone_number;
+      if (!crmMap.has(phone)) crmMap.set(phone, { phone, name: order.customers.name, location: order.customers.location, totalSpent: 0, orderCount: 0, lastOrderDate: order.created_at });
+      const c = crmMap.get(phone)!;
+      c.totalSpent += orderTotal(order);
+      c.orderCount += 1;
+      if (new Date(order.created_at) > new Date(c.lastOrderDate)) c.lastOrderDate = order.created_at;
+    });
+
+    return {
+      totalOrders: activeOrders.length,
+      totalRevenue: revenue,
+      topProduct: bestSeller,
+      customersCRM: Array.from(crmMap.values()).sort((a, b) => b.totalSpent - a.totalSpent),
+    };
+  }, [orders]);
+
   // Status writes live in the shared OrderActions component (owner-scoped
-  // browser-client updates under orders_owner_update RLS, race-guarded);
-  // this applies its optimistic flips / resyncs to the local list.
-  const applyOrderStatus = (orderId: string, status: Order['status']) => {
-    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status } : o)));
-  };
+  // browser-client updates under orders_owner_update RLS, race-guarded) and
+  // are committed straight into the orders cache — nothing to thread back.
+
+  // Honest-failure notice for the panes that render order money/counts.
+  // SWR keeps retrying in the background; a warm cache stays on screen.
+  const ordersLoadNotice = ordersLoadError ? (
+    <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800">
+      {orders.length > 0
+        ? 'Could not refresh your orders — showing the last synced figures. Retrying automatically.'
+        : 'Could not load your orders — these figures are not live. Retrying automatically.'}
+    </div>
+  ) : null;
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this product?')) return;
@@ -251,7 +258,10 @@ export default function Dashboard() {
     image_url: product.image_url ?? null,
   }));
 
-  if (loading) return <div className="min-h-screen bg-[#F9F8F6] flex justify-center items-center"><Loader2 className="animate-spin text-gray-400" /></div>;
+  // Gate on auth + products (this effect) AND the seam's first orders verdict.
+  // ordersLoading is false on a warm persisted cache, so revisits paint at
+  // once; on a cold cache this waits exactly as the inline read used to.
+  if (loading || ordersLoading) return <div className="min-h-screen bg-[#F9F8F6] flex justify-center items-center"><Loader2 className="animate-spin text-gray-400" /></div>;
 
   // 🛑 THE VAULT DOOR: Zero-Trust Security Check
   if (shop?.subscription_tier === 'pending' || shop?.subscription_tier === 'suspended') {
@@ -350,6 +360,7 @@ export default function Dashboard() {
         {/* OVERVIEW TAB */}
         {activeTab === 'overview' && (
           <div className="animate-in fade-in duration-300">
+            {ordersLoadNotice}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6 mb-8">
               <div className="rounded-[2rem] bg-[#1a2e1a] p-6 text-white shadow-lg relative overflow-hidden">
                 <div className="absolute -mr-4 -mt-4 h-24 w-24 rounded-full bg-white/10 blur-2xl" />
@@ -399,6 +410,7 @@ export default function Dashboard() {
         {/* ORDERS TAB */}
         {activeTab === 'orders' && (
           <div className="animate-in fade-in duration-300 space-y-4">
+            {ordersLoadNotice}
             {orders.length === 0 ? (
               <div className="rounded-[2rem] bg-white border border-dashed border-gray-200 p-12 text-center">
                 <ShoppingCart className="mx-auto mb-4 h-10 w-10 text-gray-200" />
@@ -445,7 +457,6 @@ export default function Dashboard() {
                           order={order}
                           userId={userId}
                           supabase={supabase}
-                          applyStatus={applyOrderStatus}
                           onToast={showToast}
                         />
                       )}

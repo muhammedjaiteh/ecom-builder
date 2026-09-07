@@ -6,6 +6,7 @@ import { Ban, CheckCircle2, Loader2 } from 'lucide-react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import BottomSheet from '@/components/website/BottomSheet';
 import { useIsMobileViewport } from '@/lib/useIsMobileViewport';
+import { patchOrderStatus, useOrders } from '@/lib/useOrders';
 import type { Order } from '@/lib/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -22,11 +23,18 @@ import type { Order } from '@/lib/types';
 // the authenticated seller may call it a fortiori. No service-role API route
 // is needed.
 //
+// STATE OWNERSHIP: this component owns NO order state and prop-drills NONE.
+// Every status change — optimistic flip, honest rollback, post-race resync —
+// is committed to the shared orders cache (lib/useOrders, key
+// ordersKey(shopId)) through the hook's bound `mutate`. Whatever renders
+// from that seam (list rows, filter counts, revenue tiles, either surface)
+// repaints in the same frame; nothing is threaded back up to a page.
+//
 // MECHANICS:
 //   · Mark as Paid — optimistic pending→completed flip with a drawn-check
 //     micro-celebration; the UPDATE carries .eq('status','pending') +
 //     .select('id') so zero rows updated means someone else acted first —
-//     the local state is then resynced from the database, never guessed.
+//     the cache is then revalidated from the database, never guessed.
 //   · Cancel & Restock — destructive confirm via BottomSheet (mobile) /
 //     centered modal with Escape parity (desktop — the domains-page
 //     precedent). On confirm: UPDATE … SET status='cancelled' WHERE
@@ -52,11 +60,16 @@ type TransitionResult = 'ok' | 'raced' | 'failed';
 
 type OrderActionsProps = {
   order: ActionableOrder;
-  /** The authenticated seller (shop_id) — owner scope for every write. */
+  /** The authenticated seller (shop_id) — owner scope for every write AND
+   *  the orders-cache key this component commits into. */
   userId: string;
   supabase: SupabaseClient;
-  /** Apply a status to the parent's local orders state (optimistic + resync). */
-  applyStatus: (orderId: string, status: Order['status']) => void;
+  /**
+   * @deprecated Step-2 compile bridge ONLY — accepted so the two pages that
+   * still pass their local setState compile until Step 3 moves them onto
+   * useOrders. It is NEVER invoked: status changes go through the orders
+   * cache, not back up to a page. Step 3 deletes this prop and both call sites.
+   */
   onToast: (message: string) => void;
 };
 
@@ -112,8 +125,12 @@ function DrawnCheck() {
   );
 }
 
-export default function OrderActions({ order, userId, supabase, applyStatus, onToast }: OrderActionsProps) {
+export default function OrderActions({ order, userId, supabase, onToast }: OrderActionsProps) {
   const isMobile = useIsMobileViewport();
+  // The shared orders seam. Same key as every row on this page and on the
+  // other orders surface — SWR dedupes the subscription, so N rows cost one
+  // fetch, and one commit here repaints all of them.
+  const { mutate } = useOrders(userId);
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -136,6 +153,24 @@ export default function OrderActions({ order, userId, supabase, applyStatus, onT
     celebrationTimer.current = setTimeout(() => setCelebrating(false), 1500);
   };
 
+  /** Commit a status for THIS order into the shared orders cache without a
+   *  round-trip (revalidate: false — the write path below owns the truth).
+   *  SWR also stamps the mutation so any fetch already in flight is discarded
+   *  rather than overwriting the newer local state.
+   *  EDGE: if the cache holds no rows yet (this row was painted from a
+   *  non-seam source while the seam's first fetch was still in flight) there
+   *  is nothing to patch — revalidate instead so the cache fills with truth. */
+  const commitStatus = async (status: Order['status']) => {
+    const next = await mutate((current) => patchOrderStatus(current, order.id, status), { revalidate: false });
+    if (next === undefined) await mutate();
+  };
+
+  /** Pull the real state after a detected race — shown, never guessed. A full
+   *  revalidation through the seam's fetcher, so every consumer resyncs. */
+  const resyncFromDatabase = async () => {
+    await mutate();
+  };
+
   /** Guarded owner-scoped status transition. .select('id') exposes the row
    *  count: zero rows = the `from` precondition no longer held (raced). */
   const transition = async (from: Order['status'], to: Order['status']): Promise<TransitionResult> => {
@@ -150,12 +185,6 @@ export default function OrderActions({ order, userId, supabase, applyStatus, onT
     return data && data.length > 0 ? 'ok' : 'raced';
   };
 
-  /** Pull the real status after a detected race — shown, never guessed. */
-  const resyncStatus = async () => {
-    const { data } = await supabase.from('orders').select('status').eq('id', order.id).maybeSingle();
-    if (data?.status) applyStatus(order.id, data.status as Order['status']);
-  };
-
   // Mark Paid covers every NON-TERMINAL status — the legacy vocabulary
   // ('new'/'processing'/'shipped', pre-rebuild checkout) always had this
   // button and keeps it. The transition guards on the order's ACTUAL current
@@ -165,17 +194,22 @@ export default function OrderActions({ order, userId, supabase, applyStatus, onT
   const handleMarkPaid = async () => {
     if (busy) return;
     setBusy(true);
-    applyStatus(order.id, 'completed'); // optimistic flip
+    void commitStatus('completed'); // optimistic flip, cache-wide
     startCelebration();
     const result = await transition(fromStatus, 'completed');
-    if (result === 'failed') {
+    if (result === 'ok') {
+      // Re-assert after the write lands: idempotent when the optimistic patch
+      // took, and closes the first-load edge where the optimistic call had to
+      // revalidate (a fetch that may have raced ahead of this UPDATE).
+      await commitStatus('completed');
+    } else if (result === 'failed') {
       setCelebrating(false);
-      applyStatus(order.id, fromStatus); // honest rollback
+      await commitStatus(fromStatus); // honest rollback
       onToast('Could not mark this order as paid — nothing was changed. Check your connection and try again.');
-    } else if (result === 'raced') {
+    } else {
       setCelebrating(false);
       onToast('This order was already updated somewhere else — showing its latest status.');
-      await resyncStatus();
+      await resyncFromDatabase();
     }
     setBusy(false);
   };
@@ -183,14 +217,16 @@ export default function OrderActions({ order, userId, supabase, applyStatus, onT
   const handleUndo = async () => {
     if (busy) return;
     setBusy(true);
-    applyStatus(order.id, 'pending'); // optimistic (the long-standing Undo flow)
+    void commitStatus('pending'); // optimistic (the long-standing Undo flow)
     const result = await transition('completed', 'pending');
-    if (result === 'failed') {
-      applyStatus(order.id, 'completed');
+    if (result === 'ok') {
+      await commitStatus('pending'); // re-assert once the write has landed
+    } else if (result === 'failed') {
+      await commitStatus('completed'); // honest rollback
       onToast('Could not undo — nothing was changed. Check your connection and try again.');
-    } else if (result === 'raced') {
+    } else {
       onToast('This order was already updated somewhere else — showing its latest status.');
-      await resyncStatus();
+      await resyncFromDatabase();
     }
     setBusy(false);
   };
@@ -214,11 +250,11 @@ export default function OrderActions({ order, userId, supabase, applyStatus, onT
       setCancelling(false);
       setConfirming(false);
       onToast('This order was already updated somewhere else — no stock was changed.');
-      await resyncStatus();
+      await resyncFromDatabase();
       return;
     }
 
-    applyStatus(order.id, 'cancelled');
+    await commitStatus('cancelled');
     setConfirming(false);
 
     // Restock per order_item. Lines whose product row is gone (no product_id)
