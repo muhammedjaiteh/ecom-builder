@@ -3,19 +3,69 @@
 import { useCart, CartItem } from './CartProvider';
 import { X, ShoppingBag, Plus, Minus, Trash2, Store, ArrowRight, Loader2, User, Phone, Truck, MapPin, CheckCircle2 } from 'lucide-react';
 import { useState } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
 // Shared order-flow helpers (lib/orderFlow) — one phone sanitizer + wa.me
 // builder across the cart, the marketplace PDP, and the /site storefront PDP.
 // openOrderHandoff: popup-safe WhatsApp handoff (window opened synchronously
-// inside the click, BEFORE the awaited database writes — see lib/orderFlow).
+// inside the click, BEFORE the awaited checkout round-trip — see lib/orderFlow).
 import { buildWhatsAppLink as generateWhatsAppLink, openOrderHandoff } from '@/lib/orderFlow';
+
+// ─── Server contract — mirrors app/api/checkout/route.ts ─────────────────────
+// The browser no longer touches `customers`, `orders`, `order_items` or the
+// stock RPCs. It sends identities + quantities only; the route re-prices every
+// line from `products.price` with the service-role key, reserves stock
+// atomically, writes the order, and returns the VERIFIED numbers the WhatsApp
+// receipt below is built from. Cart prices are never trusted for money.
+
+interface CheckoutLinePayload {
+  productId: string;
+  quantity: number;
+  variantDetails: string | null;
+}
+
+interface CheckoutRequestPayload {
+  shopId: string;
+  customer: { name: string; phone: string };
+  fulfillmentMethod: 'delivery' | 'pickup';
+  /** Required by the route when fulfillmentMethod === 'delivery'. */
+  deliveryAddress?: string;
+  items: CheckoutLinePayload[];
+  /** What the buyer saw in the drawer — drift detection only, never used for money. */
+  expectedTotal: number;
+}
+
+interface VerifiedLine {
+  productId: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+  variantDetails: string | null;
+}
+
+interface CheckoutSuccessResponse {
+  ok: true;
+  orderId: string;
+  orderRef: string;
+  currency: string;
+  total: number;
+  priceChanged: boolean;
+  lines: VerifiedLine[];
+}
+
+interface CheckoutFailureResponse {
+  ok: false;
+  error?: string;
+  code?: 'ITEM_UNAVAILABLE' | 'OUT_OF_STOCK';
+  productId?: string;
+}
+
+type CheckoutResponse = CheckoutSuccessResponse | CheckoutFailureResponse;
+
+const GENERIC_CHECKOUT_FAILURE =
+  'Unable to process checkout right now. Your order was not sent. Please try again.';
 
 export default function Cart() {
   const { cartItems, isCartOpen, setIsCartOpen, updateQuantity, removeFromCart } = useCart();
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
   const [activeCheckoutShop, setActiveCheckoutShop] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState('');
@@ -34,149 +84,127 @@ export default function Cart() {
     return acc;
   }, {} as Record<string, { shopName: string, shopWhatsapp: string, items: CartItem[], total: number }>);
 
-  // Compensation for the stock-first checkout: re-credit units already
-  // deducted when a later step fails. Best-effort — a failed compensation is
-  // logged for the seller-support trail, never surfaced to the buyer twice.
-  const rollbackStock = async (items: CartItem[]) => {
-    for (const item of items) {
-      const { error } = await supabase.rpc('increment_stock', {
-        product_id_param: item.productId,
-        quantity_param: item.quantity,
-      });
-      if (error) {
-        console.error(`[checkout] stock compensation failed for product ${item.productId}:`, error.message);
-      }
-    }
-  };
-
   // 🛡️ RESTORED FUNCTION DECLARATION WITH STRICT TYPES
   const handleProcessCheckout = async (shopId: string, shopData: { shopName: string, shopWhatsapp: string, items: CartItem[], total: number }) => {
-    if (!customerName.trim() || !customerPhone.trim()) return alert('Please enter your Name and Phone/WhatsApp Number.');
-    if (fulfillmentMethod === 'delivery' && !deliveryAddress.trim()) return alert('Please provide a delivery address.');
+    const name = customerName.trim();
+    const phone = customerPhone.trim();
+    const address = deliveryAddress.trim();
+    if (!name || !phone) return alert('Please enter your Name and Phone/WhatsApp Number.');
+    if (fulfillmentMethod === 'delivery' && !address) return alert('Please provide a delivery address.');
+
+    // Pre-flight the seller's number BEFORE the server reserves stock or
+    // writes an order nobody could be handed to. Link validity depends only
+    // on the phone; the real receipt is rebuilt from verified numbers below.
+    if (!generateWhatsAppLink(shopData.shopWhatsapp, 'preflight')) {
+      alert(`Sorry, ${shopData.shopName} has not provided a valid WhatsApp number.`);
+      return;
+    }
 
     // Hoisted so the outer catch can always close the interstitial tab.
     let handoff: ReturnType<typeof openOrderHandoff> | null = null;
 
     try {
-      // 1. GENERATE A RANDOM ORDER REF FOR THE RECEIPT
-      const orderRef = Math.random().toString(36).substring(2, 8).toUpperCase();
+      // 1. OPEN THE HANDOFF WINDOW *SYNCHRONOUSLY* — no await has run yet, so
+      // the browser's transient activation is still alive and the tab opens
+      // popup-block-free. It shows a branded "Preparing your order…"
+      // interstitial while the server works; only after a 200 does it
+      // navigate to WhatsApp. (A delayed window.open after awaited network
+      // calls is silently blocked on slow connections.)
+      handoff = openOrderHandoff();
+      setIsProcessing(true);
 
-      // 2. BUILD THE LUXURY DIGITAL RECEIPT
+      // 2. SERVER-AUTHORITATIVE CHECKOUT. Identities + quantities only — the
+      // route re-prices, reserves stock atomically and writes customers →
+      // orders → order_items with the service-role key. `expectedTotal` is the
+      // drawer total, sent purely so the server can flag price drift.
+      const payload: CheckoutRequestPayload = {
+        shopId,
+        customer: { name, phone },
+        fulfillmentMethod,
+        ...(fulfillmentMethod === 'delivery' ? { deliveryAddress: address } : {}),
+        items: shopData.items.map((item) => ({
+          productId: item.productId,
+          quantity: item.quantity,
+          variantDetails: item.variant_details ?? null,
+        })),
+        expectedTotal: shopData.total,
+      };
+
+      const response = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      // A non-JSON body (proxy error page, connection dropped mid-response)
+      // must not throw past the status handling below.
+      const result = (await response.json().catch(() => null)) as CheckoutResponse | null;
+
+      // 3. 409 — the server refused honestly: an item vanished or moved shop
+      // (ITEM_UNAVAILABLE), or stock can no longer cover the requested
+      // quantity (OUT_OF_STOCK). Its message names the product and the fix.
+      if (response.status === 409) {
+        handoff.close();
+        const reason = result && !result.ok && result.error ? result.error : null;
+        alert(reason ?? 'Prices or stock changed while you were checking out. Please review your bag and try again.');
+        return;
+      }
+
+      // 4. Anything else that is not a clean 200 (400 bad payload, 500 write
+      // failure, 503 service unavailable, unparseable body) — generic failure.
+      // The server has already released any reserved stock in these cases.
+      if (!response.ok || !result || !result.ok) {
+        handoff.close();
+        alert(GENERIC_CHECKOUT_FAILURE);
+        return;
+      }
+
+      // 5. BUILD THE LUXURY DIGITAL RECEIPT FROM SERVER-VERIFIED NUMBERS ONLY.
+      // Line names, unit prices, line totals, the grand total and the order
+      // reference all come from the response — never from cart state.
+      const verifiedTotal = result.total;
+      const orderId = result.orderId;
+      const orderRef = result.orderRef || orderId.replace(/-/g, '').slice(-6).toUpperCase();
+
       let message = `🛍️ *NEW ORDER via SANNDIKAA*\n`;
       message += `Order Ref: #${orderRef}\n`;
       message += `──────────────────\n\n`;
       message += `Hi *${shopData.shopName}*! I would like to place an order for:\n\n`;
-      
-      shopData.items.forEach(item => {
-        message += `🔹 *${item.quantity}x ${item.name}*\n`;
-        if (item.variant_details && item.variant_details !== 'None') {
-          message += `   Options: ${item.variant_details}\n`;
+
+      result.lines.forEach((line) => {
+        message += `🔹 *${line.quantity}x ${line.name}*\n`;
+        if (line.variantDetails && line.variantDetails !== 'None') {
+          message += `   Options: ${line.variantDetails}\n`;
         }
-        message += `   Price: D${(item.price * item.quantity).toLocaleString()}\n\n`;
+        message += `   Price: D${line.lineTotal.toLocaleString()}\n\n`;
       });
-      
+
       message += `──────────────────\n`;
-      message += `💰 *TOTAL AMOUNT: D${shopData.total.toLocaleString()}*\n`;
+      message += `💰 *TOTAL AMOUNT: D${verifiedTotal.toLocaleString()}*\n`;
       message += `──────────────────\n\n`;
-      
+
+      if (result.priceChanged) {
+        message += `ℹ️ Prices changed since these items were added to the bag; this total reflects the shop's current prices.\n\n`;
+      }
+
       message += `👤 *CUSTOMER DETAILS:*\n`;
-      message += `Name: ${customerName}\n`;
-      message += `Phone: ${customerPhone}\n`;
+      message += `Name: ${name}\n`;
+      message += `Phone: ${phone}\n`;
       message += `Fulfillment: ${fulfillmentMethod === 'delivery' ? '🚚 Delivery' : '🏪 Store Pickup'}\n`;
       if (fulfillmentMethod === 'delivery') {
-        message += `Address: ${deliveryAddress.trim()}\n`;
+        message += `Address: ${address}\n`;
       }
       message += `\n*Please let me know how to pay and confirm this order!*`;
 
       const whatsappLink = generateWhatsAppLink(shopData.shopWhatsapp, message);
       if (!whatsappLink) {
-        alert(`Sorry, ${shopData.shopName} has not provided a valid WhatsApp number.`);
+        // Unreachable after the pre-flight (validity depends only on the
+        // number), but the order IS recorded now — say so rather than "not sent".
+        handoff.close();
+        shopData.items.forEach(item => removeFromCart(item.id));
+        setActiveCheckoutShop(null);
+        alert(`Your order #${orderRef} was recorded, but WhatsApp could not be opened. Please contact ${shopData.shopName} directly and quote this reference.`);
         return;
-      }
-
-      // 3. OPEN THE HANDOFF WINDOW *SYNCHRONOUSLY* — no await has run yet, so
-      // the browser's transient activation is still alive and the tab opens
-      // popup-block-free. It shows a branded "Preparing your order…"
-      // interstitial while the writes below run; only after they succeed does
-      // it navigate to WhatsApp. The old flow awaited four writes first, and
-      // on slow networks the delayed window.open was silently blocked: the
-      // order row existed but the buyer never reached the seller.
-      handoff = openOrderHandoff();
-      setIsProcessing(true);
-
-      // 4. INVENTORY FIRST (atomic, honest): decrement_stock rejects when the
-      // remaining stock cannot cover the line, so an oversell is caught BEFORE
-      // any customer/order rows exist. On rejection, re-credit what this
-      // checkout already deducted and fail with the real reason.
-      const deducted: CartItem[] = [];
-      for (const item of shopData.items) {
-        const { data: stockOk, error: stockError } = await supabase.rpc('decrement_stock', {
-          product_id_param: item.productId,
-          quantity_param: item.quantity,
-        });
-        if (stockError || stockOk === false) {
-          await rollbackStock(deducted);
-          handoff.close();
-          alert(
-            stockError
-              ? 'Unable to reserve your items right now. Your order was not sent. Please try again.'
-              : `Stock changed while you were checking out: "${item.name}" no longer has ${item.quantity} unit${item.quantity > 1 ? 's' : ''} available. Please adjust the quantity and try again.`
-          );
-          return;
-        }
-        deducted.push(item);
-      }
-
-      // 5. STRICT DATABASE INSERTS — any failure re-credits the reserved
-      // stock, closes the interstitial, and surfaces an honest error. The
-      // invariant: an order write never completes without the buyer reaching
-      // WhatsApp or seeing an explicit failure state.
-      try {
-        const { data: customerData, error: customerError } = await supabase
-          .from('customers')
-          .insert({
-            name: customerName,
-            phone_number: customerPhone,
-            location: fulfillmentMethod === 'delivery' ? deliveryAddress : 'Pickup'
-          })
-          .select()
-          .single();
-
-        if (customerError || !customerData) {
-          throw new Error('Failed to create customer record.');
-        }
-
-        const { data: orderData, error: orderError } = await supabase
-          .from('orders')
-          .insert({
-            shop_id: shopId,
-            customer_id: customerData.id,
-            total_amount: shopData.total,
-            fulfillment_method: fulfillmentMethod,
-            status: 'pending'
-          })
-          .select()
-          .single();
-
-        if (orderError || !orderData) {
-          throw new Error('Failed to create order record.');
-        }
-
-        const orderItemsToInsert = shopData.items.map((item) => ({
-          order_id: orderData.id,
-          product_id: item.productId,
-          quantity: item.quantity,
-          price_at_time: item.price,
-          variant_details: item.variant_details
-        }));
-
-        const { error: orderItemsError } = await supabase.from('order_items').insert(orderItemsToInsert);
-        if (orderItemsError) {
-          throw new Error('Failed to create order items.');
-        }
-      } catch (writeError) {
-        await rollbackStock(deducted);
-        throw writeError;
       }
 
       // 6. HANDOFF: the order is fully recorded — point the already-open tab
@@ -197,7 +225,7 @@ export default function Cart() {
     } catch (error) {
       handoff?.close();
       console.error("Checkout Error:", error);
-      alert("Unable to process checkout right now. Your order was not sent. Please try again.");
+      alert(GENERIC_CHECKOUT_FAILURE);
     } finally {
       setIsProcessing(false);
     }
