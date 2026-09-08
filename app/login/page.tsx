@@ -88,7 +88,12 @@ export default function LoginPage() {
               </div>
 
               <div>
-                <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">Password</label>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-500">Password</label>
+                  <Link href="/forgot-password" className="-my-2 py-2 text-[10px] font-bold uppercase tracking-widest text-[#1a2e1a] hover:underline">
+                    Forgot password?
+                  </Link>
+                </div>
                 <input
                   type="password"
                   value={password}
@@ -111,7 +116,7 @@ export default function LoginPage() {
           </form>
 
           <p className="mt-10 text-center text-xs font-medium text-gray-500">
-            Don't have a boutique yet?{' '}
+            Don&apos;t have a boutique yet?{' '}
             <Link href="/register" className="font-bold text-[#1a2e1a] hover:underline">
               Apply to open one
             </Link>

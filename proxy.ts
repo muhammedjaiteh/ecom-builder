@@ -4,7 +4,12 @@ import { resolveAdmin } from '@/lib/adminGuard';
 import { readTenantSlug } from '@/lib/globalConfig';
 import { slugify } from '@/lib/slugify';
 
-const PROTECTED_PREFIXES = ['/dashboard', '/admin'];
+// /update-password is reached ONLY through a recovery session minted by
+// app/auth/callback — an anonymous hit means the link expired, was opened in
+// a different browser (no PKCE verifier cookie), or cookies never landed.
+// That visitor is sent to request a fresh link WITH an explanation
+// (/forgot-password?error=expired), never to a silent /login.
+const PROTECTED_PREFIXES = ['/dashboard', '/admin', '/update-password'];
 
 // ═════════════════════════════════════════════════════════════════════════════
 // TENANT ROUTING (BYOD custom domains — Step 2)
@@ -212,9 +217,14 @@ export async function proxy(request: NextRequest) {
   const isProtected = PROTECTED_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 
   if (isProtected && !user) {
-    const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = '/login';
-    return NextResponse.redirect(loginUrl);
+    const redirectUrl = request.nextUrl.clone();
+    if (pathname.startsWith('/update-password')) {
+      redirectUrl.pathname = '/forgot-password';
+      redirectUrl.search = '?error=expired';
+    } else {
+      redirectUrl.pathname = '/login';
+    }
+    return NextResponse.redirect(redirectUrl);
   }
 
   // CEO Vault — Wall 1 (UX, fail-closed): /admin is CEO-only. Redirect any
