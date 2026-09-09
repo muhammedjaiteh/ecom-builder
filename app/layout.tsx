@@ -1,6 +1,7 @@
 import { CartProvider } from "../components/CartProvider";
 import Cart from "../components/Cart"; // 🚀 Added the Cart UI
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import {
   Bodoni_Moda,
   Cormorant_Garamond,
@@ -86,9 +87,23 @@ const bodoni = Bodoni_Moda({
 const APP_ORIGIN =
   process.env.PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? 'https://sanndikaa-vip.vercel.app';
 
+// Global brand copy — one source of truth for <title>, Open Graph and Twitter
+// so WhatsApp / Facebook / X link previews unfurl with identical wording.
+// Dual-market positioning: buyers (curated African boutiques) AND sellers
+// (launch a premium storefront) in a single sentence.
+const SITE_TITLE = "Sanndikaa | Africa's Finest Boutiques";
+const SITE_DESCRIPTION =
+  'Shop curated collections from independent African designers and artisans, or launch your own premium digital storefront today.';
+
+// Meta Pixel — build-time public env. Pixel IDs are numeric; the digits-only
+// guard means a malformed/empty value renders NOTHING rather than an inline
+// script with arbitrary text interpolated into it.
+const META_PIXEL_ID = (process.env.NEXT_PUBLIC_META_PIXEL_ID ?? '').trim();
+const HAS_META_PIXEL = /^\d{5,20}$/.test(META_PIXEL_ID);
+
 export const metadata: Metadata = {
-  title: 'Sanndikaa - The Ultimate E-commerce Platform',
-  description: 'Discover authentic Gambian products. Buy and sell on The Gambian Marketplace.',
+  title: SITE_TITLE,
+  description: SITE_DESCRIPTION,
   manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,
@@ -96,8 +111,9 @@ export const metadata: Metadata = {
     title: 'Sanndikaa',
   },
   openGraph: {
-    title: 'Sanndikaa - The Ultimate E-commerce Platform',
-    description: 'Discover authentic Gambian products. Buy and sell on The Gambian Marketplace.',
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    siteName: 'Sanndikaa',
     url: APP_ORIGIN,
     type: 'website',
     images: [
@@ -105,14 +121,14 @@ export const metadata: Metadata = {
         url: `${APP_ORIGIN}/og-image.png`,
         width: 1200,
         height: 630,
-        alt: 'Sanndikaa E-commerce Platform',
+        alt: "Sanndikaa — Africa's Finest Boutiques",
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Sanndikaa - The Ultimate E-commerce Platform',
-    description: 'Discover authentic Gambian products. Buy and sell on The Gambian Marketplace.',
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
     images: [`${APP_ORIGIN}/og-image.png`],
   },
 };
@@ -143,6 +159,36 @@ export default function RootLayout({
           {children}
           <Cart />
         </CartProvider>
+
+        {/* Meta Pixel base code. afterInteractive: loads post-hydration so it
+            never competes with LCP on slow Gambian mobile networks. Rendered
+            only when NEXT_PUBLIC_META_PIXEL_ID is a valid numeric pixel id. */}
+        {HAS_META_PIXEL && (
+          <>
+            <Script id="meta-pixel" strategy="afterInteractive">
+              {`!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '${META_PIXEL_ID}');
+fbq('track', 'PageView');`}
+            </Script>
+            <noscript>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                height="1"
+                width="1"
+                style={{ display: 'none' }}
+                alt=""
+                src={`https://www.facebook.com/tr?id=${META_PIXEL_ID}&ev=PageView&noscript=1`}
+              />
+            </noscript>
+          </>
+        )}
       </body>
     </html>
   );
