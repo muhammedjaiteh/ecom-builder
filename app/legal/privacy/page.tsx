@@ -76,6 +76,9 @@ export default function PrivacyPolicyPage() {
             <Link href="/legal/terms" className="text-mall-forest/60 transition hover:text-mall-forest">
               Terms
             </Link>
+            <Link href="/legal/cookies" className="text-mall-forest/60 transition hover:text-mall-forest">
+              Cookies
+            </Link>
           </nav>
         </div>
       </header>
@@ -420,6 +423,7 @@ export default function PrivacyPolicyPage() {
           <p>© {new Date().getFullYear()} Sanndikaa. All rights reserved.</p>
           <div className="flex items-center gap-5">
             <Link href="/legal/terms" className="transition hover:text-mall-forest">Terms of Service</Link>
+            <Link href="/legal/cookies" className="transition hover:text-mall-forest">Cookie Policy</Link>
             <Link href="/" className="transition hover:text-mall-forest">Back to the marketplace</Link>
           </div>
         </div>

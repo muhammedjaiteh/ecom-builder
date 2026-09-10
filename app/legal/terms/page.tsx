@@ -75,6 +75,9 @@ export default function TermsOfServicePage() {
               Privacy
             </Link>
             <span aria-current="page" className="font-semibold text-mall-forest">Terms</span>
+            <Link href="/legal/cookies" className="text-mall-forest/60 transition hover:text-mall-forest">
+              Cookies
+            </Link>
           </nav>
         </div>
       </header>
@@ -452,6 +455,7 @@ export default function TermsOfServicePage() {
           <p>© {new Date().getFullYear()} Sanndikaa. All rights reserved.</p>
           <div className="flex items-center gap-5">
             <Link href="/legal/privacy" className="transition hover:text-mall-forest">Privacy Policy</Link>
+            <Link href="/legal/cookies" className="transition hover:text-mall-forest">Cookie Policy</Link>
             <Link href="/" className="transition hover:text-mall-forest">Back to the marketplace</Link>
           </div>
         </div>

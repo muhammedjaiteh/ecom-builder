@@ -1,6 +1,25 @@
 import type { NextConfig } from "next";
 
+// Platform support WhatsApp. Mirrors SUPPORT_WHATSAPP in lib/tiers.ts —
+// duplicated here on purpose: next.config is evaluated by the Next CLI
+// outside the app's `@/` alias / bundler, so it must not import app code.
+// Keep both in lockstep.
+const SUPPORT_WHATSAPP_URL = 'https://wa.me/447599710468';
+
 const nextConfig: NextConfig = {
+  // Footer routes that never got a page. Meta / TikTok ad-account reviewers
+  // crawl every footer link, and a 404 is a policy strike, so each one 308s
+  // to a real destination: "Contact Us" / "Help Center" go straight to the
+  // WhatsApp line that IS our support desk; "How Ordering Works" goes home
+  // to the marketplace (the storefront itself is the explainer). Redirects
+  // run before proxy.ts, so tenant custom domains are covered identically.
+  async redirects() {
+    return [
+      { source: '/contact', destination: SUPPORT_WHATSAPP_URL, permanent: true },
+      { source: '/support', destination: SUPPORT_WHATSAPP_URL, permanent: true },
+      { source: '/support/how-ordering-works', destination: '/', permanent: true },
+    ];
+  },
   images: {
     // Exact, minimal allowlist for the default Vercel optimizer. Keep in
     // lockstep with OPTIMIZED_* in lib/imageLoader.ts (unknown hosts render
