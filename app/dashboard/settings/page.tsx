@@ -13,10 +13,14 @@
 //      nothing consumes would lie). Region and owner-name are OMITTED: the
 //      shops table has no such columns (signup captures shop_name + phone
 //      only) — no dead fields.
-//   2. PLAN & BILLING — lib/tiers TIER_MATRIX as premium cards; current plan
-//      highlighted; upgrade CTA = the existing WhatsApp payment flow with the
-//      invoice prefilled at the NEW matrix prices. Legacy 'advanced' payers
-//      see an honest legacy chip (they keep Studio + domain — lib/tiers).
+//   2. PLAN & BILLING — ONE card: the shop's ACTIVE tier only (no pricing
+//      grid — that lives on /pricing). Starter/Pro carry a single "Upgrade
+//      Plan" CTA = the existing WhatsApp upgrade flow, prefilled with every
+//      tier above the current one at lib/tiers matrix prices. Flagship
+//      renders the forest + gold crown treatment with NO upgrade affordance
+//      (nothing left to sell). Legacy 'advanced' payers get an honest legacy
+//      card built from the capabilities lib/tiers still grants them (Studio +
+//      domain + broadcast) with no fabricated price, and a Flagship upgrade.
 //   3. CUSTOM DOMAINS HUB — the SHARED components/domains/DomainManager
 //      (extracted from the Online Store page — reuse, never duplicate),
 //      tier-gated via canUseCustomDomain.
@@ -36,17 +40,65 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
-  AlertTriangle, ArrowLeft, BadgeCheck, Banknote, Check, CheckCircle2,
+  AlertTriangle, ArrowLeft, ArrowRight, BadgeCheck, Banknote, Check, CheckCircle2,
   ChevronDown, CreditCard, Crown, Globe, HelpCircle, Loader2, Lock,
   MessageCircle, Store, WifiOff,
 } from 'lucide-react';
 import DomainManager from '@/components/domains/DomainManager';
 import { resolveDashboardUser } from '@/lib/dashboardAuth';
+import { getTierRank } from '@/lib/feedRanking';
 import {
-  SUPPORT_WHATSAPP, TIER_MATRIX, canUseCustomDomain, canUseStudio,
-  normalizeTier, type TierCard,
+  SUPPORT_WHATSAPP, TIER_BY_ID, TIER_MATRIX, canUseCustomDomain, canUseStudio,
+  normalizeTier, type AnyTier, type TierCard,
 } from '@/lib/tiers';
 import { useShopRow } from '@/lib/useShopRow';
+
+// ── Active-plan view model ───────────────────────────────────────────────────
+// The billing section renders exactly ONE card — the tier the shop is on.
+// Sellable tiers come straight from TIER_MATRIX; the legacy 'advanced' plan
+// (no longer sold, so no TierCard) is described from the capabilities
+// lib/tiers still grants it. monthlyPrice is null for legacy — the seller's
+// historical rate is not in the matrix and must never be invented.
+
+type ActivePlan = {
+  id: AnyTier;
+  name: string;
+  tagline: string;
+  features: string[];
+  monthlyPrice: number | null;
+  legacy: boolean;
+};
+
+const LEGACY_ADVANCED_PLAN: ActivePlan = {
+  id: 'advanced',
+  name: 'Advanced',
+  tagline: 'Everything you pay for stays yours — the Studio and your custom domain keep working exactly as before.',
+  features: [
+    'AI Website Studio & Live Site Editor',
+    'Custom domain (.com / .gm / .sn) with automatic SSL',
+    'WhatsApp customer broadcast engine',
+    'Unlimited AI credits',
+    'Placement above Pro shops in the feed',
+  ],
+  monthlyPrice: null,
+  legacy: true,
+};
+
+function resolveActivePlan(tier: string): ActivePlan {
+  if (tier === 'advanced') return LEGACY_ADVANCED_PLAN;
+  // Unknown/empty values fall to Starter — the historical default and the
+  // same fallback the header chip renders.
+  const card: TierCard =
+    tier === 'pro' || tier === 'flagship' ? TIER_BY_ID[tier] : TIER_BY_ID.starter;
+  return {
+    id: card.id,
+    name: card.name,
+    tagline: card.tagline,
+    features: card.features,
+    monthlyPrice: card.monthlyPrice,
+    legacy: false,
+  };
+}
 
 // ── Truthful FAQ — every answer describes a SHIPPED behavior ─────────────────
 
@@ -69,7 +121,7 @@ const FAQ_ITEMS: Array<{ q: string; a: string }> = [
   },
   {
     q: 'How do I upgrade my plan?',
-    a: 'Tap the upgrade button on a plan below — it opens WhatsApp with your prefilled request. Send your payment by the method our team confirms with you, and your dashboard unlocks the new tier in real time once it is activated.',
+    a: 'Tap Upgrade Plan in the Plan & Billing section above — it opens WhatsApp with your prefilled request and the plans above yours. Send your payment by the method our team confirms with you, and your dashboard unlocks the new tier in real time once it is activated. Flagship is the highest tier, so Flagship shops see no upgrade button.',
   },
 ];
 
@@ -163,11 +215,30 @@ export default function SettingsPage() {
     ? 'Advanced (legacy)'
     : (TIER_MATRIX.find((t) => t.id === tier)?.name ?? (shop?.subscription_tier || 'Starter'));
 
-  const handleUpgradeClick = (card: TierCard) => {
+  // The ONE card the billing section renders.
+  const activePlan = resolveActivePlan(tier);
+  const isFlagship = activePlan.id === 'flagship';
+
+  // Every sellable tier ranked above the active one (lib/feedRanking is the
+  // shared placement ladder: flagship 4 > advanced 3 > pro 2 > starter 1).
+  // Flagship → [] → no upgrade affordance at all.
+  const activeRank = getTierRank(activePlan.id);
+  const upgradeOptions = TIER_MATRIX.filter((card) => getTierRank(card.id) > activeRank);
+
+  // The standard WhatsApp upgrade flow (SUPPORT_WHATSAPP + prefilled request),
+  // generalized: one option names it outright (Pro → Flagship); several list
+  // them with matrix prices so the seller chooses in the conversation.
+  const upgradeHref = (() => {
+    if (upgradeOptions.length === 0) return null;
     const shopName = shop?.shop_name || 'my boutique';
-    const message = `👑 *Sanndikaa Upgrade Request*\n\nHello Admin! I am the owner of *${shopName}*.\n\nI would like to upgrade my store to the *${card.name} Plan* (D${card.monthlyPrice}/month) to unlock its features.\n\nHow can I send the payment to activate this?`;
-    window.open(`https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent(message)}`, '_blank');
-  };
+    const ask = upgradeOptions.length === 1
+      ? `I would like to upgrade my store to the *${upgradeOptions[0].name} Plan* (D${upgradeOptions[0].monthlyPrice}/month) to unlock its features.`
+      : `I would like to upgrade my store. The plans above mine are:\n${upgradeOptions
+          .map((card) => `• *${card.name} Plan* — D${card.monthlyPrice}/month`)
+          .join('\n')}`;
+    const message = `👑 *Sanndikaa Upgrade Request*\n\nHello Admin! I am the owner of *${shopName}*, currently on the *${activePlan.name} Plan*.\n\n${ask}\n\nHow can I send the payment to activate my upgrade?`;
+    return `https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent(message)}`;
+  })();
 
   // ── Support ────────────────────────────────────────────────────────────────
   const supportHref = `https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent(
@@ -322,77 +393,136 @@ export default function SettingsPage() {
             <h2 id="settings-billing" className="text-sm font-bold uppercase tracking-widest text-gray-900">Plan &amp; Billing</h2>
           </div>
 
-          {isLegacyAdvanced && (
-            <div className="mb-5 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-              <Crown size={16} className="mt-0.5 shrink-0 text-amber-600" />
-              <p className="text-xs leading-relaxed text-amber-900">
-                You are on the legacy <strong>Advanced</strong> plan. Everything you pay for stays yours —
-                the AI Website Studio and your custom domain keep working exactly as before. Upgrading to
-                Flagship adds VIP placement at the very top of the marketplace.
-              </p>
-            </div>
-          )}
+          {/* ONE card — the active tier. Full width so a single card reads as a
+              deliberate statement, not a grid with two gaps: identity on the
+              left, "what's included" on the right, the CTA row across the
+              bottom. Flagship inverts to forest + gold; Starter/Pro stay on
+              the raised white surface with a forest CTA. */}
+          <div
+            className={`relative overflow-hidden rounded-[2rem] p-6 md:p-8 ${
+              isFlagship
+                ? 'bg-mall-forest text-white shadow-2xl ring-1 ring-mall-gold/40'
+                : 'border border-gray-100 bg-white shadow-sm'
+            }`}
+          >
+            {isFlagship && (
+              <>
+                <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-mall-gold/20 blur-3xl" />
+                <div className="pointer-events-none absolute -bottom-32 -left-16 h-64 w-64 rounded-full bg-mall-gold/10 blur-3xl" />
+              </>
+            )}
 
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-            {TIER_MATRIX.map((card) => {
-              const isCurrent = tier === card.id;
-              const isFlagshipCard = card.id === 'flagship';
-              return (
-                <div
-                  key={card.id}
-                  className={`relative flex flex-col rounded-[1.75rem] p-6 transition ${
-                    isFlagshipCard
-                      ? `bg-[#1a1a1a] text-white shadow-xl ${isCurrent ? 'ring-4 ring-yellow-400/30 border-2 border-yellow-400' : 'border-2 border-[#2a2a2a]'}`
-                      : `bg-white shadow-sm ${isCurrent ? 'border-2 border-emerald-600 ring-4 ring-emerald-600/10' : 'border-2 border-gray-100'}`
-                  }`}
-                >
-                  {isCurrent && (
-                    <div className={`absolute -top-3 left-0 right-0 mx-auto flex w-fit items-center gap-1 rounded-full px-3 py-1 text-[9px] font-bold uppercase tracking-widest shadow-sm ${
-                      isFlagshipCard ? 'bg-yellow-500 text-gray-900' : 'bg-emerald-600 text-white'
-                    }`}>
-                      <CheckCircle2 size={11} /> Current plan
-                    </div>
+            <div className="relative grid grid-cols-1 gap-8 md:grid-cols-2 md:items-start md:gap-10">
+
+              {/* Identity — chips, crown/badge, name, tagline, price */}
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[9px] font-bold uppercase tracking-widest shadow-sm ${
+                    isFlagship ? 'bg-mall-gold text-mall-forest' : 'bg-mall-forest text-mall-bone'
+                  }`}>
+                    <CheckCircle2 size={11} /> Current plan
+                  </span>
+                  {activePlan.legacy && (
+                    <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[9px] font-bold uppercase tracking-widest text-amber-800">
+                      Legacy plan
+                    </span>
                   )}
-
-                  <div className="flex items-center gap-2">
-                    {isFlagshipCard
-                      ? <Crown size={18} className="text-yellow-500" fill="currentColor" />
-                      : <BadgeCheck size={18} className={card.id === 'pro' ? 'text-emerald-600' : 'text-gray-400'} />}
-                    <h3 className={`text-lg font-black uppercase tracking-widest ${isFlagshipCard ? 'text-white' : 'text-gray-900'}`}>{card.name}</h3>
-                  </div>
-                  <p className={`mt-1 text-xs font-medium ${isFlagshipCard ? 'text-gray-400' : 'text-gray-500'}`}>{card.tagline}</p>
-
-                  <div className="my-4 flex items-baseline gap-1">
-                    <span className={`text-3xl font-black tracking-tight ${isFlagshipCard ? 'text-white' : 'text-gray-900'}`}>D{card.monthlyPrice}</span>
-                    <span className={`text-xs font-bold ${isFlagshipCard ? 'text-gray-500' : 'text-gray-400'}`}>/month</span>
-                  </div>
-
-                  <ul className={`mb-6 flex-1 space-y-2.5 text-[13px] leading-snug ${isFlagshipCard ? 'text-gray-300' : 'text-gray-600'}`}>
-                    {card.features.map((feature) => (
-                      <li key={feature} className="flex items-start gap-2">
-                        <Check size={14} className={`mt-0.5 shrink-0 ${isFlagshipCard ? 'text-yellow-500' : 'text-emerald-600'}`} />
-                        {feature}
-                      </li>
-                    ))}
-                  </ul>
-
-                  <button
-                    type="button"
-                    onClick={() => handleUpgradeClick(card)}
-                    disabled={isCurrent}
-                    className={`flex min-h-[48px] w-full items-center justify-center gap-2 rounded-full text-[11px] font-bold uppercase tracking-widest shadow-md transition active:scale-95 disabled:opacity-50 ${
-                      isFlagshipCard
-                        ? 'bg-yellow-500 text-gray-900 hover:bg-yellow-400 disabled:hover:bg-yellow-500'
-                        : 'bg-[#1a2e1a] text-white hover:bg-black disabled:hover:bg-[#1a2e1a]'
-                    }`}
-                  >
-                    {isCurrent
-                      ? 'Your active plan'
-                      : <>{isFlagshipCard ? <Crown size={14} /> : <CreditCard size={14} />} Upgrade on WhatsApp</>}
-                  </button>
                 </div>
-              );
-            })}
+
+                <div className="mt-5 flex items-center gap-4">
+                  <span className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${
+                    isFlagship
+                      ? 'bg-mall-gold/15 ring-1 ring-mall-gold/50'
+                      : activePlan.id === 'pro'
+                        ? 'bg-emerald-50 ring-1 ring-emerald-100'
+                        : 'bg-mall-bone ring-1 ring-mall-forest/10'
+                  }`}>
+                    {isFlagship
+                      ? <Crown size={28} className="text-mall-gold" fill="currentColor" />
+                      : <BadgeCheck size={26} className={activePlan.id === 'pro' ? 'text-emerald-600' : 'text-mall-forest/70'} />}
+                  </span>
+                  <div>
+                    <h3 className={`font-serif text-3xl font-bold leading-none ${isFlagship ? 'text-white' : 'text-gray-900'}`}>
+                      {activePlan.name}
+                    </h3>
+                    <p className={`mt-1.5 text-[10px] font-bold uppercase tracking-widest ${isFlagship ? 'text-mall-gold' : 'text-gray-400'}`}>
+                      {isFlagship ? 'Sanndikaa’s highest tier' : activePlan.legacy ? 'Honored as agreed' : 'Sanndikaa plan'}
+                    </p>
+                  </div>
+                </div>
+
+                <p className={`mt-5 max-w-md text-sm leading-relaxed ${isFlagship ? 'text-white/70' : 'text-gray-500'}`}>
+                  {activePlan.tagline}
+                </p>
+
+                {activePlan.monthlyPrice !== null ? (
+                  <div className="mt-6 flex items-baseline gap-1.5">
+                    <span className={`text-4xl font-black tracking-tight ${isFlagship ? 'text-white' : 'text-gray-900'}`}>D{activePlan.monthlyPrice}</span>
+                    <span className={`text-sm font-semibold ${isFlagship ? 'text-white/50' : 'text-gray-400'}`}>/month</span>
+                  </div>
+                ) : (
+                  <div className="mt-6">
+                    <span className="text-2xl font-black tracking-tight text-gray-900">Legacy rate</span>
+                    <p className="mt-1 text-[11px] text-gray-400">Your monthly price stays exactly as agreed.</p>
+                  </div>
+                )}
+              </div>
+
+              {/* What's included — the tier's TRUTHFUL feature list (lib/tiers) */}
+              <div className={`rounded-[1.5rem] p-5 md:p-6 ${
+                isFlagship ? 'bg-white/5 ring-1 ring-white/10' : 'bg-mall-bone/60 ring-1 ring-mall-forest/5'
+              }`}>
+                <p className={`text-[10px] font-bold uppercase tracking-widest ${isFlagship ? 'text-mall-gold' : 'text-gray-400'}`}>
+                  Included in your plan
+                </p>
+                <ul className={`mt-4 space-y-3 text-[13px] leading-snug ${isFlagship ? 'text-white/85' : 'text-gray-700'}`}>
+                  {activePlan.features.map((feature) => (
+                    <li key={feature} className="flex items-start gap-2.5">
+                      <Check size={15} className={`mt-0.5 shrink-0 ${
+                        isFlagship ? 'text-mall-gold' : activePlan.id === 'pro' ? 'text-emerald-600' : 'text-mall-forest'
+                      }`} />
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            {/* CTA row — Starter / Pro / legacy: the ONE upgrade button (standard
+                WhatsApp flow). Flagship: a quiet acknowledgement, zero buttons. */}
+            {upgradeHref ? (
+              <div className="relative mt-8 flex flex-col gap-4 border-t border-gray-100 pt-6 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs leading-relaxed text-gray-500">
+                  Next up:{' '}
+                  {upgradeOptions.map((card, i) => (
+                    <span key={card.id}>
+                      {i > 0 && <span className="text-gray-300"> · </span>}
+                      <strong className="font-bold text-gray-900">{card.name}</strong> D{card.monthlyPrice}/mo
+                    </span>
+                  ))}
+                  {' — '}
+                  <Link href="/pricing#plans" className="inline-flex items-center gap-1 font-semibold text-mall-forest underline decoration-mall-gold/60 underline-offset-4 transition hover:decoration-mall-gold">
+                    see every plan in detail <ArrowRight size={12} />
+                  </Link>
+                </p>
+                <a
+                  href={upgradeHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex min-h-[48px] shrink-0 items-center justify-center gap-2 rounded-full bg-mall-forest px-8 text-[11px] font-bold uppercase tracking-widest text-white shadow-md transition hover:bg-black active:scale-95"
+                >
+                  <CreditCard size={14} /> Upgrade Plan
+                </a>
+              </div>
+            ) : (
+              <div className="relative mt-8 flex items-start gap-3 border-t border-white/10 pt-6">
+                <Crown size={16} className="mt-0.5 shrink-0 text-mall-gold" fill="currentColor" />
+                <p className="text-xs leading-relaxed text-white/70">
+                  You hold Sanndikaa’s highest tier — VIP placement, your custom domain, and the broadcast
+                  engine are all live on this account. Nothing left to unlock; support is one tap below.
+                </p>
+              </div>
+            )}
           </div>
         </section>
 
@@ -418,11 +548,13 @@ export default function SettingsPage() {
               <p className="mt-4 flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-widest text-white/40">
                 <Lock size={12} /> Locked on your current plan
               </p>
+              {/* Lands on the billing card above, whose Upgrade Plan CTA
+                  prefills Flagship (the only tier with domains). */}
               <a
                 href="#settings-billing"
-                className="mt-7 inline-flex min-h-[48px] items-center gap-2 rounded-full bg-[#f0a500] px-8 text-[11px] font-black uppercase tracking-widest text-black transition hover:bg-amber-400 active:scale-95"
+                className="mt-7 inline-flex min-h-[48px] items-center gap-2 rounded-full bg-mall-gold px-8 text-[11px] font-black uppercase tracking-widest text-mall-forest transition hover:bg-amber-400 active:scale-95"
               >
-                <Crown size={14} /> See the Flagship plan
+                <Crown size={14} /> Upgrade to Flagship
               </a>
             </div>
           )}
