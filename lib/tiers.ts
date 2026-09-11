@@ -13,6 +13,13 @@
 // simply no longer sold: it appears on no pricing surface, and legacy
 // localStorage plan intents invoice as Flagship.
 //
+// LAUNCH ANCHOR (2026-09-11): every sellable tier also carries an anchorPrice
+// — the struck-through "was" figure /pricing renders beside the live price
+// under a "Founder's Rate" badge. It is DISPLAY ONLY: invoices, upgrade
+// requests, the terms page and the landing page all keep pricing off
+// monthlyPrice. Retiring the launch offer = deleting anchorPrice + the badge;
+// no billing surface moves.
+//
 // Every tier gate in the codebase resolves through the predicates below —
 // a matrix change here changes the platform, nothing else moves.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -27,8 +34,11 @@ export type AnyTier = TierId | 'advanced';
 export type TierCard = {
   id: TierId;
   name: string;
-  /** Monthly price in Dalasi. */
+  /** Monthly price in Dalasi — the ONLY figure any invoice surface prices. */
   monthlyPrice: number;
+  /** Launch-anchor "was" price in Dalasi, struck through beside monthlyPrice
+   *  on /pricing. Display only — never invoiced, never gated on. */
+  anchorPrice: number;
   tagline: string;
   /** TRUTHFUL ONLY — every bullet maps to a shipped, verifiable feature. */
   features: string[];
@@ -41,6 +51,7 @@ export const TIER_MATRIX: ReadonlyArray<TierCard> = [
     id: 'starter',
     name: 'Starter',
     monthlyPrice: 100,
+    anchorPrice: 200,
     tagline: 'Launch your boutique and take orders on WhatsApp.',
     features: [
       'Your own boutique page on Sanndikaa',
@@ -54,6 +65,7 @@ export const TIER_MATRIX: ReadonlyArray<TierCard> = [
     id: 'pro',
     name: 'Pro',
     monthlyPrice: 250,
+    anchorPrice: 500,
     tagline: 'The growth engine — your own AI-built website.',
     features: [
       'Everything in Starter',
@@ -68,6 +80,7 @@ export const TIER_MATRIX: ReadonlyArray<TierCard> = [
     id: 'flagship',
     name: 'Flagship',
     monthlyPrice: 750,
+    anchorPrice: 1500,
     tagline: 'Own the district — VIP placement and your own domain.',
     features: [
       'Everything in Pro',
@@ -141,6 +154,10 @@ export function invoicePlanFor(plan: string | null | undefined): { id: TierId; n
 
 /** Human price range of the sellable ladder ("D100–D750"). */
 export const TIER_PRICE_RANGE = `D${TIER_MATRIX[0].monthlyPrice}–D${TIER_MATRIX[TIER_MATRIX.length - 1].monthlyPrice}`;
+
+/** Badge copy rendered beside every struck-through anchorPrice on /pricing.
+ *  Single source so the offer can be renamed (or retired) in one place. */
+export const LAUNCH_OFFER_LABEL = "Founder's Rate";
 
 /** One-time concierge setup fee (unchanged by the matrix). */
 export const CONCIERGE_PRICE = 500;

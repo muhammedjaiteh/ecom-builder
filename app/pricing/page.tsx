@@ -2,7 +2,7 @@
 
 import { Check, Star, Crown, Plus, ArrowLeft, Sparkles, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
-import { CONCIERGE_PRICE, TIER_BY_ID } from '@/lib/tiers';
+import { CONCIERGE_PRICE, LAUNCH_OFFER_LABEL, TIER_BY_ID, type TierCard } from '@/lib/tiers';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // /pricing — the ONLY public pricing surface. Prices and feature bullets flow
@@ -10,11 +10,39 @@ import { CONCIERGE_PRICE, TIER_BY_ID } from '@/lib/tiers';
 // D250 · Flagship D750). 'advanced' is no longer sold — it appears nowhere
 // here; legacy advanced payers keep their capabilities (lib/tiers predicates).
 // Every bullet is truthful: it names a shipped, verifiable feature.
+//
+// LAUNCH ANCHOR: each card shows the tier's anchorPrice struck through above
+// the live monthlyPrice, with a Founder's Rate badge in the mall gold/forest
+// tokens. Both values flow from lib/tiers — nothing is hard-coded here.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const starter = TIER_BY_ID.starter;
 const pro = TIER_BY_ID.pro;
 const flagship = TIER_BY_ID.flagship;
+
+/** Anchor row + live price. `tone` follows the card surface: light cards
+ *  ink the badge in forest on a gold wash; the dark Flagship card inverts to
+ *  gold on gold. The <del> carries an sr-only prefix so screen readers hear
+ *  "was D500" rather than two unexplained prices. */
+function AnchorPrice({ tier, tone }: { tier: TierCard; tone: 'light' | 'dark' }) {
+  const dark = tone === 'dark';
+  return (
+    <div className="mt-6">
+      <div className="flex items-center gap-x-3">
+        <del className={`text-sm font-semibold tracking-tight line-through decoration-1 ${dark ? 'text-gray-500 decoration-gray-500' : 'text-gray-400 decoration-gray-400'}`}>
+          <span className="sr-only">Was </span>D{tier.anchorPrice}
+        </del>
+        <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest ${dark ? 'border-mall-gold/40 bg-mall-gold/10 text-mall-gold' : 'border-mall-gold/50 bg-mall-gold/10 text-mall-forest'}`}>
+          {LAUNCH_OFFER_LABEL}
+        </span>
+      </div>
+      <p className="mt-1 flex items-baseline gap-x-1">
+        <span className={`text-4xl font-black tracking-tight ${dark ? 'text-white' : 'text-gray-900'}`}>D{tier.monthlyPrice}</span>
+        <span className={`text-sm font-semibold leading-6 ${dark ? 'text-gray-400' : 'text-gray-600'}`}>/month</span>
+      </p>
+    </div>
+  );
+}
 
 export default function PricingPage() {
   return (
@@ -60,10 +88,7 @@ export default function PricingPage() {
                 </div>
                 <p className="mt-4 text-sm font-semibold text-gray-900">{starter.tagline}</p>
                 <p className="mt-2 text-sm leading-6 text-gray-500">Perfect for beginners stepping into digital commerce.</p>
-                <p className="mt-6 flex items-baseline gap-x-1">
-                  <span className="text-4xl font-black tracking-tight text-gray-900">D{starter.monthlyPrice}</span>
-                  <span className="text-sm font-semibold leading-6 text-gray-600">/month</span>
-                </p>
+                <AnchorPrice tier={starter} tone="light" />
 
                 <div className="mt-8">
                   <h4 className="text-xs font-bold uppercase tracking-widest text-gray-900 mb-4">Your Sales Weapons:</h4>
@@ -90,10 +115,7 @@ export default function PricingPage() {
                 </div>
                 <p className="mt-4 text-sm font-semibold text-gray-900">{pro.tagline}</p>
                 <p className="mt-2 text-sm leading-6 text-gray-500">Your own AI-built website, live in minutes.</p>
-                <p className="mt-6 flex items-baseline gap-x-1">
-                  <span className="text-4xl font-black tracking-tight text-gray-900">D{pro.monthlyPrice}</span>
-                  <span className="text-sm font-semibold leading-6 text-gray-600">/month</span>
-                </p>
+                <AnchorPrice tier={pro} tone="light" />
 
                 <div className="mt-8">
                   <div className="flex items-center gap-2 mb-4 text-[10px] font-bold uppercase tracking-widest text-emerald-600 bg-emerald-50 px-3 py-2 rounded-lg">
@@ -123,10 +145,7 @@ export default function PricingPage() {
                 </div>
                 <p className="mt-4 text-sm font-semibold text-white">{flagship.tagline}</p>
                 <p className="mt-2 text-sm leading-6 text-gray-400">For serious brands who want maximum exposure.</p>
-                <p className="mt-6 flex items-baseline gap-x-1">
-                  <span className="text-4xl font-black tracking-tight text-white">D{flagship.monthlyPrice}</span>
-                  <span className="text-sm font-semibold leading-6 text-gray-400">/month</span>
-                </p>
+                <AnchorPrice tier={flagship} tone="dark" />
 
                 <div className="mt-8">
                   <div className="flex items-center gap-2 mb-4 text-[10px] font-bold uppercase tracking-widest text-yellow-500 bg-yellow-500/10 px-3 py-2 rounded-lg border border-yellow-500/20">
