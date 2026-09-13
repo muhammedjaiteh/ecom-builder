@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { Banknote, Check, Copy, Minus, Plus, ShoppingBag, Smartphone, X } from 'lucide-react';
 import { buildCartLineId, useCart } from '@/components/CartProvider';
+import { rememberPurchases } from '@/lib/purchaseMemory';
 import SmartImage from '@/components/SmartImage';
 import {
   DEFAULT_ORDER_PHONE,
@@ -291,6 +292,7 @@ export default function SiteProductPurchase({
     });
     const waLink = buildWhatsAppLink(sellerPhone, message) ?? buildWhatsAppLink(DEFAULT_ORDER_PHONE, message)!;
     window.open(waLink, '_blank');
+    rememberPurchases([product.id]);
 
     setShowTerminal(false);
     setPaymentStep('SELECT');

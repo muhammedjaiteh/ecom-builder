@@ -18,17 +18,22 @@ interface Review {
   // read BEFORE the migration runs still render.
   verified_purchase?: boolean | null;
   reviewer_name?: string | null;
+  // Reviews MVP (sql/reviews-mvp.sql) — device-recognised + seller imports.
+  shop_id?: string | null;
+  is_verified?: boolean | null;
 }
 
-/** Attribution line: phone-verified buyer reviews carry the reviewer's name
- *  and the Verified Purchase mark; legacy labels are preserved verbatim. */
+/** Attribution line: "{name} · {mark}". Phone-matched rows keep the
+ *  Verified Purchase mark; device-recognised buyers and seller-imported
+ *  feedback read Verified Buyer unless is_verified was explicitly cleared. */
 function reviewAttribution(review: Review): string {
-  if (review.verified_purchase) {
-    const name = review.reviewer_name?.trim();
-    return name ? `${name} · Verified Purchase` : 'Verified Purchase';
-  }
-  if (review.is_external) return `Verified via ${review.external_author || 'External'}`;
-  return 'Verified Buyer';
+  const name = (review.reviewer_name ?? review.external_author ?? '').trim();
+  const mark = review.verified_purchase
+    ? 'Verified Purchase'
+    : review.is_verified === false
+      ? 'Buyer'
+      : 'Verified Buyer';
+  return name ? `${name} · ${mark}` : mark;
 }
 
 export default function ReviewList({ productId, refreshTrigger }: { productId: string, refreshTrigger: number }) {

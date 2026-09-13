@@ -33,6 +33,7 @@ import {
   openOrderHandoff,
   type DirectOrderMethod,
 } from '@/lib/orderFlow';
+import { rememberPurchases } from '@/lib/purchaseMemory';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CheckoutForm — THE dedicated checkout surface, shared by two routes:
@@ -605,6 +606,10 @@ export default function CheckoutForm({
         whatsappLink,
         priceChanged: result.priceChanged,
       };
+
+      // Device purchase memory (lib/purchaseMemory): the order is recorded
+      // from here on, so the PDP may unlock "Write a Review" for these items.
+      rememberPurchases(lines.map((item) => item.productId));
 
       if (!whatsappLink) {
         // Unreachable after the pre-flight (validity depends only on the

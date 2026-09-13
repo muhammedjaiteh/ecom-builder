@@ -2,9 +2,9 @@
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Reviews — promoted from the retired /dashboard?tab=reviews pane to its own
-// route. Pick a product, read its feedback (ReviewList) and add external
-// seller-verified reviews (ReviewForm). The product list is the only data
-// this page loads itself.
+// route. Pick a product, read its feedback (ReviewList) and import past
+// buyer feedback (LegacyReviewForm — "Add Past Review"). The product list is
+// the only data this page loads itself.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { createBrowserClient } from '@supabase/ssr';
@@ -12,7 +12,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, Star } from 'lucide-react';
 import { DashboardShell } from '@/components/dashboard/DashboardShell';
-import ReviewForm from '@/components/ReviewForm';
+import LegacyReviewForm from '@/components/LegacyReviewForm';
 import ReviewList from '@/components/ReviewList';
 import { resolveDashboardUser } from '@/lib/dashboardAuth';
 import type { Product } from '@/lib/types';
@@ -38,7 +38,7 @@ function ReviewsPanel({ products }: { products: Product[] }) {
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
             <h3 className="text-lg font-bold text-gray-900">Reviews</h3>
-            <p className="mt-1 text-sm text-gray-500">Choose a product to view feedback or add external seller-verified reviews.</p>
+            <p className="mt-1 text-sm text-gray-500">Choose a product to view its feedback or import past reviews from WhatsApp and in-person sales.</p>
           </div>
           <label className="block">
             <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-400">Active Product</span>
@@ -62,7 +62,11 @@ function ReviewsPanel({ products }: { products: Product[] }) {
           <ReviewList productId={selectedProduct.id} refreshTrigger={refreshTrigger} />
         </div>
         <div>
-          <ReviewForm productId={selectedProduct.id} onReviewSubmitted={() => setRefreshTrigger((prev) => prev + 1)} />
+          <LegacyReviewForm
+            productId={selectedProduct.id}
+            productName={selectedProduct.name}
+            onReviewSubmitted={() => setRefreshTrigger((prev) => prev + 1)}
+          />
         </div>
       </div>
     </div>

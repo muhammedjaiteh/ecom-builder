@@ -8,8 +8,10 @@ import { Phone, ArrowLeft, ShoppingBag, X, Smartphone, Banknote, Copy, Check, Sh
 import Link from 'next/link';
 import { formatDalasi, saleOf } from '@/lib/pricing';
 import { fetchJSON } from '@/lib/transport';
+import { rememberPurchases, usePurchasedProduct } from '@/lib/purchaseMemory';
 import { buildCartLineId, useCart } from '@/components/CartProvider';
 import BuyerReviewForm from '@/components/BuyerReviewForm';
+import DeviceReviewForm from '@/components/DeviceReviewForm';
 import ReviewList from '@/components/ReviewList';
 import { SavingsPill } from '@/components/SaleBadge';
 import {
@@ -36,6 +38,9 @@ export default function ProductClient({ product: initialProduct }: { product?: M
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [selectedColor, setSelectedColor] = useState('');
   const [selectedSize, setSelectedSize] = useState('');
+  // Local device recognition (lib/purchaseMemory): true once this device
+  // has ordered this product — unlocks the no-phone review form below.
+  const purchasedOnThisDevice = usePurchasedProduct(product?.id ?? '');
 
   const { fulfillmentMethod, setFulfillmentMethod, addToCart, setIsCartOpen } = useCart();
   
@@ -129,6 +134,7 @@ export default function ProductClient({ product: initialProduct }: { product?: M
 
     const waLink = buildWhatsAppLink(sellerPhone, message) ?? buildWhatsAppLink(DEFAULT_PHONE, message)!;
     window.open(waLink, '_blank');
+    rememberPurchases([product.id]);
 
     setShowTerminal(false);
     setPaymentStep('SELECT');
@@ -411,15 +417,24 @@ export default function ProductClient({ product: initialProduct }: { product?: M
               />
             </div>
             
-            {/* Right Column: Submission Form — the frictionless verified
-                buyer form (phone-matched, no login wall). The dashboard
-                seller-mode path keeps components/ReviewForm.tsx. */}
+            {/* Right Column: Submission Form. A device that ordered this
+                product here gets the no-phone form (localStorage memory);
+                any other device falls back to the phone-matched verified
+                form. The dashboard import path is components/LegacyReviewForm. */}
             <div className="lg:col-span-1">
               <div className="sticky top-24">
-                <BuyerReviewForm
-                   productId={product.id}
-                   onReviewSubmitted={handleReviewSubmitted}
-                />
+                {purchasedOnThisDevice ? (
+                  <DeviceReviewForm
+                    productId={product.id}
+                    shopId={product.shops?.id ?? product.shop_id ?? null}
+                    onReviewSubmitted={handleReviewSubmitted}
+                  />
+                ) : (
+                  <BuyerReviewForm
+                    productId={product.id}
+                    onReviewSubmitted={handleReviewSubmitted}
+                  />
+                )}
               </div>
             </div>
             
