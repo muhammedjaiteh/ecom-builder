@@ -61,7 +61,7 @@ const TENANT_PAGE_PREFIXES = ['/collections', '/products', '/checkout'];
 // cached /site catalog reflects the stock deduction immediately. A redirect
 // here would turn the JSON POST cross-origin and fail CORS — the order would
 // never be written and WhatsApp never opened.
-const TENANT_API_ALLOWLIST: string[] = ['/api/checkout', '/api/site-revalidate'];
+const TENANT_API_ALLOWLIST: string[] = ['/api/checkout', '/api/revalidate', '/api/reviews'];
 const RESOLVE_DEADLINE_MS = 5_000;
 const FALLBACK_CANONICAL_ORIGIN = 'https://sanndikaa.com';
 

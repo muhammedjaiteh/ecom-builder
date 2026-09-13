@@ -25,6 +25,7 @@ import SiteDraftBadge from '../../SiteDraftBadge';
 import SiteFulfillmentPane from './SiteFulfillmentPane';
 import SiteProductGallery, { type GalleryMedia } from './SiteProductGallery';
 import SiteProductPurchase from './SiteProductPurchase';
+import SiteProductReviews from './SiteProductReviews';
 
 // /site/[slug]/products/[id] — the on-site Product Detail Page. Gallery,
 // price, stock, quantity, and the REAL checkout (shared cart drawer + direct
@@ -308,6 +309,11 @@ export default async function SiteProductPage({ params }: PageProps) {
               </div>
             </div>
           </div>
+
+          {/* Customer Feedback — same 2/3 list + 1/3 form anatomy as the
+              marketplace PDP, inside this section's container so it shares
+              the max-w-7xl gutter. Client island: device-recognised form. */}
+          <SiteProductReviews productId={product.id} shopId={site.shop.id} tone={tone} />
         </section>
       </Chrome>
     </>
