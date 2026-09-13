@@ -27,15 +27,18 @@ const PROTECTED_PREFIXES = ['/dashboard', '/admin', '/update-password'];
 //      {origin}/api/domains/resolve?host= (CDN-cached, DB-backed).
 //   3. No slug → rewrite to /domain-not-connected (branded page — never a
 //      redirect, never a blank error).
-//   4. '/', /collections*, /products* → rewrite to /site/{slug}{path}{search}
-//      (URL bar unchanged; nested paths + query preserved).
-//   5. Storefront /api allowlist → pass through. EVIDENCE-BASED and currently
-//      EMPTY: the entire checkout runs browser → Supabase directly —
-//      components/Cart.tsx (customers/orders/order_items inserts +
-//      decrement_stock RPC via createBrowserClient) and lib/orderFlow.ts
-//      recordLead (leads insert) — plus wa.me deep links. No storefront
-//      surface calls a same-origin /api route (/api/create-order has zero
-//      call sites in the repo).
+//   4. '/', /collections*, /products*, /checkout → rewrite to
+//      /site/{slug}{path}{search} (URL bar unchanged; nested paths + query
+//      preserved). /checkout is the cart drawer's target: on a tenant host
+//      usePathname() has no /site/ prefix, so components/Cart.tsx links to
+//      /checkout?shop= — without this rewrite rule 7 ejected the buyer to
+//      the canonical host, where the tenant-origin localStorage bag is
+//      invisible ("Your bag is empty") and WhatsApp was never reached.
+//   5. Storefront /api allowlist → pass through. EVIDENCE-BASED: the cart
+//      checkout is server-authoritative (components/CheckoutForm.tsx POSTs
+//      /api/checkout, then /api/site-revalidate). Everything else the
+//      storefront writes goes browser → Supabase directly (lib/orderFlow.ts
+//      recordLead) or out through wa.me deep links.
 //   6. /site/{OWN slug}/… → redirect to the SAME host with the prefix
 //      stripped: the templates mint /site/{slug}/… links
 //      (lib/siteTemplates.ts siteBasePath), so without this every nav click
@@ -50,13 +53,15 @@ const PROTECTED_PREFIXES = ['/dashboard', '/admin', '/update-password'];
 // ═════════════════════════════════════════════════════════════════════════════
 
 const CANONICAL_HOSTS = new Set(['sanndikaa.com', 'www.sanndikaa.com', 'localhost', '127.0.0.1', '::1', '[::1]']);
-const TENANT_PAGE_PREFIXES = ['/collections', '/products'];
+const TENANT_PAGE_PREFIXES = ['/collections', '/products', '/checkout'];
 // Same-origin /api routes the storefront actually calls (see tree item 5).
-// EVIDENCE: components/Cart.tsx fires POST /api/site-revalidate after a
-// successful checkout (anonymous buyer path — validated shopId only) so the
-// tenant's cached /site catalog reflects the stock deduction immediately.
-// Every other storefront write goes straight to Supabase, not same-origin.
-const TENANT_API_ALLOWLIST: string[] = ['/api/site-revalidate'];
+// EVIDENCE: components/CheckoutForm.tsx POSTs /api/checkout (anonymous buyer
+// path — the route re-prices, reserves stock and writes the order with the
+// service-role key), then fires POST /api/site-revalidate so the tenant's
+// cached /site catalog reflects the stock deduction immediately. A redirect
+// here would turn the JSON POST cross-origin and fail CORS — the order would
+// never be written and WhatsApp never opened.
+const TENANT_API_ALLOWLIST: string[] = ['/api/checkout', '/api/site-revalidate'];
 const RESOLVE_DEADLINE_MS = 5_000;
 const FALLBACK_CANONICAL_ORIGIN = 'https://sanndikaa.com';
 

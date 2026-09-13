@@ -4,7 +4,10 @@ import Link from 'next/link';
 import { useState, useSyncExternalStore } from 'react';
 import {
   ArrowRight,
+  Banknote,
+  Check,
   CheckCircle2,
+  Copy,
   Loader2,
   MapPin,
   MessageCircle,
@@ -12,16 +15,24 @@ import {
   Phone,
   ShieldCheck,
   ShoppingBag,
+  Smartphone,
   Store,
   Truck,
   User,
+  X,
 } from 'lucide-react';
 import { useCart, type CartItem } from './CartProvider';
 // Shared order-flow helpers (lib/orderFlow) — one phone sanitizer + wa.me
-// builder across the cart, the marketplace PDP, and the /site storefront PDP.
-// openOrderHandoff: popup-safe WhatsApp handoff (window opened synchronously
-// inside the submit, BEFORE the awaited checkout round-trip — see lib/orderFlow).
-import { buildWhatsAppLink, openOrderHandoff } from '@/lib/orderFlow';
+// builder + payment-method lines across the cart, the marketplace PDP, and the
+// /site storefront PDP. openOrderHandoff: popup-safe WhatsApp handoff (window
+// opened synchronously inside the payment tap, BEFORE the awaited checkout
+// round-trip — see lib/orderFlow).
+import {
+  buildPaymentMethodLines,
+  buildWhatsAppLink,
+  openOrderHandoff,
+  type DirectOrderMethod,
+} from '@/lib/orderFlow';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CheckoutForm — THE dedicated checkout surface, shared by two routes:
@@ -33,6 +44,12 @@ import { buildWhatsAppLink, openOrderHandoff } from '@/lib/orderFlow';
 // phone, delivery/pickup + address), the server-authoritative POST to
 // /api/checkout, the verified WhatsApp receipt, and the popup-safe handoff.
 // The drawer (components/Cart.tsx) is now a pure bag: it routes here.
+//
+// PAYMENT STEP: "Send order" is INTERCEPTED. It validates the buyer fields and
+// opens the same Cash / Wave terminal as the single-product "Order via
+// WhatsApp" flow (marketplace + /site PDP). The order is placed — and WhatsApp
+// opened — from the payment button the buyer taps, so the method can never be
+// skipped, and the receipt closes with the shared lib/orderFlow payment lines.
 //
 // TONE CONTRACT: every ink/surface/accent spot is either a tone literal (the
 // PDP's established per-tone class-map pattern) or var(--site-*, <literal>),
@@ -397,6 +414,10 @@ export default function CheckoutForm({
   const [formError, setFormError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [success, setSuccess] = useState<OrderSuccess | null>(null);
+  // Payment terminal (PDP two-step): SELECT → Cash places the order at once;
+  // Wave shows the merchant-number card, then "Open WhatsApp to Confirm" places it.
+  const [terminal, setTerminal] = useState<'CLOSED' | 'SELECT' | 'WAVE_INFO'>('CLOSED');
+  const [copied, setCopied] = useState(false);
 
   // Which seller this checkout is for: the boutique pin wins, then an on-page
   // pick, then the drawer's ?shop= hint, then the only seller in the bag.
@@ -408,6 +429,9 @@ export default function CheckoutForm({
 
   const shopName = pinnedShop?.name || group?.shopName || 'the seller';
   const shopWhatsapp = group?.shopWhatsapp || pinnedShop?.whatsapp || '';
+  // Shown on the Wave card and quoted in the receipt exactly as stored — the
+  // same number the PDP terminal displays.
+  const merchantNumber = shopWhatsapp.trim();
 
   // Fulfillment gating from the boutique's validated facts. Both-false is a
   // data glitch, not a closed shop — offer both rather than strand the buyer.
@@ -418,18 +442,14 @@ export default function CheckoutForm({
   const method: FulfillmentMethod =
     fulfillmentMethod === 'delivery' ? (canDeliver ? 'delivery' : 'pickup') : canPickup ? 'pickup' : 'delivery';
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!group || isProcessing) return;
 
-    const name = customerName.trim();
-    const phone = customerPhone.trim();
-    const address = deliveryAddress.trim();
-
     const errors: FieldErrors = {};
-    if (!name) errors.name = 'Please enter your full name.';
-    if (!phone) errors.phone = 'Please enter your phone or WhatsApp number.';
-    if (method === 'delivery' && !address) errors.address = 'Please provide a delivery address.';
+    if (!customerName.trim()) errors.name = 'Please enter your full name.';
+    if (!customerPhone.trim()) errors.phone = 'Please enter your phone or WhatsApp number.';
+    if (method === 'delivery' && !deliveryAddress.trim()) errors.address = 'Please provide a delivery address.';
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
       setFormError(null);
@@ -445,6 +465,39 @@ export default function CheckoutForm({
       return;
     }
 
+    // INTERCEPT: payment method first. The order is placed from the buyer's
+    // payment tap (placeOrder), never from this submit.
+    setFormError(null);
+    setTerminal('SELECT');
+  };
+
+  const closeTerminal = () => {
+    if (isProcessing) return;
+    setTerminal('CLOSED');
+  };
+
+  const copyNumber = () => {
+    navigator.clipboard?.writeText(merchantNumber).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  /** Terminal tap — the PDP two-step: Wave shows the merchant card first, Cash places the order at once. */
+  const choosePayment = (payment: DirectOrderMethod) => {
+    if (payment === 'Wave' && terminal === 'SELECT') {
+      setTerminal('WAVE_INFO');
+      return;
+    }
+    void placeOrder(payment);
+  };
+
+  const placeOrder = async (payment: DirectOrderMethod) => {
+    if (!group || isProcessing) return;
+
+    const name = customerName.trim();
+    const phone = customerPhone.trim();
+    const address = deliveryAddress.trim();
+
     // Hoisted so the outer catch can always close the interstitial tab.
     let handoff: ReturnType<typeof openOrderHandoff> | null = null;
     const shopId = group.shopId;
@@ -452,8 +505,8 @@ export default function CheckoutForm({
 
     try {
       // 1. OPEN THE HANDOFF WINDOW *SYNCHRONOUSLY* — no await has run yet, so
-      // the submit's transient activation is still alive and the tab opens
-      // popup-block-free. It shows a branded "Preparing your order…"
+      // the payment tap's transient activation is still alive and the tab
+      // opens popup-block-free. It shows a branded "Preparing your order…"
       // interstitial while the server works; only after a 200 does it
       // navigate to WhatsApp.
       handoff = openOrderHandoff();
@@ -540,7 +593,9 @@ export default function CheckoutForm({
       if (method === 'delivery') {
         message += `Address: ${address}\n`;
       }
-      message += `\n*Please let me know how to pay and confirm this order!*`;
+      // The chosen payment method — the SAME lines the single-product
+      // "Order via WhatsApp" message carries (lib/orderFlow).
+      message += `\n${buildPaymentMethodLines(payment, merchantNumber, method)}`;
 
       const whatsappLink = buildWhatsAppLink(shopWhatsapp, message);
       const receipt: OrderSuccess = {
@@ -578,7 +633,10 @@ export default function CheckoutForm({
       console.error('Checkout Error:', error);
       setFormError(GENERIC_CHECKOUT_FAILURE);
     } finally {
+      // Every exit closes the terminal: success shows the confirmation,
+      // failure shows the form alert behind it.
       setIsProcessing(false);
+      setTerminal('CLOSED');
     }
   };
 
@@ -899,6 +957,104 @@ export default function CheckoutForm({
           </button>
         </div>
       </div>
+
+      {/* ── Payment terminal ──────────────────────────────────────────────────
+          Opened by "Send order" (handleSubmit intercept). The SAME Cash / Wave
+          two-step as the marketplace + /site PDP "Order via WhatsApp" terminal.
+          Bottom sheet on phones, centered card from sm up. z-[70] sits above
+          the sticky bar (z-60) and below the cart drawer (z-100/110), exactly
+          like the PDP terminal. */}
+      {terminal !== 'CLOSED' && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="checkout-terminal-title"
+          className="fixed inset-0 z-[70] flex items-end justify-center bg-black/70 backdrop-blur-md sm:items-center sm:p-4"
+        >
+          <div className="w-full max-w-sm overflow-hidden rounded-t-2xl bg-[#F9F8F6] pb-[env(safe-area-inset-bottom)] shadow-2xl sm:rounded-2xl sm:pb-0">
+            <div className="relative bg-[var(--site-primary,#1a2e1a)] p-6 text-center">
+              <button
+                type="button"
+                onClick={closeTerminal}
+                disabled={isProcessing}
+                aria-label="Close payment options"
+                className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center text-white/50 transition hover:text-white disabled:opacity-30"
+              >
+                <X size={20} />
+              </button>
+              <h2 id="checkout-terminal-title" className="font-serif text-xl text-white">Checkout</h2>
+              <p className="mt-1 text-[10px] uppercase tracking-widest text-white/60">{group.shopName || shopName} · Sanndikaa Secure</p>
+            </div>
+
+            <div className="p-7">
+              {isProcessing ? (
+                <div role="status" className="flex flex-col items-center py-6 text-center">
+                  <Loader2 size={28} className="animate-spin text-[#1a2e1a]" />
+                  <p className="mt-4 text-xs font-bold uppercase tracking-widest text-gray-400">Preparing your order…</p>
+                </div>
+              ) : terminal === 'SELECT' ? (
+                <div className="space-y-4">
+                  <p className="text-center text-xs font-bold uppercase tracking-widest text-gray-400">Select Payment Method</p>
+                  <button
+                    type="button"
+                    onClick={() => choosePayment('Cash')}
+                    className="flex w-full items-center gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-[#1a2e1a] active:scale-[0.98]"
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-50 text-[#1a2e1a]"><Banknote size={20} /></span>
+                    <span className="text-left">
+                      <span className="block text-sm font-bold text-[#1a2e1a]">{method === 'pickup' ? 'Cash on Pickup' : 'Cash on Delivery'}</span>
+                      <span className="block text-[10px] text-gray-400">{method === 'pickup' ? 'Pay when you collect it' : 'Pay when you receive it'}</span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => choosePayment('Wave')}
+                    className="flex w-full items-center gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-[#1DA1F2] active:scale-[0.98]"
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[#1DA1F2]"><Smartphone size={20} /></span>
+                    <span className="text-left">
+                      <span className="block text-sm font-bold text-[#1a2e1a]">Wave / Sadam</span>
+                      <span className="block text-[10px] text-gray-400">Mobile Money Transfer</span>
+                    </span>
+                  </button>
+                </div>
+              ) : (
+                <div className="text-center">
+                  <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#1DA1F2]">
+                    <Smartphone size={24} />
+                  </span>
+                  <p className="mt-4 px-2 text-xs text-gray-500">
+                    Send <span className="font-bold text-black">{formatMoney(group.total)}</span> to this verified number:
+                  </p>
+                  <div className="relative mt-5 overflow-hidden rounded-xl bg-gradient-to-br from-[#2C3E2C] to-[#1a2e1a] p-6 text-white shadow-lg">
+                    <div className="flex items-end justify-between">
+                      <div className="text-left">
+                        <p className="mb-1 text-[8px] font-bold uppercase tracking-widest text-white/60">Merchant Number</p>
+                        <p className="font-mono text-xl tracking-widest">{merchantNumber}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={copyNumber}
+                        aria-label="Copy merchant number"
+                        className="flex h-11 w-11 items-center justify-center rounded-lg bg-white/20 backdrop-blur-sm transition hover:bg-white/30"
+                      >
+                        {copied ? <Check size={16} /> : <Copy size={16} />}
+                      </button>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => choosePayment('Wave')}
+                    className="mt-5 flex min-h-12 w-full items-center justify-center rounded-lg bg-[#1DA1F2] text-sm font-bold text-white shadow-md transition hover:bg-[#1a94da] active:scale-[0.98]"
+                  >
+                    Open WhatsApp to Confirm
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

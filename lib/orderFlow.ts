@@ -4,7 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 // Shared order-flow business logic — the ONE implementation of the platform's
 // buyer → seller mechanics, consumed by every checkout surface:
 //   - app/product/[id]/ProductClient.tsx          (marketplace PDP direct order)
-//   - components/Cart.tsx                          (cart drawer checkout)
+//   - components/CheckoutForm.tsx                  (cart checkout: /checkout + /site/[slug]/checkout)
 //   - app/site/[slug]/products/[id]/SiteProductPurchase.tsx (premium site PDP)
 // Extracted (not forked) from the marketplace PDP and cart so the generated
 // /site storefronts run the exact same lead capture + WhatsApp handoff.
@@ -52,6 +52,28 @@ export function buildWhatsAppLink(number: string | null | undefined, message: st
 }
 
 export type DirectOrderMethod = 'Cash' | 'Wave';
+export type FulfillmentKind = 'delivery' | 'pickup';
+
+/**
+ * The payment-method footer EVERY WhatsApp order carries — the single-product
+ * direct order and the cart receipt share this one implementation, so the
+ * seller reads identical lines whichever surface the buyer used. `fulfillment`
+ * only reshapes the Cash line (a pickup buyer does not "pay when you deliver");
+ * the default keeps the PDP output byte-identical to its historical message.
+ */
+export function buildPaymentMethodLines(
+  method: DirectOrderMethod,
+  sellerPhone: string,
+  fulfillment: FulfillmentKind = 'delivery'
+): string {
+  if (method === 'Wave') {
+    return `💳 Payment Method: *Wave / Sadam* \n✅ I have copied your number (${sellerPhone}) and I am sending the money now. \n\nPlease confirm receipt.`;
+  }
+  if (fulfillment === 'pickup') {
+    return `💵 Payment Method: *Cash on Pickup* \n📍 I will pay when I collect the order.`;
+  }
+  return `💵 Payment Method: *Cash on Delivery* \n📍 I will pay when you deliver.`;
+}
 
 /**
  * The direct-order WhatsApp message, exactly as the marketplace PDP has always
@@ -87,11 +109,7 @@ export function buildDirectOrderMessage(opts: {
     }
   }
 
-  if (method === 'Wave') {
-    message += `\n\n💳 Payment Method: *Wave / Sadam* \n✅ I have copied your number (${sellerPhone}) and I am sending the money now. \n\nPlease confirm receipt.`;
-  } else {
-    message += `\n\n💵 Payment Method: *Cash on Delivery* \n📍 I will pay when you deliver.`;
-  }
+  message += `\n\n${buildPaymentMethodLines(method, sellerPhone)}`;
 
   return message;
 }
