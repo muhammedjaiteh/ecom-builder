@@ -1588,6 +1588,10 @@ export type SiteProduct = {
   image_urls?: string[] | null;
   /** Row creation time — the offer pill's recency rung. Optional/additive. */
   created_at?: string | null;
+  /** Compare-at ("was") price — sql/compare-at-price.sql. Optional/additive:
+   *  cards + PDP render a strikethrough and Sale badge ONLY when it is
+   *  strictly above `price` (lib/pricing.ts saleOf). */
+  compare_at_price?: number | null;
 };
 
 export type SiteShop = {

@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { COMPARE_AT_COLUMN, selectWithOptionalColumns } from '@/lib/productColumns';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Marketplace search (Final UX Polish, Fix 3) — surgical relevance ranking.
@@ -102,13 +103,23 @@ export async function POST(request: Request) {
 
     // ── Primary pass: all-token lexical match over category ∪ title ────────
     if (tokens.length > 0) {
-      let lexical = supabase.from('products').select(PRODUCT_COLUMNS).limit(PRIMARY_FETCH_LIMIT);
-      // Chained .or() calls AND together: every token must hit name OR
-      // category — the all-token primary discipline, enforced in the query.
-      for (const token of tokens) {
-        lexical = lexical.or(`name.ilike.%${token}%,category.ilike.%${token}%`);
-      }
-      const { data: primaries, error: lexicalError } = await lexical;
+      // compare_at_price rides along as an OPTIONAL column (sql/compare-at-
+      // price.sql): lib/productColumns re-issues the query without it on
+      // 42703, so search keeps answering before the pack has run.
+      const { data: primaries, error: lexicalError } = await selectWithOptionalColumns<SearchRow[]>(
+        PRODUCT_COLUMNS,
+        [COMPARE_AT_COLUMN],
+        (columns) => {
+          let lexical = supabase.from('products').select(columns).limit(PRIMARY_FETCH_LIMIT);
+          // Chained .or() calls AND together: every token must hit name OR
+          // category — the all-token primary discipline, enforced in the query.
+          for (const token of tokens) {
+            lexical = lexical.or(`name.ilike.%${token}%,category.ilike.%${token}%`);
+          }
+          return lexical;
+        },
+        'search',
+      );
       if (lexicalError) {
         // A broken primary path is a real failure (not a fallback nicety).
         throw lexicalError;
@@ -116,7 +127,7 @@ export async function POST(request: Request) {
 
       if (primaries && primaries.length > 0) {
         const normalizedQuery = tokens.join(' ');
-        const ranked = (primaries as unknown as SearchRow[])
+        const ranked = primaries
           .map((row) => ({ row, score: scoreProduct(row, tokens, normalizedQuery) }))
           .sort((a, b) => b.score - a.score || a.row.name.localeCompare(b.row.name))
           .slice(0, RESULT_LIMIT)
@@ -155,10 +166,12 @@ export async function POST(request: Request) {
       const ids = rpcRows.map((r) => r.id).filter(Boolean);
       let products: unknown[] = rpcRows;
       if (ids.length > 0) {
-        const { data: hydrated, error: hydrateError } = await supabase
-          .from('products')
-          .select(PRODUCT_COLUMNS)
-          .in('id', ids);
+        const { data: hydrated, error: hydrateError } = await selectWithOptionalColumns<Array<{ id: string }>>(
+          PRODUCT_COLUMNS,
+          [COMPARE_AT_COLUMN],
+          (columns) => supabase.from('products').select(columns).in('id', ids),
+          'search',
+        );
         if (hydrateError) {
           console.error('[search] semantic hydration failed (serving raw RPC rows):', hydrateError.message);
         } else if (hydrated) {

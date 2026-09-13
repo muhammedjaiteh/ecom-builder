@@ -6,10 +6,12 @@ import { useParams } from 'next/navigation';
 import useSWR from 'swr';
 import { Phone, ArrowLeft, ShoppingBag, X, Smartphone, Banknote, Copy, Check, ShieldCheck, Truck, HomeIcon } from 'lucide-react';
 import Link from 'next/link';
+import { formatDalasi, saleOf } from '@/lib/pricing';
 import { fetchJSON } from '@/lib/transport';
 import { buildCartLineId, useCart } from '@/components/CartProvider';
 import BuyerReviewForm from '@/components/BuyerReviewForm';
 import ReviewList from '@/components/ReviewList';
+import { SavingsPill } from '@/components/SaleBadge';
 import {
   fetchMarketplaceProduct,
   type MarketplaceProduct,
@@ -67,6 +69,8 @@ export default function ProductClient({ product: initialProduct }: { product?: M
   // Derived, not state: exactly the old effect's truth table (unknown stock →
   // false) without the setState-in-effect cascade the lint flagged.
   const isOutOfStock = product?.stock_quantity === 0;
+  // Compare-at sale (lib/pricing.ts): strictly compare_at_price > price.
+  const sale = saleOf(product?.price, product?.compare_at_price);
 
   // ── Storefront resolution for the "Sold By" surface (Pillar 1) ───────────
   // The historical link hardcoded /shop/{slug} (with a phantom 'famwise'
@@ -268,8 +272,17 @@ export default function ProductClient({ product: initialProduct }: { product?: M
             {/* Title & Price */}
             <div>
               <h1 className="text-4xl md:text-5xl font-serif font-medium leading-tight mb-6 text-[#1a2e1a]">{product.name}</h1>
-              <div className="flex items-center gap-6">
-                  <p className="text-3xl font-light text-[#2C3E2C]">{product.price == null ? 'Price on request' : `D${Number(product.price).toLocaleString()}`}</p>
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <p className="text-3xl font-light text-[#2C3E2C]">{product.price == null ? 'Price on request' : formatDalasi(product.price)}</p>
+                    {sale && (
+                      // The seller's "was" price — muted strikethrough beside the price.
+                      <s className="text-lg font-light text-gray-400 line-through">
+                        <span className="sr-only">Was </span>{formatDalasi(sale.compareAt)}
+                      </s>
+                    )}
+                  </div>
+                  {sale && <SavingsPill percentOff={sale.percentOff} />}
                   <span className="text-[10px] font-bold border border-green-800/30 text-green-800 px-3 py-1 rounded-full uppercase tracking-wider">{isOutOfStock ? 'Out of Stock' : 'In Stock'}</span>
               </div>
             </div>

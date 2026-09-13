@@ -52,6 +52,9 @@ export type MarketplaceProduct = {
   stock_quantity: number | null;
   colors: string[] | null;
   sizes: string[] | null;
+  /** Compare-at ("was") price — rides along the `*` select once
+   *  sql/compare-at-price.sql has run; undefined before that. */
+  compare_at_price?: number | null;
   shops: MarketplaceProductShop | null;
 };
 

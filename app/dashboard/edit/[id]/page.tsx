@@ -5,6 +5,8 @@ import { use, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Loader2, Plus, Save, Star, Trash2, Sparkles, X } from 'lucide-react';
 import Link from 'next/link';
+import { saleOf } from '@/lib/pricing';
+import { COMPARE_AT_COLUMN, selectWithOptionalColumns } from '@/lib/productColumns';
 
 const CATEGORY_OPTIONS = ['Food & Culinary', 'Drinks', 'Beauty & Wellness', 'Fashion', 'Sneakers', 'Home & Artisan', 'Tech Accessories', 'General'] as const;
 const MAX_IMAGES = 5;
@@ -20,6 +22,36 @@ const themeButtonClasses: Record<ThemeColor, string> = {
 };
 
 type ImageItem = { url: string; isDefault: boolean };
+
+/** The columns the editor loads. compare_at_price is pack-gated
+ *  (sql/compare-at-price.sql) — absent until the founder has run it. */
+type EditProductRow = {
+  id: string;
+  name: string | null;
+  price: number | null;
+  compare_at_price?: number | null;
+  description: string | null;
+  image_url: string | null;
+  image_urls: unknown;
+  category: string | null;
+  status: string | null;
+  stock_quantity: number | null;
+  colors: unknown;
+  sizes: unknown;
+  product_variants: Array<{ variant_name: string; variant_value: string }> | null;
+};
+
+/** Live helper copy under the compare-at field — mirrors lib/pricing saleOf so
+ *  the seller sees exactly what buyers will see before saving. */
+const describeCompareAt = (price: string, compareAt: string): string => {
+  if (compareAt.trim() === '') {
+    return 'Optional. Shown struck through beside the selling price, with a Sale badge, on your storefront and the mall.';
+  }
+  const sale = saleOf(parseFloat(price), parseFloat(compareAt));
+  if (!sale) return 'Must be higher than the selling price to show as a sale.';
+  const savings = sale.percentOff >= 1 ? ` and "Save ${sale.percentOff}%"` : '';
+  return `Buyers see D${sale.compareAt.toLocaleString()} struck through${savings}.`;
+};
 
 const normalizeStringArray = (value: unknown): string[] => {
   if (Array.isArray(value)) {
@@ -69,6 +101,14 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
 
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
+  // Compare-at ("was") price — optional; a sale renders only when it is
+  // strictly above the selling price (lib/pricing.ts saleOf).
+  const [compareAtPrice, setCompareAtPrice] = useState('');
+  // Whether the loaded row carried a compare-at value: lets a seller CLEAR a
+  // sale (write NULL) while keeping the update payload free of the column for
+  // sellers who never touch it — saves keep working before
+  // sql/compare-at-price.sql has run.
+  const loadedCompareAt = useRef<number | null>(null);
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<(typeof CATEGORY_OPTIONS)[number]>('General');
   const [status, setStatus] = useState('Active');
@@ -113,12 +153,14 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       }
 
       // UPGRADE 1: Fetching the product_variants data
-      const { data: product, error } = await supabase
-        .from('products')
-        .select('id, name, price, description, image_url, image_urls, category, status, stock_quantity, colors, sizes, product_variants(variant_name, variant_value)')
-        .eq('id', productId)
-        .eq('user_id', user.id)
-        .single();
+      // compare_at_price is OPTIONAL (sql/compare-at-price.sql): the 42703
+      // fallback re-reads without it so the editor opens before the pack runs.
+      const { data: product, error } = await selectWithOptionalColumns<EditProductRow>(
+        'id, name, price, description, image_url, image_urls, category, status, stock_quantity, colors, sizes, product_variants(variant_name, variant_value)',
+        [COMPARE_AT_COLUMN],
+        (columns) => supabase.from('products').select(columns).eq('id', productId).eq('user_id', user.id).single(),
+        'dashboard-edit',
+      );
 
       if (error || !product) {
         alert('Product not found!');
@@ -132,6 +174,9 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
 
       setName(product.name || '');
       setPrice(String(product.price ?? ''));
+      const was = product.compare_at_price == null ? null : Number(product.compare_at_price);
+      loadedCompareAt.current = was != null && Number.isFinite(was) ? was : null;
+      setCompareAtPrice(loadedCompareAt.current == null ? '' : String(loadedCompareAt.current));
       setDescription(product.description || '');
       setCategory((product.category as (typeof CATEGORY_OPTIONS)[number]) || 'General');
       setStatus(product.status || 'Active');
@@ -277,12 +322,23 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       const colors = colorsInput.split(',').map((s) => s.trim()).filter(Boolean);
       const sizes = sizesInput.split(',').map((s) => s.trim()).filter(Boolean);
 
+      // Compare-at: blank clears the sale (NULL). The column is sent ONLY when
+      // the seller set a value or the row already had one, so sellers who never
+      // touch it keep saving before sql/compare-at-price.sql has run.
+      const compareAtValue = compareAtPrice.trim() === '' ? null : parseFloat(compareAtPrice);
+      if (compareAtValue !== null && (!Number.isFinite(compareAtValue) || compareAtValue <= parseFloat(price))) {
+        throw new Error('Compare-at price must be higher than the selling price — or leave it blank for no sale.');
+      }
+      const compareAtPatch =
+        compareAtValue !== null || loadedCompareAt.current !== null ? { compare_at_price: compareAtValue } : {};
+
       // STEP 1: Update the main product data
       const { error: productError } = await supabase
         .from('products')
         .update({
           name,
           price: parseFloat(price),
+          ...compareAtPatch,
           description,
           category,
           status,
@@ -473,6 +529,24 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                   className="w-full rounded-xl bg-[#F9F8F6] p-4 text-lg font-bold text-green-700 focus:ring-2 focus:ring-[#2C3E2C]"
                   required
                 />
+              </div>
+
+              <div className="col-span-2">
+                <label htmlFor="compare-at-price" className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">
+                  Compare-at price (D) <span className="font-medium normal-case tracking-normal text-gray-400">— optional, for a sale</span>
+                </label>
+                <input
+                  id="compare-at-price"
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="any"
+                  value={compareAtPrice}
+                  onChange={(event) => setCompareAtPrice(event.target.value)}
+                  placeholder="Leave blank for no sale"
+                  className="w-full rounded-xl bg-[#F9F8F6] p-4 text-lg font-bold text-gray-700 focus:ring-2 focus:ring-[#2C3E2C]"
+                />
+                <p className="mt-1.5 text-[11px] text-gray-500">{describeCompareAt(price, compareAtPrice)}</p>
               </div>
 
               <div className="col-span-2">

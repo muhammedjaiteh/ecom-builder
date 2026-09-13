@@ -11,6 +11,7 @@ import {
   type TemplateKey,
   type WebsiteConfig,
 } from '@/lib/siteTemplates';
+import { COMPARE_AT_COLUMN, selectWithOptionalColumns } from '@/lib/productColumns';
 import { slugify } from '@/lib/slugify';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -207,15 +208,25 @@ async function readWebsiteRow(shopId: string): Promise<SiteWebsite | null> {
 // Micro-Homepage: image_urls + created_at feed the card cross-fade and the
 // hero pill's recency rung. Cache entries warmed before this widen (≤300s)
 // lack both fields — the pill and cross-fade skip gracefully, no errors.
+// compare_at_price (sale strikethrough) is an OPTIONAL column on every product
+// read below (sql/compare-at-price.sql): lib/productColumns re-issues the
+// query without it on 42703, so a site never renders empty before the pack
+// has run — it simply shows no sale.
 async function readHomeProducts(shopId: string): Promise<SiteProduct[]> {
-  const { data, error } = await getSupabase()
-    .from('products')
-    .select('id, name, price, description, image_url, ad_video_url, ad_hero_image_url, category, stock_quantity, image_urls, created_at')
-    .or(`shop_id.eq.${shopId},user_id.eq.${shopId}`)
-    .order('created_at', { ascending: false })
-    .limit(12);
+  const { data, error } = await selectWithOptionalColumns<SiteProduct[]>(
+    'id, name, price, description, image_url, ad_video_url, ad_hero_image_url, category, stock_quantity, image_urls, created_at',
+    [COMPARE_AT_COLUMN],
+    (columns) =>
+      getSupabase()
+        .from('products')
+        .select(columns)
+        .or(`shop_id.eq.${shopId},user_id.eq.${shopId}`)
+        .order('created_at', { ascending: false })
+        .limit(12),
+    'site-home',
+  );
   if (error) throw new Error(`home products read failed: ${error.message}`);
-  return (data ?? []) as SiteProduct[];
+  return data ?? [];
 }
 
 // Per-redirect telemetry payload: which viewer the auth gate resolved. The
@@ -426,14 +437,20 @@ async function readCatalogCount(shopId: string): Promise<number> {
 // THROWS on error. `rangeFrom/rangeTo` are derived from the CLAMPED page, so
 // the cache key space below is bounded to real pages.
 async function readCatalogSlice(shopId: string, rangeFrom: number, rangeTo: number): Promise<SiteProduct[]> {
-  const { data, error } = await getSupabase()
-    .from('products')
-    .select('id, name, price, description, image_url, ad_video_url, ad_hero_image_url, category, stock_quantity')
-    .or(`shop_id.eq.${shopId},user_id.eq.${shopId}`)
-    .order('created_at', { ascending: false })
-    .range(rangeFrom, rangeTo);
+  const { data, error } = await selectWithOptionalColumns<SiteProduct[]>(
+    'id, name, price, description, image_url, ad_video_url, ad_hero_image_url, category, stock_quantity',
+    [COMPARE_AT_COLUMN],
+    (columns) =>
+      getSupabase()
+        .from('products')
+        .select(columns)
+        .or(`shop_id.eq.${shopId},user_id.eq.${shopId}`)
+        .order('created_at', { ascending: false })
+        .range(rangeFrom, rangeTo),
+    'site-catalog',
+  );
   if (error) throw new Error(`catalog slice failed: ${error.message}`);
-  return (data ?? []) as SiteProduct[];
+  return data ?? [];
 }
 
 // Count first, then a clamped range read: PostgREST rejects out-of-range
@@ -506,13 +523,14 @@ export function sanitizeProductId(rawId: string): string {
 
 // THROWS on error — never cached as a phantom product miss.
 async function readSiteProduct(cleanId: string): Promise<SitePdpProduct | null> {
-  const { data, error } = await getSupabase()
-    .from('products')
-    .select('id, name, price, description, image_url, image_urls, ad_video_url, ad_hero_image_url, category, stock_quantity, colors, sizes, user_id, shop_id')
-    .eq('id', cleanId)
-    .maybeSingle();
+  const { data, error } = await selectWithOptionalColumns<SitePdpProduct>(
+    'id, name, price, description, image_url, image_urls, ad_video_url, ad_hero_image_url, category, stock_quantity, colors, sizes, user_id, shop_id',
+    [COMPARE_AT_COLUMN],
+    (columns) => getSupabase().from('products').select(columns).eq('id', cleanId).maybeSingle(),
+    'site-pdp',
+  );
   if (error) throw new Error(`product read failed: ${error.message}`);
-  return (data as SitePdpProduct | null) ?? null;
+  return data ?? null;
 }
 
 // `shopId` is the RESOLVED site's shop (both call sites hold it before this

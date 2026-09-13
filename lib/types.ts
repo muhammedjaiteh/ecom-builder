@@ -18,6 +18,11 @@ export type Product = {
    *  columns keep compiling; the marketplace's cinematic tiles consume them. */
   ad_video_url?: string | null;
   ad_hero_image_url?: string | null;
+  /** Compare-at ("was") price for a targeted sale — sql/compare-at-price.sql.
+   *  Optional/additive: NULL/undefined = no sale. Rendered as a strikethrough +
+   *  Sale badge ONLY when strictly above `price` (lib/pricing.ts saleOf); the
+   *  charged price is always `price`. */
+  compare_at_price?: number | null;
 };
 
 export type Shop = {

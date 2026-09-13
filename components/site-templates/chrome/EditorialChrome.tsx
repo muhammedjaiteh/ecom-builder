@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { SaleBadge } from '@/components/SaleBadge';
 import SmartImage from '@/components/SmartImage';
 import {
   LOW_STOCK_MAX,
@@ -11,6 +12,7 @@ import {
   type SiteChromeProps,
   type SiteProduct,
 } from '@/lib/siteTemplates';
+import { saleOf } from '@/lib/pricing';
 import { siteThemeStyle } from '@/lib/siteTheme';
 import CartBagButton from '../CartBagButton';
 import EditableText from '../EditableText';
@@ -129,6 +131,8 @@ export function EditorialProductCard({ product, index, href, sizes }: {
   sizes?: string;
 }) {
   const badge = editorialStockBadge(product.stock_quantity);
+  // Compare-at sale (lib/pricing.ts): strictly compare_at_price > price.
+  const sale = saleOf(product.price, product.compare_at_price);
   const altSrc = secondaryProductImage(product);
   const imgSizes = sizes ?? EDITORIAL_CARD_SIZES;
   const root = 'group relative bg-[var(--site-bg,#F7F5F0)]';
@@ -157,23 +161,40 @@ export function EditorialProductCard({ product, index, href, sizes }: {
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-neutral-900/80 px-3 text-center opacity-0 transition-opacity duration-300 group-hover:opacity-100">
             <p className="font-serif text-lg italic leading-snug text-white md:text-xl">{product.name}</p>
-            <p className="text-xs text-white/70">{editorialPrice(product.price)}</p>
+            <p className="flex flex-wrap items-baseline justify-center gap-x-2 text-xs text-white/70">
+              <span>{editorialPrice(product.price)}</span>
+              {sale && <s className="text-[10px] text-white/40 line-through">{editorialPrice(sale.compareAt)}</s>}
+            </p>
             <span className="mt-2 text-[9px] font-bold uppercase tracking-[0.3em] text-white underline underline-offset-4">View</span>
           </div>
         )}
         {/* z-[2]: above the ink overlay AND the alt layer (z-[1]), below the
             stretched link (z-10) so the badge never carves a dead tap zone. */}
-        {badge && (
-          <span className={`absolute right-2 top-2 z-[2] px-2 py-1 text-[8px] font-bold uppercase tracking-[0.2em] ${
-            badge.tone === 'out' ? 'bg-neutral-900 text-white' : 'bg-[#F7F5F0]/95 text-amber-800'
-          }`}>
-            {badge.label}
-          </span>
+        {(badge || sale) && (
+          <div className="absolute right-2 top-2 z-[2] flex flex-col items-end gap-1">
+            {badge && (
+              <span className={`px-2 py-1 text-[8px] font-bold uppercase tracking-[0.2em] ${
+                badge.tone === 'out' ? 'bg-neutral-900 text-white' : 'bg-[#F7F5F0]/95 text-amber-800'
+              }`}>
+                {badge.label}
+              </span>
+            )}
+            {/* Square: Editorial's hairline chrome has no rounded corners. */}
+            {sale && <SaleBadge shape="square" />}
+          </div>
         )}
       </div>
       <div className="flex items-baseline justify-between gap-2 border-t border-neutral-900 px-3 py-2.5">
         <p className="truncate font-serif text-sm italic">{product.name}</p>
-        <p className="shrink-0 text-[11px] text-[var(--site-muted,oklch(55.6%_0_0))]">{editorialPrice(product.price)}</p>
+        <p className="flex shrink-0 flex-wrap items-baseline justify-end gap-x-1.5 text-[11px] text-[var(--site-muted,oklch(55.6%_0_0))]">
+          <span>{editorialPrice(product.price)}</span>
+          {sale && (
+            // The seller's "was" price — muted strikethrough beside the price.
+            <s className="text-[10px] line-through opacity-60">
+              <span className="sr-only">Was </span>{editorialPrice(sale.compareAt)}
+            </s>
+          )}
+        </p>
       </div>
     </>
   );

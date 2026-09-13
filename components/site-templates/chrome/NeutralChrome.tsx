@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { SaleBadge } from '@/components/SaleBadge';
 import SmartImage from '@/components/SmartImage';
 import {
   siteBasePath,
@@ -6,6 +7,7 @@ import {
   type SiteChromeProps,
   type SiteProduct,
 } from '@/lib/siteTemplates';
+import { saleOf } from '@/lib/pricing';
 import { siteThemeStyle } from '@/lib/siteTheme';
 import CartBagButton from '../CartBagButton';
 import SiteSearch from '../SiteSearch';
@@ -68,6 +70,8 @@ export const NEUTRAL_COLLECTION_GRID =
 /** Dark product card echoing the Vitality lineup rows. */
 export function NeutralProductCard({ product, index, href }: { product: SiteProduct; index: number; href: string }) {
   const badge = neutralStockBadge(product.stock_quantity);
+  // Compare-at sale (lib/pricing.ts): strictly compare_at_price > price.
+  const sale = saleOf(product.price, product.compare_at_price);
   return (
     <Link
       href={href}
@@ -75,19 +79,32 @@ export function NeutralProductCard({ product, index, href }: { product: SiteProd
     >
       <div className="relative aspect-square overflow-hidden bg-black">
         <NeutralProductVisual src={product.ad_hero_image_url ?? product.image_url} alt={product.name} index={index} />
-        {badge && (
-          <span
-            className={`absolute left-3 top-3 rounded-sm px-2.5 py-1 text-[9px] font-black uppercase tracking-widest ${
-              badge.tone === 'out' ? 'bg-white text-black' : 'bg-[var(--site-accent,#f0a500)] text-black'
-            }`}
-          >
-            {badge.label}
-          </span>
+        {(badge || sale) && (
+          <div className="absolute left-3 top-3 flex flex-col items-start gap-1.5">
+            {badge && (
+              <span
+                className={`rounded-sm px-2.5 py-1 text-[9px] font-black uppercase tracking-widest ${
+                  badge.tone === 'out' ? 'bg-white text-black' : 'bg-[var(--site-accent,#f0a500)] text-black'
+                }`}
+              >
+                {badge.label}
+              </span>
+            )}
+            {sale && <SaleBadge />}
+          </div>
         )}
       </div>
       <div className="flex items-start justify-between gap-3 p-4">
         <p className="text-sm font-black uppercase leading-snug tracking-tight text-white">{product.name}</p>
-        <p className="shrink-0 text-sm font-black text-[var(--site-accent,#f0a500)]">{neutralPrice(product.price)}</p>
+        <div className="shrink-0 text-right">
+          <p className="text-sm font-black text-[var(--site-accent,#f0a500)]">{neutralPrice(product.price)}</p>
+          {sale && (
+            // The seller's "was" price — muted strikethrough under the price.
+            <s className="block text-[11px] font-bold text-white/40 line-through">
+              <span className="sr-only">Was </span>{neutralPrice(sale.compareAt)}
+            </s>
+          )}
+        </div>
       </div>
     </Link>
   );

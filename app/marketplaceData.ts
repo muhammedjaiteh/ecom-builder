@@ -8,6 +8,7 @@ import {
   type ProductReviewRow,
   type ReviewStats,
 } from '@/lib/feedRanking';
+import { COMPARE_AT_COLUMN, selectWithOptionalColumns } from '@/lib/productColumns';
 import type { Product } from '@/lib/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -63,6 +64,12 @@ const MARKETPLACE_CACHE_REVALIDATE = 120;
 const SHOPS_LIMIT = 40;
 const PRODUCTS_LIMIT = 96;
 const REVIEWS_LIMIT = 5000;
+
+// Lean card contract. compare_at_price is requested as an OPTIONAL column
+// (sql/compare-at-price.sql): lib/productColumns retries without it on 42703,
+// so an un-run pack degrades to "no sale shown" instead of an EMPTY mall.
+const SHELF_PRODUCT_COLUMNS =
+  'id, name, price, image_url, image_urls, category, stock_quantity, ad_video_url, ad_hero_image_url, shop_id, user_id';
 
 export type MarketplaceShop = {
   id: string;
@@ -133,11 +140,17 @@ async function readMarketplaceShelf(): Promise<MarketplaceShop[]> {
       .eq('status', 'active')
       .order('subscription_tier', { ascending: true })
       .limit(SHOPS_LIMIT),
-    supabase
-      .from('products')
-      .select('id, name, price, image_url, image_urls, category, stock_quantity, ad_video_url, ad_hero_image_url, shop_id, user_id')
-      .order('created_at', { ascending: false })
-      .limit(PRODUCTS_LIMIT),
+    selectWithOptionalColumns(
+      SHELF_PRODUCT_COLUMNS,
+      [COMPARE_AT_COLUMN],
+      (columns) =>
+        supabase
+          .from('products')
+          .select(columns)
+          .order('created_at', { ascending: false })
+          .limit(PRODUCTS_LIMIT),
+      'marketplace',
+    ),
   ]);
 
   if (shopsRes.error) throw new Error(`marketplace shops read failed: ${shopsRes.error.message}`);

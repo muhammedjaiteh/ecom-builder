@@ -14,12 +14,14 @@ import CinematicTile, { type CinematicTileData } from '@/components/marketplace/
 import MarketplaceMarquee from '@/components/marketplace/MarketplaceMarquee';
 import PlaybackCoordinator from '@/components/marketplace/PlaybackCoordinator';
 import ProductCardXfade from '@/components/site-templates/ProductCardXfade';
+import { SaleBadge } from '@/components/SaleBadge';
 import {
   compareTierThenReviewScore,
   getTierRank,
   reviewScoreOf,
   type ReviewStats,
 } from '@/lib/feedRanking';
+import { saleOf } from '@/lib/pricing';
 import { secondaryProductImage } from '@/lib/productMedia';
 import { fetchJSON } from '@/lib/transport';
 import type { Product } from '@/lib/types';
@@ -371,6 +373,9 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
     const isAdvanced = tier === 'advanced' || tier === 'flagship';
     const isPro = tier === 'pro';
     const stats = reviewStats.get(product.id);
+    // Compare-at sale (lib/pricing.ts): rendered ONLY when compare_at_price
+    // is strictly above price — the charged price is always `price`.
+    const sale = saleOf(product.price, product.compare_at_price);
     const key = `${product.id}-${product.shop?.shop_slug}`;
     const root = 'group relative flex flex-col';
 
@@ -411,14 +416,21 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
               />
             </div>
           )}
-          {(isAdvanced || isPro) && (
-            // Discreet tier micro-pill — the only tier signal on the card.
-            <div className="absolute left-2 top-2 z-[2] flex items-center gap-1 rounded-full bg-white/90 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider shadow-sm backdrop-blur">
-              {isAdvanced ? (
-                <><BadgeCheck size={10} className="text-mall-gold" /><span className="text-mall-forest">Featured</span></>
-              ) : (
-                <><BadgeCheck size={10} className="text-purple-500" /><span className="text-purple-700">Pro</span></>
+          {(isAdvanced || isPro || sale) && (
+            // Top-left badge stack (z-[2]: above both photos, below the
+            // stretched link): the discreet tier micro-pill — the only tier
+            // signal on the card — with the platform Sale mark beneath it.
+            <div className="absolute left-2 top-2 z-[2] flex flex-col items-start gap-1">
+              {(isAdvanced || isPro) && (
+                <div className="flex items-center gap-1 rounded-full bg-white/90 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider shadow-sm backdrop-blur">
+                  {isAdvanced ? (
+                    <><BadgeCheck size={10} className="text-mall-gold" /><span className="text-mall-forest">Featured</span></>
+                  ) : (
+                    <><BadgeCheck size={10} className="text-purple-500" /><span className="text-purple-700">Pro</span></>
+                  )}
+                </div>
               )}
+              {sale && <SaleBadge />}
             </div>
           )}
         </div>
@@ -426,7 +438,15 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
           <h4 className="line-clamp-2 text-[13px] font-medium leading-5 text-gray-900 group-hover:underline">
             {product.name}
           </h4>
-          <p className="text-[13px] font-semibold text-gray-900">D{product.price}</p>
+          <p className="flex flex-wrap items-baseline gap-x-1.5 text-[13px] font-semibold text-gray-900">
+            <span>D{product.price}</span>
+            {sale && (
+              // The seller's "was" price — muted strikethrough beside the price.
+              <s className="text-[11px] font-normal text-gray-400 line-through">
+                <span className="sr-only">Was </span>D{sale.compareAt}
+              </s>
+            )}
+          </p>
           {stats && stats.count > 0 && (
             <p className="text-[11px] text-gray-500">
               <span aria-hidden className="text-yellow-500">★</span> {stats.average.toFixed(1)}{' '}
@@ -953,6 +973,7 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                             // link + alt layer + sibling toggle), on the boutique
                             // mini-grid's named group.
                             const altSrc = secondaryProductImage({ image_url: imgUrl ?? null, image_urls: product.image_urls });
+                            const miniSale = saleOf(product.price, product.compare_at_price);
                             const miniRoot = 'group/item relative flex flex-col gap-1.5';
                             const miniInner = (
                               <>
@@ -985,10 +1006,18 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                                       />
                                     </div>
                                   )}
+                                  {miniSale && <SaleBadge className="absolute left-1.5 top-1.5 z-[2]" />}
                                 </div>
                                 <div>
                                   <p className="truncate text-xs font-medium text-gray-900">{product.name}</p>
-                                  <p className="text-xs font-semibold text-gray-700">D{product.price}</p>
+                                  <p className="flex flex-wrap items-baseline gap-x-1 text-xs font-semibold text-gray-700">
+                                    <span>D{product.price}</span>
+                                    {miniSale && (
+                                      <s className="text-[10px] font-normal text-gray-400 line-through">
+                                        <span className="sr-only">Was </span>D{miniSale.compareAt}
+                                      </s>
+                                    )}
+                                  </p>
                                 </div>
                               </>
                             );

@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import { SITE_CHROMES, type SiteTone } from '@/components/site-templates/chrome';
+import { SavingsPill } from '@/components/SaleBadge';
 import SiteThemeCascade from '@/components/site-templates/SiteThemeCascade';
 import {
   LOW_STOCK_MAX,
@@ -9,6 +10,7 @@ import {
   siteBasePath,
   siteCollectionsPath,
 } from '@/lib/siteTemplates';
+import { formatDalasi, saleOf } from '@/lib/pricing';
 import { siteThemeVars } from '@/lib/siteTheme';
 import {
   loadSite,
@@ -97,6 +99,8 @@ type PdpStyles = {
   eyebrow: string;
   title: string;
   price: string;
+  /** The compare-at "was" price — muted, struck through, beside the price. */
+  compareAt: string;
   stock: Record<'in' | 'low' | 'out', string>;
   divider: string;
   description: string;
@@ -118,6 +122,7 @@ const PDP_STYLES: Record<SiteTone, PdpStyles> = {
     eyebrow: 'text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-muted,oklch(70.9%_0.01_56.259))]',
     title: 'mt-3 font-serif text-3xl font-bold leading-[1.1] tracking-tight text-[var(--site-text,oklch(21.6%_0.006_56.043))] md:text-4xl lg:text-5xl',
     price: 'text-2xl font-light tracking-tight text-[var(--site-text,oklch(21.6%_0.006_56.043))]',
+    compareAt: 'text-base font-light tracking-tight text-[var(--site-muted,oklch(70.9%_0.01_56.259))] line-through',
     stock: {
       in: 'rounded-full border border-emerald-700/30 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-800',
       low: 'rounded-full bg-white px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-700 ring-1 ring-amber-200',
@@ -138,6 +143,7 @@ const PDP_STYLES: Record<SiteTone, PdpStyles> = {
     eyebrow: 'text-[10px] font-bold uppercase tracking-[0.35em] text-[var(--site-accent,#1a2e1a)]',
     title: 'mt-3 font-serif text-3xl italic leading-[1.08] tracking-tight text-[var(--site-text,oklch(20.5%_0_0))] md:text-4xl lg:text-5xl',
     price: 'font-serif text-2xl italic text-[var(--site-text,oklch(20.5%_0_0))]',
+    compareAt: 'font-serif text-base italic text-[var(--site-muted,oklch(70.8%_0_0))] line-through',
     stock: {
       in: 'border border-neutral-900 px-3 py-1 text-[9px] font-bold uppercase tracking-[0.2em] text-[var(--site-text,oklch(20.5%_0_0))]',
       low: 'bg-[#F7F5F0] px-3 py-1 text-[9px] font-bold uppercase tracking-[0.2em] text-amber-800 ring-1 ring-neutral-900',
@@ -157,6 +163,7 @@ const PDP_STYLES: Record<SiteTone, PdpStyles> = {
     eyebrow: 'text-[10px] font-black uppercase tracking-[0.25em] text-[var(--site-accent,#f0a500)]',
     title: 'mt-3 text-3xl font-black uppercase leading-tight tracking-tighter text-[var(--site-text,#ffffff)] md:text-4xl lg:text-5xl',
     price: 'text-2xl font-black text-[var(--site-accent,#f0a500)]',
+    compareAt: 'text-base font-bold text-white/40 line-through',
     stock: {
       in: 'rounded-sm border border-white/25 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-white/80',
       low: 'rounded-sm bg-[var(--site-accent,#f0a500)] px-3 py-1 text-[10px] font-black uppercase tracking-wider text-black',
@@ -222,7 +229,10 @@ export default async function SiteProductPage({ params }: PageProps) {
   const media = buildGalleryMedia(product);
   const stock = stockStatus(product.stock_quantity);
   const description = product.description?.trim() || null;
-  const priceLabel = product.price == null ? 'Price on request' : `D${Number(product.price).toLocaleString()}`;
+  const priceLabel = product.price == null ? 'Price on request' : formatDalasi(product.price);
+  // Compare-at sale (lib/pricing.ts): strictly compare_at_price > price, else
+  // nothing changes — the charged price is always `price`.
+  const sale = saleOf(product.price, product.compare_at_price);
 
   // Cascade gap (Pillar 4): mirror the theme onto document.documentElement so
   // the root-layout Cart drawer wears the boutique tokens on the PDP — the
@@ -253,7 +263,16 @@ export default async function SiteProductPage({ params }: PageProps) {
               {product.category && <p className={s.eyebrow}>{product.category}</p>}
               <h1 className={s.title}>{product.name}</h1>
               <div className="mt-5 flex flex-wrap items-center gap-4">
-                <p className={s.price}>{priceLabel}</p>
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <p className={s.price}>{priceLabel}</p>
+                  {sale && (
+                    // The seller's "was" price — muted strikethrough beside the price.
+                    <s className={s.compareAt}>
+                      <span className="sr-only">Was </span>{formatDalasi(sale.compareAt)}
+                    </s>
+                  )}
+                </div>
+                {sale && <SavingsPill percentOff={sale.percentOff} shape={tone === 'editorial' ? 'square' : 'pill'} />}
                 {stock && <span className={s.stock[stock.kind]}>{stock.label}</span>}
               </div>
 

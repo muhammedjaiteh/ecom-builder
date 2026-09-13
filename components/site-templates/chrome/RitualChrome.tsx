@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { SaleBadge } from '@/components/SaleBadge';
 import SmartImage from '@/components/SmartImage';
 import {
   LOW_STOCK_MAX,
@@ -13,6 +14,7 @@ import {
   type SiteProduct,
 } from '@/lib/siteTemplates';
 import { buildWhatsAppLink } from '@/lib/orderFlow';
+import { saleOf } from '@/lib/pricing';
 import { siteThemeStyle } from '@/lib/siteTheme';
 import CartBagButton from '../CartBagButton';
 import EditableText from '../EditableText';
@@ -103,6 +105,8 @@ export function RitualProductCard({ product, index, href, sizes }: {
   sizes?: string;
 }) {
   const badge = ritualStockBadge(product.stock_quantity);
+  // Compare-at sale (lib/pricing.ts): strictly compare_at_price > price.
+  const sale = saleOf(product.price, product.compare_at_price);
   const altSrc = secondaryProductImage(product);
   const imgSizes = sizes ?? RITUAL_CARD_SIZES;
   const inner = (
@@ -130,16 +134,21 @@ export function RitualProductCard({ product, index, href, sizes }: {
         )}
         {/* z-[2]: badge + chip stay legible over EITHER photo, below the
             stretched link (z-10) so they never carve a dead tap zone. */}
-        {badge && (
-          <span
-            className={`absolute left-3 top-3 z-[2] rounded-full px-3 py-1 text-[9px] font-bold uppercase tracking-widest ${
-              badge.tone === 'out'
-                ? 'bg-stone-900/90 text-white'
-                : 'bg-white/90 text-amber-700 ring-1 ring-amber-200 backdrop-blur'
-            }`}
-          >
-            {badge.label}
-          </span>
+        {(badge || sale) && (
+          <div className="absolute left-3 top-3 z-[2] flex flex-col items-start gap-1.5">
+            {badge && (
+              <span
+                className={`rounded-full px-3 py-1 text-[9px] font-bold uppercase tracking-widest ${
+                  badge.tone === 'out'
+                    ? 'bg-stone-900/90 text-white'
+                    : 'bg-white/90 text-amber-700 ring-1 ring-amber-200 backdrop-blur'
+                }`}
+              >
+                {badge.label}
+              </span>
+            )}
+            {sale && <SaleBadge />}
+          </div>
         )}
         <span className="absolute inset-x-3 bottom-3 z-[2] translate-y-2 rounded-full bg-white/95 py-2.5 text-center text-[10px] font-bold uppercase tracking-[0.2em] text-stone-900 opacity-0 shadow-lg backdrop-blur transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
           View Product
@@ -147,7 +156,15 @@ export function RitualProductCard({ product, index, href, sizes }: {
       </div>
       <div className="mt-4 flex items-start justify-between gap-3 px-1">
         <p className="text-sm font-medium leading-snug text-[var(--site-text,oklch(26.8%_0.007_34.298))]">{product.name}</p>
-        <p className="shrink-0 text-sm text-[var(--site-muted,oklch(55.3%_0.013_58.071))]">{ritualPrice(product.price)}</p>
+        <div className="shrink-0 text-right">
+          <p className="text-sm text-[var(--site-muted,oklch(55.3%_0.013_58.071))]">{ritualPrice(product.price)}</p>
+          {sale && (
+            // The seller's "was" price — muted strikethrough under the price.
+            <s className="block text-[11px] text-[var(--site-muted,oklch(55.3%_0.013_58.071))] line-through opacity-60">
+              <span className="sr-only">Was </span>{ritualPrice(sale.compareAt)}
+            </s>
+          )}
+        </div>
       </div>
     </>
   );
