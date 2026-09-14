@@ -13,17 +13,17 @@ export default function ProductRatingBadge({
   productId,
   targetId = 'reviews',
   className = '',
-  starClassName,
-  starEmptyClassName,
+  starClassName = 'fill-yellow-400 text-yellow-400',
+  starEmptyClassName = 'text-neutral-300',
   textClassName,
 }: {
   productId: string;
   targetId?: string;
   className?: string;
-  /** Filled star (fill + stroke). */
-  starClassName: string;
+  /** Filled star (fill + stroke). Vivid gold to match ReviewList — never a theme accent. */
+  starClassName?: string;
   /** Unfilled star. */
-  starEmptyClassName: string;
+  starEmptyClassName?: string;
   textClassName: string;
 }) {
   const rating = useProductRating(productId);

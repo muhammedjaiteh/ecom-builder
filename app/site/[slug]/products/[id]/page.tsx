@@ -114,7 +114,8 @@ type PdpStyles = {
   descriptionToggle: string;
   /** Bottom fade over the clamped copy — must end in the page background. */
   descriptionFade: string;
-  /** Title rating badge (components/ProductRatingBadge). */
+  /** Title rating badge (components/ProductRatingBadge). Filled stars are
+   *  always vivid gold to match ReviewList — never the theme accent. */
   ratingStar: string;
   ratingStarEmpty: string;
   ratingText: string;
@@ -146,7 +147,7 @@ const PDP_STYLES: Record<SiteTone, PdpStyles> = {
     description: 'max-w-md text-[15px] font-light leading-relaxed text-[var(--site-muted,oklch(44.4%_0.011_73.639))]',
     descriptionToggle: 'text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--site-accent,#1c1917)] hover:opacity-70',
     descriptionFade: 'bg-gradient-to-t from-[var(--site-bg,#FBFAF7)] to-transparent',
-    ratingStar: 'fill-[var(--site-accent,#1c1917)] text-[var(--site-accent,#1c1917)]',
+    ratingStar: 'fill-yellow-400 text-yellow-400',
     ratingStarEmpty: 'text-stone-300',
     ratingText: 'text-xs font-medium text-[var(--site-muted,oklch(44.4%_0.011_73.639))]',
   },
@@ -172,7 +173,7 @@ const PDP_STYLES: Record<SiteTone, PdpStyles> = {
     description: 'max-w-md text-[15px] leading-relaxed text-[var(--site-muted,oklch(43.9%_0_0))]',
     descriptionToggle: 'text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-accent,#1a2e1a)] hover:opacity-70',
     descriptionFade: 'bg-gradient-to-t from-[var(--site-bg,#F7F5F0)] to-transparent',
-    ratingStar: 'fill-[var(--site-accent,#1a2e1a)] text-[var(--site-accent,#1a2e1a)]',
+    ratingStar: 'fill-yellow-400 text-yellow-400',
     ratingStarEmpty: 'text-neutral-300',
     ratingText: 'font-serif text-sm italic text-[var(--site-muted,oklch(43.9%_0_0))]',
   },
@@ -197,7 +198,7 @@ const PDP_STYLES: Record<SiteTone, PdpStyles> = {
     description: 'max-w-md text-[15px] leading-relaxed text-white/70',
     descriptionToggle: 'text-[10px] font-black uppercase tracking-[0.25em] text-[var(--site-accent,#f0a500)] hover:opacity-70',
     descriptionFade: 'bg-gradient-to-t from-[var(--site-bg,#0C0C0C)] to-transparent',
-    ratingStar: 'fill-[var(--site-accent,#f0a500)] text-[var(--site-accent,#f0a500)]',
+    ratingStar: 'fill-yellow-400 text-yellow-400',
     ratingStarEmpty: 'text-white/25',
     ratingText: 'text-xs font-bold text-white/70',
   },
