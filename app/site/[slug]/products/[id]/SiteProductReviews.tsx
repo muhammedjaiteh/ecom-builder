@@ -6,6 +6,7 @@ import type { SiteTone } from '@/components/site-templates/chrome';
 import DeviceReviewForm from '@/components/DeviceReviewForm';
 import ReviewList from '@/components/ReviewList';
 import { usePurchasedProduct } from '@/lib/purchaseMemory';
+import { notifyReviewSubmitted } from '@/lib/useProductRating';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SiteProductReviews — the boutique PDP's "Customer Feedback" section.
@@ -90,7 +91,9 @@ export default function SiteProductReviews({
   const purchasedOnThisDevice = usePurchasedProduct(productId);
 
   return (
-    <div id="reviews" aria-label="Customer feedback" className={styles.shell}>
+    // scroll-mt clears the sticky chrome nav when the title rating badge
+    // anchors here (components/ProductRatingBadge).
+    <div id="reviews" aria-label="Customer feedback" className={`scroll-mt-28 ${styles.shell}`}>
       <p className={styles.eyebrow}>Customer Feedback</p>
 
       <div className="mt-8 grid grid-cols-1 gap-12 lg:grid-cols-3">
@@ -107,7 +110,10 @@ export default function SiteProductReviews({
               <DeviceReviewForm
                 productId={productId}
                 shopId={shopId}
-                onReviewSubmitted={() => setRefreshTrigger((n) => n + 1)}
+                onReviewSubmitted={() => {
+                  setRefreshTrigger((n) => n + 1);
+                  notifyReviewSubmitted(productId); // refreshes the title rating badge
+                }}
               />
             ) : (
               <div className={styles.note}>

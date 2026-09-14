@@ -1,7 +1,7 @@
 'use client';
 
 import { createBrowserClient } from '@supabase/ssr';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import useSWR from 'swr';
 import { Phone, ArrowLeft, ShoppingBag, X, Smartphone, Banknote, Copy, Check, ShieldCheck, Truck, HomeIcon } from 'lucide-react';
@@ -9,9 +9,13 @@ import Link from 'next/link';
 import { formatDalasi, saleOf } from '@/lib/pricing';
 import { fetchJSON } from '@/lib/transport';
 import { rememberPurchases, usePurchasedProduct } from '@/lib/purchaseMemory';
+import { notifyReviewSubmitted } from '@/lib/useProductRating';
+import { useScrolledPast } from '@/lib/useScrolledPast';
 import { buildCartLineId, useCart } from '@/components/CartProvider';
 import BuyerReviewForm from '@/components/BuyerReviewForm';
+import CollapsibleDescription from '@/components/CollapsibleDescription';
 import DeviceReviewForm from '@/components/DeviceReviewForm';
+import ProductRatingBadge from '@/components/ProductRatingBadge';
 import ReviewList from '@/components/ReviewList';
 import { SavingsPill } from '@/components/SaleBadge';
 import {
@@ -41,6 +45,10 @@ export default function ProductClient({ product: initialProduct }: { product?: M
   // Local device recognition (lib/purchaseMemory): true once this device
   // has ordered this product — unlocks the no-phone review form below.
   const purchasedOnThisDevice = usePurchasedProduct(product?.id ?? '');
+  // Mobile sticky buy bar: hidden until the buyer scrolls PAST the in-page
+  // CTA row (never over the hero media on the first screen).
+  const ctaRowRef = useRef<HTMLDivElement | null>(null);
+  const ctaPassed = useScrolledPast(ctaRowRef);
 
   const { fulfillmentMethod, setFulfillmentMethod, addToCart, setIsCartOpen } = useCart();
   
@@ -102,6 +110,7 @@ export default function ProductClient({ product: initialProduct }: { product?: M
 
   const handleReviewSubmitted = () => {
     setRefreshTrigger(prev => prev + 1);
+    if (product) notifyReviewSubmitted(product.id); // refreshes the title rating badge
   };
 
   // Shared order mechanics (lib/orderFlow): lead capture, the platform's
@@ -194,6 +203,34 @@ export default function ProductClient({ product: initialProduct }: { product?: M
     );
   }
 
+  // Shared by the in-page button and the mobile sticky bar — one cart path.
+  const handleAddToCart = () => {
+    const hasColors = Array.isArray(product.colors) && product.colors.length > 0;
+    const hasSizes = Array.isArray(product.sizes) && product.sizes.length > 0;
+    if (hasColors && !selectedColor) { alert('Please select a color.'); return; }
+    if (hasSizes && !selectedSize) { alert('Please select a size.'); return; }
+    const variantParts = [selectedColor, selectedSize].filter(Boolean);
+    addToCart({
+      // Composite line id: each color/size combination is its
+      // own cart line (variantless → bare id, legacy-compatible).
+      id: buildCartLineId(product.id, { color: selectedColor, size: selectedSize }),
+      productId: product.id,
+      name: product.name,
+      price: product.price,
+      quantity: 1,
+      stock_quantity: product.stock_quantity ?? null,
+      image_url: product.image_url || '',
+      shop_id: product.shops?.id || '',
+      shop_name: product.shops?.shop_name || '',
+      shop_whatsapp: product.shops?.phone || DEFAULT_PHONE,
+      variant_details: variantParts.length > 0 ? variantParts.join(' / ') : 'None',
+    });
+  };
+
+  // Bar only once the real CTA row is above the viewport, while purchasable,
+  // and never under the checkout terminal (which has its own buttons).
+  const showMobileBuyBar = ctaPassed && !isOutOfStock && !showTerminal;
+
   return (
     <div className="min-h-screen bg-[#F9F8F6] font-sans text-[#2C3E2C] relative selection:bg-green-100">
       
@@ -277,7 +314,15 @@ export default function ProductClient({ product: initialProduct }: { product?: M
 
             {/* Title & Price */}
             <div>
-              <h1 className="text-4xl md:text-5xl font-serif font-medium leading-tight mb-6 text-[#1a2e1a]">{product.name}</h1>
+              <h1 className="text-4xl md:text-5xl font-serif font-medium leading-tight mb-3 text-[#1a2e1a]">{product.name}</h1>
+              {/* Aggregate stars + count → smooth-scrolls to #reviews below. */}
+              <ProductRatingBadge
+                productId={product.id}
+                className="mb-6"
+                starClassName="fill-yellow-400 text-yellow-400"
+                starEmptyClassName="text-gray-300"
+                textClassName="text-sm font-medium text-[#5F6F5F]"
+              />
               <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <p className="text-3xl font-light text-[#2C3E2C]">{product.price == null ? 'Price on request' : formatDalasi(product.price)}</p>
@@ -295,9 +340,14 @@ export default function ProductClient({ product: initialProduct }: { product?: M
 
             <div className="w-16 h-[1px] bg-gray-300"></div>
 
-            <p className="text-base text-[#5F6F5F] leading-relaxed font-light max-w-md">
-                {product.description || "Authentic quality from trusted sellers. Verified for excellence."}
-            </p>
+            {/* Clamped to 4 lines; the toggle appears only when the copy overflows. */}
+            <CollapsibleDescription
+              text={product.description || "Authentic quality from trusted sellers. Verified for excellence."}
+              lines={4}
+              className="text-base text-[#5F6F5F] leading-relaxed font-light max-w-md"
+              toggleClassName="text-[10px] font-bold uppercase tracking-widest text-[#2C3E2C] hover:text-green-800"
+              fadeClassName="bg-gradient-to-t from-[#F9F8F6] to-transparent"
+            />
 
             {/* Color Selector */}
             {Array.isArray(product.colors) && product.colors.length > 0 && (
@@ -357,30 +407,9 @@ export default function ProductClient({ product: initialProduct }: { product?: M
                 {fulfillmentSelector}
 
                 {/* 🟢 THE FIXED BUTTON */}
-                <div className="pt-4 flex flex-col md:flex-row gap-4">
+                <div ref={ctaRowRef} className="pt-4 flex flex-col md:flex-row gap-4">
                   <button
-                    onClick={() => {
-                      const hasColors = Array.isArray(product.colors) && product.colors.length > 0;
-                      const hasSizes = Array.isArray(product.sizes) && product.sizes.length > 0;
-                      if (hasColors && !selectedColor) { alert('Please select a color.'); return; }
-                      if (hasSizes && !selectedSize) { alert('Please select a size.'); return; }
-                      const variantParts = [selectedColor, selectedSize].filter(Boolean);
-                      addToCart({
-                        // Composite line id: each color/size combination is its
-                        // own cart line (variantless → bare id, legacy-compatible).
-                        id: buildCartLineId(product.id, { color: selectedColor, size: selectedSize }),
-                        productId: product.id,
-                        name: product.name,
-                        price: product.price,
-                        quantity: 1,
-                        stock_quantity: product.stock_quantity ?? null,
-                        image_url: product.image_url || '',
-                        shop_id: product.shops?.id || '',
-                        shop_name: product.shops?.shop_name || '',
-                        shop_whatsapp: product.shops?.phone || DEFAULT_PHONE,
-                        variant_details: variantParts.length > 0 ? variantParts.join(' / ') : 'None',
-                      });
-                    }}
+                    onClick={handleAddToCart}
                     className="w-full md:w-auto bg-white border-2 border-[#2C3E2C] text-[#2C3E2C] hover:bg-[#2C3E2C] hover:text-white py-4 px-10 rounded-full font-bold text-sm tracking-widest uppercase flex items-center justify-center gap-3 shadow-md transition-all transform active:scale-95"
                   >
                     <ShoppingBag size={18} />
@@ -402,8 +431,9 @@ export default function ProductClient({ product: initialProduct }: { product?: M
           </div>
         </div>
 
-        {/* --- REVIEWS INTEGRATION --- */}
-        <div className="mt-24 pt-12 border-t border-black/5">
+        {/* --- REVIEWS INTEGRATION --- (#reviews: anchor for the title
+            rating badge; scroll-mt clears the fixed h-20 navbar) */}
+        <div id="reviews" className="mt-24 pt-12 border-t border-black/5 scroll-mt-28">
           <div className="flex items-center gap-4 mb-8">
             <h2 className="text-3xl font-serif font-medium leading-tight text-[#1a2e1a]">Customer Feedback</h2>
           </div>
@@ -442,6 +472,43 @@ export default function ProductClient({ product: initialProduct }: { product?: M
         </div>
         {/* --- END REVIEWS INTEGRATION --- */}
       </main>
+
+      {/* 📱 MOBILE STICKY BUY BAR — slides up only after the in-page CTA row
+          has scrolled above the viewport, so it never covers the hero media.
+          Same handlers as the in-page buttons. z-[45]: above the navbar
+          (z-40), below the checkout terminal (z-50) and the cart drawer. */}
+      <div
+        role="region"
+        aria-label="Quick purchase"
+        inert={!showMobileBuyBar}
+        className={`md:hidden fixed inset-x-0 bottom-0 z-[45] border-t border-[#E6E4DC] bg-[#F9F8F6]/95 backdrop-blur-md shadow-[0_-12px_32px_rgba(26,46,26,0.08)] pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out motion-reduce:transition-none ${
+          showMobileBuyBar ? 'translate-y-0' : 'translate-y-full'
+        }`}
+      >
+        <div className="flex items-center gap-3 px-4 py-3">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-medium text-[#1a2e1a]">{product.name}</p>
+            <p className="truncate text-base font-light text-[#2C3E2C]">
+              {product.price == null ? 'Price on request' : formatDalasi(product.price)}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleAddToCart}
+            aria-label="Add to cart"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 border-[#2C3E2C] text-[#2C3E2C] transition-all active:scale-95"
+          >
+            <ShoppingBag size={18} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowTerminal(true)}
+            className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-full bg-[#2C3E2C] px-5 text-xs font-bold uppercase tracking-widest text-white shadow-lg transition-all active:scale-95"
+          >
+            <Phone size={16} /> Order
+          </button>
+        </div>
+      </div>
 
       {/* 💳 THE VIP TERMINAL (Redesigned) */}
       {showTerminal && (

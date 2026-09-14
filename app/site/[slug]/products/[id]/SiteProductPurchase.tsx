@@ -5,6 +5,7 @@ import { createBrowserClient } from '@supabase/ssr';
 import { Banknote, Check, Copy, Minus, Plus, ShoppingBag, Smartphone, X } from 'lucide-react';
 import { buildCartLineId, useCart } from '@/components/CartProvider';
 import { rememberPurchases } from '@/lib/purchaseMemory';
+import { useScrolledPast } from '@/lib/useScrolledPast';
 import SmartImage from '@/components/SmartImage';
 import {
   DEFAULT_ORDER_PHONE,
@@ -30,8 +31,9 @@ import type { SiteTone } from '@/components/site-templates/chrome';
 //     the accent outline that inverts on hover.
 //   • BEAT 5 — STICKY BUY BAR on EVERY viewport: fixed to the bottom of the
 //     PDP viewport, safe-area padded (pb-[env(safe-area-inset-bottom)]),
-//     revealed the moment the in-page CTA row leaves the viewport and kept
-//     there while the buyer scrolls the rest of the page. It carries the
+//     revealed only once the buyer has scrolled PAST the in-page CTA row
+//     (never over the hero gallery) and kept there while the buyer scrolls
+//     the rest of the page. It carries the
 //     product thumb, name, live price and BOTH CTAs, wired to the exact same
 //     handlers (no forked order logic). Motion is CSS-only (transform
 //     transition + motion-reduce) — framer-motion is no longer loaded on the
@@ -169,23 +171,14 @@ export default function SiteProductPurchase({
   const [paymentStep, setPaymentStep] = useState<'SELECT' | 'WAVE_INFO'>('SELECT');
   const [copied, setCopied] = useState(false);
 
-  // BEAT 5 — STICKY BUY BAR: observe the in-page CTA row; whenever it is out
-  // of the viewport (above OR below — on a phone the gallery fills the first
-  // screen, so the bar is present from the first scroll) the fixed bar is
-  // revealed. Every viewport; the observer is cheap and viewport-agnostic.
+  // BEAT 5 — STICKY BUY BAR: hidden until the buyer has scrolled PAST the
+  // in-page CTA row (lib/useScrolledPast). On a phone the gallery fills the
+  // first screen, so the bar must never sit over the hero image — it only
+  // slides in once the real buttons are above the viewport, and slides back
+  // out when the buyer scrolls up to them.
   const purchaseRootRef = useRef<HTMLDivElement | null>(null);
   const ctaRowRef = useRef<HTMLDivElement | null>(null);
-  const [ctaInView, setCtaInView] = useState(true);
-  useEffect(() => {
-    const el = ctaRowRef.current;
-    if (!el || typeof IntersectionObserver === 'undefined') return;
-    const observer = new IntersectionObserver(
-      ([entry]) => setCtaInView(entry.isIntersecting),
-      { threshold: 0 }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
+  const ctaPassed = useScrolledPast(ctaRowRef);
 
   // OVERSELL GUARD: the /site PDP is served from the 5-minute data cache, so
   // the server-rendered stock figure can be stale. Refresh it on mount via
@@ -331,9 +324,9 @@ export default function SiteProductPurchase({
   const unitLabel = product.price == null ? null : `D${Number(product.price).toLocaleString()}`;
   const priceLabel =
     product.price == null ? 'Price on request' : `D${(product.price * quantity).toLocaleString()}`;
-  // Show the bar only while the real CTA row is off-screen and no checkout
-  // terminal is up (the terminal carries its own WhatsApp buttons).
-  const showBuyBar = !ctaInView && !showTerminal;
+  // Show the bar only after the real CTA row has scrolled above the viewport
+  // and no checkout terminal is up (the terminal carries its own buttons).
+  const showBuyBar = ctaPassed && !showTerminal;
 
   return (
     <div ref={purchaseRootRef} className="space-y-7">

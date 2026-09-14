@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import { SITE_CHROMES, type SiteTone } from '@/components/site-templates/chrome';
 import { SavingsPill } from '@/components/SaleBadge';
+import CollapsibleDescription from '@/components/CollapsibleDescription';
+import ProductRatingBadge from '@/components/ProductRatingBadge';
 import SiteThemeCascade from '@/components/site-templates/SiteThemeCascade';
 import {
   LOW_STOCK_MAX,
@@ -43,8 +45,11 @@ import SiteProductReviews from './SiteProductReviews';
 //   • Typography + color ride the theme cascade: font-serif resolves through
 //     --site-serif; every ink/muted/accent spot is var(--site-*, <historical
 //     literal>) — the same tokens the committed Micro-Homepage buttons use.
-//   • Beat 5: a scroll-revealed STICKY BUY BAR on every viewport
-//     (SiteProductPurchase) — safe-area padded, both CTAs, same order logic.
+//   • Beat 5: a STICKY BUY BAR on every viewport (SiteProductPurchase) —
+//     safe-area padded, both CTAs, same order logic — revealed only after
+//     the buyer scrolls past the in-page CTA row, never over the gallery.
+//   • CRO polish: aggregate star rating under the title (anchors to
+//     #reviews) and a 4-line clamped description with a read-more toggle.
 //   • "Delivery & Pickup" is a dedicated data pane (SiteFulfillmentPane)
 //     rendered from the validated shop facts, never invented copy.
 
@@ -105,6 +110,14 @@ type PdpStyles = {
   stock: Record<'in' | 'low' | 'out', string>;
   divider: string;
   description: string;
+  /** "Read full description" / "Show less" toggle under the clamped copy. */
+  descriptionToggle: string;
+  /** Bottom fade over the clamped copy — must end in the page background. */
+  descriptionFade: string;
+  /** Title rating badge (components/ProductRatingBadge). */
+  ratingStar: string;
+  ratingStarEmpty: string;
+  ratingText: string;
 };
 
 // Every ink/muted/accent literal below is the template's historical value,
@@ -131,6 +144,11 @@ const PDP_STYLES: Record<SiteTone, PdpStyles> = {
     },
     divider: 'my-7 h-px w-16 bg-[var(--site-accent,#1c1917)]',
     description: 'max-w-md text-[15px] font-light leading-relaxed text-[var(--site-muted,oklch(44.4%_0.011_73.639))]',
+    descriptionToggle: 'text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--site-accent,#1c1917)] hover:opacity-70',
+    descriptionFade: 'bg-gradient-to-t from-[var(--site-bg,#FBFAF7)] to-transparent',
+    ratingStar: 'fill-[var(--site-accent,#1c1917)] text-[var(--site-accent,#1c1917)]',
+    ratingStarEmpty: 'text-stone-300',
+    ratingText: 'text-xs font-medium text-[var(--site-muted,oklch(44.4%_0.011_73.639))]',
   },
   editorial: {
     section: 'mx-auto max-w-7xl border-b border-neutral-900 px-5 pb-16 pt-6 md:px-10 md:pb-24 md:pt-10',
@@ -152,6 +170,11 @@ const PDP_STYLES: Record<SiteTone, PdpStyles> = {
     },
     divider: 'my-7 h-px w-20 bg-[var(--site-text,#171717)]',
     description: 'max-w-md text-[15px] leading-relaxed text-[var(--site-muted,oklch(43.9%_0_0))]',
+    descriptionToggle: 'text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-accent,#1a2e1a)] hover:opacity-70',
+    descriptionFade: 'bg-gradient-to-t from-[var(--site-bg,#F7F5F0)] to-transparent',
+    ratingStar: 'fill-[var(--site-accent,#1a2e1a)] text-[var(--site-accent,#1a2e1a)]',
+    ratingStarEmpty: 'text-neutral-300',
+    ratingText: 'font-serif text-sm italic text-[var(--site-muted,oklch(43.9%_0_0))]',
   },
   neutral: {
     section: 'mx-auto max-w-7xl px-5 pb-16 pt-6 md:px-10 md:pb-24 md:pt-10',
@@ -172,6 +195,11 @@ const PDP_STYLES: Record<SiteTone, PdpStyles> = {
     },
     divider: 'my-7 h-px w-16 bg-white/15',
     description: 'max-w-md text-[15px] leading-relaxed text-white/70',
+    descriptionToggle: 'text-[10px] font-black uppercase tracking-[0.25em] text-[var(--site-accent,#f0a500)] hover:opacity-70',
+    descriptionFade: 'bg-gradient-to-t from-[var(--site-bg,#0C0C0C)] to-transparent',
+    ratingStar: 'fill-[var(--site-accent,#f0a500)] text-[var(--site-accent,#f0a500)]',
+    ratingStarEmpty: 'text-white/25',
+    ratingText: 'text-xs font-bold text-white/70',
   },
 };
 
@@ -263,6 +291,14 @@ export default async function SiteProductPage({ params }: PageProps) {
             <div className={s.infoCol}>
               {product.category && <p className={s.eyebrow}>{product.category}</p>}
               <h1 className={s.title}>{product.name}</h1>
+              {/* Aggregate stars + count → smooth-scrolls to #reviews below. */}
+              <ProductRatingBadge
+                productId={product.id}
+                className="mt-3"
+                starClassName={s.ratingStar}
+                starEmptyClassName={s.ratingStarEmpty}
+                textClassName={s.ratingText}
+              />
               <div className="mt-5 flex flex-wrap items-center gap-4">
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                   <p className={s.price}>{priceLabel}</p>
@@ -280,7 +316,14 @@ export default async function SiteProductPage({ params }: PageProps) {
               {description && (
                 <>
                   <div className={s.divider} />
-                  <p className={s.description}>{description}</p>
+                  {/* Clamped to 4 lines; the toggle appears only when the copy overflows. */}
+                  <CollapsibleDescription
+                    text={description}
+                    lines={4}
+                    className={s.description}
+                    toggleClassName={s.descriptionToggle}
+                    fadeClassName={s.descriptionFade}
+                  />
                 </>
               )}
 
