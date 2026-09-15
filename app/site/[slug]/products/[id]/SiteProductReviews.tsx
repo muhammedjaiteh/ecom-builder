@@ -17,10 +17,11 @@ import { notifyReviewSubmitted } from '@/lib/useProductRating';
 // device-recognition hook (lib/purchaseMemory) and the refresh counter that
 // re-fetches the list after a post.
 //
-// SUBMISSION: DeviceReviewForm only. It inserts straight through the anon
-// Supabase client, so it works on custom domains untouched. The phone-
-// verified BuyerReviewForm POSTs /api/reviews, which proxy.ts does NOT
-// allowlist for tenant hosts — wiring it here needs that allowlist first.
+// SUBMISSION: DeviceReviewForm only. It POSTs /api/reviews/device, which the
+// proxy.ts tenant allowlist passes through (the /api/reviews prefix), so it
+// works on custom domains. The row is minted UNVERIFIED (is_verified = false)
+// — sql/iron-dome-security.sql removed every anon write to reviews. The
+// phone-verified BuyerReviewForm (POST /api/reviews) is allowlisted too.
 // An unrecognised device gets an honest note instead of an empty column.
 //
 // TOKENS: colors ride the theme cascade (var(--site-*) + historical literal),

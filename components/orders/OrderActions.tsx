@@ -6,6 +6,7 @@ import { Ban, CheckCircle2, Loader2 } from 'lucide-react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import BottomSheet from '@/components/website/BottomSheet';
 import { useIsMobileViewport } from '@/lib/useIsMobileViewport';
+import { fetchJSON, isTransportError } from '@/lib/transport';
 import { patchOrderStatus, useOrders } from '@/lib/useOrders';
 import type { Order } from '@/lib/types';
 
@@ -14,14 +15,15 @@ import type { Order } from '@/lib/types';
 // mounted by BOTH orders surfaces (the command center's orders tab and
 // /dashboard/orders), which previously duplicated this logic.
 //
-// AUTHORIZATION EVIDENCE: every write here runs on the seller's own browser
-// client. RLS_PRODUCTS_ORDERS_SHOPS.sql §5 "orders_owner_update" grants
-// UPDATE TO authenticated USING/WITH CHECK (shop_id = auth.uid()) — the exact
-// scope both pages' legacy Mark-Paid flows already exercised in production.
-// increment_stock (INVENTORY_DEDUCTION_RPC.sql) is SECURITY DEFINER and is
-// already called from the anonymous buyer client (Cart.tsx rollbackStock), so
-// the authenticated seller may call it a fortiori. No service-role API route
-// is needed.
+// AUTHORIZATION EVIDENCE: Mark Paid / Undo run on the seller's own browser
+// client under RLS_PRODUCTS_ORDERS_SHOPS.sql §5 "orders_owner_update" (UPDATE
+// TO authenticated USING/WITH CHECK shop_id = auth.uid()) — the exact scope
+// both pages' legacy Mark-Paid flows already exercised in production.
+// Cancel & Restock is SERVER-AUTHORITATIVE: POST /api/orders/cancel proves
+// ownership + the race guard and runs increment_stock with the service role,
+// because sql/iron-dome-security.sql (P0-1) made the inventory RPCs
+// EXECUTE-able by service_role ONLY — the previous browser-side RPC call let
+// any signed-in account inflate any shop's stock by product id.
 //
 // STATE OWNERSHIP: this component owns NO order state and prop-drills NONE.
 // Every status change — optimistic flip, honest rollback, post-race resync —
@@ -37,13 +39,14 @@ import type { Order } from '@/lib/types';
 //     the cache is then revalidated from the database, never guessed.
 //   · Cancel & Restock — destructive confirm via BottomSheet (mobile) /
 //     centered modal with Escape parity (desktop — the domains-page
-//     precedent). On confirm: UPDATE … SET status='cancelled' WHERE
-//     id=… AND shop_id=… AND status='pending'. THE RACE GUARD: zero rows
-//     updated = another tab/device already moved this order — the restock is
-//     ABORTED (stock must never be re-credited for an order that was paid or
-//     already cancelled elsewhere). Only after the guarded UPDATE lands does
-//     increment_stock run per order_item; the RPC itself no-ops products with
-//     NULL stock_quantity (untracked inventory stays untracked), and per-item
+//     precedent). On confirm: POST /api/orders/cancel, which runs UPDATE …
+//     SET status='cancelled' WHERE id=… AND shop_id=… AND status='pending'.
+//     THE RACE GUARD: zero rows updated = another tab/device already moved
+//     this order — the restock is ABORTED (409 RACED; stock must never be
+//     re-credited for an order that was paid or already cancelled elsewhere).
+//     Only after the guarded UPDATE lands does increment_stock run per
+//     order_item (service role); the RPC itself no-ops products with NULL
+//     stock_quantity (untracked inventory stays untracked), and per-item
 //     failures are tolerated with an honest 'X of Y items restocked' toast.
 //   · Terminal states are immutable here: 'cancelled' renders a muted badge
 //     with no actions (stock was already restored — reopening would
@@ -235,50 +238,60 @@ export default function OrderActions({ order, userId, supabase, onToast }: Order
     if (cancelling) return;
     setCancelling(true);
 
-    const result = await transition('pending', 'cancelled');
-
-    if (result === 'failed') {
+    // Server-authoritative: the guarded pending→cancelled transition AND the
+    // restock run in POST /api/orders/cancel with the service role, after
+    // ownership is proven — increment_stock is no longer client-callable
+    // (sql/iron-dome-security.sql). Local session read, no network.
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) {
       setCancelling(false);
       setConfirming(false);
-      onToast('Could not cancel this order — nothing was changed. Check your connection and try again.');
+      onToast('Your session has expired — sign in again to cancel this order.');
       return;
     }
-    if (result === 'raced') {
-      // RACE GUARD TRIPPED: someone else acted on this order first. The
-      // restock is aborted — re-crediting stock for an order that was paid
-      // (or already cancelled) elsewhere would corrupt inventory.
+
+    let outcome: { lines: number; restocked: number };
+    try {
+      outcome = await fetchJSON<{ lines: number; restocked: number }>('/api/orders/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ orderId: order.id }),
+      });
+    } catch (err) {
       setCancelling(false);
       setConfirming(false);
-      onToast('This order was already updated somewhere else — no stock was changed.');
-      await resyncFromDatabase();
+      if (isTransportError(err) && err.kind === 'server' && err.status === 409) {
+        // RACE GUARD TRIPPED server-side: someone else acted on this order
+        // first. Nothing was restocked — re-crediting stock for an order that
+        // was paid (or already cancelled) elsewhere would corrupt inventory.
+        onToast('This order was already updated somewhere else — no stock was changed.');
+        await resyncFromDatabase();
+      } else if (isTransportError(err) && err.kind === 'timeout') {
+        // The server may have finished after our deadline — show the truth.
+        onToast('The connection timed out — refreshing this order’s real status.');
+        await resyncFromDatabase();
+      } else {
+        onToast('Could not cancel this order — nothing was changed. Check your connection and try again.');
+      }
       return;
     }
 
     await commitStatus('cancelled');
     setConfirming(false);
-
-    // Restock per order_item. Lines whose product row is gone (no product_id)
-    // cannot be restocked; the RPC internally no-ops NULL stock_quantity
-    // (untracked inventory) and re-credits tracked stock atomically.
-    const lines = order.order_items;
-    let restocked = 0;
-    for (const item of lines) {
-      if (!item.product_id || !(item.quantity > 0)) continue;
-      const { data: ok, error: rpcError } = await supabase.rpc('increment_stock', {
-        product_id_param: item.product_id,
-        quantity_param: item.quantity,
-      });
-      if (!rpcError && ok !== false) restocked += 1;
-      else console.error(`[orders] restock failed for product ${item.product_id}:`, rpcError?.message ?? 'product not found');
-    }
     setCancelling(false);
 
-    if (lines.length === 0) {
+    // lines = order_items on the order; -1 = cancelled but the lines could not
+    // be read for restock (the route says so honestly rather than guessing).
+    const { lines, restocked } = outcome;
+    if (lines < 0) {
+      onToast('Order cancelled, but its items could not be restocked — check your stock levels.');
+    } else if (lines === 0) {
       onToast('Order cancelled.');
-    } else if (restocked === lines.length) {
+    } else if (restocked === lines) {
       onToast('Order cancelled — all items returned to stock.');
     } else {
-      onToast(`Order cancelled; ${restocked} of ${lines.length} items restocked.`);
+      onToast(`Order cancelled; ${restocked} of ${lines} items restocked.`);
     }
   };
 

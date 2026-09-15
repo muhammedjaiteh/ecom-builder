@@ -11,7 +11,8 @@ import { History, Star } from 'lucide-react';
 // feedback. This imports it: Name + Rating + Comment → direct INSERT under
 // reviews_seller_insert (sql/reviews-mvp.sql). shop_id = the seller's uid
 // (shops.id == auth.uid()), is_external = true marks it as imported, and
-// is_verified = true because the seller vouches for it.
+// is_verified = true because the seller vouches for it (ReviewList renders
+// "Verified Store Import" — never "Verified Buyer"; sql/iron-dome-security.sql).
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface LegacyReviewFormProps {
@@ -92,7 +93,7 @@ export default function LegacyReviewForm({ productId, productName, onReviewSubmi
       </div>
       <p className="mb-6 text-sm text-gray-500">
         Import feedback you already received on WhatsApp or in person{productName ? ` for ${productName}` : ''}.
-        It appears on the product page marked as verified.
+        It appears on the product page marked as a store import &mdash; never as a platform checkout.
       </p>
 
       {notice && (

@@ -1,31 +1,31 @@
 'use client';
 
 import { useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
-import { BadgeCheck, Star } from 'lucide-react';
+import { fetchJSON, isTransportError } from '@/lib/transport';
+import { Smartphone, Star } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DeviceReviewForm — "Write a Review" for a buyer this DEVICE recognises.
 //
 // Rendered by the PDP only when the product id is in the local purchase
 // memory (lib/purchaseMemory — written on every successful WhatsApp order
-// handoff). No phone, no login: Name + Rating + Comment → a direct INSERT
-// under the public policy in sql/reviews-mvp.sql (is_verified = true).
-// The phone-verified badge (verified_purchase) stays service-role-only.
+// handoff). No phone, no login: Name + Rating + Comment → POST
+// /api/reviews/device (service role). The row is minted UNVERIFIED
+// (is_verified = false): device memory is a localStorage fact the server
+// cannot check, so this form never claims a verified badge and ReviewList
+// shows it as "Buyer". The "Verified Purchase" mark comes only from the
+// phone-matched BuyerReviewForm (POST /api/reviews). The old direct anon
+// INSERT (is_verified = true) was removed by sql/iron-dome-security.sql.
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface DeviceReviewFormProps {
   productId: string;
+  /** Kept for call-site compatibility — the server derives shop_id from the product row. */
   shopId: string | null;
   onReviewSubmitted: () => void;
 }
 
-// 42703 = undefined column, PGRST204 = column missing from the schema cache —
-// both mean sql/reviews-mvp.sql has not been applied yet.
-const MISSING_COLUMN_CODES = new Set(['42703', 'PGRST204']);
-const DEADLINE_MS = 12_000;
-
-export default function DeviceReviewForm({ productId, shopId, onReviewSubmitted }: DeviceReviewFormProps) {
+export default function DeviceReviewForm({ productId, onReviewSubmitted }: DeviceReviewFormProps) {
   const [rating, setRating] = useState(5);
   const [reviewerName, setReviewerName] = useState('');
   const [comment, setComment] = useState('');
@@ -39,39 +39,30 @@ export default function DeviceReviewForm({ productId, shopId, onReviewSubmitted 
     setIsSubmitting(true);
     setError(null);
 
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      setError('You appear to be offline. Your review was not sent — try again when you’re back online.');
-      setIsSubmitting(false);
-      return;
-    }
-
-    const base = {
-      product_id: productId,
-      rating,
-      comment: comment.trim(),
-      reviewer_name: reviewerName.trim(),
-      is_external: false,
-      media_urls: [] as string[],
-    };
-
     try {
-      let { error: insertError } = await supabase
-        .from('reviews')
-        .insert({ ...base, shop_id: shopId, is_verified: true })
-        .abortSignal(AbortSignal.timeout(DEADLINE_MS));
-      if (insertError && MISSING_COLUMN_CODES.has(insertError.code)) {
-        ({ error: insertError } = await supabase
-          .from('reviews')
-          .insert(base)
-          .abortSignal(AbortSignal.timeout(DEADLINE_MS)));
-      }
-      if (insertError) throw insertError;
-
+      await fetchJSON<{ review: { id: string } }>('/api/reviews/device', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId,
+          reviewerName: reviewerName.trim(),
+          rating,
+          comment: comment.trim(),
+        }),
+      });
       setPosted(true);
       onReviewSubmitted();
     } catch (err) {
       console.error('[DeviceReviewForm] submit failed:', err);
-      setError('Your review could not be saved. Please check your connection and try again.');
+      if (isTransportError(err)) {
+        setError(
+          err.kind === 'offline'
+            ? 'You appear to be offline. Your review was not sent — try again when you’re back online.'
+            : err.message
+        );
+      } else {
+        setError('Your review could not be saved. Please check your connection and try again.');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -81,10 +72,10 @@ export default function DeviceReviewForm({ productId, shopId, onReviewSubmitted 
     return (
       <div className="bg-white p-6 rounded-2xl border border-black/5 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
         <div className="flex items-center gap-2 mb-2">
-          <BadgeCheck className="w-5 h-5 text-green-700" />
+          <Smartphone className="w-5 h-5 text-neutral-700" />
           <h3 className="text-lg font-medium tracking-tight text-neutral-900">Thank you!</h3>
         </div>
-        <p className="text-sm text-neutral-600 leading-relaxed">Your verified review is live below.</p>
+        <p className="text-sm text-neutral-600 leading-relaxed">Your review is live below.</p>
       </div>
     );
   }
@@ -93,8 +84,8 @@ export default function DeviceReviewForm({ productId, shopId, onReviewSubmitted 
     <div className="bg-white p-6 rounded-2xl border border-black/5 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
       <div className="mb-1 flex items-center gap-2">
         <h3 className="text-lg font-medium tracking-tight text-neutral-900">Write a Review</h3>
-        <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-semibold text-green-700">
-          <BadgeCheck size={11} /> Verified buyer
+        <span className="inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold text-neutral-700">
+          <Smartphone size={11} /> Ordered on this device
         </span>
       </div>
       <p className="text-xs text-neutral-500 mb-4 leading-relaxed">

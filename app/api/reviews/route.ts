@@ -196,6 +196,7 @@ export async function POST(req: Request) {
         is_external: false,
         external_author: null,
         verified_purchase: true,
+        is_verified: true,
         reviewer_name: reviewerName,
         reviewer_phone_hash: reviewerPhoneHash,
         media_urls: [],

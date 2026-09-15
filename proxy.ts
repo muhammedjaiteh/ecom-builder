@@ -60,8 +60,11 @@ const TENANT_PAGE_PREFIXES = ['/collections', '/products', '/checkout'];
 // service-role key), then fires POST /api/site-revalidate so the tenant's
 // cached /site catalog reflects the stock deduction immediately. A redirect
 // here would turn the JSON POST cross-origin and fail CORS — the order would
-// never be written and WhatsApp never opened.
-const TENANT_API_ALLOWLIST: string[] = ['/api/checkout', '/api/revalidate', '/api/reviews'];
+// never be written and WhatsApp never opened. /api/site-revalidate is its OWN
+// route (not under the /api/revalidate prefix) and must be listed explicitly:
+// without it the cache-bust POST from a custom domain redirected off-origin
+// and the tenant /site stock badges stayed stale until the 300s backstop.
+const TENANT_API_ALLOWLIST: string[] = ['/api/checkout', '/api/revalidate', '/api/reviews', '/api/site-revalidate'];
 const RESOLVE_DEADLINE_MS = 5_000;
 const FALLBACK_CANONICAL_ORIGIN = 'https://sanndikaa.com';
 
@@ -162,7 +165,7 @@ async function handleTenantRequest(request: NextRequest, host: string): Promise<
     return NextResponse.rewrite(target);
   }
 
-  // 5. Storefront API allowlist (currently empty — evidence at the top).
+  // 5. Storefront API allowlist (evidence at the top).
   if (TENANT_API_ALLOWLIST.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
     return NextResponse.next();
   }

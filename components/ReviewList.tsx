@@ -23,16 +23,23 @@ interface Review {
   is_verified?: boolean | null;
 }
 
-/** Attribution line: "{name} · {mark}". Phone-matched rows keep the
- *  Verified Purchase mark; device-recognised buyers and seller-imported
- *  feedback read Verified Buyer unless is_verified was explicitly cleared. */
+/** Attribution line: "{name} · {mark}", most trusted first.
+ *  · verified_purchase — server phone→order match (POST /api/reviews)
+ *      → "Verified Purchase"
+ *  · is_external — seller-imported feedback (WhatsApp / in person). NEVER
+ *      "Verified Buyer": an import is not a platform checkout. Seller-vouched
+ *      (is_verified) reads "Verified Store Import"; otherwise "Legacy Review".
+ *  · is_verified — server-minted only (sql/iron-dome-security.sql)
+ *      → "Verified Buyer"
+ *  · otherwise (device-recognised via /api/reviews/device, or pre-migration
+ *      rows) → "Buyer". */
 function reviewAttribution(review: Review): string {
   const name = (review.reviewer_name ?? review.external_author ?? '').trim();
-  const mark = review.verified_purchase
-    ? 'Verified Purchase'
-    : review.is_verified === false
-      ? 'Buyer'
-      : 'Verified Buyer';
+  let mark: string;
+  if (review.verified_purchase) mark = 'Verified Purchase';
+  else if (review.is_external) mark = review.is_verified === false ? 'Legacy Review' : 'Verified Store Import';
+  else if (review.is_verified === true) mark = 'Verified Buyer';
+  else mark = 'Buyer';
   return name ? `${name} · ${mark}` : mark;
 }
 
