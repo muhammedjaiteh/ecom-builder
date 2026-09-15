@@ -11,6 +11,7 @@ import {
   DEFAULT_ORDER_PHONE,
   buildDirectOrderMessage,
   buildWhatsAppLink,
+  launchWhatsApp,
   recordLead,
   type DirectOrderMethod,
 } from '@/lib/orderFlow';
@@ -284,11 +285,12 @@ export default function SiteProductPurchase({
       variant: variantDetails,
     });
     const waLink = buildWhatsAppLink(sellerPhone, message) ?? buildWhatsAppLink(DEFAULT_ORDER_PHONE, message)!;
-    window.open(waLink, '_blank');
+    // Persist + reset BEFORE the same-tab handoff (lib/orderFlow): the tab may
+    // leave for wa.me when WhatsApp is not installed.
     rememberPurchases([product.id]);
-
     setShowTerminal(false);
     setPaymentStep('SELECT');
+    launchWhatsApp(waLink);
   };
 
   const copyNumber = () => {

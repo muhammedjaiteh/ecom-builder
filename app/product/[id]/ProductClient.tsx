@@ -27,6 +27,7 @@ import {
   DEFAULT_ORDER_PHONE,
   buildDirectOrderMessage,
   buildWhatsAppLink,
+  launchWhatsApp,
   recordLead,
 } from '@/lib/orderFlow';
 
@@ -142,11 +143,12 @@ export default function ProductClient({ product: initialProduct }: { product?: M
     });
 
     const waLink = buildWhatsAppLink(sellerPhone, message) ?? buildWhatsAppLink(DEFAULT_PHONE, message)!;
-    window.open(waLink, '_blank');
+    // Persist + reset BEFORE the same-tab handoff (lib/orderFlow): the tab may
+    // leave for wa.me when WhatsApp is not installed.
     rememberPurchases([product.id]);
-
     setShowTerminal(false);
     setPaymentStep('SELECT');
+    launchWhatsApp(waLink);
   };
 
   // Plain JSX element (not a component created during render — the lint-flagged

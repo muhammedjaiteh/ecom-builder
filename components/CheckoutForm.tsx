@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useState, useSyncExternalStore } from 'react';
+import { flushSync } from 'react-dom';
 import {
   ArrowRight,
   Banknote,
@@ -24,13 +25,13 @@ import {
 import { useCart, type CartItem } from './CartProvider';
 // Shared order-flow helpers (lib/orderFlow) — one phone sanitizer + wa.me
 // builder + payment-method lines across the cart, the marketplace PDP, and the
-// /site storefront PDP. openOrderHandoff: popup-safe WhatsApp handoff (window
-// opened synchronously inside the payment tap, BEFORE the awaited checkout
-// round-trip — see lib/orderFlow).
+// /site storefront PDP. launchWhatsApp: the ONE same-tab WhatsApp handoff (a
+// _blank tab traps mobile buyers in a Custom Tab on api.whatsapp.com — see
+// lib/orderFlow).
 import {
   buildPaymentMethodLines,
   buildWhatsAppLink,
-  openOrderHandoff,
+  launchWhatsApp,
   type DirectOrderMethod,
 } from '@/lib/orderFlow';
 import { rememberPurchases } from '@/lib/purchaseMemory';
@@ -43,7 +44,7 @@ import { rememberPurchases } from '@/lib/purchaseMemory';
 //
 // It owns everything the cart drawer used to inline: the buyer fields (name,
 // phone, delivery/pickup + address), the server-authoritative POST to
-// /api/checkout, the verified WhatsApp receipt, and the popup-safe handoff.
+// /api/checkout, the verified WhatsApp receipt, and the same-tab WhatsApp handoff.
 // The drawer (components/Cart.tsx) is now a pure bag: it routes here.
 //
 // PAYMENT STEP: "Send order" is INTERCEPTED. It validates the buyer fields and
@@ -499,18 +500,13 @@ export default function CheckoutForm({
     const phone = customerPhone.trim();
     const address = deliveryAddress.trim();
 
-    // Hoisted so the outer catch can always close the interstitial tab.
-    let handoff: ReturnType<typeof openOrderHandoff> | null = null;
     const shopId = group.shopId;
     const lines = group.items;
 
     try {
-      // 1. OPEN THE HANDOFF WINDOW *SYNCHRONOUSLY* — no await has run yet, so
-      // the payment tap's transient activation is still alive and the tab
-      // opens popup-block-free. It shows a branded "Preparing your order…"
-      // interstitial while the server works; only after a 200 does it
-      // navigate to WhatsApp.
-      handoff = openOrderHandoff();
+      // 1. LOCK THE FORM. No handoff window is opened here: WhatsApp is reached
+      // by same-tab navigation after the server confirms (step 6), which needs
+      // no user activation and so cannot be popup-blocked by the await below.
       setIsProcessing(true);
       setFormError(null);
 
@@ -545,7 +541,6 @@ export default function CheckoutForm({
       // (ITEM_UNAVAILABLE), or stock can no longer cover the requested
       // quantity (OUT_OF_STOCK). Its message names the product and the fix.
       if (response.status === 409) {
-        handoff.close();
         const reason = result && !result.ok && result.error ? result.error : null;
         setFormError(reason ?? STOCK_CHANGED_FAILURE);
         return;
@@ -555,7 +550,6 @@ export default function CheckoutForm({
       // failure, 503 service unavailable, unparseable body) — generic failure.
       // The server has already released any reserved stock in these cases.
       if (!response.ok || !result || !result.ok) {
-        handoff.close();
         setFormError(GENERIC_CHECKOUT_FAILURE);
         return;
       }
@@ -614,17 +608,21 @@ export default function CheckoutForm({
       if (!whatsappLink) {
         // Unreachable after the pre-flight (validity depends only on the
         // number), but the order IS recorded now — say so rather than "not sent".
-        handoff.close();
         lines.forEach((item) => removeFromCart(item.id));
         setSuccess(receipt);
         return;
       }
 
-      // 6. HANDOFF: the order is fully recorded — point the already-open tab
-      // at WhatsApp, clear this shop's lines and show the confirmation.
-      handoff.navigate(whatsappLink);
-      lines.forEach((item) => removeFromCart(item.id));
-      setSuccess(receipt);
+      // 6. HANDOFF: the order is fully recorded. Commit the bag clear + receipt
+      // SYNCHRONOUSLY first — flushSync also runs CartProvider's localStorage
+      // effect — then navigate THIS tab to wa.me (lib/orderFlow.launchWhatsApp)
+      // so the mobile OS launches the WhatsApp app instead of a Custom Tab. With
+      // the app installed the page stays and shows the confirmation below.
+      flushSync(() => {
+        lines.forEach((item) => removeFromCart(item.id));
+        setSuccess(receipt);
+      });
+      launchWhatsApp(whatsappLink);
 
       // 7. Fire-and-forget: bust the shop's cached /site catalog so stock
       // badges reflect this purchase before the 5-minute backstop.
@@ -634,7 +632,6 @@ export default function CheckoutForm({
         body: JSON.stringify({ shopId }),
       }).catch(() => {});
     } catch (error) {
-      handoff?.close();
       console.error('Checkout Error:', error);
       setFormError(GENERIC_CHECKOUT_FAILURE);
     } finally {
@@ -673,7 +670,7 @@ export default function CheckoutForm({
           </h1>
           <p className={`mt-4 ${styles.body}`}>
             {success.whatsappLink
-              ? `WhatsApp opened in a new tab with your order for ${success.shopName}. Send the message to confirm and arrange payment.`
+              ? `WhatsApp opened with your order for ${success.shopName}. Send the message to confirm and arrange payment. If it did not open, use the button below.`
               : `We saved your order, but WhatsApp could not be opened. Please contact ${success.shopName} directly and quote your order reference.`}
           </p>
           {success.priceChanged && (
@@ -689,7 +686,7 @@ export default function CheckoutForm({
 
           <div className="mt-8 flex flex-col gap-3">
             {success.whatsappLink && (
-              <a href={success.whatsappLink} target="_blank" rel="noopener noreferrer" className={styles.primaryButton}>
+              <a href={success.whatsappLink} className={styles.primaryButton}>
                 <MessageCircle size={16} /> Open WhatsApp again
               </a>
             )}
