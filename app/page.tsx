@@ -13,6 +13,12 @@ import { loadMarketplace } from './marketplaceData';
 // components/marketplace/MarketplaceClient.tsx, hydrating over this exact
 // markup — zero CLS, zero behavior change.
 //
+// LAYOUT (Amazon-mobile density, luxury finish — see MarketplaceClient):
+// browse chips → edge-to-edge fixed-height HERO → trust marquee → horizontal
+// scroll-snap discovery rails (Trending Today / New Store Drops / Featured
+// Flagships) → category shelves with cinematic curation → boutique rail.
+// Every surface is a re-slice of this ONE payload; nothing else is fetched.
+//
 // Route-level ISR matches the Data Cache backstop so the rendered HTML and
 // the cached data revalidate on the same clock.
 // ─────────────────────────────────────────────────────────────────────────────

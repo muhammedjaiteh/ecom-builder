@@ -1,12 +1,15 @@
 import { Fragment, type CSSProperties } from 'react';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MarketplaceMarquee — the truthful trust ribbon under the marketplace header.
+// MarketplaceMarquee — the truthful trust ribbon beneath the mall's hero.
 // Structural clone of SiteMarquee (components/site-templates/SiteMarquee.tsx)
 // reusing the EXISTING .sndk-marquee* classes and --sndk-marquee-duration var
 // from globals.css — zero new CSS: duplicated track (the second group is the
 // aria-hidden twin that makes translateX(-50%) loop seamlessly), sr-only
 // claim list for assistive tech, and the reduced-motion static twin.
+//
+// Dressed ONLY in the mall tokens (ivory band, forest caps, gold glyphs) and
+// kept to a single thin line so the product rails below stay above the fold.
 //
 // EVERY claim below is feature-verified against the shipped platform:
 //   · Direct WhatsApp Checkout      — the checkout IS a WhatsApp handoff
@@ -44,8 +47,8 @@ export default function MarketplaceMarquee() {
 
   const style = { '--sndk-marquee-duration': `${sequence.length * SECONDS_PER_TOKEN}s` } as CSSProperties;
 
-  const tokenClass = 'text-[10px] font-bold uppercase tracking-[0.3em] text-[#1a2e1a]';
-  const glyphClass = 'mx-5 text-[10px] text-[#f0a500] md:mx-8';
+  const tokenClass = 'text-[10px] font-bold uppercase tracking-[0.3em] text-mall-forest/80';
+  const glyphClass = 'mx-5 text-[9px] text-mall-gold md:mx-8';
 
   const renderGroup = (twin: boolean) => (
     <div
@@ -62,7 +65,7 @@ export default function MarketplaceMarquee() {
   );
 
   return (
-    <section className="border-b border-black/5 bg-white">
+    <section className="bg-mall-ivory">
       {/* Screen-reader claim list — the moving ribbon is aria-hidden by
           design, so assistive tech hears each claim exactly once. */}
       <div className="sr-only">
@@ -70,7 +73,7 @@ export default function MarketplaceMarquee() {
           <p key={claim}>{claim}</p>
         ))}
       </div>
-      <div aria-hidden className="sndk-marquee py-3.5 md:py-4">
+      <div aria-hidden className="sndk-marquee py-2.5 md:py-3">
         <div className="sndk-marquee-track" style={style}>
           {renderGroup(false)}
           {renderGroup(true)}
