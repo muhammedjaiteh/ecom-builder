@@ -1,11 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import BanjulNoirStorefront, {
   type StorefrontMerchant,
   type StorefrontProduct,
 } from '@/components/generator/matrix/BanjulNoirStorefront';
 import { LUXURY_COLUMNS, selectWithOptionalColumns } from '@/lib/productColumns';
 import { slugify } from '@/lib/slugify';
+import { normalizeThemeMatrix } from '@/lib/themeMatrix';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // /s/[slug] — Server Component adapter for the Banjul Noir storefront matrix.
@@ -36,7 +37,12 @@ type StoreRow = {
   bio: string | null;
   banner_url: string | null;
   logo_url: string | null;
+  /** Storefront matrix — optional until supabase/migrations/20261001010000 has run. */
+  theme_matrix?: string | null;
 };
+
+/** shops.theme_matrix — read as an optional column (42703 → degrade to base). */
+const STORE_OPTIONAL_COLUMNS = ['theme_matrix'] as const;
 
 type ProductRow = {
   id: string;
@@ -154,11 +160,12 @@ async function fetchStore(rawSlug: string, cleanSlug: string): Promise<StoreRow 
   const supabase = getSupabase();
   const candidates = rawSlug === cleanSlug ? [cleanSlug] : [cleanSlug, rawSlug];
   for (const candidate of candidates) {
-    const { data, error } = await supabase
-      .from('shops')
-      .select(STORE_COLUMNS)
-      .eq('shop_slug', candidate)
-      .maybeSingle();
+    const { data, error } = await selectWithOptionalColumns<StoreRow>(
+      STORE_COLUMNS,
+      STORE_OPTIONAL_COLUMNS,
+      (columns) => supabase.from('shops').select(columns).eq('shop_slug', candidate).maybeSingle(),
+      's-storefront/shops',
+    );
     if (error) throw new Error(`[s-storefront] shop read failed: ${error.message}`);
     if (data) return data as StoreRow;
   }
@@ -192,6 +199,13 @@ export default async function StorePublicPage({ params }: { params: Promise<{ sl
 
   const store = await fetchStore(rawSlug, cleanSlug);
   if (!store) notFound();
+
+  // Matrix router: shops.theme_matrix decides the renderer. 'classic' (and any
+  // NULL / unknown / pre-migration value) is served by the /shop bridge, which
+  // never routes back here — so no redirect loop is possible.
+  if (normalizeThemeMatrix(store.theme_matrix) === 'classic') {
+    redirect(`/shop/${cleanSlug}`);
+  }
 
   const rows = await fetchProducts(store.id);
 
