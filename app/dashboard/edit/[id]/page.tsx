@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, Loader2, Plus, Save, Star, Trash2, Sparkles, X } from 'lucide-react';
 import Link from 'next/link';
 import { saleOf } from '@/lib/pricing';
-import { COMPARE_AT_COLUMN, selectWithOptionalColumns } from '@/lib/productColumns';
+import { COMPARE_AT_COLUMN, LUXURY_COLUMNS, LUXURY_FIELD_COPY, normalizeLuxuryText, selectWithOptionalColumns, type LuxuryColumn } from '@/lib/productColumns';
 
 const CATEGORY_OPTIONS = ['Food & Culinary', 'Drinks', 'Beauty & Wellness', 'Fashion', 'Sneakers', 'Home & Artisan', 'Tech Accessories', 'General'] as const;
 const MAX_IMAGES = 5;
@@ -38,6 +38,12 @@ type EditProductRow = {
   stock_quantity: number | null;
   colors: unknown;
   sizes: unknown;
+  /** Luxury merchandising copy — migration-gated
+   *  (supabase/migrations/20261001000000_add_luxury_fields_to_products.sql). */
+  kicker?: string | null;
+  extraction?: string | null;
+  details?: string | null;
+  eyebrow?: string | null;
   product_variants: Array<{ variant_name: string; variant_value: string }> | null;
 };
 
@@ -109,6 +115,13 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
   // sellers who never touch it — saves keep working before
   // sql/compare-at-price.sql has run.
   const loadedCompareAt = useRef<number | null>(null);
+  // Luxury merchandising copy (kicker / extraction / details / eyebrow).
+  // Same pack-gating as compare-at: the four columns ride the update payload
+  // only when the seller typed something or the row already carried a value,
+  // so untouched saves keep working before the migration has run.
+  const [luxury, setLuxury] = useState<Record<LuxuryColumn, string>>({ kicker: '', extraction: '', details: '', eyebrow: '' });
+  const setLuxuryField = (column: LuxuryColumn, value: string) => setLuxury((prev) => ({ ...prev, [column]: value }));
+  const loadedLuxury = useRef(false);
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<(typeof CATEGORY_OPTIONS)[number]>('General');
   const [status, setStatus] = useState('Active');
@@ -157,7 +170,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       // fallback re-reads without it so the editor opens before the pack runs.
       const { data: product, error } = await selectWithOptionalColumns<EditProductRow>(
         'id, name, price, description, image_url, image_urls, category, status, stock_quantity, colors, sizes, product_variants(variant_name, variant_value)',
-        [COMPARE_AT_COLUMN],
+        [COMPARE_AT_COLUMN, ...LUXURY_COLUMNS],
         (columns) => supabase.from('products').select(columns).eq('id', productId).eq('user_id', user.id).single(),
         'dashboard-edit',
       );
@@ -178,6 +191,14 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       loadedCompareAt.current = was != null && Number.isFinite(was) ? was : null;
       setCompareAtPrice(loadedCompareAt.current == null ? '' : String(loadedCompareAt.current));
       setDescription(product.description || '');
+      const loadedLuxuryValues = {
+        kicker: product.kicker ?? '',
+        extraction: product.extraction ?? '',
+        details: product.details ?? '',
+        eyebrow: product.eyebrow ?? '',
+      };
+      loadedLuxury.current = LUXURY_COLUMNS.some((column) => loadedLuxuryValues[column].trim() !== '');
+      setLuxury(loadedLuxuryValues);
       setCategory((product.category as (typeof CATEGORY_OPTIONS)[number]) || 'General');
       setStatus(product.status || 'Active');
       setStockQuantity(product?.stock_quantity ? String(product.stock_quantity) : '0');
@@ -332,6 +353,14 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
       const compareAtPatch =
         compareAtValue !== null || loadedCompareAt.current !== null ? { compare_at_price: compareAtValue } : {};
 
+      // Luxury copy: blank clears the column (NULL). Sent only when the seller
+      // set a value or the row already had one — see loadedLuxury above.
+      const luxuryValues = Object.fromEntries(
+        LUXURY_COLUMNS.map((column) => [column, normalizeLuxuryText(luxury[column])] as const),
+      ) as Record<LuxuryColumn, string | null>;
+      const luxuryPatch =
+        loadedLuxury.current || LUXURY_COLUMNS.some((column) => luxuryValues[column] !== null) ? luxuryValues : {};
+
       // STEP 1: Update the main product data
       const { error: productError } = await supabase
         .from('products')
@@ -339,6 +368,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
           name,
           price: parseFloat(price),
           ...compareAtPatch,
+          ...luxuryPatch,
           description,
           category,
           status,
@@ -665,6 +695,47 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                 className="w-full rounded-xl bg-[#F9F8F6] p-4 text-gray-600 focus:ring-2 focus:ring-[#2C3E2C]"
                 placeholder="Describe your product..."
               />
+            </div>
+
+            {/* LUXURY MERCHANDISING — optional copy for the storefront buy box */}
+            <div className="rounded-2xl bg-white p-6 shadow-sm">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-500">Storefront Merchandising</h3>
+              <p className="mt-1.5 text-[11px] text-gray-500">Optional. Editorial lines your boutique storefront prints around the product. Leave blank and the storefront falls back to the category.</p>
+
+              <div className="mt-5 space-y-5">
+                {LUXURY_COLUMNS.map((column) => {
+                  const copy = LUXURY_FIELD_COPY[column];
+                  const id = `luxury-${column}`;
+                  const inputClass = 'w-full rounded-xl bg-[#F9F8F6] p-4 text-gray-700 focus:ring-2 focus:ring-[#2C3E2C]';
+                  return (
+                    <div key={column}>
+                      <label htmlFor={id} className="mb-2 block text-xs font-bold uppercase tracking-widest text-gray-500">
+                        {copy.label} <span className="font-medium normal-case tracking-normal text-gray-400">— optional</span>
+                      </label>
+                      {copy.multiline ? (
+                        <textarea
+                          id={id}
+                          value={luxury[column]}
+                          onChange={(event) => setLuxuryField(column, event.target.value)}
+                          rows={4}
+                          placeholder={copy.placeholder}
+                          className={inputClass}
+                        />
+                      ) : (
+                        <input
+                          id={id}
+                          type="text"
+                          value={luxury[column]}
+                          onChange={(event) => setLuxuryField(column, event.target.value)}
+                          placeholder={copy.placeholder}
+                          className={`${inputClass} ${column === 'extraction' ? 'font-mono tracking-wide' : ''}`}
+                        />
+                      )}
+                      <p className="mt-1.5 text-[11px] text-gray-500">{copy.helper}</p>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
             <button

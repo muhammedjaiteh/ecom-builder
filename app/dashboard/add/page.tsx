@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState, useEffect, useMemo } from 'react';
 import { ArrowLeft, Loader2, Upload, X, Image as ImageIcon, Plus, Package, Sparkles, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
+import { LUXURY_COLUMNS, LUXURY_FIELD_COPY, type LuxuryColumn } from '@/lib/productColumns';
 
 const CATEGORIES = ['Fashion', 'Sneakers', 'Beauty & Wellness', 'Home & Artisan', 'Tech Accessories', 'Food & Culinary'];
 
@@ -43,6 +44,10 @@ export default function AddProductPage() {
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [stockQuantity, setStockQuantity] = useState<number>(0);
+  // Luxury merchandising copy (kicker / extraction / details / eyebrow) —
+  // optional; blanks are dropped server-side so the row stores NULL, not ''.
+  const [luxury, setLuxury] = useState<Record<LuxuryColumn, string>>({ kicker: '', extraction: '', details: '', eyebrow: '' });
+  const setLuxuryField = (column: LuxuryColumn, value: string) => setLuxury((prev) => ({ ...prev, [column]: value }));
   
   // Media & Variant States
   const [imageFiles, setImageFiles] = useState<File[]>([]);
@@ -451,6 +456,10 @@ export default function AddProductPage() {
           colors: colors.length > 0 ? colors : null,
           sizes: sizes.length > 0 ? sizes : null,
           stock_quantity: stockQuantity || 0,
+          kicker: luxury.kicker,
+          extraction: luxury.extraction,
+          details: luxury.details,
+          eyebrow: luxury.eyebrow,
         }),
       });
 
@@ -599,6 +608,35 @@ export default function AddProductPage() {
                     
                     <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={6} placeholder="Describe the product, material, and fit..." className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-base font-medium text-gray-900 outline-none transition-all focus:border-purple-500 focus:bg-white focus:ring-1 focus:ring-purple-500" />
                   </div>
+                </div>
+              </div>
+
+              {/* LUXURY MERCHANDISING — optional copy for the storefront buy box */}
+              <div className="rounded-[2rem] bg-white p-6 md:p-8 shadow-sm border border-gray-100">
+                <div className="mb-6">
+                  <h2 className="text-lg font-serif font-bold text-gray-900 flex items-center gap-2"><Sparkles size={18} className="text-gray-400" /> Storefront Merchandising</h2>
+                  <p className="mt-1.5 text-xs text-gray-500">Optional. Editorial lines your boutique storefront prints around the product. Leave blank and the storefront falls back to the category.</p>
+                </div>
+
+                <div className="space-y-5">
+                  {LUXURY_COLUMNS.map((column) => {
+                    const copy = LUXURY_FIELD_COPY[column];
+                    const id = `luxury-${column}`;
+                    const inputClass = 'w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-base font-medium text-gray-900 outline-none transition-all focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900';
+                    return (
+                      <div key={column}>
+                        <label htmlFor={id} className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-500">
+                          {copy.label} <span className="font-medium normal-case tracking-normal text-gray-400">— optional</span>
+                        </label>
+                        {copy.multiline ? (
+                          <textarea id={id} value={luxury[column]} onChange={(e) => setLuxuryField(column, e.target.value)} rows={4} placeholder={copy.placeholder} className={inputClass} />
+                        ) : (
+                          <input id={id} type="text" value={luxury[column]} onChange={(e) => setLuxuryField(column, e.target.value)} placeholder={copy.placeholder} className={`${inputClass} ${column === 'extraction' ? 'font-mono tracking-wide' : ''}`} />
+                        )}
+                        <p className="mt-1.5 text-[11px] text-gray-500">{copy.helper}</p>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

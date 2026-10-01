@@ -23,6 +23,14 @@ export type Product = {
    *  Sale badge ONLY when strictly above `price` (lib/pricing.ts saleOf); the
    *  charged price is always `price`. */
   compare_at_price?: number | null;
+  /** Luxury merchandising copy — supabase/migrations/20261001000000_add_luxury_fields_to_products.sql.
+   *  All optional/nullable: NULL = "not merchandised yet", the storefront
+   *  adapter degrades to category / empty strings. */
+  kicker?: string | null;
+  extraction?: string | null;
+  /** Spec bullets, one per line or pipe-separated — split by the /s/[slug] adapter. */
+  details?: string | null;
+  eyebrow?: string | null;
 };
 
 export type Shop = {

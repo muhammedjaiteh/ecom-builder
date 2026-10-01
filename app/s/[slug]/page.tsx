@@ -4,7 +4,7 @@ import BanjulNoirStorefront, {
   type StorefrontMerchant,
   type StorefrontProduct,
 } from '@/components/generator/matrix/BanjulNoirStorefront';
-import { selectWithOptionalColumns } from '@/lib/productColumns';
+import { LUXURY_COLUMNS, selectWithOptionalColumns } from '@/lib/productColumns';
 import { slugify } from '@/lib/slugify';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -61,8 +61,6 @@ const STORE_COLUMNS = 'id, shop_name, shop_slug, phone, bio, banner_url, logo_ur
 
 const PRODUCT_BASE_COLUMNS =
   'id, name, price, description, image_url, image_urls, ad_hero_image_url, category, stock_quantity, created_at';
-
-const LUXURY_COLUMNS = ['kicker', 'extraction', 'details', 'eyebrow'] as const;
 
 // --- Mapping helpers ---
 

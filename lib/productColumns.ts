@@ -16,6 +16,52 @@
 /** products.compare_at_price — sql/compare-at-price.sql. */
 export const COMPARE_AT_COLUMN = 'compare_at_price';
 
+/** products.{kicker,extraction,details,eyebrow} — luxury merchandising copy
+ *  consumed by the /s/[slug] storefront adapter. Ships in
+ *  supabase/migrations/20261001000000_add_luxury_fields_to_products.sql. */
+export const LUXURY_COLUMNS = ['kicker', 'extraction', 'details', 'eyebrow'] as const;
+export type LuxuryColumn = (typeof LUXURY_COLUMNS)[number];
+
+/** Trimmed luxury copy, or null for blank/non-string input. NULL is the
+ *  column's "not merchandised yet" state — never persist empty strings. */
+export function normalizeLuxuryText(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/** Merchant-facing field copy shared by the add + edit forms. Mirrors how the
+ *  /s/[slug] adapter renders each column so the helper text never lies. */
+export const LUXURY_FIELD_COPY: Record<
+  LuxuryColumn,
+  { label: string; placeholder: string; helper: string; multiline: boolean }
+> = {
+  kicker: {
+    label: 'Kicker',
+    placeholder: 'e.g. Attar · 12ml',
+    helper: 'Short line printed above the product name on your storefront — form and size, like "Attar · 12ml" or "Eau de Parfum · 50ml".',
+    multiline: false,
+  },
+  extraction: {
+    label: 'Extraction',
+    placeholder: 'e.g. 50ML | COLD-PRESSED',
+    helper: 'Clinical or origin details, like "50ML | COLD-PRESSED" or "Assam · Steam-distilled · Aged 6 months". Shown in monospace beside the price.',
+    multiline: false,
+  },
+  details: {
+    label: 'Details',
+    placeholder: 'Hand-poured in Banjul\nGlass flacon, brass cap\nShips within 48 hours',
+    helper: 'Spec bullets for the buy box. One per line (or separate with |). Keep each under eight words.',
+    multiline: true,
+  },
+  eyebrow: {
+    label: 'Eyebrow',
+    placeholder: 'e.g. The Oud Edit',
+    helper: 'Fallback line shown above the name only when Kicker is empty — a collection or series name like "The Oud Edit".',
+    multiline: false,
+  },
+};
+
 export type ColumnError = { code?: string | null; message?: string | null };
 
 /** The narrowed response callers consume: `data` typed by the caller's `T`. */
@@ -48,7 +94,7 @@ export async function selectWithOptionalColumns<T = unknown>(
   const first = await run(`${baseColumns}, ${optionalColumns.join(', ')}`);
   if (!first.error || !isUndefinedColumnError(first.error)) return first;
   console.warn(
-    `[${label}] optional column(s) ${optionalColumns.join(', ')} missing — run sql/compare-at-price.sql. Degrading to base columns.`,
+    `[${label}] optional column(s) ${optionalColumns.join(', ')} missing — run the pending products SQL pack/migration. Degrading to base columns.`,
   );
   return run(baseColumns);
 }

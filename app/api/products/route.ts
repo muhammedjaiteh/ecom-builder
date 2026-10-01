@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { revalidateTag } from 'next/cache';
 import { NextResponse } from 'next/server';
+import { LUXURY_COLUMNS, normalizeLuxuryText, type LuxuryColumn } from '@/lib/productColumns';
 
 // Product create API. AUTH + INSERT both ride the cookie-authed server client
 // (the publish-route pattern): the caller's JWT is attached to the PostgREST
@@ -37,6 +38,16 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { name, description, category, price, image_url, image_urls, colors, sizes, stock_quantity } = body;
 
+    // Luxury merchandising copy (kicker / extraction / details / eyebrow).
+    // Trimmed; blank → omitted. The columns are sent ONLY when the merchant
+    // filled them, so inserts keep working before the migration has run
+    // (Gambia Standard §3 — the same pack-gating as compare_at_price).
+    const luxuryFields = Object.fromEntries(
+      LUXURY_COLUMNS
+        .map((column) => [column, normalizeLuxuryText(body[column])] as const)
+        .filter(([, value]) => value !== null),
+    ) as Partial<Record<LuxuryColumn, string>>;
+
     // ── Generate embedding ────────────────────────────────────────────────
     const apiKey = process.env.GEMINI_API_KEY;
     let embedding: number[] | null = null;
@@ -45,7 +56,9 @@ export async function POST(request: Request) {
       try {
         const genAI = new GoogleGenerativeAI(apiKey);
         const embeddingModel = genAI.getGenerativeModel({ model: 'gemini-embedding-001' });
-        const text = [name, category, description].filter(Boolean).join(' ');
+        const text = [name, category, luxuryFields.kicker, luxuryFields.eyebrow, luxuryFields.extraction, description, luxuryFields.details]
+          .filter(Boolean)
+          .join(' ');
         const result = await embeddingModel.embedContent(text);
         embedding = result.embedding.values;
       } catch (embErr) {
@@ -71,6 +84,7 @@ export async function POST(request: Request) {
         colors,
         sizes,
         stock_quantity,
+        ...luxuryFields,
         ...(embedding ? { embedding } : {}),
       }])
       .select();
