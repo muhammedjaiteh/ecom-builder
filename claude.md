@@ -32,3 +32,14 @@ When using Claude Design to prototype a merchant's storefront, you must evaluate
 - **Checkout Flow**: `lib/orderFlow.ts` containing the iOS Safari `whatsapp://send` bypass.
 - **Photoroom API Pipeline**: Do not alter error handling in Ad Studio routes.
 - **Code Quality**: Run `npx tsc --noEmit` after logic changes. Use native `color-mix()` for transparent layers.
+## Commercial Conversion & Accessibility Mandates (Zero-Leak UX)
+- **Mobile Header Architecture**: Never include a "Shop Now" pill in the persistent mobile header. Dedicate 70% of horizontal space to brand identity to prevent truncation on names over 8 characters. Flank solely with Search and Bag icons.
+- **Hero Legibility & Scrims**: Any typography layered over hero imagery must sit atop a high-contrast dynamic scrim (e.g., `bg-gradient-to-t from-black/80 via-black/30 to-transparent`). Never float badges across product label zones.
+- **Contrast Ratios**: Maintain a minimum 4.5:1 WCAG AA contrast ratio. Banned: light grey (`#A09D98`) on cream (`#FAF6F0`). All eyebrow text, tickers, and metadata must use deep, legible tones (minimum `#595550` or `color-mix(in oklab, var(--color-mall-forest) 75%, black)`).
+- **Zero-Friction Layout**: 
+  - Never use accordions for copy under 80 words. Auto-expand full descriptions.
+  - Price tags must sit directly below product titles in high-contrast bold weight; do not float prices to outer screen edges.
+  - Suppress star rating components completely if review count is 0.
+- **WhatsApp Transactional Priority**: 
+  - Out-of-stock items must render an active "Notify via WhatsApp When Restocked" lead-capture button instead of static text.
+  - Replace auxiliary plain-text WhatsApp links with full-width, tactile secondary action buttons.

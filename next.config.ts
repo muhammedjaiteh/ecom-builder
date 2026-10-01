@@ -7,6 +7,10 @@ import type { NextConfig } from "next";
 const SUPPORT_WHATSAPP_URL = 'https://wa.me/447599710468';
 
 const nextConfig: NextConfig = {
+  // Kill the floating circular "N" dev-tools badge. It is dev-only chrome,
+  // but it floats over storefront previews and reads as a product defect in
+  // UI screenshots/reviews. Build errors still surface via the overlay.
+  devIndicators: false,
   // Footer routes that never got a page. Meta / TikTok ad-account reviewers
   // crawl every footer link, and a 404 is a policy strike, so each one 308s
   // to a real destination: "Contact Us" / "Help Center" go straight to the
