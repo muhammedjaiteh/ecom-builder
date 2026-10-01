@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Search, ShoppingBag, X } from 'lucide-react';
+import { sanitizePhoneNumber } from '@/lib/orderFlow';
 
 /* ------------------------------------------------------------------ */
 /* Physics — Heavy Luxury critical damping. No bounce.                 */
@@ -10,92 +11,66 @@ import { Search, ShoppingBag, X } from 'lucide-react';
 const HEAVY_SPRING = { type: 'spring', stiffness: 80, damping: 25.29, mass: 2 } as const;
 
 /* ------------------------------------------------------------------ */
-/* Mock data                                                           */
+/* Props — the storefront is data-blind. Supabase (or a fixture) feeds */
+/* it a merchant and a product array; nothing is hardcoded here.       */
 /* ------------------------------------------------------------------ */
-type MockProduct = {
+export interface StorefrontMerchant {
+  /** Brand name rendered in the header. Owns 70% of the header width; never truncated by a CTA. */
+  name: string;
+  /** Raw stored WhatsApp number. Sanitised to wa.me-safe digits at link-build time. */
+  whatsappNumber: string;
+  /** Optional hero copy + image. Each field falls back to the Banjul Noir defaults when omitted. */
+  hero?: StorefrontHero;
+}
+
+export interface StorefrontHero {
+  /** Serif headline over the scrim (e.g. "The Ritual of Oud"). */
+  title?: string;
+  /** Terse editorial subline (e.g. "Four attars. Pressed in Banjul. Worn on the pulse."). */
+  subtitle?: string;
+  /** Full-bleed hero image URL. Rendered object-cover at 4:5 / 3:4. */
+  backgroundImage?: string;
+}
+
+const HERO_DEFAULTS: Required<StorefrontHero> = {
+  title: 'The Ritual of Oud',
+  subtitle: 'Four attars. Pressed in Banjul. Worn on the pulse.',
+  backgroundImage:
+    'https://images.unsplash.com/photo-1615634260167-c8cdede054de?q=80&w=1600&auto=format&fit=crop',
+};
+
+export interface StorefrontProduct {
   id: string;
-  title: string;
+  name: string;
+  /** Short eyebrow — form · size (e.g. "Attar · 12ml"). */
   kicker: string;
   /** Extraction metadata — origin · method · maceration. Rendered monospaced in the Buy Box. */
   extraction: string;
-  priceGMD: number;
+  /** Price in Gambian Dalasi, whole units. */
+  price: number;
   image: string;
   inStock: boolean;
+  /** Ratings UI is suppressed entirely when this is 0. */
   reviewCount: number;
+  /** 0–5. Ignored when reviewCount is 0. */
   rating: number;
+  /** Rendered in full — never behind an accordion. */
   description: string[];
   details: string[];
-};
+}
 
-const mockProductData: MockProduct[] = [
-  {
-    id: 'oud-royale',
-    title: 'Oud Royale',
-    kicker: 'Attar · 12ml',
-    extraction: 'Cambodian oud · Cold-pressed · 36-month maceration',
-    priceGMD: 4850,
-    image: 'https://images.unsplash.com/photo-1594035910387-fea47794261f?q=80&w=1200&auto=format&fit=crop',
-    inStock: true,
-    reviewCount: 0,
-    rating: 0,
-    description: [
-      'Aged Cambodian oud, pressed without alcohol. Opens dark, settles into leather and smoke.',
-      'Wear it on the pulse. One drop holds the day.',
-    ],
-    details: ['Hand-filled in Banjul', 'Glass vial, brass cap', 'Ships within The Gambia in 48h'],
-  },
-  {
-    id: 'amber-noir',
-    title: 'Amber Noir',
-    kicker: 'Attar · 12ml',
-    extraction: 'Labdanum resin · Steam-distilled · 18-month maceration',
-    priceGMD: 3900,
-    image: 'https://images.unsplash.com/photo-1541643600914-78b084683601?q=80&w=1200&auto=format&fit=crop',
-    inStock: false,
-    reviewCount: 14,
-    rating: 4.8,
-    description: [
-      'Labdanum resin over dried fig. A warm, close scent built for evenings.',
-      'Long on the skin. Quiet in the room.',
-    ],
-    details: ['Hand-filled in Banjul', 'Glass vial, brass cap', 'Restock expected monthly'],
-  },
-  {
-    id: 'sahel-musk',
-    title: 'Sahel Musk',
-    kicker: 'Attar · 6ml',
-    extraction: 'White musk · Alcohol-free blend · 12-month maceration',
-    priceGMD: 2400,
-    image: 'https://images.unsplash.com/photo-1587017539504-67cfbddac569?q=80&w=1200&auto=format&fit=crop',
-    inStock: true,
-    reviewCount: 3,
-    rating: 5,
-    description: ['White musk cut with dry grass and salt. Clean without being sterile.'],
-    details: ['Hand-filled in Banjul', 'Glass vial, brass cap'],
-  },
-  {
-    id: 'kola-vetiver',
-    title: 'Kola Vetiver',
-    kicker: 'Attar · 12ml',
-    extraction: 'Vetiver root · Smoke-distilled · 24-month maceration',
-    priceGMD: 3600,
-    image: 'https://images.unsplash.com/photo-1523293182086-7651a899d37f?q=80&w=1200&auto=format&fit=crop',
-    inStock: true,
-    reviewCount: 0,
-    rating: 0,
-    description: ['Smoked vetiver root and bitter kola. Green, rooted, unsweetened.'],
-    details: ['Hand-filled in Banjul', 'Glass vial, brass cap'],
-  },
-];
-
-const WHATSAPP_NUMBER = '2200000000';
+export interface StorefrontProps {
+  merchant: StorefrontMerchant;
+  products: StorefrontProduct[];
+}
 
 function formatDalasi(amount: number): string {
   return `D${amount.toLocaleString('en-GM')}`;
 }
 
-function whatsappHref(message: string): string {
-  return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
+function whatsappHref(whatsappNumber: string, message: string): string {
+  const digits = sanitizePhoneNumber(whatsappNumber) ?? whatsappNumber.replace(/\D/g, '');
+  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -103,15 +78,20 @@ function whatsappHref(message: string): string {
 /* ------------------------------------------------------------------ */
 type ActiveView = { kind: 'home' } | { kind: 'pdp'; productId: string };
 
-export default function BanjulNoirStorefront() {
+export default function BanjulNoirStorefront({ merchant, products }: StorefrontProps) {
   const [activeView, setActiveView] = useState<ActiveView>({ kind: 'home' });
   const [bagCount, setBagCount] = useState(0);
 
   const activeProduct =
-    activeView.kind === 'pdp' ? mockProductData.find((p) => p.id === activeView.productId) ?? null : null;
+    activeView.kind === 'pdp' ? products.find((p) => p.id === activeView.productId) ?? null : null;
 
   const openProduct = (id: string) => setActiveView({ kind: 'pdp', productId: id });
   const closeProduct = () => setActiveView({ kind: 'home' });
+
+  // Hero resolves per-field so a merchant can override only the image, or only the copy.
+  const heroTitle = merchant.hero?.title?.trim() || HERO_DEFAULTS.title;
+  const heroSubtitle = merchant.hero?.subtitle?.trim() || HERO_DEFAULTS.subtitle;
+  const heroImage = merchant.hero?.backgroundImage?.trim() || HERO_DEFAULTS.backgroundImage;
 
   return (
     <div className="relative min-h-dvh bg-mall-forest text-mall-bone font-sans antialiased">
@@ -123,9 +103,9 @@ export default function BanjulNoirStorefront() {
           type="button"
           onClick={closeProduct}
           className="flex-1 min-w-0 text-left font-serif text-xl tracking-[0.18em] uppercase truncate"
-          aria-label="Banjul Noir — Home"
+          aria-label={`${merchant.name} — Home`}
         >
-          Banjul Noir
+          {merchant.name}
         </button>
         <button
           type="button"
@@ -155,18 +135,18 @@ export default function BanjulNoirStorefront() {
         {/* Hero */}
         <section className="relative aspect-[4/5] sm:aspect-[3/4] md:aspect-auto md:h-[85dvh] overflow-hidden">
           <img
-            src="https://images.unsplash.com/photo-1615634260167-c8cdede054de?q=80&w=1600&auto=format&fit=crop"
-            alt="Oud resin on dark stone"
+            src={heroImage}
+            alt={heroTitle}
             className="absolute inset-0 size-full object-cover"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/55 to-transparent" aria-hidden />
           <div className="absolute inset-x-0 bottom-0 px-5 pb-12 md:px-16 md:pb-24 md:max-w-2xl">
             <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-mall-gold mb-4">Collection 01</p>
             <h1 className="font-serif text-5xl md:text-7xl leading-[0.95] text-balance text-mall-bone">
-              The Ritual of Oud
+              {heroTitle}
             </h1>
             <p className="mt-6 text-sm md:text-base text-mall-bone/85 max-w-sm leading-relaxed">
-              Four attars. Pressed in Banjul. Worn on the pulse.
+              {heroSubtitle}
             </p>
           </div>
         </section>
@@ -176,12 +156,12 @@ export default function BanjulNoirStorefront() {
           <div className="flex items-baseline justify-between mb-12">
             <h2 className="font-serif text-3xl md:text-4xl text-balance">The Edit</h2>
             <span className="font-mono text-[11px] uppercase tracking-[0.25em] text-mall-gold">
-              {mockProductData.length} pieces
+              {products.length} pieces
             </span>
           </div>
 
           <ul className="grid grid-cols-2 gap-x-4 gap-y-14 md:grid-cols-3 md:gap-x-8 md:gap-y-24">
-            {mockProductData.map((product, i) => (
+            {products.map((product, i) => (
               <li key={product.id} className={i % 2 === 1 ? 'mt-12 md:mt-0 md:[&:nth-child(3n+2)]:mt-24' : ''}>
                 <button
                   type="button"
@@ -192,7 +172,7 @@ export default function BanjulNoirStorefront() {
                   <div className="relative aspect-[4/5] overflow-hidden border border-mall-bone/15 bg-white/5">
                     <img
                       src={product.image}
-                      alt={product.title}
+                      alt={product.name}
                       loading="lazy"
                       className="size-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
                     />
@@ -204,8 +184,8 @@ export default function BanjulNoirStorefront() {
                   </div>
                   <div className="mt-4">
                     <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-mall-gold">{product.kicker}</p>
-                    <h3 className="mt-1 font-serif text-lg leading-tight text-mall-bone">{product.title}</h3>
-                    <p className="mt-1 text-sm font-bold text-mall-bone">{formatDalasi(product.priceGMD)}</p>
+                    <h3 className="mt-1 font-serif text-lg leading-tight text-mall-bone">{product.name}</h3>
+                    <p className="mt-1 text-sm font-bold text-mall-bone">{formatDalasi(product.price)}</p>
                   </div>
                 </button>
               </li>
@@ -257,7 +237,7 @@ export default function BanjulNoirStorefront() {
               <div className="md:grid md:grid-cols-[3fr_2fr] md:gap-16 md:px-16 md:pb-16">
                 {/* Hero image — 4:5, framed */}
                 <div className="relative aspect-[4/5] overflow-hidden border border-mall-bone/15 bg-white/5">
-                  <img src={activeProduct.image} alt={activeProduct.title} className="size-full object-cover" />
+                  <img src={activeProduct.image} alt={activeProduct.name} className="size-full object-cover" />
                   {!activeProduct.inStock && (
                     <span className="absolute top-3 left-3 px-2.5 py-1 bg-black/60 backdrop-blur-md border border-mall-gold/30 text-mall-gold font-mono text-[10px] uppercase tracking-widest">
                       Restocking
@@ -269,9 +249,9 @@ export default function BanjulNoirStorefront() {
                 <div className="px-5 pt-8 md:px-0 md:pt-4">
                   <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-mall-gold">{activeProduct.kicker}</p>
                   <h2 id="pdp-title" className="mt-2 font-serif text-4xl leading-none text-balance">
-                    {activeProduct.title}
+                    {activeProduct.name}
                   </h2>
-                  <p className="mt-3 text-xl font-bold text-mall-bone">{formatDalasi(activeProduct.priceGMD)}</p>
+                  <p className="mt-3 text-xl font-bold text-mall-bone">{formatDalasi(activeProduct.price)}</p>
 
                   <dl className="mt-5 border-y border-mall-bone/15 py-3">
                     <dt className="font-mono text-[10px] uppercase tracking-[0.25em] text-mall-gold">Extraction</dt>
@@ -296,7 +276,8 @@ export default function BanjulNoirStorefront() {
                       <>
                         <motion.a
                           href={whatsappHref(
-                            `I'd like to order ${activeProduct.title} (${activeProduct.kicker}) — ${formatDalasi(activeProduct.priceGMD)}.`,
+                            merchant.whatsappNumber,
+                            `I'd like to order ${activeProduct.name} (${activeProduct.kicker}) — ${formatDalasi(activeProduct.price)}.`,
                           )}
                           target="_blank"
                           rel="noopener noreferrer"
@@ -304,7 +285,7 @@ export default function BanjulNoirStorefront() {
                           transition={HEAVY_SPRING}
                           className="block w-full py-4 text-center bg-mall-gold text-mall-forest font-sans text-sm font-bold uppercase tracking-[0.25em]"
                         >
-                          Order via WhatsApp — {formatDalasi(activeProduct.priceGMD)}
+                          Order via WhatsApp — {formatDalasi(activeProduct.price)}
                         </motion.a>
                         <motion.button
                           type="button"
@@ -318,7 +299,7 @@ export default function BanjulNoirStorefront() {
                       </>
                     ) : (
                       <motion.a
-                        href={whatsappHref(`Notify me when ${activeProduct.title} is restocked.`)}
+                        href={whatsappHref(merchant.whatsappNumber, `Notify me when ${activeProduct.name} is restocked.`)}
                         target="_blank"
                         rel="noopener noreferrer"
                         whileTap={{ scale: 0.98 }}
