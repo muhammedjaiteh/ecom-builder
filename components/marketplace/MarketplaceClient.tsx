@@ -5,14 +5,14 @@ import useSWR from 'swr';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
-  Search, ShoppingBag, Store, X, Menu, Sparkles,
-  BadgeCheck, Shield, MessageCircle, Mail, ArrowRight,
+  Search, ShoppingBag, X, Menu, Sparkles,
+  Shield, MessageCircle, Mail, ArrowRight,
 } from 'lucide-react';
 import { useCart } from '@/components/CartProvider';
-import SmartImage from '@/components/SmartImage';
 import CinematicTile, { type CinematicTileData } from '@/components/marketplace/CinematicTile';
 import MarketplaceMarquee from '@/components/marketplace/MarketplaceMarquee';
 import PlaybackCoordinator from '@/components/marketplace/PlaybackCoordinator';
+import MarketplaceBoutiqueCard, { BOUTIQUE_CARD_WIDTH } from '@/components/marketplace/MarketplaceBoutiqueCard';
 import MarketplaceProductCard, {
   CARD_SHADOW,
   RAIL_CARD_WIDTH,
@@ -20,14 +20,12 @@ import MarketplaceProductCard, {
 } from '@/components/marketplace/MarketplaceProductCard';
 import RailSection, { type RailItem } from '@/components/marketplace/RailSection';
 import { tierFamily } from '@/components/marketplace/format';
-import { SaleBadge } from '@/components/SaleBadge';
 import {
   compareTierThenReviewScore,
   getTierRank,
   reviewScoreOf,
   type ReviewStats,
 } from '@/lib/feedRanking';
-import { saleOf } from '@/lib/pricing';
 import { fetchJSON } from '@/lib/transport';
 import type { Product } from '@/lib/types';
 import type { MarketplaceShop, ReviewScoreEntry } from '@/app/marketplaceData';
@@ -47,7 +45,9 @@ import type { MarketplaceShop, ReviewScoreEntry } from '@/app/marketplaceData';
 //   HERO              — edge-to-edge featured banner, fixed heights (188→340px)
 //   trust marquee     — one thin ivory line
 //   DISCOVERY RAILS   — "Trending Today" (or the honest "Top Picks"),
-//                       "New Store Drops", "Featured Flagships"
+//                       "New Store Drops", "Featured Flagships" — DEDUPED in
+//                       page order: a product shown by the hero or an earlier
+//                       rail is filtered out of every rail below it
 //   CATEGORY SHELVES  — one rail per populated category, a double-width
 //                       cinematic feature tile in slot 0 when a film exists,
 //                       cadence-capped full-bleed interludes between them
@@ -172,7 +172,6 @@ const SECTION_SCROLL_MT = 'scroll-mt-[calc(9rem_+_env(safe-area-inset-top))] md:
 
 // Feature tile = two cards + one gap wide, so the shelf row stays continuous.
 const FEATURE_TILE_WIDTH = 'w-[312px] sm:w-[348px] md:w-[384px] lg:w-[416px]';
-const BOUTIQUE_CARD_WIDTH = 'w-[264px] sm:w-[300px]';
 
 function toCinematicTile(p: ProductWithShop, withVideo: boolean): CinematicTileData {
   return {
@@ -270,84 +269,105 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
     [marketplaceProducts]
   );
 
-  // ── DISCOVERY RAILS — pure re-slices of the ranked payload ───────────────
-  const discoveryRails = useMemo<DiscoveryRail[]>(() => {
-    if (marketplaceProducts.length === 0) return [];
-    const rails: DiscoveryRail[] = [];
-
-    // 1. Trending Today. Reviewed pieces lead, unreviewed fill; BOTH
-    //    partitions keep the canonical tier-then-score order, so a paid tier
-    //    is never outranked inside the rail (lib/feedRanking law). The hero
-    //    product is skipped here only — it already opens the page directly
-    //    above this rail. Fewer than MIN_TRENDING_REVIEWED reviewed pieces →
-    //    the rail is "Top Picks": no trend claim a buyer never made.
+  // ── DISCOVERY RAILS — pure, DEDUPED re-slices of the ranked payload ──────
+  // Each rail is derived here, before render, from the rails above it: the
+  // hero's product is excluded from every rail, Trending's products from
+  // New Store Drops and Featured Flagships, and Drops' products from
+  // Flagships. The cascade is a chain of immutable filters over frozen id
+  // sets — no tracking Set is mutated while JSX renders, so a re-render can
+  // never flip which rail "owns" a product. A rail drained by the cascade
+  // simply does not render (the category shelves below still carry every
+  // product — they are the catalogue, not a curation).
+  const leadRail = useMemo<DiscoveryRail | null>(() => {
+    // Trending Today. Reviewed pieces lead, unreviewed fill; BOTH partitions
+    // keep the canonical tier-then-score order, so a paid tier is never
+    // outranked inside the rail (lib/feedRanking law). Fewer than
+    // MIN_TRENDING_REVIEWED reviewed pieces → the rail is "Top Picks": no
+    // trend claim a buyer never made.
     const pool = hero ? marketplaceProducts.filter((p) => p.id !== hero.id) : marketplaceProducts;
     const reviewed = pool.filter((p) => (reviewStats.get(p.id)?.count ?? 0) > 0);
     const unreviewed = pool.filter((p) => (reviewStats.get(p.id)?.count ?? 0) === 0);
-    const lead = [...reviewed, ...unreviewed].slice(0, RAIL_LIMIT);
-    if (lead.length > 0) {
-      rails.push(
-        reviewed.length >= MIN_TRENDING_REVIEWED
-          ? {
-              id: 'trending-today',
-              kicker: 'Most loved right now',
-              title: 'Trending Today',
-              description: 'The pieces buyers are rating highest across the floor.',
-              products: lead,
-            }
-          : {
-              id: 'top-picks',
-              kicker: 'Curated from the floor',
-              title: 'Top Picks',
-              description: 'Leading pieces from our highest-ranked boutiques.',
-              products: lead,
-            }
-      );
-    }
+    const products = [...reviewed, ...unreviewed].slice(0, RAIL_LIMIT);
+    if (products.length === 0) return null;
+    return reviewed.length >= MIN_TRENDING_REVIEWED
+      ? {
+          id: 'trending-today',
+          kicker: 'Most loved right now',
+          title: 'Trending Today',
+          description: 'The pieces buyers are rating highest across the floor.',
+          products,
+        }
+      : {
+          id: 'top-picks',
+          kicker: 'Curated from the floor',
+          title: 'Top Picks',
+          description: 'Leading pieces from our highest-ranked boutiques.',
+          products,
+        };
+  }, [marketplaceProducts, reviewStats, hero]);
 
-    // 2. New Store Drops. Each boutique's list arrives newest-first
-    //    (app/marketplaceData reads products created_at DESC and groups in
-    //    order), so a round-robin over the RANKED shops yields every
-    //    boutique's latest listing before anyone's second — one prolific
-    //    seller never monopolises the rail.
-    const drops: ProductWithShop[] = [];
+  // Ids already on the page above New Store Drops: the hero + the lead rail.
+  const leadIds = useMemo(() => {
+    const ids = new Set<string>(leadRail?.products.map((p) => p.id) ?? []);
+    if (hero) ids.add(hero.id);
+    return ids;
+  }, [leadRail, hero]);
+
+  const dropsRail = useMemo<DiscoveryRail | null>(() => {
+    // New Store Drops. Each boutique's list arrives newest-first
+    // (app/marketplaceData reads products created_at DESC and groups in
+    // order), so a round-robin over the RANKED shops yields every boutique's
+    // latest UNSEEN listing before anyone's second — one prolific seller
+    // never monopolises the rail, and nothing from the lead rail repeats.
+    const products: ProductWithShop[] = [];
     const depth = shops.reduce((max, shop) => Math.max(max, shop.products.length), 0);
     outer: for (let i = 0; i < depth; i++) {
       for (const shop of shops) {
         const product = shop.products[i];
-        if (!product) continue;
-        drops.push(withShop(product, shop));
-        if (drops.length >= RAIL_LIMIT) break outer;
+        if (!product || leadIds.has(product.id)) continue;
+        products.push(withShop(product, shop));
+        if (products.length >= RAIL_LIMIT) break outer;
       }
     }
-    if (drops.length >= 2) {
-      rails.push({
-        id: 'new-store-drops',
-        kicker: 'Fresh on the floor',
-        title: 'New Store Drops',
-        description: 'The newest listing from every boutique, flagships first.',
-        products: drops,
-      });
-    }
+    if (products.length < 2) return null;
+    return {
+      id: 'new-store-drops',
+      kicker: 'Fresh on the floor',
+      title: 'New Store Drops',
+      description: 'The newest listing from every boutique, flagships first.',
+      products,
+    };
+  }, [shops, leadIds]);
 
-    // 3. Featured Flagships — the gold family (flagship + legacy advanced),
-    //    already first in the ranked order. Absent entirely when no paid
-    //    tier is live: the rail is a placement, never a placeholder.
-    const flagships = marketplaceProducts
-      .filter((p) => tierFamily(p.shop?.subscription_tier) === 'featured')
+  // Ids on the page above Featured Flagships: everything in leadIds + Drops.
+  const dropsIds = useMemo(() => {
+    const ids = new Set<string>(leadIds);
+    dropsRail?.products.forEach((p) => ids.add(p.id));
+    return ids;
+  }, [leadIds, dropsRail]);
+
+  const flagshipsRail = useMemo<DiscoveryRail | null>(() => {
+    // Featured Flagships — the gold family (flagship + legacy advanced),
+    // already first in the ranked order, minus every piece shown above.
+    // Absent entirely when no paid tier is live or the cascade drained it:
+    // the rail is a placement, never a placeholder.
+    const products = marketplaceProducts
+      .filter((p) => tierFamily(p.shop?.subscription_tier) === 'featured' && !dropsIds.has(p.id))
       .slice(0, RAIL_LIMIT);
-    if (flagships.length > 0) {
-      rails.push({
-        id: 'featured-flagships',
-        kicker: 'Flagship boutiques',
-        title: 'Featured Flagships',
-        description: 'Pieces from the boutiques leading the Sanndikaa floor.',
-        products: flagships,
-      });
-    }
+    if (products.length === 0) return null;
+    return {
+      id: 'featured-flagships',
+      kicker: 'Flagship boutiques',
+      title: 'Featured Flagships',
+      description: 'Pieces from the boutiques leading the Sanndikaa floor.',
+      products,
+    };
+  }, [marketplaceProducts, dropsIds]);
 
-    return rails;
-  }, [marketplaceProducts, reviewStats, shops, hero]);
+  const discoveryRails = useMemo<DiscoveryRail[]>(
+    () => [leadRail, dropsRail, flagshipsRail].filter((rail): rail is DiscoveryRail => rail !== null),
+    [leadRail, dropsRail, flagshipsRail]
+  );
 
   // Only shelves with live products exist on the page. An empty category
   // renders NOTHING — no section, no placeholder boutique cards — and is
@@ -512,87 +532,6 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
         </div>
       ),
     }));
-
-  // Boutique card — logo · name · tier mark · count · Visit, then the three
-  // newest pieces as square thumbs. Whole card is an ivory plate on the bone
-  // canvas; tier is a mark next to the name, never an outline.
-  const renderBoutiqueCard = (shop: Shop) => {
-    const family = tierFamily(shop.subscription_tier);
-    const thumbs = shop.products.slice(0, 3);
-    return (
-      <article className={`flex h-full flex-col rounded-xl bg-mall-ivory p-3 ${CARD_SHADOW}`}>
-        <div className="flex items-center gap-2.5">
-          <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full bg-mall-bone ring-1 ring-mall-forest/10">
-            {shop.logo_url ? (
-              <SmartImage
-                src={shop.logo_url}
-                alt={shop.shop_name}
-                fill
-                blurTone="none"
-                className="object-cover"
-                sizes="36px"
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center text-mall-forest/30">
-                <Store size={15} strokeWidth={1.75} />
-              </div>
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            <h3 className="flex items-center gap-1 text-[13px] font-semibold leading-tight text-mall-forest">
-              <span className="truncate">{shop.shop_name}</span>
-              {family === 'featured' && <BadgeCheck size={13} className="shrink-0 text-mall-gold" aria-label="Featured boutique" />}
-              {family === 'pro' && <BadgeCheck size={13} className="shrink-0 text-mall-sage" aria-label="Pro boutique" />}
-            </h3>
-            <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-mall-forest/50">
-              {shop.products.length} piece{shop.products.length !== 1 ? 's' : ''}
-            </p>
-          </div>
-          <Link
-            href={shopHref(shop)}
-            className={`inline-flex h-9 shrink-0 items-center gap-1 rounded-full px-3.5 text-[11px] font-bold uppercase tracking-[0.12em] transition ${
-              family === 'featured'
-                ? 'bg-mall-gold text-mall-forest hover:brightness-105'
-                : 'bg-mall-forest text-mall-bone hover:bg-black'
-            }`}
-          >
-            Visit <ArrowRight size={11} aria-hidden />
-          </Link>
-        </div>
-
-        <div className="mt-3 grid grid-cols-3 gap-1.5">
-          {thumbs.map((product) => {
-            const imgUrl = product.image_urls?.[0] || product.image_url || null;
-            const sale = saleOf(product.price, product.compare_at_price);
-            return (
-              <Link
-                key={product.id}
-                href={`/product/${product.id}`}
-                aria-label={product.name}
-                className="group/thumb relative aspect-square overflow-hidden rounded-md bg-mall-bone"
-              >
-                {imgUrl ? (
-                  <SmartImage
-                    src={imgUrl}
-                    alt=""
-                    fill
-                    blurTone="none"
-                    className="object-cover transition-transform duration-700 ease-out group-hover/thumb:scale-[1.05]"
-                    sizes="(max-width: 640px) 80px, 92px"
-                  />
-                ) : (
-                  <div className="flex h-full items-center justify-center text-mall-forest/20">
-                    <ShoppingBag size={16} strokeWidth={1.5} />
-                  </div>
-                )}
-                {sale && <SaleBadge className="absolute left-1 top-1 z-[2]" />}
-              </Link>
-            );
-          })}
-        </div>
-      </article>
-    );
-  };
 
   // ── Render ────────────────────────────────────────────────────────────────
   // No loading skeleton branch: the server hands this component real rails,
@@ -1043,7 +982,11 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                 paddingClassName="pt-4 pb-6 md:pt-6 md:pb-10"
                 items={shops.map((shop) => ({
                   key: shop.id,
-                  node: <div className={`${BOUTIQUE_CARD_WIDTH} h-full`}>{renderBoutiqueCard(shop)}</div>,
+                  node: (
+                    <div className={`${BOUTIQUE_CARD_WIDTH} h-full`}>
+                      <MarketplaceBoutiqueCard shop={shop} href={shopHref(shop)} />
+                    </div>
+                  ),
                 }))}
               />
             )}

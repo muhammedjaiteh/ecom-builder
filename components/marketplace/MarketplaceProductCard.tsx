@@ -13,11 +13,14 @@ import { formatDalasi, tierFamily } from './format';
 // MarketplaceProductCard — the mall's high-density rail card (Amazon-mobile
 // scan pattern, luxury finish). Every pixel budget goes to the photo: a 4:5
 // media box with NO border (a forest-tinted contact + ambient shadow lifts it
-// off the bone canvas instead), then three tight text rows —
+// off the bone canvas instead), then two tight text rows —
 //
 //   D1,250  D1,500      ★ 4.8 (12)   ← price + was-price, rating flush right
-//   Silk wrap dress in emerald       ← name, two lines max
-//   ATELIER NDEYE                     ← boutique, whisper caps
+//   Silk wrap dress in emerald       ← name, line-clamp-2 (never buckles)
+//
+// No boutique attribution on the home card (CRO: every row below the photo
+// is a buying signal — price, proof, name — the seller is on the PDP). The
+// tier pill on the photo stays: it is a placement mark, not a vendor line.
 //
 // CROSS-FADE contract (unchanged from the /site Micro-Homepage idiom): the
 // root is an <article> with a STRETCHED <Link> (absolute inset-0 z-10) so the
@@ -155,11 +158,6 @@ export default function MarketplaceProductCard({
         <h3 className="mt-1 line-clamp-2 text-[12px] font-medium leading-4 text-mall-forest/90 group-hover:underline md:text-[13px] md:leading-[18px]">
           {product.name}
         </h3>
-        {product.shop?.shop_name && (
-          <p className="mt-1 truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-mall-forest/50">
-            {product.shop.shop_name}
-          </p>
-        )}
       </div>
     </>
   );

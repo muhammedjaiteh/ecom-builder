@@ -9,6 +9,8 @@
 // not a sale, so a seller can never show a fake or inverted markdown.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { formatDalasi as formatDalasiLabel } from '@/lib/currency';
+
 export type SaleInfo = {
   /** The seller's "was" price, coerced to a finite number. */
   compareAt: number;
@@ -16,9 +18,11 @@ export type SaleInfo = {
   percentOff: number;
 };
 
-/** Dalasi display idiom shared by the chrome cards, PDPs, and cart. */
-export function formatDalasi(amount: number | null | undefined): string {
-  return amount == null ? '' : `D${Number(amount).toLocaleString()}`;
+/** Dalasi display idiom shared by the chrome cards, PDPs, and cart — the
+ *  shared en-GM formatter (lib/currency.ts) so every surface groups digits
+ *  identically; '' (not null) for unpriced so existing callers keep working. */
+export function formatDalasi(amount: number | string | null | undefined): string {
+  return formatDalasiLabel(amount) ?? '';
 }
 
 /** Returns sale facts ONLY when compare-at is a finite number strictly above

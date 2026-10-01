@@ -25,7 +25,7 @@ import { formatDalasi } from './format';
 //     (16:9 mobile / 21:9 desktop, both FIXED aspect → zero CLS). Same
 //     one-anchor overlay contract as the hero.
 //   'feature'   — a double-width carousel tile sharing the rail cards' anatomy
-//     (media box, then name/price/boutique). Its 5:3 media box is exactly as
+//     (media box, then price/name — no boutique line, like its neighbours). Its 5:3 media box is exactly as
 //     tall as two neighbouring 4:5 cards' width-doubled box (2w + gap wide ×
 //     1.25w tall ≈ 5:3), so the row reads as one continuous shelf.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -116,8 +116,13 @@ export default function CinematicTile({ data, variant, kicker, priority = false 
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 md:mt-3">
             {price && <p className="text-sm font-semibold tabular-nums text-mall-bone md:text-base">{price}</p>}
-            <span className="inline-flex h-8 items-center gap-1.5 rounded-full bg-mall-gold px-3.5 text-[10px] font-bold uppercase tracking-[0.22em] text-mall-forest md:h-9 md:px-4">
-              Shop now <ArrowRight size={12} aria-hidden />
+            {/* Primary CTA — OPAQUE black plate (never gold, never translucent):
+                the poster behind it is the seller's photo, often bone or gold,
+                and the forest scrim thins toward the right. Bone-on-black
+                stays ≥ 4.5:1 on any pixel; the gold hairline lifts it off the
+                forest wash so two dark planes never merge. */}
+            <span className="inline-flex h-10 items-center gap-1.5 rounded-full bg-black px-4 text-[10px] font-bold uppercase tracking-[0.22em] text-mall-bone ring-1 ring-mall-gold/70 md:h-11 md:px-5">
+              Shop now <ArrowRight size={12} className="text-mall-gold" aria-hidden />
             </span>
           </div>
         </div>
@@ -182,9 +187,6 @@ export default function CinematicTile({ data, variant, kicker, priority = false 
         )}
         <p className="mt-1 line-clamp-2 text-[13px] font-medium leading-[18px] text-mall-forest/90 group-hover:underline md:text-[14px] md:leading-5">
           {data.name}
-        </p>
-        <p className="mt-1 truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-mall-forest/50">
-          {data.shopName}
         </p>
       </Link>
     </div>

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Search, ShoppingBag, X } from 'lucide-react';
+import { formatDalasi as formatDalasiLabel } from '@/lib/currency';
 import { sanitizePhoneNumber } from '@/lib/orderFlow';
 
 /* ------------------------------------------------------------------ */
@@ -65,7 +66,7 @@ export interface StorefrontProps {
 }
 
 function formatDalasi(amount: number): string {
-  return `D${amount.toLocaleString('en-GM')}`;
+  return formatDalasiLabel(amount) ?? 'D0';
 }
 
 function whatsappHref(whatsappNumber: string, message: string): string {

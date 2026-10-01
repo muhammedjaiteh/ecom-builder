@@ -3,16 +3,9 @@
 // cinematic tiles, and the boutique rail. Pure functions, no React.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Dalasi price label. Locale is PINNED to en-US so the server HTML and the
- *  client hydration agree on every handset: a bare toLocaleString() renders
- *  "1 250" on a fr-locale phone against the server's "1,250" and warns on
- *  hydration. Null/NaN → null so callers can omit the line entirely. */
-export function formatDalasi(value: number | string | null | undefined): string | null {
-  if (value == null) return null;
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) return null;
-  return `D${amount.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
-}
+// Dalasi labels come from the single shared formatter (lib/currency.ts):
+// "D" prefix only, en-GM three-digit grouping, null for unpriced pieces.
+export { formatDalasi } from '@/lib/currency';
 
 /** The three visual families a subscription tier collapses into on the mall.
  *  'featured' = flagship + legacy advanced (the gold family — flagship ranks

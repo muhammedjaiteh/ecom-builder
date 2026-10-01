@@ -34,6 +34,7 @@ import {
   launchWhatsApp,
   type DirectOrderMethod,
 } from '@/lib/orderFlow';
+import { formatDalasi } from '@/lib/currency';
 import { rememberPurchases } from '@/lib/purchaseMemory';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -383,7 +384,8 @@ function groupByShop(items: CartItem[]): ShopGroup[] {
 }
 
 function formatMoney(amount: number): string {
-  return `D${amount.toLocaleString()}`;
+  // Shared en-GM formatter: identical grouping in the UI and the WhatsApp text.
+  return formatDalasi(amount) ?? 'D0';
 }
 
 function hasVariant(details: string | null | undefined): details is string {
