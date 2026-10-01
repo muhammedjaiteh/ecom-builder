@@ -17,7 +17,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import useSWR, { SWRConfig } from 'swr';
 import {
   ArrowLeft, Brush, Camera, CheckCircle2, ChevronDown, ExternalLink, Eye, EyeOff,
-  Globe, History, Image as ImageIcon, LayoutTemplate, Loader2, Lock, MapPin, Palette, Save, Store,
+  Globe, History, Image as ImageIcon, Layers, LayoutTemplate, Loader2, Lock, MapPin, Palette, Save, Store,
   Truck, Wand2, WifiOff, AlertTriangle,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -27,6 +27,10 @@ import MiniSitePreview from '@/components/website/MiniSitePreview';
 import WebsiteGeneratorStudio, { type StudioShop } from '@/components/website/WebsiteGeneratorStudio';
 import { CoachDot, CoachLegend, useCoachMarks } from '@/components/website/CoachMarks';
 import { SITE_TEMPLATES, WebsiteConfigSchema, type ShopWebsiteRow, type WebsiteConfig } from '@/lib/siteTemplates';
+import { isUndefinedColumnError } from '@/lib/productColumns';
+import {
+  THEME_MATRICES, normalizeThemeMatrix, themeMatrixPath, type ThemeMatrixId,
+} from '@/lib/themeMatrix';
 import { slugify } from '@/lib/slugify';
 import { canUseStudio } from '@/lib/tiers';
 import { resolveDashboardUser } from '@/lib/dashboardAuth';
@@ -110,6 +114,9 @@ export default function OnlineStoreThemesPage() {
   const [bio, setBio] = useState('');
   const [themeColor, setThemeColor] = useState('emerald');
   const [storeLayout, setStoreLayout] = useState('bantaba');
+  // Storefront matrix (shops.theme_matrix) — which renderer serves the
+  // public boutique: the classic /shop page or the Banjul Noir /s matrix.
+  const [themeMatrix, setThemeMatrix] = useState<ThemeMatrixId>('classic');
   const [offersDelivery, setOffersDelivery] = useState(false);
   const [offersPickup, setOffersPickup] = useState(false);
 
@@ -149,6 +156,8 @@ export default function OnlineStoreThemesPage() {
     setBio(shopRow.bio || '');
     setThemeColor(shopRow.theme_color || 'emerald');
     setStoreLayout(shopRow.store_layout || 'bantaba');
+    // Pre-migration rows carry no theme_matrix at all → the 'classic' default.
+    setThemeMatrix(normalizeThemeMatrix(shopRow.theme_matrix));
     setOffersDelivery(shopRow.offers_delivery || false);
     setOffersPickup(shopRow.offers_pickup || false);
     setLogoUrl(shopRow.logo_url || null);
@@ -190,7 +199,7 @@ export default function OnlineStoreThemesPage() {
     setSaving(true);
 
     try {
-      const { error } = await supabase.from('shops').update({
+      const baseUpdates = {
         bio: bio.trim(),
         theme_color: themeColor,
         store_layout: storeLayout,
@@ -198,27 +207,34 @@ export default function OnlineStoreThemesPage() {
         offers_pickup: offersPickup,
         logo_url: logoUrl,
         banner_url: bannerUrl,
-      }).eq('id', userId);
+      };
+
+      // theme_matrix ships in supabase/migrations/20261001010000_add_theme_matrix_to_shops.sql.
+      // Gambia Standard §3: the save must keep working before the founder has
+      // applied it. PostgREST rejects an UPDATE naming an unknown column
+      // (PGRST204 "Could not find the 'theme_matrix' column … in the schema
+      // cache" / 42703), so on THAT signature only we re-issue the write
+      // without it and keep every other setting — never a dead Save button.
+      let updates: typeof baseUpdates & { theme_matrix?: ThemeMatrixId } = {
+        ...baseUpdates,
+        theme_matrix: themeMatrix,
+      };
+      let { error } = await supabase.from('shops').update(updates).eq('id', userId);
+      if (error && (error.code === 'PGRST204' || isUndefinedColumnError(error))) {
+        console.warn('[themes] shops.theme_matrix missing — run the pending shops migration. Saving without it.');
+        updates = baseUpdates;
+        ({ error } = await supabase.from('shops').update(updates).eq('id', userId));
+      }
 
       if (error) throw error;
 
       // Seam invalidation (A3): push the merged row through shopRowKey so the
       // sidebar, dashboard header, studio identity, and storefront links all
       // repaint instantly — the write just succeeded, so this IS server truth.
+      // `updates` is exactly what the DB accepted (matrix included only when
+      // the column exists), so the cache never claims a value the row lacks.
       void mutateShopRow(
-        (prev) =>
-          prev
-            ? {
-                ...prev,
-                bio: bio.trim(),
-                theme_color: themeColor,
-                store_layout: storeLayout,
-                offers_delivery: offersDelivery,
-                offers_pickup: offersPickup,
-                logo_url: logoUrl,
-                banner_url: bannerUrl,
-              }
-            : prev,
+        (prev) => (prev ? { ...prev, ...updates } : prev),
         { revalidate: false }
       );
 
@@ -233,6 +249,10 @@ export default function OnlineStoreThemesPage() {
 
   const hasPremiumAccess = subscriptionTier === 'pro' || subscriptionTier === 'advanced' || subscriptionTier === 'flagship';
   const hasWebsiteAccess = canUseStudio(subscriptionTier);
+
+  // Law 2 slug safety: preview links are minted only from a canonical slug.
+  const matrixPreviewSlug =
+    shopRow?.shop_slug && shopRow.shop_slug === slugify(shopRow.shop_slug) ? shopRow.shop_slug : null;
 
   const handlePremiumClick = (itemName: string) => {
     alert(`The ${itemName} design is locked. Upgrade to Pro to unlock premium branding features!`);
@@ -421,6 +441,52 @@ export default function OnlineStoreThemesPage() {
 
           {/* RIGHT COLUMN: THEME & LAYOUT */}
           <div className="space-y-8">
+
+            {/* 0. STOREFRONT MATRIX CARD — shops.theme_matrix. Tap-to-select
+                rows (not a <select>): no dropdowns on mobile, ≥44px targets. */}
+            <div className="rounded-[2rem] bg-white p-6 shadow-sm border border-gray-100">
+              <h2 className="text-lg font-serif font-bold text-gray-900 mb-2 flex items-center gap-2"><Layers size={18} className="text-gray-400" /> Storefront Matrix</h2>
+              <p className="mb-6 text-xs leading-relaxed text-gray-500">The renderer your public boutique is served through. Brand color and layout below style the Classic matrix only.</p>
+              <div role="radiogroup" aria-label="Storefront matrix" className="space-y-3">
+                {THEME_MATRICES.map((matrix) => {
+                  const active = themeMatrix === matrix.id;
+                  return (
+                    <button
+                      key={matrix.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      onClick={() => setThemeMatrix(matrix.id)}
+                      className={`w-full flex min-h-[44px] items-center justify-between gap-3 p-4 rounded-xl border text-left transition-all ${
+                        active
+                          ? matrix.id === 'banjul-noir'
+                            ? 'border-mall-forest bg-mall-forest text-white shadow-md'
+                            : 'border-gray-900 bg-gray-900 text-white shadow-md'
+                          : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div>
+                        <h4 className={`text-sm font-bold flex items-center gap-2 ${active ? 'text-white' : 'text-gray-900'}`}>
+                          {matrix.name}
+                        </h4>
+                        <p className={`text-[10px] uppercase tracking-widest mt-1 ${active ? (matrix.id === 'banjul-noir' ? 'text-mall-gold' : 'text-gray-300') : 'text-gray-500'}`}>{matrix.desc}</p>
+                      </div>
+                      {active && <CheckCircle2 size={18} className={matrix.id === 'banjul-noir' ? 'text-mall-gold' : 'text-white'} />}
+                    </button>
+                  );
+                })}
+              </div>
+              {matrixPreviewSlug && (
+                <a
+                  href={themeMatrixPath(themeMatrix, matrixPreviewSlug)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-4 inline-flex min-h-[44px] items-center gap-1.5 font-mono text-xs text-gray-500 transition hover:text-gray-900"
+                >
+                  Preview {themeMatrixPath(themeMatrix, matrixPreviewSlug).split('?')[0]} <ExternalLink size={11} />
+                </a>
+              )}
+            </div>
 
             {/* 3. THEME CARD */}
             <div className="rounded-[2rem] bg-white p-6 shadow-sm border border-gray-100">

@@ -42,6 +42,11 @@ export type Shop = {
   bio: string | null;
   store_layout: string | null;
   theme_color: string | null;
+  /** Storefront matrix id ('classic' | 'banjul-noir') —
+   *  supabase/migrations/20261001010000_add_theme_matrix_to_shops.sql.
+   *  Optional: absent on rows read before the migration has run; always
+   *  resolve through lib/themeMatrix normalizeThemeMatrix. */
+  theme_matrix?: string | null;
   offers_delivery: boolean | null;
   offers_pickup: boolean | null;
   pickup_instructions: string | null;
