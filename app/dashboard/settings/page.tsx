@@ -42,7 +42,7 @@ import { useRouter } from 'next/navigation';
 import {
   AlertTriangle, ArrowLeft, ArrowRight, BadgeCheck, Banknote, Check, CheckCircle2,
   ChevronDown, CreditCard, Crown, Globe, HelpCircle, Loader2, Lock,
-  MessageCircle, Store, WifiOff,
+  LayoutTemplate, MessageCircle, Store, WifiOff,
 } from 'lucide-react';
 import DomainManager from '@/components/domains/DomainManager';
 import { resolveDashboardUser } from '@/lib/dashboardAuth';
@@ -51,6 +51,8 @@ import {
   SUPPORT_WHATSAPP, TIER_BY_ID, TIER_MATRIX, canUseCustomDomain, canUseStudio,
   normalizeTier, type AnyTier, type TierCard,
 } from '@/lib/tiers';
+import { isUndefinedColumnError } from '@/lib/productColumns';
+import { THEME_MATRICES, normalizeThemeMatrix, type ThemeMatrixId } from '@/lib/themeMatrix';
 import { useShopRow } from '@/lib/useShopRow';
 
 // ── Active-plan view model ───────────────────────────────────────────────────
@@ -157,6 +159,7 @@ export default function SettingsPage() {
   const [draftName, setDraftName] = useState<string | null>(null);
   const [draftPhone, setDraftPhone] = useState<string | null>(null);
   const [draftBio, setDraftBio] = useState<string | null>(null);
+  const [draftMatrix, setDraftMatrix] = useState<ThemeMatrixId | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileToast, setProfileToast] = useState<{ tone: 'ok' | 'error'; message: string } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -171,10 +174,13 @@ export default function SettingsPage() {
   const nameValue = draftName ?? shop?.shop_name ?? '';
   const phoneValue = draftPhone ?? shop?.phone ?? '';
   const bioValue = draftBio ?? shop?.bio ?? '';
+  const liveMatrix = normalizeThemeMatrix(shop?.theme_matrix);
+  const matrixValue = draftMatrix ?? liveMatrix;
   const profileDirty =
     (draftName !== null && draftName !== (shop?.shop_name ?? '')) ||
     (draftPhone !== null && draftPhone !== (shop?.phone ?? '')) ||
-    (draftBio !== null && draftBio !== (shop?.bio ?? ''));
+    (draftBio !== null && draftBio !== (shop?.bio ?? '')) ||
+    (draftMatrix !== null && draftMatrix !== liveMatrix);
 
   const handleSaveProfile = async () => {
     if (!userId || !shop || savingProfile) return;
@@ -185,12 +191,24 @@ export default function SettingsPage() {
     }
     setSavingProfile(true);
     try {
-      const updates = {
+      const baseUpdates = {
         shop_name: nextName,
         phone: phoneValue.trim() || null,
         bio: bioValue.trim() || null,
       };
-      const { error } = await supabase.from('shops').update(updates).eq('id', userId);
+      // theme_matrix ships in supabase/migrations/20261001010000_add_theme_matrix_to_shops.sql.
+      // Pre-migration PostgREST rejects the unknown column (PGRST204 / 42703);
+      // on that signature only, re-issue without it so Save never dies.
+      let updates: typeof baseUpdates & { theme_matrix?: ThemeMatrixId } = {
+        ...baseUpdates,
+        theme_matrix: matrixValue,
+      };
+      let { error } = await supabase.from('shops').update(updates).eq('id', userId);
+      if (error && (error.code === 'PGRST204' || isUndefinedColumnError(error))) {
+        console.warn('[settings] shops.theme_matrix missing — run the pending shops migration. Saving without it.');
+        updates = baseUpdates;
+        ({ error } = await supabase.from('shops').update(updates).eq('id', userId));
+      }
       if (error) throw new Error(error.message);
       // The Step-1 seam: push the merged row through the bound mutate so the
       // whole dashboard (sidebar, studio identity, storefront links) repaints
@@ -199,6 +217,7 @@ export default function SettingsPage() {
       setDraftName(null);
       setDraftPhone(null);
       setDraftBio(null);
+      setDraftMatrix(null);
       showProfileToast('ok', 'Profile saved — your boutique is up to date.');
     } catch (err) {
       console.error('[settings] profile save failed:', err);
@@ -357,6 +376,52 @@ export default function SettingsPage() {
                   className="mt-1.5 w-full resize-none rounded-2xl border border-gray-200 bg-gray-50/50 px-4 py-3 text-base font-medium leading-relaxed text-gray-900 outline-none transition focus:border-gray-900 focus:bg-white focus:ring-1 focus:ring-gray-900"
                 />
               </label>
+
+              {/* Storefront Design — shops.theme_matrix. Tap-to-select cards. */}
+              <div className="block md:col-span-2" role="radiogroup" aria-label="Storefront design">
+                <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-500">
+                  <LayoutTemplate size={12} /> Storefront Design
+                </span>
+                <div className="mt-1.5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {THEME_MATRICES.map((matrix) => {
+                    const selected = matrixValue === matrix.id;
+                    return (
+                      <div
+                        key={matrix.id}
+                        role="radio"
+                        aria-checked={selected}
+                        tabIndex={0}
+                        onClick={() => setDraftMatrix(matrix.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setDraftMatrix(matrix.id);
+                          }
+                        }}
+                        className={`flex min-h-[44px] cursor-pointer items-start gap-3 rounded-2xl border px-4 py-3.5 transition active:scale-[0.98] ${
+                          selected
+                            ? 'border-[#1a2e1a] bg-[#1a2e1a] text-white shadow-md'
+                            : 'border-gray-200 bg-gray-50/50 text-gray-900 hover:border-gray-400'
+                        }`}
+                      >
+                        <span
+                          className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                            selected ? 'border-white bg-white' : 'border-gray-300 bg-white'
+                          }`}
+                        >
+                          {selected && <Check size={10} className="text-[#1a2e1a]" strokeWidth={3} />}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-sm font-bold leading-tight">{matrix.name}</span>
+                          <span className={`mt-1 block text-[11px] leading-relaxed ${selected ? 'text-white/70' : 'text-gray-500'}`}>
+                            {matrix.desc}
+                          </span>
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
 
             {/* Currency — deliberately FIXED, with the honest reason. */}
