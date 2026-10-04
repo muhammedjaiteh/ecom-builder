@@ -160,7 +160,8 @@ async function handleTenantRequest(request: NextRequest, host: string): Promise<
     pathname === '/' ||
     TENANT_PAGE_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
   if (isStorefrontPath) {
-    const target = new URL(`/site/${slug}${pathname === '/' ? '' : pathname}`, request.url);
+    // 🚀 NEW: Pointing to the Apex Switchboard instead of the legacy /site/ layout
+    const target = new URL(`/shop/${slug}${pathname === '/' ? '' : pathname}`, request.url);
     target.search = search;
     return NextResponse.rewrite(target);
   }
@@ -170,11 +171,11 @@ async function handleTenantRequest(request: NextRequest, host: string): Promise<
     return NextResponse.next();
   }
 
-  // 6. /site/{slug}/… links minted by the templates: keep the buyer on the
+  // 6. /shop/{slug}/… links minted by the new matrix engine: keep the buyer on the
   //    custom domain when the slug is THIS tenant's; any other slug falls
   //    through to the canonical redirect (cross-tenant snooping wall).
-  if (pathname === '/site' || pathname.startsWith('/site/')) {
-    const segments = pathname.split('/'); // ['', 'site', slug?, ...rest]
+  if (pathname === '/shop' || pathname.startsWith('/shop/')) {
+    const segments = pathname.split('/'); // ['', 'shop', slug?, ...rest]
     const pathSlug = slugify(decodeSegment(segments[2] ?? ''));
     if (pathSlug && pathSlug === slugify(slug)) {
       const rest = segments.slice(3).join('/');

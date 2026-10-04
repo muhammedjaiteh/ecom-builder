@@ -175,11 +175,11 @@ function DashboardGate({ userId, children }: { userId: string; children: React.R
   // the fixed w-60 sidebar; below lg the sidebar becomes a floating-trigger
   // drawer and pages keep their full-width designs. shopName rides the seam —
   // a brand save anywhere updates the sidebar instantly via shopRowKey.
-  return (
+ return (
     <>
-      <DashboardSidebar shopName={shopName} />
+      <DashboardSidebar shopName={shopName} shopSlug={shop?.shop_slug ?? null} />
       <div className="lg:pl-60">{children}</div>
       <AdRenderNotifier />
     </>
-  );
+  );;
 }

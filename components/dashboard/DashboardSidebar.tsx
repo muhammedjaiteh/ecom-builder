@@ -3,12 +3,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Persistent dashboard sidebar — mounted once from app/dashboard/layout.tsx so
 // EVERY /dashboard/* page carries the same Shopify-standard navigation.
-//
-// Every entry is a real route rendered as an ordinary <Link>. Active state is
-// derived from usePathname() alone — an exact match for Home, a prefix match
-// for every nested page. The former command-center seam (?tab= deep links,
-// forced full navigations and the location watcher that kept ?tab= fresh) is
-// gone: each tab now owns a route under /dashboard/*.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useState } from 'react';
@@ -18,7 +12,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
   BadgePercent, BarChart3, FileText, Film, Globe, Home, ListTree,
   Megaphone, Menu, Package, Palette, Settings, ShoppingCart, Star,
-  Store, Users, X,
+  Store, Users, X, ExternalLink
 } from 'lucide-react';
 
 type IconType = typeof Home;
@@ -27,10 +21,6 @@ type NavEntry = {
   label: string;
   href: string;
   icon: IconType;
-  /**
-   * Match the pathname exactly instead of by prefix. Home (/dashboard) would
-   * otherwise light up on every nested /dashboard/* route.
-   */
   exact?: boolean;
 };
 
@@ -74,20 +64,17 @@ function isEntryActive(pathname: string, entry: NavEntry): boolean {
   return pathname === entry.href || pathname.startsWith(`${entry.href}/`);
 }
 
-export default function DashboardSidebar({ shopName }: { shopName?: string | null }) {
+// 1. Added shopSlug to the component interface to clear the TypeScript error
+export default function DashboardSidebar({ shopName, shopSlug }: { shopName?: string | null; shopSlug?: string | null }) {
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  // Route changes always close the drawer — even navigations this sidebar
-  // didn't trigger (e.g. the Ad Studio toast's jump link). Adjust-during-
-  // render pattern instead of an effect: no cascading render.
   const [lastPathname, setLastPathname] = useState(pathname);
   if (lastPathname !== pathname) {
     setLastPathname(pathname);
     setDrawerOpen(false);
   }
 
-  // Escape + scroll-lock while the drawer is open.
   useEffect(() => {
     if (!drawerOpen) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setDrawerOpen(false); };
@@ -130,6 +117,21 @@ export default function DashboardSidebar({ shopName }: { shopName?: string | nul
         <p className="mt-0.5 truncate text-[9px] font-bold uppercase tracking-widest text-gray-400">
           {shopName || 'Seller Command'}
         </p>
+        
+        {/* 2. THE NEW APEX SWITCHBOARD LINK */}
+        {shopSlug && (
+          <a 
+            href={`/shop/${shopSlug}`} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="mt-4 flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-[11px] font-semibold text-gray-700 ring-1 ring-gray-200 transition hover:bg-gray-100 hover:text-gray-900"
+          >
+            <span className="flex items-center gap-2">
+              <Store size={14} className="text-[#f0a500]" /> Live Storefront
+            </span>
+            <ExternalLink size={12} className="text-gray-400" />
+          </a>
+        )}
       </div>
 
       <nav aria-label="Dashboard" className="flex-1 space-y-6 overflow-y-auto px-3 py-4">
@@ -157,12 +159,10 @@ export default function DashboardSidebar({ shopName }: { shopName?: string | nul
 
   return (
     <>
-      {/* Desktop: fixed sidebar */}
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-gray-100 bg-white lg:flex">
         {navBody}
       </aside>
 
-      {/* Mobile: floating trigger (bottom-left; the Ad Studio notifier owns bottom-right) */}
       <button
         onClick={() => setDrawerOpen(true)}
         aria-label="Open dashboard menu"
@@ -172,7 +172,6 @@ export default function DashboardSidebar({ shopName }: { shopName?: string | nul
         <Menu size={15} /> Menu
       </button>
 
-      {/* Mobile: drawer */}
       <AnimatePresence>
         {drawerOpen && (
           <>
