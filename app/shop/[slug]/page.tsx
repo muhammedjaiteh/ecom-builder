@@ -1,90 +1,222 @@
-import { redirect } from 'next/navigation';
-import { loadSite } from '@/app/site/[slug]/siteData';
-import { resolveStorefrontPath } from '@/lib/storefrontUrl';
+import { createClient } from '@supabase/supabase-js';
+import { notFound, redirect } from 'next/navigation';
+import BanjulNoirStorefront, {
+  type StorefrontMerchant,
+  type StorefrontProduct,
+} from '@/components/generator/matrix/BanjulNoirStorefront';
+import { LUXURY_COLUMNS, selectWithOptionalColumns } from '@/lib/productColumns';
 import { slugify } from '@/lib/slugify';
-import ClassicShopPage from './ClassicShopPage';
+import { normalizeThemeMatrix } from '@/lib/themeMatrix';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// /shop/[slug] — SERVER BRIDGE (Pillar 1). The classic boutique used to be the
-// dead end for shops whose paid /site storefront was live: every old share,
-// marketplace crawl, or bookmark kept landing on the classic page. This server
-// page upgrades the visit — LOOP-SAFE BY CONSTRUCTION:
+// /s/[slug] — Server Component adapter for the Banjul Noir storefront matrix.
 //
-//   THE PREDICATE (the EXACT /site serve predicate, evaluated through the SAME
-//   code path requireSite uses):
-//     · loadSite(slug) — the same cached slug→shop resolution the /site router
-//       runs (canonical slugify + verified legacy fallback), so the shop this
-//       bridge judges is BY IDENTITY the shop /site/{canonicalSlug} would
-//       resolve (minted canonical === the resolution key === the same winner).
-//     · resolveStorefrontPath — mirrors requireSite verbatim:
-//       status === 'published' AND WebsiteConfigSchema.safeParse(config).success
-//       (anything weaker loops: siteData.ts bounces /site → /shop on a
-//       missing/unpublished/invalid config).
+// The component is data-blind: it receives a `merchant` and a `products` array
+// and renders nothing it was not handed. This file is the ONLY place raw
+// Supabase rows are translated into that contract.
 //
-//   WHY NO LOOP IS POSSIBLE: a redirect fires only when the predicate holds
-//   for the SAME row requireSite will read (shared Data Cache entries, same
-//   tags). If /site still bounces (racing unpublish, transient read failure),
-//   its /shop redirect re-runs this bridge against the SAME degraded cache —
-//   the predicate now fails and the classic page renders. Every hop strictly
-//   consumes the serve predicate; there is no third state.
+// Schema note: the live tables are `shops` (shop_slug / shop_name / phone) and
+// `products` (price, stock_quantity, …). The previous version of this page read
+// a `stores` table and a `price_d` column that no longer exist (see the header
+// of app/dashboard/products/page.tsx), so it could never resolve a shop.
 //
-//   · Starter/Pro sellers (no published AI site): predicate fails → the
-//     classic boutique renders byte-identically. It is their only storefront.
-//   · Custom-domain-active shops: resolveStorefrontPath tier 1 → 307 to
-//     https://{domain}.
-//   · Owner drafts: loadSite hands the owner their draft row, but the
-//     predicate reads status — a draft NEVER redirects (the classic page and
-//     the dashboard preview stay the owner's draft-era surfaces).
-//   · ?classic=1 — the deliberate escape the site chromes' "View classic
-//     boutique" footer links carry. Without it the documented escape would
-//     bounce straight back to /site, functionally deleting the contract.
-//
-// 307 (redirect() default — never permanent): publish state changes, and a
-// cached 308 would strand a shop that unpublishes.
+// The four luxury merchandising columns (kicker, extraction, details, eyebrow)
+// ship in supabase/migrations/20261001000000_add_luxury_fields_to_products.sql.
+// They are read as OPTIONAL columns: until the migration has run, the select
+// degrades to the base column list (PostgreSQL 42703 → retry without them)
+// instead of rendering an empty storefront — Gambia Standard §3.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Publish state is per-request truth: the bridge must never be captured by the
-// full route cache (the underlying reads ride siteData's tagged Data Cache).
-export const dynamic = 'force-dynamic';
-
-type PageProps = {
-  params: Promise<{ slug: string }>;
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
+// --- Raw row types ---
+type StoreRow = {
+  id: string;
+  shop_name: string | null;
+  shop_slug: string | null;
+  /** WhatsApp number as stored by the seller. Sanitised by the component at link-build time. */
+  phone: string | null;
+  bio: string | null;
+  banner_url: string | null;
+  logo_url: string | null;
+  /** Storefront matrix — optional until supabase/migrations/20261001010000 has run. */
+  theme_matrix?: string | null;
 };
 
-export default async function ShopBridgePage({ params, searchParams }: PageProps) {
+/** shops.theme_matrix — read as an optional column (42703 → degrade to base). */
+const STORE_OPTIONAL_COLUMNS = ['theme_matrix'] as const;
+
+type ProductRow = {
+  id: string;
+  name: string;
+  price: number | string | null;
+  description: string | null;
+  image_url: string | null;
+  image_urls: string[] | null;
+  ad_hero_image_url: string | null;
+  category: string | null;
+  /** NULL = untracked inventory (always purchasable); 0 = sold out. */
+  stock_quantity: number | null;
+  created_at: string | null;
+  // Luxury merchandising fields — optional until the migration has run.
+  kicker?: string | null;
+  extraction?: string | null;
+  details?: string | null;
+  eyebrow?: string | null;
+};
+
+const STORE_COLUMNS = 'id, shop_name, shop_slug, phone, bio, banner_url, logo_url';
+
+const PRODUCT_BASE_COLUMNS =
+  'id, name, price, description, image_url, image_urls, ad_hero_image_url, category, stock_quantity, created_at';
+
+// --- Mapping helpers ---
+
+/** Trim, drop empties. */
+function clean(value: string | null | undefined): string {
+  return (value ?? '').trim();
+}
+
+/** One paragraph per line break. Rendered in full by the component — never an accordion. */
+function toParagraphs(value: string | null | undefined): string[] {
+  return clean(value)
+    .split(/\r?\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+/** One spec bullet per line or pipe ("Hand-filled in Banjul | Glass vial, brass cap"). */
+function toBullets(value: string | null | undefined): string[] {
+  return clean(value)
+    .split(/\r?\n|\|/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+/** Primary product photo first, then gallery, then the Ad Studio hero still. */
+function pickImage(row: ProductRow): string {
+  return (
+    clean(row.image_url) ||
+    clean(row.image_urls?.find((url) => clean(url))) ||
+    clean(row.ad_hero_image_url)
+  );
+}
+
+function toMerchant(store: StoreRow, fallbackSlug: string): StorefrontMerchant {
+  const name = clean(store.shop_name) || fallbackSlug;
+  const subtitle = clean(store.bio);
+  const backgroundImage = clean(store.banner_url);
+  return {
+    name,
+    whatsappNumber: clean(store.phone),
+    hero: {
+      title: name,
+      // Omitted fields fall back to the component's defaults.
+      ...(subtitle ? { subtitle } : {}),
+      ...(backgroundImage ? { backgroundImage } : {}),
+    },
+  };
+}
+
+function toProduct(row: ProductRow): StorefrontProduct {
+  const price = Number(row.price);
+  return {
+    id: row.id,
+    name: clean(row.name),
+    kicker: clean(row.kicker) || clean(row.eyebrow) || clean(row.category),
+    extraction: clean(row.extraction),
+    price: Number.isFinite(price) && price > 0 ? Math.round(price) : 0,
+    image: pickImage(row),
+    inStock: row.stock_quantity === null || row.stock_quantity === undefined || row.stock_quantity > 0,
+    // Review aggregation is not wired on this surface yet; 0 suppresses the ratings UI.
+    reviewCount: 0,
+    rating: 0,
+    description: toParagraphs(row.description),
+    details: toBullets(row.details),
+  };
+}
+
+// --- Data access ---
+
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  );
+}
+
+function decodeSlugParam(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+/**
+ * Canonical slug first; then the raw param for legacy rows minted by the
+ * signup trigger before slugs were normalised. THROWS on query errors so an
+ * outage renders as an error, never as a 404.
+ */
+async function fetchStore(rawSlug: string, cleanSlug: string): Promise<StoreRow | null> {
+  const supabase = getSupabase();
+  const candidates = rawSlug === cleanSlug ? [cleanSlug] : [cleanSlug, rawSlug];
+  for (const candidate of candidates) {
+    const { data, error } = await selectWithOptionalColumns<StoreRow>(
+      STORE_COLUMNS,
+      STORE_OPTIONAL_COLUMNS,
+      (columns) => supabase.from('shops').select(columns).eq('shop_slug', candidate).maybeSingle(),
+      's-storefront/shops',
+    );
+    if (error) throw new Error(`[s-storefront] shop read failed: ${error.message}`);
+    if (data) return data as StoreRow;
+  }
+  return null;
+}
+
+async function fetchProducts(storeId: string): Promise<ProductRow[]> {
+  const { data, error } = await selectWithOptionalColumns<ProductRow[]>(
+    PRODUCT_BASE_COLUMNS,
+    LUXURY_COLUMNS,
+    (columns) =>
+      getSupabase()
+        .from('products')
+        .select(columns)
+        // Dual-column ownership: legacy rows carry only user_id (see sql/provisioning.sql).
+        .or(`shop_id.eq.${storeId},user_id.eq.${storeId}`)
+        .order('created_at', { ascending: false }),
+    's-storefront',
+  );
+  if (error) throw new Error(`[s-storefront] products read failed: ${error.message}`);
+  return data ?? [];
+}
+
+// --- Page ---
+
+export default async function StorePublicPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const sp = await searchParams;
-  const wantsClassic = sp?.classic === '1';
+  const rawSlug = decodeSlugParam(slug);
+  const cleanSlug = slugify(rawSlug);
+  if (!cleanSlug) notFound();
 
-  if (!wantsClassic) {
-    // Any resolution failure degrades to the classic page — the bridge is an
-    // upgrade path, never a gate. loadSite already swallows transient DB
-    // failures into honest nulls; this catch is belt-and-suspenders.
-    const data = await loadSite(slug).catch((error) => {
-      console.error(`[shop-bridge] slug=${slug} loadSite failed — serving classic:`, error instanceof Error ? error.message : error);
-      return null;
-    });
+  const store = await fetchStore(rawSlug, cleanSlug);
+  if (!store) notFound();
 
-    if (data?.website) {
-      const path = resolveStorefrontPath({
-        rawSlug: data.shop.shop_slug,
-        canonicalSlug: slugify(data.shop.shop_slug) || null,
-        website: {
-          status: data.website.status,
-          config: data.website.config,
-          custom_domain: data.website.custom_domain ?? null,
-          domain_status: data.website.domain_status ?? null,
-        },
-      });
-      // Only the UPGRADE tiers redirect (custom domain / published /site).
-      // A /shop path or null means the classic page IS the best storefront.
-      if (path && !path.startsWith('/shop')) {
-        console.log(`[shop-bridge] slug=${slug} shop=${data.shop.id} → 307:${path}`);
-        redirect(path);
-      }
-    }
+  // Matrix router: shops.theme_matrix decides the renderer. 'classic' (and any
+  // NULL / unknown / pre-migration value) is served by the /shop bridge, which
+  // never routes back here — so no redirect loop is possible.
+  if (normalizeThemeMatrix(store.theme_matrix) === 'classic') {
+    redirect(`/shop/${cleanSlug}`);
   }
 
-  return <ClassicShopPage slug={slug} />;
+  const rows = await fetchProducts(store.id);
+
+  const merchant = toMerchant(store, cleanSlug);
+  // The matrix frames every piece as a 4:5 editorial image; a row with no
+  // image at all has nothing to frame and is withheld from the storefront.
+  const products = rows.map(toProduct).filter((product) => product.image);
+
+  return (
+    <main className="min-h-screen bg-mall-forest">
+      <BanjulNoirStorefront merchant={merchant} products={products} />
+    </main>
+  );
 }

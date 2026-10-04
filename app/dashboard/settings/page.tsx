@@ -305,11 +305,11 @@ export default function SettingsPage() {
         }`}
       >
         <div className={`flex items-center gap-2 rounded-2xl px-5 py-3 text-xs font-semibold text-white shadow-xl ${
-          profileToast?.tone === 'ok' ? 'bg-emerald-700' : 'bg-red-600'
-        }`}>
-          {profileToast?.tone === 'ok' ? <CheckCircle2 size={14} className="shrink-0" /> : <AlertTriangle size={14} className="shrink-0" />}
-          {profileToast?.message}
-        </div>
+  profileToast?.tone === 'error' ? 'bg-red-600' : 'bg-emerald-700'
+}`}>
+  {profileToast?.tone === 'error' ? <AlertTriangle size={14} className="shrink-0" /> : <CheckCircle2 size={14} className="shrink-0" />}
+  {profileToast?.message}
+</div>
       </div>
 
       <main className="mx-auto mt-4 max-w-4xl space-y-12 px-4 py-8 md:px-10">

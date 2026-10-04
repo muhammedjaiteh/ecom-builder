@@ -1,30 +1,16 @@
 import { createClient } from '@supabase/supabase-js';
-import { notFound, redirect } from 'next/navigation';
-import BanjulNoirStorefront, {
+import { notFound } from 'next/navigation';
+import BanjulNoirStorefrontUI, {
   type StorefrontMerchant,
   type StorefrontProduct,
 } from '@/components/generator/matrix/BanjulNoirStorefront';
 import { LUXURY_COLUMNS, selectWithOptionalColumns } from '@/lib/productColumns';
 import { slugify } from '@/lib/slugify';
-import { normalizeThemeMatrix } from '@/lib/themeMatrix';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// /s/[slug] — Server Component adapter for the Banjul Noir storefront matrix.
-//
-// The component is data-blind: it receives a `merchant` and a `products` array
-// and renders nothing it was not handed. This file is the ONLY place raw
-// Supabase rows are translated into that contract.
-//
-// Schema note: the live tables are `shops` (shop_slug / shop_name / phone) and
-// `products` (price, stock_quantity, …). The previous version of this page read
-// a `stores` table and a `price_d` column that no longer exist (see the header
-// of app/dashboard/products/page.tsx), so it could never resolve a shop.
-//
-// The four luxury merchandising columns (kicker, extraction, details, eyebrow)
-// ship in supabase/migrations/20261001000000_add_luxury_fields_to_products.sql.
-// They are read as OPTIONAL columns: until the migration has run, the select
-// degrades to the base column list (PostgreSQL 42703 → retry without them)
-// instead of rendering an empty storefront — Gambia Standard §3.
+// LUXURY DATA WRAPPER
+// Translates raw Supabase rows into the strict UI contract for Banjul Noir.
+// Called exclusively by the Apex Switchboard in app/shop/[slug]/page.tsx.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // --- Raw row types ---
@@ -32,16 +18,13 @@ type StoreRow = {
   id: string;
   shop_name: string | null;
   shop_slug: string | null;
-  /** WhatsApp number as stored by the seller. Sanitised by the component at link-build time. */
   phone: string | null;
   bio: string | null;
   banner_url: string | null;
   logo_url: string | null;
-  /** Storefront matrix — optional until supabase/migrations/20261001010000 has run. */
   theme_matrix?: string | null;
 };
 
-/** shops.theme_matrix — read as an optional column (42703 → degrade to base). */
 const STORE_OPTIONAL_COLUMNS = ['theme_matrix'] as const;
 
 type ProductRow = {
@@ -53,10 +36,8 @@ type ProductRow = {
   image_urls: string[] | null;
   ad_hero_image_url: string | null;
   category: string | null;
-  /** NULL = untracked inventory (always purchasable); 0 = sold out. */
   stock_quantity: number | null;
   created_at: string | null;
-  // Luxury merchandising fields — optional until the migration has run.
   kicker?: string | null;
   extraction?: string | null;
   details?: string | null;
@@ -69,13 +50,10 @@ const PRODUCT_BASE_COLUMNS =
   'id, name, price, description, image_url, image_urls, ad_hero_image_url, category, stock_quantity, created_at';
 
 // --- Mapping helpers ---
-
-/** Trim, drop empties. */
 function clean(value: string | null | undefined): string {
   return (value ?? '').trim();
 }
 
-/** One paragraph per line break. Rendered in full by the component — never an accordion. */
 function toParagraphs(value: string | null | undefined): string[] {
   return clean(value)
     .split(/\r?\n+/)
@@ -83,7 +61,6 @@ function toParagraphs(value: string | null | undefined): string[] {
     .filter(Boolean);
 }
 
-/** One spec bullet per line or pipe ("Hand-filled in Banjul | Glass vial, brass cap"). */
 function toBullets(value: string | null | undefined): string[] {
   return clean(value)
     .split(/\r?\n|\|/)
@@ -91,7 +68,6 @@ function toBullets(value: string | null | undefined): string[] {
     .filter(Boolean);
 }
 
-/** Primary product photo first, then gallery, then the Ad Studio hero still. */
 function pickImage(row: ProductRow): string {
   return (
     clean(row.image_url) ||
@@ -109,7 +85,6 @@ function toMerchant(store: StoreRow, fallbackSlug: string): StorefrontMerchant {
     whatsappNumber: clean(store.phone),
     hero: {
       title: name,
-      // Omitted fields fall back to the component's defaults.
       ...(subtitle ? { subtitle } : {}),
       ...(backgroundImage ? { backgroundImage } : {}),
     },
@@ -126,7 +101,6 @@ function toProduct(row: ProductRow): StorefrontProduct {
     price: Number.isFinite(price) && price > 0 ? Math.round(price) : 0,
     image: pickImage(row),
     inStock: row.stock_quantity === null || row.stock_quantity === undefined || row.stock_quantity > 0,
-    // Review aggregation is not wired on this surface yet; 0 suppresses the ratings UI.
     reviewCount: 0,
     rating: 0,
     description: toParagraphs(row.description),
@@ -135,7 +109,6 @@ function toProduct(row: ProductRow): StorefrontProduct {
 }
 
 // --- Data access ---
-
 function getSupabase() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -151,11 +124,6 @@ function decodeSlugParam(raw: string): string {
   }
 }
 
-/**
- * Canonical slug first; then the raw param for legacy rows minted by the
- * signup trigger before slugs were normalised. THROWS on query errors so an
- * outage renders as an error, never as a 404.
- */
 async function fetchStore(rawSlug: string, cleanSlug: string): Promise<StoreRow | null> {
   const supabase = getSupabase();
   const candidates = rawSlug === cleanSlug ? [cleanSlug] : [cleanSlug, rawSlug];
@@ -180,7 +148,6 @@ async function fetchProducts(storeId: string): Promise<ProductRow[]> {
       getSupabase()
         .from('products')
         .select(columns)
-        // Dual-column ownership: legacy rows carry only user_id (see sql/provisioning.sql).
         .or(`shop_id.eq.${storeId},user_id.eq.${storeId}`)
         .order('created_at', { ascending: false }),
     's-storefront',
@@ -189,10 +156,9 @@ async function fetchProducts(storeId: string): Promise<ProductRow[]> {
   return data ?? [];
 }
 
-// --- Page ---
+// --- Component Wrapper ---
 
-export default async function StorePublicPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
+export default async function BanjulNoirStorefront({ slug }: { slug: string }) {
   const rawSlug = decodeSlugParam(slug);
   const cleanSlug = slugify(rawSlug);
   if (!cleanSlug) notFound();
@@ -200,23 +166,13 @@ export default async function StorePublicPage({ params }: { params: Promise<{ sl
   const store = await fetchStore(rawSlug, cleanSlug);
   if (!store) notFound();
 
-  // Matrix router: shops.theme_matrix decides the renderer. 'classic' (and any
-  // NULL / unknown / pre-migration value) is served by the /shop bridge, which
-  // never routes back here — so no redirect loop is possible.
-  if (normalizeThemeMatrix(store.theme_matrix) === 'classic') {
-    redirect(`/shop/${cleanSlug}`);
-  }
-
   const rows = await fetchProducts(store.id);
-
   const merchant = toMerchant(store, cleanSlug);
-  // The matrix frames every piece as a 4:5 editorial image; a row with no
-  // image at all has nothing to frame and is withheld from the storefront.
   const products = rows.map(toProduct).filter((product) => product.image);
 
   return (
     <main className="min-h-screen bg-mall-forest">
-      <BanjulNoirStorefront merchant={merchant} products={products} />
+      <BanjulNoirStorefrontUI merchant={merchant} products={products} />
     </main>
   );
 }
