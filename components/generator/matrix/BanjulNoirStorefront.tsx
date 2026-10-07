@@ -15,14 +15,26 @@ const HEAVY_SPRING = { type: 'spring', stiffness: 80, damping: 25.29, mass: 2 } 
 /* Props — the storefront is data-blind. Supabase (or a fixture) feeds */
 /* it a merchant and a product array; nothing is hardcoded here.       */
 /* ------------------------------------------------------------------ */
-export interface StorefrontMerchant {
-  /** Brand name rendered in the header. Owns 70% of the header width; never truncated by a CTA. */
+export type StorefrontMerchant = {
   name: string;
-  /** Raw stored WhatsApp number. Sanitised to wa.me-safe digits at link-build time. */
   whatsappNumber: string;
-  /** Optional hero copy + image. Each field falls back to the Banjul Noir defaults when omitted. */
-  hero?: StorefrontHero;
-}
+  // 🚀 NEW: Adding the strict JSON AI tokens so all matrices can use them
+  brandTokens?: {
+    palette_id: string;
+    typography_id: string;
+    hero_kicker: string;
+    provenance_statement: string;
+    curation_heading: string;
+    material_truth_1: string;
+    material_truth_2: string;
+    whatsapp_cta_tone: string;
+  };
+  hero?: {
+    title: string;
+    subtitle?: string;
+    backgroundImage?: string;
+  };
+};
 
 export interface StorefrontHero {
   /** Serif headline over the scrim (e.g. "The Ritual of Oud"). */

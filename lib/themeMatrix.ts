@@ -1,29 +1,31 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Storefront matrices — shops.theme_matrix vocabulary.
 //
-// Ships in supabase/migrations/20261001010000_add_theme_matrix_to_shops.sql
-// (varchar(32) NOT NULL DEFAULT 'classic', CHECK-constrained to the ids
-// below). This file is the single client-side source of truth: the Themes
-// page renders THEME_MATRICES and the DB constraint mirrors it — extend both
-// together.
-//
-//   classic      /shop/[slug] ClassicShopPage — theme_color + store_layout
-//                keep styling it exactly as before.
-//   banjul-noir  BanjulNoirStorefront (components/generator/matrix), the
-//                luxury dark matrix served by the /s/[slug] adapter.
+// This file is the single client-side source of truth: the Themes page renders 
+// THEME_MATRICES and the DB constraint mirrors it.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const THEME_MATRICES = [
   {
     id: 'classic',
     name: 'Classic Boutique',
-    desc: 'Your brand color and boutique layout, served at /shop',
+    desc: 'Legacy layout (Deprecated)',
   },
   {
     id: 'banjul-noir',
     name: 'Banjul Noir (Luxury Dark)',
-    desc: 'Forest-dark editorial matrix with gold accents, served at /s',
+    desc: 'Forest-dark editorial matrix with gold accents',
   },
+  {
+    id: 'dakar-minimal',
+    name: 'Dakar Minimal (High Fashion)',
+    desc: 'Stark, asymmetric brutalist editorial matrix',
+  },
+  {
+    id: 'sahara-tech',
+    name: 'Sahara Tech (Industrial)',
+    desc: 'Precision grid matrix for electronics and utility',
+  }
 ] as const;
 
 export type ThemeMatrixId = (typeof THEME_MATRICES)[number]['id'];
@@ -40,7 +42,10 @@ export function normalizeThemeMatrix(value: unknown): ThemeMatrixId {
   return isThemeMatrixId(value) ? value : DEFAULT_THEME_MATRIX;
 }
 
-/** Public path the chosen matrix is served from, for a canonical slug. */
+/** 
+ * Public path the chosen matrix is served from, for a canonical slug. 
+ * THE APEX SWITCHBOARD: All matrices are now seamlessly served through /shop/[slug]
+ */
 export function themeMatrixPath(matrix: ThemeMatrixId, slug: string): string {
-  return matrix === 'banjul-noir' ? `/s/${slug}` : `/shop/${slug}?classic=1`;
+  return `/shop/${slug}`;
 }

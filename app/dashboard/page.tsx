@@ -29,19 +29,17 @@ import { resolveDashboardUser } from '@/lib/dashboardAuth';
 import { orderTotal } from '@/lib/orderMetrics';
 import { useOrders } from '@/lib/useOrders';
 import { useShopRow } from '@/lib/useShopRow';
-import { useStorefrontUrl } from '@/lib/useStorefrontUrl';
+
 import type { Shop } from '@/lib/types';
 
-// Site-aware "View Shop": custom domain → premium /site → classic /shop
-// (lib/useStorefrontUrl priority). Rendered INSIDE OnboardingInterceptor's
-// SWR scope, so the website-row read is a pure cache dedupe with the
-// interceptor's own fetch. Disabled until the shop row (and its slug) loads —
-// the raw `/shop/${shop?.shop_slug}` link this replaces minted
-// /shop/undefined pre-load and never URL-encoded legacy slugs.
+// Site-aware "View Shop": Points exclusively to the new $50k Matrix Switchboard.
 function ViewShopButton({ shop }: { shop: Shop | null }) {
-  const url = useStorefrontUrl(shop);
+  // Matches the Sidebar perfectly: uses the reliable shop_slug.
+  const url = shop?.shop_slug ? `/shop/${shop.shop_slug}` : null;
+
   const className =
     'flex shrink-0 items-center gap-1.5 rounded-full bg-gray-50 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:bg-gray-100';
+    
   if (!url) {
     return (
       <span aria-disabled="true" className={`${className} cursor-not-allowed opacity-50`}>
