@@ -16,34 +16,25 @@ export type ProviderEntry = {
 };
 
 const PROVIDERS: ProviderEntry[] = [
+  // Put OpenAI first in the fallback chain while Anthropic credits are $0
+  {
+    name: 'openai',
+    model: openai('gpt-4o-mini'),
+    providerOptions: { openai: { strictJsonSchema: false } },
+  },
+  { name: 'google', model: google('gemini-2.5-flash') },
   { name: 'anthropic', model: anthropic('claude-sonnet-5') },
-  { name: 'google',    model: google('gemini-2.5-flash') },
-  { name: 'openai',    model: openai('gpt-4o-mini') },
 ];
 
 /**
- * FLAGSHIP CREATIVE — claude-fable-5-1 (live-verified against the Models API
- * 2026-08-30: released 2026-08-28, 1M context, 128K output, adaptive-only
- * thinking). WEBSITE GENERATION ONLY per founder decision — passed as
- * primaryOverride by app/api/ai/generate-website (concepts + execute); every
- * other AI route stays on the standard PROVIDERS cascade above. ~5x Sonnet
- * pricing — do NOT add it to the default cascade. Refusal/content-filter
- * outcomes provably fall through to sonnet-5: see isRefusalOutcome below.
+ * FLAGSHIP CREATIVE — Rerouted to OpenAI (GPT-4o)
+ * Uses AI SDK v6 providerOptions.openai.strictJsonSchema = false so OpenAI
+ * accepts legacy .optional() superset fields without throwing HTTP 400.
  */
 export const FLAGSHIP_CREATIVE_PROVIDER: ProviderEntry = {
-  name: 'anthropic-fable',
-  model: anthropic('claude-fable-5-1'),
-  // STRUCTURED OUTPUT MODE — REQUIRED for this model (found 2026-09-05 via the
-  // dev harness): claude-fable-5-1 rejects forced tool_choice ("type 'tool'
-  // and 'any' are not supported for this model"). @ai-sdk/anthropic 3.0.81's
-  // default 'auto' mode only uses Anthropic's native output_config.format
-  // for model ids on its hardcoded known-model list — which predates Fable
-  // 5.1 — so 'auto' silently fell back to the forced `json` tool and the
-  // request 400'd before any generation. 'outputFormat' pins the native
-  // json_schema structured output (capabilities.structured_outputs.supported
-  // = true per the live Models API). Sonnet-5 on the default cascade stays on
-  // 'auto' — untouched request shape, untouched cache namespace.
-  providerOptions: { anthropic: { structuredOutputMode: 'outputFormat' } },
+  name: 'openai-flagship',
+  model: openai('gpt-4o'),
+  providerOptions: { openai: { strictJsonSchema: false } },
 };
 
 const SAME_PROVIDER_RETRY_MS = 500;

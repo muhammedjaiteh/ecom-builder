@@ -18,7 +18,25 @@ import { TEMPLATE_THEMES } from './siteTheme';
 export type TemplateKey = 'editorial' | 'ritual' | 'vitality';
 
 export const TEMPLATE_KEYS = ['editorial', 'ritual', 'vitality'] as const;
+// ─────────────────────────────────────────────────────────────────────────────
+// MATRIX ENGINE (The $50k Architecture) — Strict Identity Registries
+// ─────────────────────────────────────────────────────────────────────────────
+export const MATRIX_THEME_KEYS = ['dakar-minimal', 'banjul-noir', 'sahara-tech'] as const;
+export const PALETTE_IDS = ['monochrome', 'earth', 'obsidian'] as const;
+export const TYPOGRAPHY_IDS = ['serif', 'sans'] as const;
 
+export const BrandTokensSchema = z.object({
+  palette_id: z.enum(PALETTE_IDS),
+  typography_id: z.enum(TYPOGRAPHY_IDS),
+  hero_kicker: z.string().trim().min(1).max(60),
+  provenance_statement: z.string().trim().min(1).max(160),
+  curation_heading: z.string().trim().min(1).max(80),
+  material_truth_1: z.string().trim().min(1).max(160),
+  material_truth_2: z.string().trim().min(1).max(160),
+  whatsapp_cta_tone: z.string().trim().min(1).max(100),
+});
+
+export type BrandTokens = z.infer<typeof BrandTokensSchema>;
 export const SITE_TEMPLATES: Record<TemplateKey, {
   key: TemplateKey;
   name: string;
@@ -1144,7 +1162,11 @@ export const WebsiteGenerationSchema = z.object({
    *  path); never stored on the config. */
   layout: WebsiteLayoutSchema.optional(),
 });
-
+export const MatrixWebsiteGenerationSchema = WebsiteGenerationSchema.extend({
+  matrix_theme: z.enum(MATRIX_THEME_KEYS),
+  brand_tokens: BrandTokensSchema,
+});
+export type MatrixWebsiteGeneration = z.infer<typeof MatrixWebsiteGenerationSchema>;
 export type WebsiteGeneration = z.infer<typeof WebsiteGenerationSchema>;
 
 /** Assemble the stored config from LLM output: blocks with stable ids plus
@@ -1528,7 +1550,7 @@ export function applyGenerationLayout(
 // editor, and the Online Store dashboards so they all agree on one contract.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type ShopWebsiteRow = {
+ export type ShopWebsiteRow = {
   id: string;
   shop_id: string;
   template_key: TemplateKey;
@@ -1537,6 +1559,7 @@ export type ShopWebsiteRow = {
   niche_reasoning: string | null;
   generated_at: string;
   published_at: string | null;
+  brand_tokens: BrandTokens | null;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -13,7 +13,6 @@ export default function DakarMinimalStorefront({
 }) {
   const brandTokens = merchant.brandTokens;
 
-  // The brutalist WhatsApp handoff
   const handleInquiry = (productName: string) => {
     const tone = brandTokens?.whatsapp_cta_tone || "I would like to acquire this piece.";
     const message = `${tone}\n\nItem: ${productName}`;
@@ -23,25 +22,22 @@ export default function DakarMinimalStorefront({
   return (
     <div className="min-h-screen bg-white text-black selection:bg-black selection:text-white pb-32">
       
-      {/* HEADER: Stark, stripped-down navigation */}
-      <header className="fixed top-0 z-50 flex w-full items-center justify-between bg-white/80 px-6 py-6 backdrop-blur-md md:px-12">
+      <header className="fixed top-0 z-50 flex w-full items-center justify-between bg-white/80 px-6 py-5 backdrop-blur-md md:px-12">
         <div className="font-serif text-sm font-bold uppercase tracking-[0.2em]">
           {merchant.name}
         </div>
         <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
-          Atelier / Catalog
+          Catalog
         </div>
       </header>
 
-      {/* HERO: Editorial text treatment. No massive banner image, just typography. */}
-      <section className="flex min-h-[70vh] flex-col items-start justify-end px-6 pb-24 pt-48 md:px-12">
+      <section className="flex flex-col items-start justify-end px-6 pb-20 pt-40 md:min-h-[60vh] md:px-12 md:pb-24 md:pt-48">
         <motion.h1 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-          className="max-w-5xl text-5xl font-medium tracking-tighter md:text-7xl lg:text-[7rem] leading-[0.9]"
+          className="max-w-5xl font-serif text-5xl font-medium tracking-tighter md:text-7xl lg:text-[7rem] leading-[0.9]"
         >
-          {/* Strict safe-navigation with a fallback to the brand name */}
           {merchant.hero?.title || merchant.name}
         </motion.h1>
         
@@ -50,18 +46,17 @@ export default function DakarMinimalStorefront({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.3, duration: 1 }}
-            className="mt-8 max-w-md text-sm font-medium leading-relaxed text-gray-500 md:text-base md:mt-12"
+            className="mt-6 max-w-md text-sm font-medium leading-relaxed text-gray-500 md:text-base md:mt-12"
           >
-            {merchant.hero?.subtitle}
+            {merchant.hero.subtitle}
           </motion.p>
         )}
       </section>
 
-      {/* THE LOOKBOOK GRID: Asymmetric, staggered layout for physical dominance */}
-      <section className="px-6 md:px-12">
+      {/* Massive gap-y-32 injects the necessary luxury breathing room between products */}
+      <section className="md:px-12">
         <div className="flex flex-col gap-y-32 md:gap-y-48">
           {products.map((product, index) => {
-            // Determine alignment to create the high-fashion staggered effect
             const isEven = index % 2 === 0;
             
             return (
@@ -71,17 +66,16 @@ export default function DakarMinimalStorefront({
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-100px" }}
                 transition={{ duration: 0.8, ease: "easeOut" }}
-                className={`flex flex-col gap-8 md:flex-row md:items-end ${isEven ? 'md:flex-row' : 'md:flex-row-reverse'}`}
+                className={`flex flex-col md:flex-row md:items-center ${isEven ? 'md:flex-row' : 'md:flex-row-reverse'}`}
               >
                 
-                {/* THE ASSET: Massive 3:4 aspect ratio frame */}
-                <div className={`relative w-full overflow-hidden bg-gray-50 ${isEven ? 'md:w-7/12 lg:w-8/12' : 'md:w-6/12 lg:w-7/12'}`}>
-                  <div className="aspect-[3/4] w-full">
+                <div className={`relative w-full overflow-hidden bg-gray-50 ${isEven ? 'md:w-7/12' : 'md:w-6/12'}`}>
+                  <div className="aspect-[4/5] w-full md:aspect-[3/4]">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={product.image}
                       alt={product.name}
-                      className="absolute inset-0 h-full w-full object-cover transition-transform duration-[2s] hover:scale-105"
+                      className="absolute inset-0 h-full w-full object-cover"
                     />
                   </div>
                   {!product.inStock && (
@@ -91,14 +85,14 @@ export default function DakarMinimalStorefront({
                   )}
                 </div>
 
-                {/* THE META: Stark typography, strict alignment */}
-                <div className={`w-full md:w-5/12 lg:w-4/12 ${isEven ? 'md:pl-12' : 'md:pr-12'}`}>
-                  <div className="flex flex-col border-t border-black pt-6">
-                    <span className="mb-4 text-[9px] font-bold uppercase tracking-[0.2em] text-gray-400">
-                      {product.kicker}
+                <div className={`w-full px-6 pt-8 md:w-5/12 md:px-0 md:pt-0 ${isEven ? 'md:pl-16' : 'md:pr-16'}`}>
+                  <div className="flex flex-col md:border-t md:border-black md:pt-8">
+                    
+                    <span className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400">
+                      {product.kicker || 'Collection'}
                     </span>
                     
-                    <h2 className="text-2xl font-medium tracking-tight md:text-3xl lg:text-4xl">
+                    <h2 className="font-serif text-3xl font-medium tracking-tight md:text-5xl">
                       {product.name}
                     </h2>
                     
@@ -106,26 +100,23 @@ export default function DakarMinimalStorefront({
                       D{product.price.toLocaleString()}
                     </div>
 
-                    <div className="mt-8 space-y-4 text-xs font-medium leading-relaxed text-gray-500">
-                      {product.description.map((p, i) => <p key={i}>{p}</p>)}
-                    </div>
-
-                    {product.details.length > 0 && (
-                      <ul className="mt-8 space-y-2 border-l border-gray-200 pl-4 text-[10px] uppercase tracking-widest text-gray-400">
-                        {product.details.map((detail, i) => (
-                          <li key={i}>{detail}</li>
-                        ))}
-                      </ul>
+                    {/* Strict 2-line clamp to suppress legacy AI slop paragraphs */}
+                    {product.description.length > 0 && (
+                      <div className="mt-6 line-clamp-2 text-xs font-medium leading-relaxed text-gray-500">
+                        {product.description[0]}
+                      </div>
                     )}
 
+                    {/* Refined CTA: Minimalist border replaces the heavy black block */}
                     <button
                       onClick={() => handleInquiry(product.name)}
                       disabled={!product.inStock}
-                      className="group mt-12 flex w-full items-center justify-between border-b border-black pb-4 text-xs font-bold uppercase tracking-widest transition-opacity hover:opacity-50 disabled:opacity-20"
+                      className="group mt-10 flex w-full items-center justify-between border border-black bg-transparent px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-black transition-colors hover:bg-black hover:text-white disabled:border-gray-200 disabled:text-gray-400"
                     >
-                      <span>{product.inStock ? 'Inquire / Acquire' : 'Out of Season'}</span>
+                      <span>{product.inStock ? 'Inquire' : 'Archived'}</span>
                       <ArrowUpRight size={16} className="transition-transform group-hover:translate-x-1 group-hover:-translate-y-1" />
                     </button>
+
                   </div>
                 </div>
               </motion.div>

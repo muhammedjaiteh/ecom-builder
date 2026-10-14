@@ -224,24 +224,16 @@ export default async function SwitchboardPage({ params }: { params: Promise<{ sl
   const theme = normalizeThemeMatrix(store.theme_matrix);
 
   // 3. THE MATRIX ROUTER
-  // This directs traffic to the correct $50,000 visual template.
   switch (theme) {
-    case 'dakar-minimal': // <-- Using the hyphen to match our registry
-      return <DakarMinimalStorefront merchant={merchant} products={products} />;
-      
-    /* 
-    case 'sahara-tech':
-      // Future Matrix 03 (Electronics / High-end utility)
-      return <SaharaTechStorefront merchant={merchant} products={products} />;
-    */
-      
     case 'banjul-noir':
-    default:
-      // The default baseline for all stores until assigned a specific matrix
       return (
         <main className="min-h-screen bg-mall-forest">
           <BanjulNoirStorefront merchant={merchant} products={products} />
         </main>
       );
+      
+    case 'dakar-minimal':
+    default: // <-- Temporarily placed here so all stores render the new layout
+      return <DakarMinimalStorefront merchant={merchant} products={products} />;
   }
 }
