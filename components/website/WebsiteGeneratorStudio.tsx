@@ -7,11 +7,12 @@ import {
   Globe, Crown, Loader2, ExternalLink, Lock,
   RefreshCw, Eye, EyeOff, Wand2, Compass,
 } from 'lucide-react';
-import { SITE_TEMPLATES, SiteConceptSchema, type ShopWebsiteRow, type SiteConcept } from '@/lib/siteTemplates';
+import { SITE_TEMPLATES, SiteConceptSchema, type ShopWebsiteRow, type SiteProduct, type SiteConcept } from '@/lib/siteTemplates';
 import { canUseStudio } from '@/lib/tiers';
 import { slugify } from '@/lib/slugify';
 import { fetchJSON, isTransportError } from '@/lib/transport';
 import ConceptCard from '@/components/website/ConceptCard';
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AI Website Studio — the full generator experience, embedded as the flagship
@@ -35,6 +36,8 @@ export type StudioShop = {
   shop_name: string | null;
   shop_slug: string | null;
   subscription_tier: string | null;
+  logo_url?: string | null;
+  banner_url?: string | null;
 };
 
 type StudioProps = {
@@ -42,11 +45,8 @@ type StudioProps = {
   website: ShopWebsiteRow | null;
   websiteLoading: boolean;
   onWebsiteChange: (row: ShopWebsiteRow) => void;
-  /** 'hub' (Themes hub) declutters the studio to the pure GENERATE flow:
-   *  the hero card above it owns the thumbnail, publish chip/toggle, and
-   *  live links, so the status row, copy-preview, reasoning, and link-hint
-   *  panels stay hidden. Default 'full' keeps the historical rendering. */
   variant?: 'full' | 'hub';
+  products?: SiteProduct[] | null;
 };
 
 // Tier gate: lib/tiers canUseStudio — Pro+ (Studio moved down to Pro,
@@ -89,7 +89,7 @@ type GenerateWebsiteResponse = {
 //   building   → Step 2 running (full site generation for the chosen concept)
 type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
 
-export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, onWebsiteChange, variant = 'full' }: StudioProps) {
+ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, onWebsiteChange, variant = 'full', products }: StudioProps) {
   const hub = variant === 'hub';
   const [shopSlug, setShopSlug] = useState<string | null>(shop.shop_slug);
   const [phase, setPhase] = useState<GenPhase>('idle');
@@ -567,13 +567,16 @@ export default function WebsiteGeneratorStudio({ shop, website, websiteLoading, 
                 <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2">
                   {concepts.map((concept, i) => (
                     <ConceptCard
-                      key={`${concept.template_key}-${i}`}
-                      concept={concept}
-                      index={i}
-                      selected={selectedConcept === i}
-                      onSelect={() => setSelectedConcept(i)}
-                      shopName={shop.shop_name}
-                    />
+  key={`${concept.template_key}-${i}`}
+  concept={concept}
+  index={i}
+  selected={selectedConcept === i}
+  onSelect={() => setSelectedConcept(i)}
+  shopName={shop.shop_name}
+  products={products}
+  logoUrl={shop.logo_url}
+  bannerUrl={shop.banner_url}
+/>
                   ))}
                 </div>
 

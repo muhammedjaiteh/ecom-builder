@@ -9,6 +9,7 @@ import RitualTemplate from '@/components/site-templates/RitualTemplate';
 import VitalityTemplate from '@/components/site-templates/VitalityTemplate';
 import {
   ARCHETYPES,
+  resolveHeroMedia,
   type SiteConcept,
   type SiteProduct,
   type SiteShop,
@@ -22,8 +23,8 @@ import {
 // Renders the ACTUAL site-template component (the same one /site/[slug] ships)
 // inside a clipped, pointer-events-none frame, scaled from a fixed desktop
 // design width. The concept's AI copy populates the preview CONTENT (hero,
-// tagline, collection intro); products are deterministic local demo data with
-// gradient visuals — never external placeholder URLs (Law 4).
+// tagline, collection intro); real seller inventory renders when provided,
+// falling back to deterministic local demo data (never external URLs, Law 4).
 // ─────────────────────────────────────────────────────────────────────────────
 
 const TEMPLATE_COMPONENTS: Record<TemplateKey, ComponentType<SiteTemplateProps>> = {
@@ -35,10 +36,7 @@ const TEMPLATE_COMPONENTS: Record<TemplateKey, ComponentType<SiteTemplateProps>>
 // Desktop width the miniature is laid out at before scaling down.
 const DESIGN_WIDTH = 1366;
 
-// Deterministic demo inventory. image_url stays null on purpose: the templates
-// render their branded gradient plates, so the miniature reads as a styled
-// theme demo rather than a page of broken frames. Varied initials keep the
-// plates visually distinct; one low-stock item demos the urgency badge.
+// Deterministic demo inventory fallback when a shop has no products loaded.
 const PREVIEW_PRODUCTS: SiteProduct[] = [
   { id: 'preview-01', name: 'The Signature Piece', price: 1850, description: 'The piece the whole collection is built around — cut, finished, and checked by hand.', image_url: null, ad_video_url: null, ad_hero_image_url: null, category: 'featured', stock_quantity: 8 },
   { id: 'preview-02', name: 'Atelier Classic', price: 1250, description: 'A quiet staple that carries the house signature in every seam.', image_url: null, ad_video_url: null, ad_hero_image_url: null, category: 'featured', stock_quantity: 12 },
@@ -54,15 +52,24 @@ type MiniSitePreviewProps = {
   /** Concept mock (studio Step-2 cards) — the historical mode. */
   concept?: SiteConcept | null;
   /** REAL stored config (Themes hub hero thumbnail) — wins over `concept`
-   *  when present, so the miniature shows the seller's actual site: their
-   *  copy, their theme accents/fonts (the chrome's variable seam runs inside
-   *  this scaled render too). Products stay the deterministic demo set —
-   *  this is a layout thumbnail, not a data view. */
+   *  when present, so the miniature shows the seller's actual site. */
   config?: WebsiteConfig | null;
   shopName?: string | null;
+  /** Optional real seller products — falls back to PREVIEW_PRODUCTS when omitted/empty. */
+  products?: SiteProduct[] | null;
+  /** Optional real shop media for accurate masthead/hero rendering. */
+  logoUrl?: string | null;
+  bannerUrl?: string | null;
 };
 
-export default function MiniSitePreview({ concept, config, shopName }: MiniSitePreviewProps) {
+export default function MiniSitePreview({
+  concept,
+  config,
+  shopName,
+  products,
+  logoUrl,
+  bannerUrl,
+}: MiniSitePreviewProps) {
   const frameRef = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState(0.3);
 
@@ -77,19 +84,35 @@ export default function MiniSitePreview({ concept, config, shopName }: MiniSiteP
     return () => observer.disconnect();
   }, []);
 
+  const activeProducts: SiteProduct[] = useMemo(
+    () => (products && products.length > 0 ? products : PREVIEW_PRODUCTS),
+    [products]
+  );
+
+  // If no explicit store banner is set, allow the lead product's hero/main image
+  // to anchor the masthead so previews render editorial photography instead of an empty monogram box.
+  const fallbackHeroUrl = useMemo(() => {
+    if (!products) return null;
+    for (const p of products) {
+      const candidate = p.ad_hero_image_url?.trim() || p.image_url?.trim();
+      if (candidate) return candidate;
+    }
+    return null;
+  }, [products]);
+
   const previewShop: SiteShop = useMemo(
     () => ({
       id: 'preview-shop',
       shop_name: shopName?.trim() || 'Your Boutique',
       shop_slug: null,
-      logo_url: null,
-      banner_url: null,
+      logo_url: logoUrl?.trim() || null,
+      banner_url: bannerUrl?.trim() || fallbackHeroUrl || null,
       bio: null,
       offers_delivery: true,
       offers_pickup: true,
       pickup_instructions: null,
     }),
-    [shopName]
+    [shopName, logoUrl, bannerUrl, fallbackHeroUrl]
   );
 
   // The concept's own copy IS the preview content — the seller judges the
@@ -134,6 +157,7 @@ export default function MiniSitePreview({ concept, config, shopName }: MiniSiteP
   if (!previewConfig) return null;
 
   const Template = TEMPLATE_COMPONENTS[previewConfig.template_key] ?? RitualTemplate;
+  const heroMedia = resolveHeroMedia(previewShop, previewConfig);
 
   return (
     <div
@@ -145,16 +169,16 @@ export default function MiniSitePreview({ concept, config, shopName }: MiniSiteP
         className="absolute left-0 top-0 origin-top-left"
         style={{ width: DESIGN_WIDTH, transform: `scale(${scale})` }}
       >
-        {/* GatedVideoPreviewScope: heroMedia is null here today, but any
-            future video block in a miniature stays a static poster.
-            RevealPreviewScope: entrance animations render static — the scaled
-            miniature must never carry mid-animation transforms.
-            StoryClampPreviewScope: the brand story renders expanded/static —
-            a clamped teaser with a dead button is noise at thumbnail scale. */}
+        
         <GatedVideoPreviewScope>
           <RevealPreviewScope>
             <StoryClampPreviewScope>
-              <Template shop={previewShop} products={PREVIEW_PRODUCTS} config={previewConfig} heroMedia={null} />
+              <Template
+                shop={previewShop}
+                products={activeProducts}
+                config={previewConfig}
+                heroMedia={heroMedia}
+              />
             </StoryClampPreviewScope>
           </RevealPreviewScope>
         </GatedVideoPreviewScope>

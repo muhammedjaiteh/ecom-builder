@@ -354,8 +354,8 @@ Return a JSON object:
     "archetype_key"    : the named archetype's key, verbatim
     "concept_name"     : evocative 2-4 word concept title (max 60 chars) — like an agency pitch name
     "tagline"          : 3-8 word brand essence line (max 80 chars)
-    "vibe"             : 1-2 sentences describing the mood and feel of this direction (max 240 chars)
-    "palette"          : short palette + styling summary, e.g. "Ivory, sage, hand-drawn serifs" (max 160 chars)
+    "vibe"             : 1-2 sentences of customer-facing brand story in this archetype's voice grounded in the real products (max 240 chars — never say "this concept" or describe design/colors)
+    "palette"          : 1 short customer-facing sentence introducing the collection (max 160 chars — never list colors or fonts)
     "hero_headline"    : 4-10 word sample hero headline (max 90 chars) — sensory, not salesy
     "hero_subheadline" : 1-2 sentence sample hero support line (max 200 chars)
   }`;
@@ -469,24 +469,106 @@ APPROVED CREATIVE DIRECTION — honor it precisely, refine and expand it into th
     // from there in the cached block would silently kill every cache hit.
     const cachedSystem = `<system_context>
 Role: Principal E-Commerce Architect (Sanndikaa Studio).
-Objective: Generate an elite, top 1% global e-commerce storefront.
-Mandate: You are powering the new $50k Matrix Engine. You MUST output the "matrix_theme" and "brand_tokens" objects exactly as specified.
+Objective: Generate an elite, top 1% global e-commerce storefront for the provided seller.
+Mandate: You are not filling out a template. You are engineering a bespoke, high-converting software interface powered by the $50k Matrix Engine. No two generations should ever be identical.
 </system_context>
 
 <architectural_rules>
-1. Matrix Routing: Analyze the inventory and select the most appropriate $50k Matrix Theme.
-   - "dakar-minimal" = High-fashion, asymmetrical layout. For apparel, shoes, luxury goods.
-   - "banjul-noir" = Dark, editorial, warm. For cosmetics, jewelry, artisanal crafts.
-   - "sahara-tech" = Precision, industrial grid. For electronics, fitness, tools.
-2. The Brand Tokens: Write strict identity tokens. Follow character limits ruthlessly. Use a restrained editorial tone: precise, confident, material-aware and culturally grounded. Never imitate a named brand.
-3. Legacy Compatibility: You must return every legacy field required by the schema. Use ultra-concise, publication-ready copy. Never use filler, placeholders, generic e-commerce phrases, or incomplete structures. Preserve required array lengths and nested keys.
-</architectural_rules>`;
+1. Top-of-Food-Chain UX — already engineered; write for it:
+   - Every page ships mobile-first: each product detail page carries a sticky bottom buy bar (price, variant chip, action button), the cart is a slide-out drawer (never a cart page), and every touch target is at least 44px. None of this is a field you output. Write copy that assumes this execution: lines that survive a phone screen, headlines that land above the fold, button labels that fit a thumb-width pill.
+2. Dynamic Structural Permutation:
+   - Analyze the <seller_data>. Do not just change the words — change the layout hierarchy to the seller's strengths through the "layout" object (field spec below): section order and inclusion, grid vs carousel for the collection, spacing and alignment rhythm per section, the accent preset, the display face. The <layout_bounds> in the user message state exactly what this build may draw from.
+   - Visual-led inventory (fashion, craft, beauty, objects that sell on imagery): carousel collection, spacious rhythm, story late — let the products carry the page.
+   - Spec-led inventory (tech, supplements, tools, anything bought on facts): grid collection, compact rhythm, value_props directly after the hero, story late.
+3. Zero-Clutter Integrity:
+   - NEVER use placeholder text (lorem ipsum) or generic marketing gibberish.
+   - Write highly persuasive, niche-specific copy.
+   - Use honest data. No fake countdown timers, invented counts, or fabricated reviews — testimonials are filled server-side from real reviews only.
+4. Matrix Routing & Brand Tokens:
+   - Select the most appropriate "matrix_theme" ("dakar-minimal" for fashion/apparel/luxury goods, "banjul-noir" for cosmetics/jewelry/artisanal crafts, "sahara-tech" for electronics/fitness/tools).
+   - Output "brand_tokens" following character limits ruthlessly in a restrained, material-aware editorial tone.
+</architectural_rules>
+
+<generation_task>
+Given the <seller_data> and <chosen_archetype> in the user message, output the complete, production-ready JSON structure mapping to our Next.js template anatomy — the field spec below. The user message also carries the <layout_bounds> and, when present, the <entropy_engine> seed.
+</generation_task>
+
+AVAILABLE TEMPLATES:
+${templateCatalog}
+
+Write every copy field in the elite voice. The site must read like a brand that has existed for years — confident, specific to THIS inventory, never generic. Reference actual product qualities (materials, ingredients, categories) from the inventory the user provides.
+
+${ELITE_COPY_RULES}
+
+BREVITY MANDATE — BINDING FOR EVERY FIELD:
+- Extreme brevity is the luxury register. Aim well under every cap below; whitespace is the product.
+- No conversational filler, no marketing throat-clearing, no lead-ins ("Welcome to", "Discover our", "At [shop], we"). Open on the substance.
+- Every field has a hard cap AND a TARGET well under it. Write to the target; the cap is a ceiling, never a goal.
+- One idea per field. If a sentence can lose a clause and keep its meaning, lose the clause.
+
+Return a JSON object:
+- "template_key"     : one of ${TEMPLATE_KEYS.map((k) => `"${k}"`).join(' | ')}
+- "matrix_theme"     : one of "dakar-minimal" | "banjul-noir" | "sahara-tech"
+- "brand_tokens"     : strict identity tokens object matching schema bounds
+- "niche_reasoning"  : 1-2 sentences on why this template and your structural choices fit this inventory
+- "hero"             : the opening banner block — {
+    "tagline"     : 3-6 word brand essence line (target ~30 chars, max 80)
+    "headline"    : 4-8 word headline (target ~45 chars, max 90) — sensory, not salesy
+    "subheadline" : ONE short sentence (target ~110 chars, max 200)
+  }
+- "value_props"      : the trust band block — 2 to 4 items (3 when unsure), each { "title": 2-4 words (target ~25 chars, max 60), "body": one tight sentence (target ~90 chars, max 200) }
+- "product_grid"     : the collection section block — {
+    "title" : 2-4 word collection heading (target ~20 chars, max 60)
+    "intro" : one sentence introducing the products (target ~110 chars, max 240)
+  }
+- "story"            : the brand-story block — { "body": 2-3 short sentences of origin/craft in the brand's voice (target ~280 chars, max 600) }
+- "cta"              : the closing banner block — { "headline": target ~40 chars, max 90; "subtext": one sentence, target ~90 chars, max 200; "button_label": 2-5 words }
+- "seo"              : { "title": max 70 chars including the shop name, "description": target ~140 chars, max 170 }
+- "split_cta"        : OPTIONAL — write it ONLY when the user's instructions ask for it. A two-panel conversion spread, distinct from "cta" (never repeat its copy): { "headline": target ~40 chars, max 90; "body": one sentence, target ~90 chars, max 200; "button_label": 2-5 words }
+- "layout"           : OPTIONAL structural choices — every key optional, each validated against the <layout_bounds>; anything absent or outside them falls back to the default, so choose deliberately: {
+    "block_order"          : ordered section types to show — hero_banner MUST be first, product_grid MUST be present, only types the bounds list, no repeats. Types you leave out ship hidden (the seller can restore them)
+    "product_grid_display" : "grid" | "carousel"
+    "block_padding"        : { <section type>: "compact" | "default" | "spacious" } — rhythm per section
+    "block_align"          : { <section type>: "left" | "center" }
+    "theme_preset_index"   : integer 0-${ACCENT_PRESET_SLOTS - 1} into the bounds' accent presets (0 = the default) — never a color value
+    "display_font"         : one of the bounds' display faces
+  }`;
+
+    // ── Layout bounds (per-request → dynamic prompt) ───────────────────────
+    const layoutBoundsText = archetype
+      ? describeLayoutBounds(archetypeLayoutBounds(archetype))
+      : chosenTemplate
+        ? describeLayoutBounds(classicLayoutBounds(chosenTemplate))
+        : TEMPLATE_KEYS
+            .map((k) => `IF template_key is "${k}":\n${describeLayoutBounds(classicLayoutBounds(k))}`)
+            .join('\n\n');
+
+    // ── Entropy engine (per-request → dynamic prompt) ──────────────────────
+    const entropyEngine = variationSeed
+      ? `
+
+<entropy_engine>
+Variation Seed: ${variationSeed}
+Instruction: Use this seed to uniquely shuffle the section placements (block_order), alternate the accent mapping (theme_preset_index), rotate the typographic register (display_font) and the spacing/alignment rhythm (block_padding, block_align), and choose grid or carousel — all within the <layout_bounds> above. The resulting interface must be distinct from any previous generation for this niche, and the copy must take its own angle on the same inventory.
+</entropy_engine>`
+      : '';
 
     const prompt = `<seller_data>
-SHOP: Name: ${shop.shop_name}
-INVENTORY:
+SHOP:
+- Name: ${shop.shop_name}
+${shop.bio ? `- Bio: ${shop.bio}` : ''}
+
+INVENTORY (${products.length} products, first 15 shown):
 ${inventorySummary}
-</seller_data>`;
+</seller_data>
+
+<chosen_archetype>
+${templateConstraint}
+</chosen_archetype>
+
+<layout_bounds>
+${layoutBoundsText}
+</layout_bounds>${entropyEngine}`;
 
     const { data: generation, provider } = await generateWithFallback({
       schema: MatrixWebsiteGenerationSchema,
@@ -496,14 +578,77 @@ ${inventorySummary}
       primaryOverride: FLAGSHIP_CREATIVE_PROVIDER,
     });
 
-    // Explicit destructuring isolates tokens from the legacy config blob
+    // Explicit destructuring isolates Matrix tokens from the WebsiteConfig blob
     const { brand_tokens, matrix_theme, ...legacyGeneration } = generation;
     let config = generationToConfig(legacyGeneration);
-    
-    if (chosenTemplate) config.template_key = chosenTemplate;
+
+    // Belt-and-suspenders: enforce the chosen template even if the model drifted.
+    if (chosenTemplate) {
+      config.template_key = chosenTemplate;
+    }
+
+    // ── Archetype application (Pillar 3) + entropy engine ─────────────────
+    if (archetype) {
+      let reviewRows: TestimonialSourceReview[] | null = null;
+      if (devHarness) {
+        const raw = Array.isArray(harnessSeller?.reviews) ? (harnessSeller!.reviews as unknown[]) : [];
+        reviewRows = raw
+          .filter((r): r is Record<string, unknown> => !!r && typeof r === 'object')
+          .map((r) => ({
+            rating: Number(r.rating),
+            comment: typeof r.comment === 'string' ? r.comment : null,
+            reviewer_name: typeof r.reviewer_name === 'string' ? r.reviewer_name : null,
+            external_author: null,
+            verified_purchase: r.verified_purchase === true,
+          })) as TestimonialSourceReview[];
+      } else try {
+        const productIds = products.map((p) => p.id).filter(Boolean);
+        if (productIds.length > 0) {
+          const { data: reviews, error: reviewsError } = await admin
+            .from('reviews')
+            .select('rating, comment, reviewer_name, external_author, verified_purchase')
+            .in('product_id', productIds)
+            .gte('rating', 4)
+            .order('created_at', { ascending: false })
+            .limit(12);
+          if (reviewsError) {
+            console.warn('[generate-website] reviews read failed — testimonials skipped:', reviewsError.message);
+          } else {
+            reviewRows = (reviews ?? []) as TestimonialSourceReview[];
+          }
+        }
+      } catch (reviewsFatal) {
+        console.warn('[generate-website] reviews read threw — testimonials skipped:', reviewsFatal);
+      }
+      config = applyArchetype(config, archetype, legacyGeneration, reviewRows);
+      console.log(`[generate-website] Archetype "${archetype.key}" applied for shop ${shop.id}: blocks=[${(config.blocks ?? []).map((b) => b.type).join(', ')}]`);
+    } else if (legacyGeneration.layout) {
+      config = applyGenerationLayout(config, legacyGeneration.layout, classicLayoutBounds(config.template_key));
+    }
+
+    if (legacyGeneration.layout) {
+      console.log(
+        `[generate-website] Layout levers for shop ${shop.id} (${archetype ? archetype.key : `classic/${config.template_key}`}): ` +
+        `${JSON.stringify(legacyGeneration.layout)} → blocks=[${(config.blocks ?? []).map((b) => `${b.type}${b.hidden ? '(hidden)' : ''}`).join(', ')}] theme=${JSON.stringify(config.theme ?? null)}`
+      );
+    }
+
+    console.log(`[generate-website] Config by ${provider} for shop ${shop.id}: template=${config.template_key} matrix=${matrix_theme} — ${config.niche_reasoning}`);
 
     if (devHarness) {
-      return NextResponse.json({ step: 'execute', dryRun: true, provider, config, generation });
+      return NextResponse.json({
+        step: 'execute',
+        dryRun: true,
+        provider,
+        archetype: archetype?.key ?? null,
+        template_key: config.template_key,
+        matrix_theme,
+        brand_tokens,
+        variationSeed,
+        layout_bounds: layoutBoundsText,
+        generation,
+        config,
+      });
     }
 
     const { data: existing, error: existingError } = await admin

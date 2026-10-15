@@ -26,7 +26,7 @@ import SmartImage from '@/components/SmartImage';
 import MiniSitePreview from '@/components/website/MiniSitePreview';
 import WebsiteGeneratorStudio, { type StudioShop } from '@/components/website/WebsiteGeneratorStudio';
 import { CoachDot, CoachLegend, useCoachMarks } from '@/components/website/CoachMarks';
-import { SITE_TEMPLATES, WebsiteConfigSchema, type ShopWebsiteRow, type WebsiteConfig } from '@/lib/siteTemplates';
+import { SITE_TEMPLATES, WebsiteConfigSchema, type ShopWebsiteRow, type SiteProduct, type WebsiteConfig } from '@/lib/siteTemplates';
 import { isUndefinedColumnError } from '@/lib/productColumns';
 import {
   THEME_MATRICES, normalizeThemeMatrix, themeMatrixPath, type ThemeMatrixId,
@@ -93,17 +93,19 @@ export default function OnlineStoreThemesPage() {
   // Identity snapshot for the AI Website Studio (the flagship section below) —
   // derived from the seam, so a tier upgrade or slug repair propagates live.
   const generatorShop = useMemo<StudioShop | null>(
-    () =>
-      shopRow
-        ? {
-            id: shopRow.id,
-            shop_name: shopRow.shop_name ?? null,
-            shop_slug: shopRow.shop_slug ?? null,
-            subscription_tier: shopRow.subscription_tier ?? null,
-          }
-        : null,
-    [shopRow]
-  );
+  () =>
+    shopRow
+      ? {
+          id: shopRow.id,
+          shop_name: shopRow.shop_name ?? null,
+          shop_slug: shopRow.shop_slug ?? null,
+          subscription_tier: shopRow.subscription_tier ?? null,
+          logo_url: shopRow.logo_url ?? null,
+          banner_url: shopRow.banner_url ?? null,
+        }
+      : null,
+  [shopRow]
+);
 
   // The shop_websites row now lives in WebsiteStudioSections below: SWR over
   // the owner content API with a per-user persisted cache (instant paint from
@@ -605,6 +607,23 @@ function WebsiteStudioSectionsInner({ userId, generatorShop, hasWebsiteAccess }:
       shouldRetryOnError: (err) => !(isTransportError(err) && err.kind === 'server'),
     }
   );
+  const { data: shopProducts } = useSWR<SiteProduct[]>(
+  hasWebsiteAccess ? `sndk:studio-preview-products:${generatorShop.id}` : null,
+  async () => {
+    const sb = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+    const { data: rows } = await sb
+      .from('products')
+      .select('id, name, price, description, image_url, ad_video_url, ad_hero_image_url, category, stock_quantity')
+      .or(`shop_id.eq.${generatorShop.id},user_id.eq.${generatorShop.id}`)
+      .order('created_at', { ascending: false })
+      .limit(12);
+    return (rows as SiteProduct[] | null) ?? [];
+  },
+  { revalidateOnFocus: false }
+);
 
   const website = data ?? null;
   // "Loading" now means: no data from EITHER cache or network yet. A seller
@@ -768,7 +787,13 @@ function WebsiteStudioSectionsInner({ userId, generatorShop, hasWebsiteAccess }:
                   <Loader2 className="h-5 w-5 animate-spin text-gray-300" />
                 </div>
               ) : previewConfig ? (
-                <MiniSitePreview config={previewConfig} shopName={generatorShop.shop_name} />
+                <MiniSitePreview
+  config={previewConfig}
+  shopName={generatorShop.shop_name}
+  products={shopProducts}
+  logoUrl={generatorShop.logo_url}
+  bannerUrl={generatorShop.banner_url}
+/>
               ) : (
                 <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
                   <Globe className="h-9 w-9 text-gray-300" />
@@ -909,12 +934,13 @@ function WebsiteStudioSectionsInner({ userId, generatorShop, hasWebsiteAccess }:
       {/* GENERATE FLOW — the studio, decluttered (hero card owns everything
           else). Its id anchors the hero card's Generate action. */}
       <WebsiteGeneratorStudio
-        shop={generatorShop}
-        website={website}
-        websiteLoading={websiteLoading}
-        onWebsiteChange={handleWebsiteChange}
-        variant="hub"
-      />
+  shop={generatorShop}
+  website={website}
+  websiteLoading={websiteLoading}
+  onWebsiteChange={handleWebsiteChange}
+  variant="hub"
+  products={shopProducts}
+/>
 
       {/* ── Restore-previous-design confirm (Item 5) — z-[90], above every
           layer of dashboard chrome, mirroring the studio's warning modal. */}

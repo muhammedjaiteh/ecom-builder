@@ -2,13 +2,8 @@
 
 import { motion } from 'framer-motion';
 import { Check } from 'lucide-react';
-import type { SiteConcept } from '@/lib/siteTemplates';
+import type { SiteConcept, SiteProduct } from '@/lib/siteTemplates';
 import MiniSitePreview from './MiniSitePreview';
-
-// Visual concept selection (founder mandate): each card IS the website — a
-// live, true-to-structure miniature of the real template component wearing
-// the concept's AI copy. Card text is limited to the concept name and a
-// single tagline chip; everything else is shown, not described.
 
 type ConceptCardProps = {
   concept: SiteConcept;
@@ -17,9 +12,22 @@ type ConceptCardProps = {
   disabled?: boolean;
   onSelect: () => void;
   shopName?: string | null;
+  products?: SiteProduct[] | null;
+  logoUrl?: string | null;
+  bannerUrl?: string | null;
 };
 
-export default function ConceptCard({ concept, index, selected, disabled, onSelect, shopName }: ConceptCardProps) {
+export default function ConceptCard({
+  concept,
+  index,
+  selected,
+  disabled,
+  onSelect,
+  shopName,
+  products,
+  logoUrl,
+  bannerUrl,
+}: ConceptCardProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: -10, scale: 0.97 }}
@@ -32,9 +40,7 @@ export default function ConceptCard({ concept, index, selected, disabled, onSele
           : 'border-gray-100 hover:shadow-xl'
       } ${disabled ? 'opacity-60' : ''}`}
     >
-      {/* Full-card select affordance. An overlay button (rather than wrapping
-          the card in one) keeps the miniature's anchors out of the button
-          subtree — valid HTML, one clean focus target. */}
+      
       <button
         type="button"
         onClick={onSelect}
@@ -54,7 +60,13 @@ export default function ConceptCard({ concept, index, selected, disabled, onSele
 
       {/* Live miniature of the actual template component */}
       <div className="relative aspect-[4/5] w-full overflow-hidden bg-white">
-        <MiniSitePreview concept={concept} shopName={shopName} />
+        <MiniSitePreview
+          concept={concept}
+          shopName={shopName}
+          products={products}
+          logoUrl={logoUrl}
+          bannerUrl={bannerUrl}
+        />
         {/* Selection indicator */}
         <span
           className={`absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full shadow-md transition-all ${
