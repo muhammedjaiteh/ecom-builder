@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
+import { WebsiteConfigSchema } from '@/lib/siteTemplates';
 import BanjulNoirStorefront, {
   type StorefrontMerchant,
   type StorefrontProduct,
@@ -149,6 +150,19 @@ function getSupabase() {
   );
 }
 
+/**
+ * Server-only service-role client. `public.shop_websites` has NO public anon
+ * SELECT policy, so the published-website check MUST bypass RLS here; access
+ * control is enforced in code (status === 'published' for visitors).
+ */
+function getAdminSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+}
+
 function decodeSlugParam(raw: string): string {
   try {
     return decodeURIComponent(raw);
@@ -189,21 +203,37 @@ async function fetchProducts(storeId: string): Promise<ProductRow[]> {
   return data ?? [];
 }
 
-/** Retrieves the strict JSON identity minted by the AI Creative Director */
-async function fetchBrandTokens(storeId: string): Promise<BrandTokens | null> {
-  const { data, error } = await getSupabase()
+type WebsiteRow = {
+  status: string | null;
+  config: unknown;
+  brand_tokens: unknown;
+};
+
+/**
+ * Retrieves the shop's website row: publish status + WebsiteConfig (the
+ * /site/[slug] bridge decision) and the strict JSON brand_tokens minted by
+ * the AI Creative Director. Service-role read — see getAdminSupabase.
+ */
+async function fetchWebsiteRow(storeId: string): Promise<WebsiteRow | null> {
+  const { data, error } = await getAdminSupabase()
     .from('shop_websites')
-    .select('brand_tokens')
+    .select('status, config, brand_tokens')
     .eq('shop_id', storeId)
     .maybeSingle();
-    
-  if (error || !data?.brand_tokens) return null;
-  return data.brand_tokens as BrandTokens;
+
+  if (error || !data) return null;
+  return data as WebsiteRow;
 }
 
 // --- Page ---
 
-export default async function SwitchboardPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function SwitchboardPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams?: Promise<{ classic?: string }>;
+}) {
   const { slug } = await params;
   const rawSlug = decodeSlugParam(slug);
   const cleanSlug = slugify(rawSlug);
@@ -213,10 +243,24 @@ export default async function SwitchboardPage({ params }: { params: Promise<{ sl
   const store = await fetchStore(rawSlug, cleanSlug);
   if (!store) notFound();
 
-  const [rows, brandTokens] = await Promise.all([
+  const [rows, websiteRow] = await Promise.all([
     fetchProducts(store.id),
-    fetchBrandTokens(store.id)
+    fetchWebsiteRow(store.id),
   ]);
+
+  // 1b. THE /site/[slug] BRIDGE — a published, schema-valid AI website is the
+  // storefront of record. Only `?classic=1` (or no published site) falls
+  // through to the Switchboard matrices below.
+  const resolvedSearch = searchParams ? await searchParams : undefined;
+  if (
+    resolvedSearch?.classic !== '1' &&
+    websiteRow?.status === 'published' &&
+    WebsiteConfigSchema.safeParse(websiteRow.config).success
+  ) {
+    redirect(`/site/${cleanSlug}`);
+  }
+
+  const brandTokens = (websiteRow?.brand_tokens as BrandTokens | null) ?? null;
 
   // 2. Data mapping and formatting
   const merchant = toMerchant(store, cleanSlug, brandTokens);

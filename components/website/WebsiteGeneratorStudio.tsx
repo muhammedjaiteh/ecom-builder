@@ -6,8 +6,20 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
   Globe, Crown, Loader2, ExternalLink, Lock,
   RefreshCw, Eye, EyeOff, Wand2, Compass,
+  Sparkles, Check, MessageCircle, Ticket,
 } from 'lucide-react';
-import { SITE_TEMPLATES, SiteConceptSchema, type ShopWebsiteRow, type SiteProduct, type SiteConcept } from '@/lib/siteTemplates';
+import {
+  ARCHETYPES,
+  ARCHETYPE_KEYS,
+  SITE_TEMPLATES,
+  STUDIO_NICHES,
+  SiteConceptSchema,
+  type ArchetypeKey,
+  type ShopWebsiteRow,
+  type SiteProduct,
+  type SiteConcept,
+  type StudioNicheId,
+} from '@/lib/siteTemplates';
 import { canUseStudio } from '@/lib/tiers';
 import { slugify } from '@/lib/slugify';
 import { fetchJSON, isTransportError } from '@/lib/transport';
@@ -74,6 +86,35 @@ const EXECUTE_TIMEOUT_MS = 320_000;
 const formatElapsed = (sec: number) =>
   sec >= 60 ? `${Math.floor(sec / 60)}m ${String(sec % 60).padStart(2, '0')}s` : `${sec}s`;
 
+// ── Pre-generation selection (Step 1A niche → Step 1B theme) ────────────────
+const recommendedArchetypesFor = (niche: StudioNicheId): ReadonlyArray<ArchetypeKey> =>
+  STUDIO_NICHES.find((n) => n.id === niche)?.recommendedArchetypes ?? [];
+
+/** Default Theme Archetype for a niche = its first recommended bundle. */
+const defaultArchetypeFor = (niche: StudioNicheId): ArchetypeKey =>
+  recommendedArchetypesFor(niche)[0] ?? ARCHETYPE_KEYS[0];
+
+/** Entropy-engine seed: a FRESH token per click so no two builds replay. */
+const mintVariationSeed = () =>
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : String(Date.now());
+
+// ── Generation quota (2 included; +2 per Studio Token) ──────────────────────
+// Studio Tokens are sold by the Sanndikaa team over WhatsApp (the limit is
+// raised on the shop's row); the modal pre-fills the purchase message.
+const STUDIO_TOKEN_WHATSAPP = '2203165466';
+
+/** True when a generate-website response was the 402 QUOTA_EXCEEDED gate —
+ *  matched defensively on status, code, or the server's error copy, since
+ *  the transport error carries the body's `error` as its message. */
+const isQuotaExceededError = (err: unknown): boolean => {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { status?: unknown; code?: unknown; message?: unknown; body?: { code?: unknown } | null };
+  if (e.status === 402 || e.code === 'QUOTA_EXCEEDED' || e.body?.code === 'QUOTA_EXCEEDED') return true;
+  return typeof e.message === 'string' && /QUOTA_EXCEEDED|included website generations|of your website generations/i.test(e.message);
+};
+
 // Loose response shape for /api/ai/generate-website — fields are validated
 // individually (SiteConceptSchema, syncShopSlug's typeof gate) before use.
 type GenerateWebsiteResponse = {
@@ -101,6 +142,30 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
   const [elapsedSec, setElapsedSec] = useState(0);
   const [isWarningModalOpen, setIsWarningModalOpen] = useState(false);
 
+  // Step 1A / 1B selections — niche first; changing it re-defaults the theme
+  // to that niche's first recommended archetype (the seller can still pick
+  // any of the four). consultFirst swaps the primary CTA to the 2-step
+  // consultation instead of the one-call direct build.
+  const [selectedNiche, setSelectedNiche] = useState<StudioNicheId>('general');
+  const [selectedArchetype, setSelectedArchetype] = useState<ArchetypeKey>(() => defaultArchetypeFor('general'));
+  const [consultFirst, setConsultFirst] = useState(false);
+  // Name shown on the building card during a direct (no-concept) build.
+  const [directBuildName, setDirectBuildName] = useState<string | null>(null);
+  // Which action the overwrite warning confirms — consult or direct build.
+  const pendingOverwriteRef = useRef<'consult' | 'direct'>('consult');
+
+  // Token Top-Up modal — opened when the quota is spent (client-side gate)
+  // or when the server answers 402 QUOTA_EXCEEDED.
+  const [isQuotaModalOpen, setIsQuotaModalOpen] = useState(false);
+  const quotaCancelRef = useRef<HTMLButtonElement | null>(null);
+
+  // Quota counters. A row read before the quota migration ran carries no
+  // counters: an existing website then counts as 1 used (it was generated),
+  // no website as 0; the included allowance is 2.
+  const generationsUsed = website?.generations_used ?? (website ? 1 : 0);
+  const generationsLimit = website?.generations_limit ?? 2;
+  const generationsRemaining = Math.max(0, generationsLimit - generationsUsed);
+
   // Entropy-engine seed coherence: the seed the on-screen concepts were
   // pitched under is held here and re-posted with the EXECUTE step, so the
   // concept pitched under seed S is BUILT under S — one creative identity per
@@ -123,10 +188,11 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
   // — the error banner promises exactly that. Dispatch goes through a
   // render-refreshed ref so the retry always sees current state (a first-
   // render closure over handleBuild would read stale concepts).
-  const pendingRetryRef = useRef<'consult' | 'build' | null>(null);
-  const retryHandlersRef = useRef<{ consult: () => void; build: () => void }>({
+  const pendingRetryRef = useRef<'consult' | 'build' | 'direct' | null>(null);
+  const retryHandlersRef = useRef<{ consult: () => void; build: () => void; direct: () => void }>({
     consult: () => {},
     build: () => {},
+    direct: () => {},
   });
 
   const hasAccess = canUseStudio(shop.subscription_tier);
@@ -151,6 +217,7 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
       pendingRetryRef.current = null;
       if (pending === 'consult') retryHandlersRef.current.consult();
       else if (pending === 'build') retryHandlersRef.current.build();
+      else if (pending === 'direct') retryHandlersRef.current.direct();
     };
     window.addEventListener('online', onOnline);
     return () => window.removeEventListener('online', onOnline);
@@ -166,6 +233,17 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [isWarningModalOpen]);
+
+  // Token Top-Up modal keyboard/focus wiring, active only while open.
+  useEffect(() => {
+    if (!isQuotaModalOpen) return;
+    quotaCancelRef.current?.focus();
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsQuotaModalOpen(false);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isQuotaModalOpen]);
 
   const beginStep = () => {
     abortRef.current?.abort('superseded');
@@ -239,7 +317,7 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ step: 'concepts', variationSeed: seed }),
+          body: JSON.stringify({ step: 'concepts', variationSeed: seed, niche: selectedNiche }),
           signal: controller.signal,
         },
         { timeoutMs: CONSULT_TIMEOUT_MS }
@@ -262,6 +340,11 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
       setSelectedConcept(null);
       setPhase('choosing');
     } catch (err) {
+      if (isQuotaExceededError(err)) {
+        setIsQuotaModalOpen(true);
+        setPhase('idle');
+        return;
+      }
       if (isTransportError(err)) {
         // 'abort' = cancel/unmount/superseded — the UI is already where it
         // belongs; stay silent.
@@ -291,7 +374,12 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
   // consultation fires; a first-time seller has nothing to lose and proceeds
   // directly — showing them an "overwrite" warning would be dishonest UX.
   const handleConsultClick = () => {
+    if (generationsRemaining <= 0) {
+      setIsQuotaModalOpen(true);
+      return;
+    }
     if (website) {
+      pendingOverwriteRef.current = 'consult';
       setIsWarningModalOpen(true);
       return;
     }
@@ -300,25 +388,36 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
 
   const handleConfirmOverwrite = () => {
     setIsWarningModalOpen(false);
+    if (pendingOverwriteRef.current === 'direct') {
+      void handleDirectBuild();
+      return;
+    }
     void handleConsult();
   };
 
-  // ── Step 2: build the chosen concept ────────────────────────────────────
-  const handleBuild = async () => {
-    if (selectedConcept === null || !concepts?.[selectedConcept]) return;
-    const concept = concepts[selectedConcept];
+  // ── Direct build (Step 1A niche + Step 1B theme → ONE execute call) ─────
+  // No consultation: the seller's explicit niche and Theme Archetype ride the
+  // execute step with a fresh seed, and the server builds the full site in a
+  // single AI call. Same wholesale-upsert contract as the concept build.
+  const handleDirectBuild = async () => {
+    const archetypeName = ARCHETYPES[selectedArchetype].name;
     setError(null);
+    setDirectBuildName(archetypeName);
     setPhase('building');
     const controller = beginStep();
+    const seed = mintVariationSeed();
     try {
-      // The consult seed rides along (when held) so the build's structural
-      // and copy variation is the same creative identity the seller approved.
       const data = await fetchJSON<ShopWebsiteRow & { shop_slug?: unknown }>(
         '/api/ai/generate-website',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ step: 'execute', concept, ...(variationSeed ? { variationSeed } : {}) }),
+          body: JSON.stringify({
+            step: 'execute',
+            niche: selectedNiche,
+            archetypeKey: selectedArchetype,
+            variationSeed: seed,
+          }),
           signal: controller.signal,
         },
         { timeoutMs: EXECUTE_TIMEOUT_MS }
@@ -331,6 +430,99 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
       setSelectedConcept(null);
       setPhase('idle');
     } catch (err) {
+      if (isQuotaExceededError(err)) {
+        setIsQuotaModalOpen(true);
+        setPhase('idle');
+        return;
+      }
+      if (isTransportError(err)) {
+        if (err.kind === 'abort') return; // cancel/unmount/superseded — silent
+        if (err.kind === 'timeout') {
+          setError('Building the website timed out. Your selections are kept — please try again.');
+        } else if (err.kind === 'offline') {
+          pendingRetryRef.current = 'direct';
+          setError('You appear to be offline. We’ll retry the build automatically once your connection returns — your selections are kept.');
+        } else {
+          setError(err.message || 'Failed to build the website.');
+        }
+        setPhase('idle');
+        return;
+      }
+      setError('Network error building the website. Please try again.');
+      setPhase('idle');
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+      setDirectBuildName(null);
+    }
+  };
+
+  // Primary Step 1 CTA: direct build by default; the "Preview 2 AI Concepts
+  // First" toggle routes it through the consultation instead. Quota gate
+  // first (Token Top-Up modal), then the overwrite warning for existing sites.
+  const handleGenerateClick = () => {
+    if (consultFirst) {
+      handleConsultClick();
+      return;
+    }
+    if (generationsRemaining <= 0) {
+      setIsQuotaModalOpen(true);
+      return;
+    }
+    if (website) {
+      pendingOverwriteRef.current = 'direct';
+      setIsWarningModalOpen(true);
+      return;
+    }
+    void handleDirectBuild();
+  };
+
+  const handleNicheSelect = (id: StudioNicheId) => {
+    setSelectedNiche(id);
+    setSelectedArchetype(defaultArchetypeFor(id));
+  };
+
+  // ── Step 2: build the chosen concept ────────────────────────────────────
+  const handleBuild = async () => {
+    if (selectedConcept === null || !concepts?.[selectedConcept]) return;
+    if (generationsRemaining <= 0) {
+      setIsQuotaModalOpen(true);
+      return;
+    }
+    const concept = concepts[selectedConcept];
+    setError(null);
+    setPhase('building');
+    const controller = beginStep();
+    try {
+      // The consult seed rides along (when held) so the build's structural
+      // and copy variation is the same creative identity the seller approved.
+      const data = await fetchJSON<ShopWebsiteRow & { shop_slug?: unknown }>(
+        '/api/ai/generate-website',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            step: 'execute',
+            concept,
+            niche: selectedNiche,
+            ...(variationSeed ? { variationSeed } : {}),
+          }),
+          signal: controller.signal,
+        },
+        { timeoutMs: EXECUTE_TIMEOUT_MS }
+      );
+      if (controller.signal.aborted) return;
+      syncShopSlug(data.shop_slug);
+      onWebsiteChange(data as ShopWebsiteRow);
+      setConcepts(null);
+      setConceptReasoning(null);
+      setSelectedConcept(null);
+      setPhase('idle');
+    } catch (err) {
+      if (isQuotaExceededError(err)) {
+        setIsQuotaModalOpen(true);
+        setPhase('choosing');
+        return;
+      }
       if (isTransportError(err)) {
         if (err.kind === 'abort') return; // cancel/unmount/superseded — silent
         if (err.kind === 'timeout') {
@@ -356,6 +548,7 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
   retryHandlersRef.current = {
     consult: () => { void handleConsult(); },
     build: () => { void handleBuild(); },
+    direct: () => { void handleDirectBuild(); },
   };
 
   // Cancel an in-flight step: abort the request, land on the right phase.
@@ -364,9 +557,11 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
     setPhase('idle');
   };
 
+  // A cancelled DIRECT build has no concepts to return to — land on idle
+  // (the 'choosing' panel renders nothing without concepts).
   const handleCancelBuild = () => {
     abortRef.current?.abort('cancel');
-    setPhase('choosing');
+    setPhase(concepts ? 'choosing' : 'idle');
   };
 
   const handleCancelConcepts = () => {
@@ -413,6 +608,11 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
       ? concepts[selectedConcept].concept_name
       : null;
 
+  const recommendedForNiche = recommendedArchetypesFor(selectedNiche);
+  const quotaWhatsAppHref = `https://wa.me/${STUDIO_TOKEN_WHATSAPP}?text=${encodeURIComponent(
+    `Hello Sanndikaa Team, I would like to purchase a Website Studio Token (+2 extra generations) for my shop: ${shop.shop_name ?? shopSlug ?? shop.id}`
+  )}`;
+
   return (
     <section id="website-studio" className="mb-12">
       {/* Section header */}
@@ -433,6 +633,18 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {hasAccess && !websiteLoading && (
+            <span
+              aria-live="polite"
+              className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[10px] font-bold uppercase tracking-widest ring-1 ${
+                generationsRemaining > 0
+                  ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+                  : 'bg-red-50 text-red-700 ring-red-200'
+              }`}
+            >
+              <Ticket size={12} /> {generationsRemaining} of {generationsLimit} Generations Left
+            </span>
+          )}
           {!hub && hasAccess && website?.status === 'published' && siteSlug && (
             <a
               href={`/site/${siteSlug}`}
@@ -488,32 +700,154 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
       {hasAccess && !websiteLoading && (
         <div className="space-y-6">
 
-          {/* Step 1 — Consultation controls */}
+          {/* Step 1 — Niche + Theme selection → direct build (or consult first) */}
           {(phase === 'idle' || phase === 'consulting') && (
             <div className="rounded-[2rem] border border-gray-100 bg-white p-6 shadow-sm md:p-8">
-              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                 <div className="flex-1">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
-                    Step 1 · Design Consultation
+                    Step 1 · Niche &amp; Theme
                   </p>
                   <p className="mt-2 max-w-xl text-sm leading-relaxed text-gray-500">
-                    The AI studies your inventory and presents two live website previews —
-                    two genuinely different layouts wearing your brand. Pick the one that
-                    feels right and it builds the full site around your products.
+                    Tell the studio what you sell and choose the design it should wear. One click
+                    builds your complete storefront — hero, brand story, collection and all —
+                    written around your real inventory.
                   </p>
                 </div>
+              </div>
+
+              {/* Step 1A — Boutique niche */}
+              <div className="mt-6">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-900">
+                  1A · Select Your Boutique Niche
+                </p>
+                <div
+                  role="radiogroup"
+                  aria-label="Boutique niche"
+                  className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4"
+                >
+                  {STUDIO_NICHES.map((n) => {
+                    const active = n.id === selectedNiche;
+                    return (
+                      <button
+                        key={n.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        disabled={busy}
+                        onClick={() => handleNicheSelect(n.id)}
+                        className={`rounded-2xl border px-4 py-3 text-left transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 ${
+                          active
+                            ? 'border-gray-900 bg-gray-900 text-white shadow-md'
+                            : 'border-gray-200 bg-white text-gray-900 hover:border-gray-400'
+                        }`}
+                      >
+                        <p className="text-xs font-bold">{n.label}</p>
+                        <p className={`mt-0.5 text-[11px] leading-snug ${active ? 'text-white/60' : 'text-gray-500'}`}>
+                          {n.desc}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Step 1B — Theme template design (the four archetype bundles) */}
+              <div className="mt-6">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-900">
+                  1B · Select Your Theme Template Design
+                </p>
+                <div
+                  role="radiogroup"
+                  aria-label="Theme template design"
+                  className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2"
+                >
+                  {ARCHETYPE_KEYS.map((key) => {
+                    const a = ARCHETYPES[key];
+                    const active = key === selectedArchetype;
+                    const recommended = recommendedForNiche.includes(key);
+                    const swatches = [a.theme.background, a.theme.primary, a.theme.accent, a.theme.text]
+                      .filter((hex): hex is string => typeof hex === 'string');
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        disabled={busy}
+                        onClick={() => setSelectedArchetype(key)}
+                        className={`relative rounded-2xl border bg-white p-4 pr-12 text-left transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 ${
+                          active
+                            ? 'border-gray-900 shadow-md ring-2 ring-gray-900'
+                            : 'border-gray-200 hover:border-gray-400'
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-serif text-base font-bold text-gray-900">{a.name}</p>
+                          <span className="rounded-full bg-gray-900 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-white">
+                            {SITE_TEMPLATES[a.template_key].name} Layout
+                          </span>
+                          {recommended && (
+                            <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-emerald-700 ring-1 ring-emerald-200">
+                              Recommended
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-2 text-sm leading-relaxed text-gray-500">{a.vibe}</p>
+                        <div className="mt-3 flex items-center gap-1.5" aria-hidden="true">
+                          {swatches.map((hex, i) => (
+                            <span
+                              key={`${hex}-${i}`}
+                              className="h-4 w-4 rounded-full ring-1 ring-black/10"
+                              style={{ backgroundColor: hex }}
+                            />
+                          ))}
+                        </div>
+                        {active && (
+                          <span className="absolute right-4 top-4 flex h-6 w-6 items-center justify-center rounded-full bg-gray-900 text-white">
+                            <Check size={13} />
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Consult-first toggle + primary CTA */}
+              <div className="mt-6 flex flex-col gap-4 border-t border-gray-100 pt-6 md:flex-row md:items-center md:justify-between">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={consultFirst}
+                  disabled={busy}
+                  onClick={() => setConsultFirst((v) => !v)}
+                  className="flex items-center gap-3 text-left disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <span className={`relative h-5 w-9 shrink-0 rounded-full transition ${consultFirst ? 'bg-gray-900' : 'bg-gray-200'}`}>
+                    <span className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${consultFirst ? 'translate-x-4' : 'translate-x-0'}`} />
+                  </span>
+                  <span>
+                    <span className="block text-xs font-bold text-gray-900">Preview 2 AI Concepts First</span>
+                    <span className="block text-[11px] leading-snug text-gray-500">
+                      Run the design consultation and choose between two pitched directions before building.
+                    </span>
+                  </span>
+                </button>
 
                 <div className="flex shrink-0 items-center gap-3">
                   <button
-                    onClick={handleConsultClick}
-                    disabled={phase === 'consulting'}
+                    onClick={handleGenerateClick}
+                    disabled={busy}
                     className="flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#1a2e1a] to-gray-900 px-8 py-3.5 text-[10px] font-bold uppercase tracking-widest text-white shadow-md transition-all hover:opacity-90 hover:shadow-lg active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {phase === 'consulting'
                       ? <><Loader2 size={13} className="animate-spin" /> Consulting… {formatElapsed(elapsedSec)}</>
-                      : website
-                        ? <><RefreshCw size={13} /> Design New Concepts</>
-                        : <><Compass size={13} /> Start Design Consultation</>}
+                      : consultFirst
+                        ? website
+                          ? <><RefreshCw size={13} /> Design New Concepts</>
+                          : <><Compass size={13} /> Start Design Consultation</>
+                        : <><Sparkles size={13} /> {website ? 'Regenerate Website' : 'Generate Website'}</>}
                   </button>
                   {phase === 'consulting' && (
                     <button
@@ -620,7 +954,11 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
                   <Loader2 className="h-6 w-6 animate-spin text-[#f0a500]" />
                 </div>
                 <h3 className="mt-6 font-serif text-2xl font-bold">
-                  Building {chosenConceptName ? `“${chosenConceptName}”` : 'your storefront'}…
+                  Building {chosenConceptName
+                    ? `“${chosenConceptName}”`
+                    : directBuildName
+                      ? `your “${directBuildName}” storefront`
+                      : 'your storefront'}…
                 </h3>
                 <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-gray-500">
                   Injecting your products, logo, and inventory into the chosen layout and writing
@@ -633,7 +971,7 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
                   onClick={handleCancelBuild}
                   className="mt-5 rounded-full bg-gray-50 px-5 py-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
                 >
-                  Cancel — Keep My Concepts
+                  {concepts ? 'Cancel — Keep My Concepts' : 'Cancel'}
                 </button>
               </motion.div>
             )}
@@ -645,9 +983,9 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
               <Globe className="mx-auto mb-4 h-10 w-10 text-gray-300" />
               <p className="text-sm font-bold">No website generated yet.</p>
               <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-gray-500">
-                Start the design consultation to see two live storefront previews built around your
-                inventory — then pick one and the AI builds the whole site. The consultation is
-                usually quick; the full build can take a few minutes.
+                Pick your niche and a theme template above, then Generate Website — the AI builds the
+                whole site around your inventory in one pass. Prefer to compare directions first?
+                Switch on the concept preview. A full build can take a few minutes.
               </p>
             </div>
           )}
@@ -841,6 +1179,72 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
                 >
                   Yes, Overwrite My Site
                 </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Token Top-Up modal (quota spent / server 402 QUOTA_EXCEEDED) ────
+          Same z-[90] layer as the overwrite warning. */}
+      <AnimatePresence>
+        {isQuotaModalOpen && (
+          <motion.div
+            key="quota-topup"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            className="fixed inset-0 z-[90] flex items-center justify-center p-4"
+          >
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => setIsQuotaModalOpen(false)}
+              className="absolute inset-0 cursor-default bg-neutral-950/60 backdrop-blur-sm"
+            />
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="quota-topup-title"
+              initial={{ opacity: 0, scale: 0.95, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl md:p-8"
+            >
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1a2e1a] text-[#f0a500]">
+                  <Ticket size={18} />
+                </span>
+                <h3 id="quota-topup-title" className="font-serif text-xl font-bold leading-snug text-gray-900">
+                  Studio Token required
+                </h3>
+              </div>
+              <p className="mt-4 text-sm leading-relaxed text-gray-600">
+                You&apos;ve used your 2 included website generations. To prevent spam and guarantee
+                flagship quality, additional generations require a Studio Token (+2 Generations).
+              </p>
+              <p className="mt-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                {generationsUsed} of {generationsLimit} generations used
+              </p>
+              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  ref={quotaCancelRef}
+                  type="button"
+                  onClick={() => setIsQuotaModalOpen(false)}
+                  className="rounded-full border border-gray-200 bg-white px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-700 transition hover:bg-gray-50 active:scale-95"
+                >
+                  Cancel
+                </button>
+                <a
+                  href={quotaWhatsAppHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 rounded-full bg-[#25D366] px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-white shadow-md transition hover:opacity-90 active:scale-95"
+                >
+                  <MessageCircle size={14} /> Get a Studio Token on WhatsApp
+                </a>
               </div>
             </motion.div>
           </motion.div>

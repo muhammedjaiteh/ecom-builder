@@ -16,25 +16,24 @@ export type ProviderEntry = {
 };
 
 const PROVIDERS: ProviderEntry[] = [
-  // Put OpenAI first in the fallback chain while Anthropic credits are $0
+  { name: 'anthropic', model: anthropic('claude-sonnet-5') },
+  { name: 'google', model: google('gemini-2.5-flash') },
   {
     name: 'openai',
     model: openai('gpt-4o-mini'),
     providerOptions: { openai: { strictJsonSchema: false } },
   },
-  { name: 'google', model: google('gemini-2.5-flash') },
-  { name: 'anthropic', model: anthropic('claude-sonnet-5') },
 ];
 
 /**
- * FLAGSHIP CREATIVE — Rerouted to OpenAI (GPT-4o)
- * Uses AI SDK v6 providerOptions.openai.strictJsonSchema = false so OpenAI
- * accepts legacy .optional() superset fields without throwing HTTP 400.
+ * FLAGSHIP CREATIVE — claude-fable-5-1 as the website-generation primary.
+ * Pinned to structuredOutputMode 'outputFormat' (Fable rejects forced
+ * tool_choice); refusals/request-shape rejections cascade into PROVIDERS.
  */
 export const FLAGSHIP_CREATIVE_PROVIDER: ProviderEntry = {
-  name: 'openai-flagship',
-  model: openai('gpt-4o'),
-  providerOptions: { openai: { strictJsonSchema: false } },
+  name: 'anthropic-fable',
+  model: anthropic('claude-fable-5-1'),
+  providerOptions: { anthropic: { structuredOutputMode: 'outputFormat' } },
 };
 
 const SAME_PROVIDER_RETRY_MS = 500;

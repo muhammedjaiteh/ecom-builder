@@ -775,6 +775,43 @@ export const ARCHETYPES: Record<ArchetypeKey, SiteArchetype> = {
   },
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// STUDIO NICHES — the pre-generation "Select Your Boutique Niche" step. The
+// seller declares what they sell BEFORE generating; the id is posted as
+// `niche` to generate-website (where its label supplements/overrides the
+// inventory-derived dominant category in the dynamic prompt) and the
+// recommendedArchetypes drive the "Recommended" badges + default pick in the
+// Theme Template selector (first entry = default archetype for the niche).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type StudioNicheId =
+  | 'cosmetics'
+  | 'fashion'
+  | 'jewelry'
+  | 'home'
+  | 'food'
+  | 'wellness'
+  | 'tech'
+  | 'general';
+
+export type StudioNiche = {
+  id: StudioNicheId;
+  label: string;
+  desc: string;
+  recommendedArchetypes: ReadonlyArray<ArchetypeKey>;
+};
+
+export const STUDIO_NICHES: ReadonlyArray<StudioNiche> = [
+  { id: 'cosmetics', label: 'Cosmetics & Skincare', desc: 'Serums, lotions, soaps & beauty rituals', recommendedArchetypes: ['pastel-minimalist', 'deep-luxury'] },
+  { id: 'fashion', label: 'Fashion & Abayas', desc: 'Apparel, modest wear, tailoring & footwear', recommendedArchetypes: ['warm-editorial', 'deep-luxury'] },
+  { id: 'jewelry', label: 'Jewelry & Watches', desc: 'Gold, fine jewelry, watches & leather goods', recommendedArchetypes: ['deep-luxury', 'warm-editorial'] },
+  { id: 'home', label: 'Oud, Fragrance & Home', desc: 'Attar, bakhoor, decor & artisanal craft', recommendedArchetypes: ['deep-luxury', 'warm-editorial'] },
+  { id: 'food', label: 'Food & Culinary', desc: 'Spices, gourmet goods, beverages & pantry', recommendedArchetypes: ['warm-editorial', 'pastel-minimalist'] },
+  { id: 'wellness', label: 'Health & Wellness', desc: 'Supplements, botanicals, fitness & self-care', recommendedArchetypes: ['pastel-minimalist', 'high-contrast-street'] },
+  { id: 'tech', label: 'Tech & Electronics', desc: 'Gadgets, appliances, tools & accessories', recommendedArchetypes: ['high-contrast-street', 'pastel-minimalist'] },
+  { id: 'general', label: 'General / Multi-Category', desc: 'Curated department store across multiple categories', recommendedArchetypes: ['warm-editorial', 'pastel-minimalist'] },
+];
+
 // ── Niche → archetype mapping with DETERMINISTIC VARIETY ────────────────────
 // Two cosmetics shops must not render twins: the shop id hash ROTATES the
 // niche-fitting candidate list, so which two archetypes get pitched (and
@@ -1560,6 +1597,11 @@ export function applyGenerationLayout(
   generated_at: string;
   published_at: string | null;
   brand_tokens: BrandTokens | null;
+  /** Website Studio quota (supabase/migrations/20261016000000_add_website_
+   *  generation_quota.sql). OPTIONAL/additive: rows read before the migration
+   *  runs simply lack them and the studio falls back to its defaults. */
+  generations_used?: number | null;
+  generations_limit?: number | null;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

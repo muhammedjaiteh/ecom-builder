@@ -15,6 +15,7 @@ MatrixWebsiteGenerationSchema,
   ARCHETYPES,
   ConceptPairSchema,
   SITE_TEMPLATES,
+  STUDIO_NICHES,
   SiteConceptSchema,
   TEMPLATE_KEYS,
   WebsiteGenerationSchema,
@@ -230,6 +231,46 @@ export async function POST(req: Request) {
       concept = parsedConcept.data;
     }
 
+    // ── Pre-generation selections (Studio Step 1A / 1B) ───────────────────
+    // niche: the seller's explicitly chosen boutique niche — a STUDIO_NICHES
+    // id (resolved to its label) or a short free-text category. It rides ONLY
+    // the dynamic prompt (never cachedSystem — cache law) and supplements/
+    // overrides the inventory-derived dominantCategory in BOTH AI steps.
+    const rawNiche: unknown = body?.niche;
+    let niche: string | null = null;
+    if (rawNiche !== undefined && rawNiche !== null) {
+      if (typeof rawNiche !== 'string' || rawNiche.trim().length > 64) {
+        return NextResponse.json(
+          { error: 'niche must be a string of at most 64 characters.' },
+          { status: 400 }
+        );
+      }
+      const cleaned = rawNiche.replace(/[\r\n\t<>]/g, ' ').replace(/\s+/g, ' ').trim();
+      niche = cleaned || null;
+    }
+    const nicheKey = niche;
+    const nicheLabel: string | null = nicheKey
+      ? STUDIO_NICHES.find((n) => n.id === nicheKey.toLowerCase())?.label ?? nicheKey
+      : null;
+
+    // archetypeKey: the seller picked their Theme Archetype directly before
+    // clicking Generate (one-call build, no consultation). Validated against
+    // ARCHETYPE_KEYS; a concept's archetype_key still takes precedence.
+    const rawArchetypeKey: unknown = body?.archetypeKey;
+    let requestedArchetypeKey: ArchetypeKey | null = null;
+    if (rawArchetypeKey !== undefined && rawArchetypeKey !== null) {
+      if (
+        typeof rawArchetypeKey !== 'string' ||
+        !(ARCHETYPE_KEYS as readonly string[]).includes(rawArchetypeKey)
+      ) {
+        return NextResponse.json(
+          { error: `archetypeKey must be one of: ${ARCHETYPE_KEYS.join(', ')}.` },
+          { status: 400 }
+        );
+      }
+      requestedArchetypeKey = rawArchetypeKey as ArchetypeKey;
+    }
+
     // Service-role client: slug repair + website upsert.
     const admin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -303,7 +344,58 @@ export async function POST(req: Request) {
       if (c) categoryCounts.set(c, (categoryCounts.get(c) ?? 0) + 1);
     }
     const dominantCategory = [...categoryCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
-    const heuristicTemplate = templateFromCategory(dominantCategory);
+    // Seller-declared niche (Studio Step 1A) wins over the inventory
+    // heuristic; the inventory category stays as supplementary context.
+    const effectiveCategory = nicheLabel ?? dominantCategory;
+    const heuristicTemplate = templateFromCategory(effectiveCategory);
+    const nicheContext = nicheLabel
+      ? `seller-declared niche "${nicheLabel}" (inventory's dominant category: "${dominantCategory ?? 'unknown'}") — tailor every structural and copy decision to this niche`
+      : `dominant category "${dominantCategory ?? 'unknown'}"`;
+
+    // ── Generation quota (2 included; +2 per Studio Token) ────────────────
+    // Gates BOTH AI steps (concepts + execute); only the execute step's
+    // persist increments the counter. Skipped in the dev harness (nothing is
+    // persisted there). Rows read before the quota migration runs (undefined
+    // column 42703 / PGRST204) degrade gracefully to the 0-of-2 defaults.
+    let generationsUsed = 0;
+    let generationsLimit = 2;
+    if (!devHarness) {
+      const { data: quotaRow, error: quotaError } = await admin
+        .from('shop_websites')
+        .select('generations_used, generations_limit')
+        .eq('shop_id', shop.id)
+        .maybeSingle();
+      if (quotaError) {
+        const undefinedColumn =
+          quotaError.code === '42703' ||
+          quotaError.code === 'PGRST204' ||
+          /generations_(used|limit)/.test(quotaError.message ?? '');
+        if (!undefinedColumn) {
+          console.error('[generate-website] Quota lookup failed:', quotaError);
+          throw new Error('Failed to read the generation quota');
+        }
+        console.warn('[generate-website] Quota columns missing (migration pending) — defaulting to 0 of 2.');
+      } else {
+        generationsUsed = Number(quotaRow?.generations_used ?? 0);
+        generationsLimit = Number(quotaRow?.generations_limit ?? 2);
+      }
+      if (!Number.isFinite(generationsUsed)) generationsUsed = 0;
+      if (!Number.isFinite(generationsLimit)) generationsLimit = 2;
+      if (generationsUsed >= generationsLimit) {
+        return NextResponse.json(
+          {
+            error:
+              generationsLimit === 2
+                ? 'You have used all 2 included website generations. Unlock +2 extra generations with a Studio Token.'
+                : `You have used all ${generationsLimit} of your website generations. Unlock +2 extra generations with a Studio Token.`,
+            code: 'QUOTA_EXCEEDED',
+            generations_used: generationsUsed,
+            generations_limit: generationsLimit,
+          },
+          { status: 402 }
+        );
+      }
+    }
 
     const inventorySummary = products
       .slice(0, 15)
@@ -324,7 +416,7 @@ export async function POST(req: Request) {
     // clicks rotate the pair instead of replaying it.
     // ═══════════════════════════════════════════════════════════════════════
     if (step === 'concepts') {
-      const [primary, secondary] = pickConceptArchetypes(shop.id, dominantCategory, variationSeed);
+      const [primary, secondary] = pickConceptArchetypes(shop.id, effectiveCategory, variationSeed);
 
       // STATIC block (cachedSystem): byte-identical on every request — role,
       // the FULL archetype catalog (built from ARCHETYPES constants), copy
@@ -378,7 +470,7 @@ PITCH THESE TWO ARCHETYPES, IN THIS ORDER:
 1. "${primary.key}" — ${primary.name}
 2. "${secondary.key}" — ${secondary.name}
 
-NICHE CONTEXT: dominant category "${dominantCategory ?? 'unknown'}".${variationDirective}`;
+NICHE CONTEXT: ${nicheContext}.${variationDirective}`;
 
       const { data: pair, provider } = await generateWithFallback({
         schema: ConceptPairSchema,
@@ -420,12 +512,17 @@ NICHE CONTEXT: dominant category "${dominantCategory ?? 'unknown'}".${variationD
     // Dev harness may name an archetype directly (no concept object needed).
     const harnessArchetypeKey =
       devHarness && typeof harnessBody?.archetype === 'string' ? harnessBody.archetype : null;
+    // Resolution order: the approved concept's archetype_key → the seller's
+    // direct Theme Archetype pick (body.archetypeKey, Studio Step 1B) → the
+    // dev harness's named archetype → classic path.
     const archetype: SiteArchetype | null =
       concept?.archetype_key
         ? ARCHETYPES[concept.archetype_key] ?? null
-        : harnessArchetypeKey && (ARCHETYPE_KEYS as readonly string[]).includes(harnessArchetypeKey)
-          ? ARCHETYPES[harnessArchetypeKey as ArchetypeKey]
-          : null;
+        : requestedArchetypeKey
+          ? ARCHETYPES[requestedArchetypeKey]
+          : harnessArchetypeKey && (ARCHETYPE_KEYS as readonly string[]).includes(harnessArchetypeKey)
+            ? ARCHETYPES[harnessArchetypeKey as ArchetypeKey]
+            : null;
 
     // The archetype's base template ALWAYS wins over a drifted concept key —
     // the bundle is the contract the seller approved.
@@ -446,8 +543,8 @@ APPROVED CREATIVE DIRECTION — honor it precisely, refine and expand it into th
 - Palette & styling: ${concept.palette}
 - Approved hero direction: "${concept.hero_headline}" — "${concept.hero_subheadline}"${archetypeDirection}`
       : chosenTemplate
-        ? `TEMPLATE CONSTRAINT: the seller has explicitly chosen the "${chosenTemplate}" template. You MUST set template_key to "${chosenTemplate}" and write niche_reasoning explaining how this template will be styled for their inventory.`
-        : `TEMPLATE SELECTION: choose the single best template_key for this inventory. Heuristic suggestion based on the dominant category ("${dominantCategory ?? 'unknown'}"): "${heuristicTemplate}" — but override it if the actual product mix clearly fits another niche better. Explain your choice in niche_reasoning.`;
+        ? `TEMPLATE CONSTRAINT: the seller has explicitly chosen the "${chosenTemplate}" template. You MUST set template_key to "${chosenTemplate}" and write niche_reasoning explaining how this template will be styled for their inventory.${archetypeDirection}`
+        : `TEMPLATE SELECTION: choose the single best template_key for this inventory. Heuristic suggestion based on the ${nicheContext}: "${heuristicTemplate}" — but override it if the actual product mix clearly fits another niche better. Explain your choice in niche_reasoning.`;
 
     // ── Prompt split for Anthropic cache_control ──────────────────────────
     // STATIC block (cachedSystem): every instruction that is byte-identical on
@@ -557,6 +654,7 @@ Instruction: Use this seed to uniquely shuffle the section placements (block_ord
 SHOP:
 - Name: ${shop.shop_name}
 ${shop.bio ? `- Bio: ${shop.bio}` : ''}
+${nicheLabel ? `- Declared niche: ${nicheLabel} — the seller chose this niche explicitly; tailor the storefront to it` : ''}
 
 INVENTORY (${products.length} products, first 15 shown):
 ${inventorySummary}
@@ -684,6 +782,26 @@ ${layoutBoundsText}
       throw new Error(`Website persistence failed: ${rpcError?.message}`);
     }
     let finalWebsite = website;
+
+    // ── Quota counter ─────────────────────────────────────────────────────
+    // The migrated persist_matrix_website increments generations_used inside
+    // the upsert. When the returned row does not reflect used+1 (RPC and/or
+    // columns not yet migrated in Supabase), make a best-effort direct write
+    // so the counter still advances wherever the column exists; failures are
+    // non-fatal (the site itself is saved). The response below ALWAYS
+    // carries used+1 so the studio badge updates immediately either way.
+    const nextGenerationsUsed = generationsUsed + 1;
+    const persistedUsed = Number((website as { generations_used?: unknown }).generations_used);
+    if (!Number.isFinite(persistedUsed) || persistedUsed < nextGenerationsUsed) {
+      const { error: quotaWriteError } = await admin
+        .from('shop_websites')
+        .update({ generations_used: nextGenerationsUsed })
+        .eq('shop_id', shop.id);
+      if (quotaWriteError) {
+        console.warn('[generate-website] Quota counter write skipped (migration pending):', quotaWriteError.message);
+      }
+    }
+
     try {
       const assets = await runSiteAssetPhase({
         admin,
@@ -745,7 +863,14 @@ ${layoutBoundsText}
 
     // Full row (dashboard contract, asset-patched when the phase produced
     // anything) + the canonical slug for link minting.
-    return NextResponse.json({ ...finalWebsite, shop_slug: canonicalSlug });
+    const returnedUsed = Number((finalWebsite as { generations_used?: unknown }).generations_used);
+    const returnedLimit = Number((finalWebsite as { generations_limit?: unknown }).generations_limit);
+    return NextResponse.json({
+      ...finalWebsite,
+      generations_used: Number.isFinite(returnedUsed) ? Math.max(returnedUsed, nextGenerationsUsed) : nextGenerationsUsed,
+      generations_limit: Number.isFinite(returnedLimit) ? returnedLimit : generationsLimit,
+      shop_slug: canonicalSlug,
+    });
   } catch (error) {
     console.error('[generate-website] fatal:', error);
     const err = error as { status?: number; message?: string } | null;
