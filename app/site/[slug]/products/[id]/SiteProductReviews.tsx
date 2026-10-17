@@ -32,16 +32,48 @@ import { notifyReviewSubmitted, useProductRating } from '@/lib/useProductRating'
 // An unrecognised device gets an honest note instead of an empty column.
 //
 // TOKENS: colors ride the theme cascade (var(--site-*) + historical literal),
-// mirroring SiteFulfillmentPane. ReviewList/DeviceReviewForm are light-theme
-// components, so the dark Vitality (neutral) tone hosts the list on a white
-// surface — the same treatment the form card already gives itself.
+// mirroring SiteFulfillmentPane. ReviewList/DeviceReviewForm are shared
+// light-theme components with hardcoded neutral greys; Pass 3.1 retired the
+// white host card (a dark storefront never renders a bright white review
+// card). The list/form wrappers now paint a theme-derived surface and remap
+// the shared components' neutral classes onto the site tokens
+// (REVIEW_THEME_INHERIT), so reviews inherit the storefront's visual system
+// on light AND dark palettes. The shared components stay untouched.
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** Descendant remaps for the shared ReviewList / DeviceReviewForm markup:
+ *  neutral greys -> --site-text / --site-muted, light fills -> a token tint,
+ *  black focus rings / submit -> text-on-paper inversion. Attribute selectors
+ *  (0,2,0) outrank the components' single utility classes. */
+const REVIEW_THEME_INHERIT = [
+  '[&_[class*=bg-white]]:bg-[color-mix(in_srgb,var(--site-bg,#ffffff)_96%,var(--site-text,#171717))]',
+  '[&_[class*=bg-neutral-]]:bg-[color-mix(in_srgb,var(--site-text,#171717)_6%,transparent)]',
+  '[&_[class*=border-black]]:border-[color-mix(in_srgb,var(--site-text,#171717)_14%,transparent)]',
+  '[&_[class*=ring-black]]:ring-[color-mix(in_srgb,var(--site-text,#171717)_14%,transparent)]',
+  '[&_[class*=text-neutral-9]]:text-[var(--site-text,#171717)]',
+  '[&_[class*=text-neutral-7]]:text-[var(--site-text,#171717)]',
+  '[&_[class*=text-neutral-6]]:text-[var(--site-text,#171717)]',
+  '[&_[class*=text-neutral-5]]:text-[var(--site-muted,#595550)]',
+  '[&_[class*=text-neutral-4]]:text-[var(--site-muted,#595550)]',
+  '[&_[class*=text-neutral-3]]:text-[var(--site-muted,#595550)]',
+  '[&_[class*=text-neutral-2]]:text-[color-mix(in_srgb,var(--site-text,#171717)_30%,transparent)]',
+  '[&_input]:text-[var(--site-text,#171717)]!',
+  '[&_textarea]:text-[var(--site-text,#171717)]!',
+  '[&_input:focus]:border-[var(--site-text,#171717)]!',
+  '[&_textarea:focus]:border-[var(--site-text,#171717)]!',
+  '[&_input:focus]:ring-[var(--site-text,#171717)]!',
+  '[&_textarea:focus]:ring-[var(--site-text,#171717)]!',
+  '[&_button[type=submit]]:bg-[var(--site-text,#171717)]!',
+  '[&_button[type=submit]]:text-[var(--site-bg,#ffffff)]!',
+].join(' ');
 
 type ReviewStyles = {
   shell: string;
   eyebrow: string;
-  /** Wrapper around ReviewList — a light surface where the chrome is dark. */
+  /** Wrapper around ReviewList — a theme-derived surface (never bare white). */
   list: string;
+  /** Wrapper around DeviceReviewForm — remaps its light card onto the theme. */
+  form: string;
   /** Sticky offset for the form column (mirrors the PDP infoCol per tone). */
   formCol: string;
   note: string;
@@ -54,9 +86,10 @@ const REVIEW_STYLES: Record<SiteTone, ReviewStyles> = {
   ritual: {
     shell: 'mt-14 border-t border-[color-mix(in_srgb,var(--site-text,#1c1917)_12%,transparent)] pt-10 md:mt-24 md:pt-16',
     eyebrow: 'text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-muted,oklch(55.3%_0.013_58.071))]',
-    // ReviewList is a light-theme component: host it on a white card so the
-    // deep-luxury dark palette keeps it legible (same treatment as neutral).
-    list: 'rounded-2xl border border-[color-mix(in_srgb,var(--site-text,#1c1917)_12%,transparent)] bg-white p-5 text-neutral-900 md:p-8',
+    // Pass 3.1: paper-derived surface + token remap instead of a white card,
+    // so a deep-luxury dark palette hosts the list on ITS OWN dark paper.
+    list: `rounded-2xl border border-[color-mix(in_srgb,var(--site-text,#1c1917)_12%,transparent)] bg-[color-mix(in_srgb,var(--site-bg,#FBFAF7)_97%,var(--site-text,#1c1917))] p-5 text-[var(--site-text,oklch(21.6%_0.006_56.043))] md:p-8 ${REVIEW_THEME_INHERIT}`,
+    form: `text-[var(--site-text,oklch(21.6%_0.006_56.043))] ${REVIEW_THEME_INHERIT}`,
     formCol: 'lg:sticky lg:top-24',
     note: 'rounded-2xl border border-[color-mix(in_srgb,var(--site-text,#1c1917)_12%,transparent)] bg-[color-mix(in_srgb,var(--site-bg,#FBFAF7)_97%,var(--site-text,#1c1917))] p-5 md:p-6',
     noteIcon: 'flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--site-accent,#1c1917)_8%,transparent)] text-[var(--site-accent,#1c1917)]',
@@ -66,7 +99,8 @@ const REVIEW_STYLES: Record<SiteTone, ReviewStyles> = {
   editorial: {
     shell: 'mt-16 border-t border-[var(--site-text,#171717)] pt-12 md:mt-24 md:pt-16',
     eyebrow: 'text-[10px] font-bold uppercase tracking-[0.35em] text-[var(--site-accent,#1a2e1a)]',
-    list: '',
+    list: `text-[var(--site-text,oklch(20.5%_0_0))] ${REVIEW_THEME_INHERIT}`,
+    form: `text-[var(--site-text,oklch(20.5%_0_0))] ${REVIEW_THEME_INHERIT}`,
     formCol: 'lg:sticky lg:top-10',
     note: 'border border-[var(--site-text,#171717)] p-5 md:p-6',
     noteIcon: 'flex h-9 w-9 shrink-0 items-center justify-center border border-[var(--site-text,#171717)] text-[var(--site-accent,#1a2e1a)]',
@@ -76,7 +110,9 @@ const REVIEW_STYLES: Record<SiteTone, ReviewStyles> = {
   neutral: {
     shell: 'mt-16 border-t border-white/10 pt-12 md:mt-24 md:pt-16',
     eyebrow: 'text-[10px] font-black uppercase tracking-[0.25em] text-[var(--site-accent,#f0a500)]',
-    list: 'rounded-2xl border border-white/10 bg-white p-6 text-neutral-900 md:p-8',
+    // Pass 3.1: the near-black canvas lifted 6% toward white — no white card.
+    list: `rounded-2xl border border-white/10 bg-[color-mix(in_srgb,var(--site-bg,#0a0a0a)_94%,white)] p-6 text-[var(--site-text,#ffffff)] md:p-8 ${REVIEW_THEME_INHERIT}`,
+    form: `text-[var(--site-text,#ffffff)] ${REVIEW_THEME_INHERIT}`,
     formCol: 'lg:sticky lg:top-24',
     note: 'rounded-2xl border border-white/10 bg-[#111] p-5 md:p-6',
     noteIcon: 'flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--site-accent,#f0a500)_12%,transparent)] text-[var(--site-accent,#f0a500)]',
@@ -126,14 +162,16 @@ export default function SiteProductReviews({
         <div className={hasReviews ? 'lg:col-span-1' : 'lg:col-span-3 lg:max-w-xl'}>
           <div className={styles.formCol}>
             {purchasedOnThisDevice ? (
-              <DeviceReviewForm
-                productId={productId}
-                shopId={shopId}
-                onReviewSubmitted={() => {
-                  setRefreshTrigger((n) => n + 1);
-                  notifyReviewSubmitted(productId); // refreshes the title rating badge
-                }}
-              />
+              <div className={styles.form}>
+                <DeviceReviewForm
+                  productId={productId}
+                  shopId={shopId}
+                  onReviewSubmitted={() => {
+                    setRefreshTrigger((n) => n + 1);
+                    notifyReviewSubmitted(productId); // refreshes the title rating badge
+                  }}
+                />
+              </div>
             ) : (
               <div className={styles.note}>
                 <div className="flex items-start gap-4">

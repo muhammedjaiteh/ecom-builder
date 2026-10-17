@@ -2029,6 +2029,19 @@ const AI_BOILERPLATE_SENTENCE_PATTERNS: ReadonlyArray<RegExp> = [
   /^a (must[- ]have|timeless|perfect|stunning|luxurious|versatile) (addition|piece|staple|choice|essential) (to|for|in) (your|any|every)\b/i,
   /^(embrace|unleash|redefine|transform) (your|the) (inner|true|everyday|style|elegance|beauty|confidence|lifestyle)\b/i,
   /^(don(?:'|’)t miss out|order (now|today) (and|to)|shop now (and|to)|get yours (today|now))\b/i,
+  // Pass 3.1: feature-spread filler observed in live seller inventory
+  // ("Featuring a sleek silhouette...", "a must-have addition to your
+  // collection", "Premium quality materials", "Designed for maximum comfort",
+  // "Highly versatile and easy to style"). Still start-anchored and
+  // FACT_SIGNAL-guarded: "Designed for maximum comfort: 2cm foam insole" stays.
+  /^featuring (a |an )?(sleek|elegant|timeless|modern|classic|stylish|refined|minimalist|sophisticated|chic|clean|striking|bold) (silhouette|design|look|aesthetic|style|profile)\b/i,
+  /^(with )?(meticulous|impeccable|exceptional|unparalleled|great|careful) attention to (every )?detail\b/i,
+  /^(this|it|the) (?:[\w'-]+ ){0,3}?(is|makes) (a|the) (must[- ]have|perfect|ideal|essential|versatile|timeless|stunning|great) (addition|piece|staple|choice|essential|item|accessory)\b/i,
+  /^(a |the )?must[- ]have (addition|piece|staple|essential|item|accessory)\b/i,
+  /^(premium|high|top|superior|exceptional|finest)[- ]quality (materials?|craftsmanship|construction|fabrics?|finish)\b/i,
+  /^designed (for|with) (maximum|ultimate|optimal|superior|everyday|all[- ]day|your) (comfort|performance|durability|versatility|style|convenience)\b/i,
+  /^(highly |extremely |incredibly |so )?versatile (and |, )?(easy to (style|wear|pair|match)|stylish|chic|comfortable|practical|perfect for)\b/i,
+  /^(perfect|ideal|great) for (any|every|all) (occasion|outfit|season|look|setting|wardrobe)s?\b/i,
 ];
 
 /** A sentence carrying FACT signals is never removed, even if it starts like
@@ -2046,20 +2059,26 @@ const isBoilerplateSentence = (sentence: string): boolean => {
  *  Preserves line structure, merchant-written sentences, ingredients,
  *  materials, sizes, usage instructions, and every product-specific fact.
  *  Never summarises, rewrites, or invents. If EVERY sentence would be
- *  removed, the original (trimmed) text is returned unchanged — an empty
- *  product page is worse than a generic one, and the merchant may have
- *  written it themselves. */
+ *  removed and the copy is a SINGLE sentence, the original (trimmed) text is
+ *  returned unchanged — the merchant may have written that one line
+ *  themselves. Pass 3.1: when TWO OR MORE sentences each match a boilerplate
+ *  signature, the copy is AI filler with near certainty and the cleaner
+ *  returns '' — every storefront surface already guards on an empty
+ *  description (the feature spread skips the paragraph, the PDP renders no
+ *  copy), and no copy beats five filler sentences on a luxury product page. */
 export function cleanProductDescription(raw?: string | null): string {
   if (typeof raw !== 'string') return '';
   const original = raw.replace(/\r\n?/g, '\n').trim();
   if (!original) return '';
 
+  let sentenceCount = 0;
   const cleanedLines = original.split('\n').map((line) => {
     const trimmed = line.trim();
     if (!trimmed) return '';
     // List rows / headings are merchant structure — pass through verbatim.
     if (/^([-*•●▪]|\d+[.)])\s/.test(trimmed) || /^[^.!?]{0,40}:$/.test(trimmed)) return line;
     const sentences = trimmed.split(/(?<=[.!?…])\s+(?=[^\s])/);
+    sentenceCount += sentences.length;
     const kept = sentences.filter((sentence) => !isBoilerplateSentence(sentence));
     if (kept.length === sentences.length) return line;
     return kept.join(' ').trim();
@@ -2071,7 +2090,8 @@ export function cleanProductDescription(raw?: string | null): string {
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 
-  return result.length === 0 ? original : result;
+  if (result.length === 0) return sentenceCount >= 2 ? '' : original;
+  return result;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

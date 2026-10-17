@@ -2,6 +2,7 @@
 
 import {
   createContext,
+  isValidElement,
   useContext,
   useEffect,
   useId,
@@ -39,6 +40,13 @@ import { ChevronDown } from 'lucide-react';
 // lines (re-checked on resize via ResizeObserver). The clamp lives on a
 // WRAPPER (-webkit-box line clamp cascades over the child block), so the copy
 // node's own classes and data attributes are never touched.
+//
+// SHORT STORIES (Pass 3.1): a story under SHORT_STORY_WORDS words OR under
+// SHORT_STORY_CHARS characters never collapses. The copy is read off the
+// children element tree (the EditableText string child), so the decision is
+// made at render time on BOTH server and client: the short story ships fully
+// expanded with no clamp wrapper, no fade and no "Read the full story"
+// affordance - zero hydration flash, zero reserved spacing.
 //
 // EDITOR SAFETY (the Reveal/GatedVideo preview-scope precedent): inside
 // <StoryClampPreviewScope> the island renders the BARE children — expanded,
@@ -84,6 +92,27 @@ const TONES: Record<StoryClampTone, { fade: string; button: string }> = {
   },
 };
 
+/** A story under EITHER budget renders fully expanded, never clamped. */
+const SHORT_STORY_WORDS = 80;
+const SHORT_STORY_CHARS = 450;
+
+/** Plain text of a React node tree (string/number leaves, arrays, and the
+ *  `children` prop of elements - covers EditableText and bare copy). */
+function nodeText(node: ReactNode): string {
+  if (node == null || typeof node === 'boolean') return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(nodeText).join(' ');
+  if (isValidElement<{ children?: ReactNode }>(node)) return nodeText(node.props.children);
+  return '';
+}
+
+function isShortStory(node: ReactNode): boolean {
+  const text = nodeText(node).replace(/\s+/g, ' ').trim();
+  if (!text) return true;
+  const words = text.split(' ').length;
+  return words < SHORT_STORY_WORDS || text.length < SHORT_STORY_CHARS;
+}
+
 type StoryClampProps = {
   tone: StoryClampTone;
   /** The template's story copy node (EditableText / plain copy) — rendered
@@ -93,6 +122,8 @@ type StoryClampProps = {
 
 export default function StoryClamp({ tone, children }: StoryClampProps) {
   const inPreviewScope = useContext(StoryClampPreviewContext);
+  // Pass 3.1: short copy never clamps (decided identically on server/client).
+  const short = isShortStory(children);
   const frameRef = useRef<HTMLDivElement | null>(null);
   const clampRef = useRef<HTMLDivElement | null>(null);
   // Height captured synchronously in the toggle click, consumed by the
@@ -107,7 +138,7 @@ export default function StoryClamp({ tone, children }: StoryClampProps) {
   // Truncation measurement — collapsed state only (expanded content never
   // overflows its box, so measuring there would wrongly drop the affordance).
   useEffect(() => {
-    if (inPreviewScope || expanded) return;
+    if (inPreviewScope || short || expanded) return;
     const el = clampRef.current;
     if (!el) return;
     const measure = () => setClampable(el.scrollHeight > el.clientHeight + 1);
@@ -116,7 +147,7 @@ export default function StoryClamp({ tone, children }: StoryClampProps) {
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [inPreviewScope, expanded]);
+  }, [inPreviewScope, short, expanded]);
 
   const toggle = () => {
     pendingFrom.current = frameRef.current?.getBoundingClientRect().height ?? null;
@@ -159,8 +190,9 @@ export default function StoryClamp({ tone, children }: StoryClampProps) {
   }, [expanded]);
 
   // Editor preview / miniatures: the bare copy node — expanded, static,
-  // fully measurable, nothing extra to click.
-  if (inPreviewScope) {
+  // fully measurable, nothing extra to click. Short stories (Pass 3.1) take
+  // the same bare path: no wrapper, no fade, no reveal button, no spacing.
+  if (inPreviewScope || short) {
     return <>{children}</>;
   }
 

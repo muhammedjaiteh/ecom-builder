@@ -5,7 +5,6 @@ import { createBrowserClient } from '@supabase/ssr';
 import { Banknote, Check, Copy, Minus, Plus, ShoppingBag, Smartphone, X } from 'lucide-react';
 import { buildCartLineId, useCart } from '@/components/CartProvider';
 import { rememberPurchases } from '@/lib/purchaseMemory';
-import { useScrolledPast } from '@/lib/useScrolledPast';
 import SmartImage from '@/components/SmartImage';
 import {
   DEFAULT_ORDER_PHONE,
@@ -175,13 +174,36 @@ export default function SiteProductPurchase({
   const [copied, setCopied] = useState(false);
 
   // BEAT 5 — STICKY BUY BAR: hidden until the buyer has scrolled PAST the
-  // in-page CTA row (lib/useScrolledPast). On a phone the gallery fills the
-  // first screen, so the bar must never sit over the hero image — it only
-  // slides in once the real buttons are above the viewport, and slides back
-  // out when the buyer scrolls up to them.
+  // in-page CTA row. On a phone the gallery fills the first screen, so the
+  // bar must never sit over the hero image — it only slides in once the real
+  // buttons are above the viewport, and slides back out when the buyer
+  // scrolls up to them.
+  // Pass 3.1: a lightweight IntersectionObserver armed on the CTA row via a
+  // CALLBACK ref (element held in state) — the same contract as
+  // lib/useScrolledPast, but re-armed whenever the row (re)mounts, e.g. the
+  // sold-out → restocked flip after the live stock refresh below, where a
+  // mount-once RefObject observer stayed detached and the bar never appeared.
+  // Initial state is false (SSR-safe): the bar never shows before the row has
+  // actually left the viewport, so it never overlaps the gallery and never
+  // duplicates a visible CTA.
   const purchaseRootRef = useRef<HTMLDivElement | null>(null);
-  const ctaRowRef = useRef<HTMLDivElement | null>(null);
-  const ctaPassed = useScrolledPast(ctaRowRef);
+  const [ctaRowEl, setCtaRowEl] = useState<HTMLDivElement | null>(null);
+  const [ctaPassed, setCtaPassed] = useState(false);
+  useEffect(() => {
+    if (!ctaRowEl || typeof IntersectionObserver === 'undefined') {
+      setCtaPassed(false);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        const rootTop = entry.rootBounds?.top ?? 0;
+        setCtaPassed(!entry.isIntersecting && entry.boundingClientRect.bottom <= rootTop);
+      },
+      { threshold: 0 }
+    );
+    observer.observe(ctaRowEl);
+    return () => observer.disconnect();
+  }, [ctaRowEl]);
 
   // OVERSELL GUARD: the /site PDP is served from the 5-minute data cache, so
   // the server-rendered stock figure can be stale. Refresh it on mount via
@@ -426,7 +448,7 @@ export default function SiteProductPurchase({
       {/* Primary CTA row — both prominent, equal width, ≥48px. Pass 3:
           flex-col-REVERSE below sm puts "Order via WhatsApp" (the checkout)
           on top of the stack on phones while keeping it on the right from sm. */}
-      <div ref={ctaRowRef} className="flex flex-col-reverse gap-3 pt-1 sm:flex-row">
+      <div ref={setCtaRowEl} className="flex flex-col-reverse gap-3 pt-1 sm:flex-row">
         <button type="button" onClick={handleAddToBag} className={styles.secondaryButton}>
           <ShoppingBag size={16} />
           Add to Bag
