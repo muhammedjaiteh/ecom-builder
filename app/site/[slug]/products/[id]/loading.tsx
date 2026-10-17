@@ -28,9 +28,21 @@ export default function SiteProductLoading() {
           <div className="h-2.5 w-28 animate-pulse rounded-full bg-neutral-100" />
         </div>
 
-        <div className="mt-6 grid grid-cols-1 items-start gap-10 md:mt-10 md:grid-cols-12 md:gap-12 lg:gap-16">
+        <div className="mt-5 grid grid-cols-1 items-start gap-6 md:mt-10 md:grid-cols-12 md:gap-12 lg:gap-16">
+          {/* Pass 3 mobile order: headline (eyebrow, title, price) FIRST, then
+              the gallery — mirrors the real page's `contents` column so the
+              skeleton and the page land in the same positions. */}
+          <div className="order-1 animate-pulse md:hidden">
+            <div className="h-2.5 w-24 rounded-full bg-neutral-200" />
+            <div className="mt-3 h-8 w-4/5 rounded-lg bg-neutral-200" />
+            <div className="mt-4 flex items-center gap-3">
+              <div className="h-7 w-28 rounded-lg bg-neutral-200" />
+              <div className="h-6 w-20 rounded-full bg-neutral-100" />
+            </div>
+          </div>
+
           {/* Gallery: vertical rail + tall frame (full-bleed below md) */}
-          <div className="animate-pulse md:col-span-7 md:grid md:grid-cols-[4.5rem_minmax(0,1fr)] md:gap-4">
+          <div className="order-2 animate-pulse md:order-none md:col-span-7 md:grid md:grid-cols-[4.5rem_minmax(0,1fr)] md:gap-4">
             <div className="hidden md:flex md:flex-col md:gap-3">
               {[0, 1, 2, 3].map((i) => (
                 <div key={i} className="h-[5.5rem] w-[4.5rem] rounded-xl bg-neutral-100" />
@@ -46,16 +58,18 @@ export default function SiteProductLoading() {
             </div>
           </div>
 
-          {/* Purchase column */}
-          <div className="animate-pulse md:col-span-5">
-            <div className="h-2.5 w-24 rounded-full bg-neutral-200" />
-            <div className="mt-4 h-8 w-4/5 rounded-lg bg-neutral-200 md:h-11" />
-            <div className="mt-3 h-8 w-1/2 rounded-lg bg-neutral-100 md:h-11" />
-            <div className="mt-6 flex items-center gap-4">
-              <div className="h-7 w-28 rounded-lg bg-neutral-200" />
-              <div className="h-6 w-20 rounded-full bg-neutral-100" />
+          {/* Purchase column (headline part is md-only — phones show it above) */}
+          <div className="order-3 animate-pulse md:order-none md:col-span-5">
+            <div className="hidden md:block">
+              <div className="h-2.5 w-24 rounded-full bg-neutral-200" />
+              <div className="mt-4 h-8 w-4/5 rounded-lg bg-neutral-200 md:h-11" />
+              <div className="mt-3 h-8 w-1/2 rounded-lg bg-neutral-100 md:h-11" />
+              <div className="mt-6 flex items-center gap-4">
+                <div className="h-7 w-28 rounded-lg bg-neutral-200" />
+                <div className="h-6 w-20 rounded-full bg-neutral-100" />
+              </div>
             </div>
-            <div className="my-7 h-px w-16 bg-neutral-200" />
+            <div className="my-6 h-px w-16 bg-neutral-200 md:my-7" />
             <div className="space-y-2.5">
               <div className="h-3 w-full max-w-md rounded-full bg-neutral-100" />
               <div className="h-3 w-11/12 max-w-md rounded-full bg-neutral-100" />
@@ -69,7 +83,7 @@ export default function SiteProductLoading() {
             </div>
             <div className="mt-6 h-11 w-36 rounded-full bg-neutral-100" />
             {/* CTA row — two equal prominent buttons */}
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row">
               <div className="h-12 flex-1 rounded-full bg-neutral-200" />
               <div className="h-12 flex-1 rounded-full bg-neutral-300" />
             </div>

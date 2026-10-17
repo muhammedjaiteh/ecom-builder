@@ -31,35 +31,39 @@ type PaneStyles = {
 };
 
 const PANE_STYLES: Record<SiteTone, PaneStyles> = {
+  // Pass 3: the WhatsApp row is a full-width tactile secondary button (not a
+  // plain-text link) in every dialect; ritual's stone literals became
+  // --site-text/--site-bg derivations so the deep-luxury palette renders the
+  // pane on its own paper.
   ritual: {
-    shell: 'rounded-2xl border border-stone-200 bg-white/70 p-5 md:p-6',
-    heading: 'text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-muted,oklch(70.9%_0.01_56.259))]',
+    shell: 'rounded-2xl border border-[color-mix(in_srgb,var(--site-text,#1c1917)_12%,transparent)] bg-[color-mix(in_srgb,var(--site-bg,#FBFAF7)_97%,var(--site-text,#1c1917))] p-5 md:p-6',
+    heading: 'text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-muted,oklch(55.3%_0.013_58.071))]',
     row: 'flex items-start gap-4',
-    rowSep: 'mt-5 border-t border-stone-200 pt-5',
+    rowSep: 'mt-5 border-t border-[color-mix(in_srgb,var(--site-text,#1c1917)_12%,transparent)] pt-5',
     icon: 'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--site-accent,#1c1917)_8%,transparent)] text-[var(--site-accent,#1c1917)]',
     rowTitle: 'text-sm font-medium leading-snug text-[var(--site-text,oklch(21.6%_0.006_56.043))]',
     rowBody: 'mt-1 text-xs leading-relaxed text-[var(--site-muted,oklch(55.3%_0.013_58.071))]',
-    link: 'mt-1 inline-flex min-h-11 items-center text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--site-accent,#1c1917)] underline underline-offset-4 transition hover:opacity-70',
+    link: 'mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-[var(--site-radius,9999px)] border-2 border-[var(--site-accent,#1c1917)] px-5 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--site-accent,#1c1917)] transition hover:bg-[var(--site-accent,#1c1917)] hover:text-white active:scale-[0.98]',
   },
   editorial: {
-    shell: 'border border-neutral-900 p-5 md:p-6',
+    shell: 'border border-[var(--site-text,#171717)] p-5 md:p-6',
     heading: 'text-[10px] font-bold uppercase tracking-[0.35em] text-[var(--site-muted,oklch(55.6%_0_0))]',
     row: 'flex items-start gap-4',
-    rowSep: 'mt-5 border-t border-neutral-300 pt-5',
-    icon: 'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center border border-neutral-900 text-[var(--site-accent,#1a2e1a)]',
+    rowSep: 'mt-5 border-t border-[color-mix(in_srgb,var(--site-text,#171717)_25%,transparent)] pt-5',
+    icon: 'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center border border-[var(--site-text,#171717)] text-[var(--site-accent,#1a2e1a)]',
     rowTitle: 'font-serif text-base italic leading-snug text-[var(--site-text,oklch(20.5%_0_0))]',
     rowBody: 'mt-1 text-xs leading-relaxed text-[var(--site-muted,oklch(43.9%_0_0))]',
-    link: 'mt-1 inline-flex min-h-11 items-center text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-text,oklch(20.5%_0_0))] underline underline-offset-4 transition hover:text-[var(--site-accent,#1a2e1a)]',
+    link: 'mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-[var(--site-radius,0px)] border-2 border-[var(--site-accent,#171717)] px-5 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-accent,#171717)] transition hover:bg-[var(--site-accent,#171717)] hover:text-[var(--site-bg,#F7F5F0)] active:scale-[0.98]',
   },
   neutral: {
     shell: 'rounded-2xl border border-white/10 bg-[#111] p-5 md:p-6',
-    heading: 'text-[10px] font-black uppercase tracking-[0.25em] text-white/50',
+    heading: 'text-[10px] font-black uppercase tracking-[0.25em] text-white/60',
     row: 'flex items-start gap-4',
     rowSep: 'mt-5 border-t border-white/10 pt-5',
     icon: 'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--site-accent,#f0a500)_12%,transparent)] text-[var(--site-accent,#f0a500)]',
     rowTitle: 'text-sm font-bold leading-snug text-[var(--site-text,#ffffff)]',
-    rowBody: 'mt-1 text-xs leading-relaxed text-white/50',
-    link: 'mt-1 inline-flex min-h-11 items-center text-[10px] font-black uppercase tracking-[0.2em] text-[var(--site-accent,#f0a500)] underline underline-offset-4 transition hover:opacity-70',
+    rowBody: 'mt-1 text-xs leading-relaxed text-white/60',
+    link: 'mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-[var(--site-radius,9999px)] border-2 border-[var(--site-accent,#f0a500)] px-5 text-[10px] font-black uppercase tracking-[0.2em] text-[var(--site-accent,#f0a500)] transition hover:bg-[var(--site-accent,#f0a500)] hover:text-black active:scale-[0.98]',
   },
 };
 
@@ -109,8 +113,8 @@ export function fulfillmentRows(shop: SiteShop, productName: string): Row[] {
       key: 'contact',
       Icon: MessageCircle,
       title: 'Questions about this piece?',
-      body: null,
-      link: { href: whatsApp, label: 'Message the boutique on WhatsApp' },
+      body: 'Ask about sizing, delivery or availability — a real person replies.',
+      link: { href: whatsApp, label: 'Ask on WhatsApp' },
     });
   }
   return rows;
@@ -132,7 +136,7 @@ export default function SiteFulfillmentPane({ shop, productName, tone }: {
             <span aria-hidden className={styles.icon}>
               <Icon size={16} strokeWidth={1.75} />
             </span>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className={styles.rowTitle}>{title}</p>
               {body && <p className={styles.rowBody}>{body}</p>}
               {link && (

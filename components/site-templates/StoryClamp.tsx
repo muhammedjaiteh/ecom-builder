@@ -68,12 +68,12 @@ export type StoryClampTone = 'ritual' | 'editorial' | 'vitality';
 // its #111 panel) and the button speaks the template's type register.
 const TONES: Record<StoryClampTone, { fade: string; button: string }> = {
   ritual: {
-    fade: 'bg-gradient-to-t from-white to-transparent',
+    fade: 'bg-gradient-to-t from-[color-mix(in_srgb,var(--site-bg,#FBFAF7)_94%,var(--site-text,#1c1917))] to-transparent',
     button:
       'mt-4 inline-flex min-h-11 items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--site-accent,#1c1917)] underline underline-offset-4 transition hover:opacity-70 active:scale-95',
   },
   editorial: {
-    fade: 'bg-gradient-to-t from-[#F7F5F0] to-transparent',
+    fade: 'bg-gradient-to-t from-[var(--site-bg,#F7F5F0)] to-transparent',
     button:
       'mt-4 inline-flex min-h-11 items-center gap-1.5 border-b-2 border-[var(--site-accent,#1a2e1a)] text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-accent,#1a2e1a)] transition hover:opacity-70 active:scale-95',
   },

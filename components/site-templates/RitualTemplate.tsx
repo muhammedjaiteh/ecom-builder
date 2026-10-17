@@ -15,15 +15,20 @@ import {
   type SiteTemplateProps,
 } from '@/lib/siteTemplates';
 import CarouselTrack from './CarouselTrack';
+import CategoryNav, { categoryAnchorId, distinctCategories } from './CategoryNav';
 import EditableText from './EditableText';
 import GatedVideo from './GatedVideo';
 import HeroBrandPlate from './HeroBrandPlate';
+import ProductCollage from './ProductCollage';
 import ProductTabsIsland from './ProductTabsIsland';
 import Reveal from './Reveal';
 import SiteMarquee from './SiteMarquee';
 import StoryClamp from './StoryClamp';
 import VideoHeroMedia from './VideoHeroMedia';
 import RitualChrome, {
+  RITUAL_BAND,
+  RITUAL_HAIRLINE,
+  RITUAL_SURFACE,
   RitualProductCard,
   ritualProductHref,
 } from './chrome/RitualChrome';
@@ -86,15 +91,18 @@ type PadKey = 'compact' | 'default' | 'spacious';
 function ritualPad(p: PadKey | undefined, map: Record<PadKey, string>): string {
   return map[p ?? 'default'];
 }
+// Pass 3 mobile rhythm: the md+ values are the historical desktop spacing;
+// the base (phone) values step down one notch so a 360px screen is not 40%
+// vertical padding between product rows.
 const PAD_20_28: Record<PadKey, string> = {
-  compact: 'py-12 md:py-16',
-  default: 'py-20 md:py-28',
-  spacious: 'py-28 md:py-40',
+  compact: 'py-10 md:py-16',
+  default: 'py-14 md:py-28',
+  spacious: 'py-20 md:py-40',
 };
 const PAD_16_24: Record<PadKey, string> = {
-  compact: 'py-10 md:py-14',
-  default: 'py-16 md:py-24',
-  spacious: 'py-24 md:py-36',
+  compact: 'py-8 md:py-14',
+  default: 'py-12 md:py-24',
+  spacious: 'py-20 md:py-36',
 };
 
 
@@ -183,10 +191,11 @@ function RitualHero({ block, shop, heroMedia, signal }: {
             nav button so the theme cascade recolors both together. The
             ring-white/20 hairline keeps the themeless stone-900 fallback
             legible against the dark hero plate. */}
-        <div className="mt-7">
+        {/* Pass 3: full-width thumb-reach CTA on phones, inline from sm. */}
+        <div className="mt-6 md:mt-7">
           <a
             href="#collection"
-            className="inline-flex min-h-11 items-center rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#1c1917)] px-8 text-center text-[10px] font-bold uppercase tracking-[0.25em] text-white shadow-lg ring-1 ring-white/20 transition hover:brightness-125 active:scale-95"
+            className="inline-flex min-h-12 w-full items-center justify-center rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#1c1917)] px-8 text-center text-[10px] font-bold uppercase tracking-[0.25em] text-white shadow-lg ring-1 ring-white/20 transition hover:brightness-125 active:scale-[0.98] sm:w-auto"
           >
             Shop The Collection
           </a>
@@ -217,12 +226,14 @@ function ritualFeaturedLayout(count: number): { grid: string; sizes: string } {
   }
 }
 
-function RitualProductGrid({ block, shop, products }: {
+function RitualProductGrid({ block, shop, products, catalog }: {
   block: ProductGridBlock;
   shop: SiteShop;
   /** The showcase selection (selectFeaturedProducts) — capped again here so a
    *  wider caller can never turn the showcase back into a wall. */
   products: SiteProduct[];
+  /** The full home slice — drives the category discovery strip (Pass 3). */
+  catalog: SiteProduct[];
 }) {
   const featured = products.slice(0, FEATURED_MAX);
   const count = featured.length;
@@ -230,11 +241,15 @@ function RitualProductGrid({ block, shop, products }: {
   const layout = ritualFeaturedLayout(count);
   // Bridge target: null in slugless studio previews → no bridge rendered.
   const collectionsPath = siteCollectionsPath(shop);
+  // Category discovery: real categories from the merchant's inventory, each
+  // deep-linking to its group on /collections. CategoryNav renders nothing
+  // below two categories or without a real collections path.
+  const categories = collectionsPath ? distinctCategories(catalog) : [];
   return (
     // padding/align consumption (Pillar 4): grid section spacing + header alignment.
     <section id="collection" data-block-section={block.id} className={`mx-auto max-w-7xl px-5 md:px-10 ${ritualPad(block.padding, PAD_20_28)}`}>
       <div className={alignLeft ? 'max-w-xl text-left' : 'mx-auto max-w-xl text-center'}>
-        <EditableText as="h2" blockId={block.id} field="title" className="font-serif text-3xl font-bold tracking-tight text-[var(--site-text,oklch(21.6%_0.006_56.043))] md:text-5xl">
+        <EditableText as="h2" blockId={block.id} field="title" className="font-serif text-3xl font-bold tracking-tight text-balance text-[var(--site-text,oklch(21.6%_0.006_56.043))] md:text-5xl">
           {block.title}
         </EditableText>
         <EditableText as="p" blockId={block.id} field="intro" className="mt-4 text-sm leading-relaxed text-[var(--site-muted,oklch(55.3%_0.013_58.071))] md:text-base">
@@ -242,15 +257,25 @@ function RitualProductGrid({ block, shop, products }: {
         </EditableText>
       </div>
 
+      {collectionsPath && (
+        <CategoryNav
+          tone="ritual"
+          label={null}
+          categories={categories}
+          hrefFor={(c) => `${collectionsPath}#${categoryAnchorId(c)}`}
+          className={`mt-8 ${alignLeft ? '' : 'md:[&>div]:justify-center'}`}
+        />
+      )}
+
       {count === 0 ? (
         // Branded empty state (mirrors /collections): the hero's
         // "Shop The Collection" anchor lands on something dignified.
-        <div className="mx-auto mt-14 max-w-md rounded-2xl border border-dashed border-stone-300 px-8 py-14 text-center md:mt-20">
+        <div className={`mx-auto mt-10 max-w-md rounded-2xl border border-dashed ${RITUAL_HAIRLINE} px-8 py-14 text-center md:mt-16`}>
           <p className="font-serif text-xl font-bold text-[var(--site-text,oklch(21.6%_0.006_56.043))]">The collection is being prepared.</p>
           <p className="mt-3 text-sm leading-relaxed text-[var(--site-muted,oklch(55.3%_0.013_58.071))]">New pieces are on their way — check back soon.</p>
         </div>
       ) : block.displayMode === 'carousel' ? (
-        <div className="mt-14 md:mt-20">
+        <div className="mt-10 md:mt-16">
           <CarouselTrack
             ariaLabel={block.title}
             trackClassName="gap-5 pb-2 md:gap-8"
@@ -263,7 +288,7 @@ function RitualProductGrid({ block, shop, products }: {
           />
         </div>
       ) : (
-        <div className={`mt-14 md:mt-20 ${layout.grid}`}>
+        <div className={`mt-10 md:mt-16 ${layout.grid}`}>
           {featured.map((p, i) => (
             <RitualProductCard key={p.id} product={p} index={i} href={ritualProductHref(shop, p.id)} sizes={layout.sizes} />
           ))}
@@ -272,12 +297,13 @@ function RitualProductGrid({ block, shop, products }: {
 
       {/* "Explore Collection" bridge — the journey from the showcase to the
           full catalog. Conditional: needs pieces to explore AND a real
-          /site path (slugless previews render none). No data-block attrs. */}
+          /site path (slugless previews render none). No data-block attrs.
+          Pass 3: full-width on phones (thumb-reach CTA), inline from sm. */}
       {count > 0 && collectionsPath && (
-        <div className={`mt-12 flex md:mt-14 ${alignLeft ? 'justify-start' : 'justify-center'}`}>
+        <div className={`mt-10 flex md:mt-14 ${alignLeft ? 'justify-start' : 'justify-center'}`}>
           <Link
             href={collectionsPath}
-            className="group inline-flex min-h-11 items-center gap-3 rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#1c1917)] px-8 text-[10px] font-bold uppercase tracking-[0.25em] text-white shadow-sm transition hover:brightness-125 active:scale-95"
+            className="group inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#1c1917)] px-8 text-[10px] font-bold uppercase tracking-[0.25em] text-white shadow-sm transition hover:brightness-125 active:scale-[0.98] sm:w-auto"
           >
             Explore Collection
             <span aria-hidden className="transition-transform duration-300 group-hover:translate-x-1 motion-reduce:transition-none">&rarr;</span>
@@ -291,13 +317,13 @@ function RitualProductGrid({ block, shop, products }: {
 function RitualProductTabs({ block }: { block: ProductTabsBlock }) {
   return (
     // padding consumption (Pillar 4): tabs section spacing.
-    <section data-block-section={block.id} className={`border-b border-stone-200 bg-white ${ritualPad(block.padding, PAD_16_24)}`}>
+    <section data-block-section={block.id} className={`border-b ${RITUAL_HAIRLINE} ${RITUAL_BAND} ${ritualPad(block.padding, PAD_16_24)}`}>
       <div className="mx-auto max-w-4xl px-5 md:px-10">
         <EditableText
           as="h2"
           blockId={block.id}
           field="title"
-          className="text-center font-serif text-3xl font-bold tracking-tight text-stone-900 md:text-4xl"
+          className="text-center font-serif text-3xl font-bold tracking-tight text-balance text-[var(--site-text,oklch(21.6%_0.006_56.043))] md:text-4xl"
         >
           {block.title}
         </EditableText>
@@ -346,10 +372,10 @@ function RitualVideoHero({ block, shopName }: { block: VideoHeroBlock; shopName:
 function RitualStory({ block, shopName }: { block: StoryBlock; shopName: string | null }) {
   return (
     // padding/align consumption (Pillar 4): story spacing + copy alignment.
-    <section id="story" data-block-section={block.id} className={`border-y border-stone-200 bg-white ${ritualPad(block.padding, PAD_20_28)}`}>
-      <div className="mx-auto grid max-w-6xl grid-cols-1 gap-8 px-5 md:grid-cols-[200px_1fr] md:gap-14 md:px-10">
+    <section id="story" data-block-section={block.id} className={`border-y ${RITUAL_HAIRLINE} ${RITUAL_BAND} ${ritualPad(block.padding, PAD_20_28)}`}>
+      <div className="mx-auto grid max-w-6xl grid-cols-1 gap-6 px-5 md:grid-cols-[200px_1fr] md:gap-14 md:px-10">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-stone-400">Our Story</p>
+          <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-[var(--site-muted,oklch(55.3%_0.013_58.071))]">Our Story</p>
           <div className="mt-5 hidden h-px w-16 bg-[var(--site-accent,#1c1917)] md:block" />
         </div>
         <div className={block.align === 'center' ? 'text-center' : undefined}>
@@ -361,7 +387,7 @@ function RitualStory({ block, shopName }: { block: StoryBlock; shopName: string 
               {block.body}
             </EditableText>
           </StoryClamp>
-          <p className="mt-7 text-[10px] font-bold uppercase tracking-[0.3em] text-stone-400">{shopName}</p>
+          <p className="mt-7 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-muted,oklch(55.3%_0.013_58.071))]">{shopName}</p>
         </div>
       </div>
     </section>
@@ -372,9 +398,12 @@ function RitualStory({ block, shopName }: { block: StoryBlock; shopName: string 
 // serif pull-quotes on white cards, verified attribution beneath. Items are
 // seeded exclusively from real reviews (integrity law).
 function RitualTestimonials({ block }: { block: TestimonialsBlock }) {
+  // Pass 3: an empty testimonials block renders NOTHING — never a heading
+  // over a void. (The block stays in the config/rail for the editor.)
+  if (block.items.length === 0) return null;
   return (
     // padding/align consumption (Pillar 4): quotes section spacing + heading alignment.
-    <section data-block-section={block.id} className={`border-y border-stone-200 bg-white ${ritualPad(block.padding, PAD_20_28)}`}>
+    <section data-block-section={block.id} className={`border-y ${RITUAL_HAIRLINE} ${RITUAL_BAND} ${ritualPad(block.padding, PAD_20_28)}`}>
       <div className="mx-auto max-w-6xl px-5 md:px-10">
         {block.title && (
           <EditableText
@@ -388,7 +417,7 @@ function RitualTestimonials({ block }: { block: TestimonialsBlock }) {
         )}
         <div className={`grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-8 ${block.title ? 'mt-12 md:mt-16' : ''}`}>
           {block.items.map((item, i) => (
-            <figure key={`${block.id}-quote-${i}`} className="rounded-2xl border border-stone-200 bg-[var(--site-bg,#FBFAF7)] p-7 md:p-9">
+            <figure key={`${block.id}-quote-${i}`} className={`rounded-2xl border ${RITUAL_HAIRLINE} bg-[var(--site-bg,#FBFAF7)] p-6 md:p-9`}>
               <span aria-hidden className="font-serif text-4xl leading-none text-[var(--site-accent,#1c1917)]">&ldquo;</span>
               <EditableText
                 as="blockquote"
@@ -403,7 +432,7 @@ function RitualTestimonials({ block }: { block: TestimonialsBlock }) {
                   as="span"
                   blockId={block.id}
                   field={`items.${i}.author`}
-                  className="text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--site-muted,oklch(70.9%_0.01_56.259))]"
+                  className="text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--site-muted,oklch(55.3%_0.013_58.071))]"
                 >
                   {item.author}
                 </EditableText>
@@ -417,20 +446,26 @@ function RitualTestimonials({ block }: { block: TestimonialsBlock }) {
 }
 
 // Archetype pass (Pillar 3): the two-panel conversion spread — copy beside a
-// solid accent panel carrying the boutique monogram. Accent rides
+// product panel. Pass 3: the panel shows the merchant's own pieces
+// (ProductCollage — up to two, linked, priced) instead of a 10rem monogram;
+// a shop with no pictured product gets a plain accent plate. Accent rides
 // --site-accent with the stone default, so themeless rendering stays on-dialect.
-function RitualSplitCta({ block, shopName, collectionsHref }: {
+function RitualSplitCta({ block, shop, products, collectionsHref }: {
   block: SplitCtaBlock;
-  shopName: string | null;
+  shop: SiteShop;
+  /** Home slice — the collage picks the first two pictured pieces. */
+  products: SiteProduct[];
   collectionsHref: string;
 }) {
-  const monogram = (shopName ?? 'S').trim().charAt(0).toUpperCase() || 'S';
+  const hrefFor = (id: string) => ritualProductHref(shop, id);
+  const collage = <ProductCollage tone="ritual" products={products} hrefFor={hrefFor} />;
+  const hasCollage = products.some((p) => p.ad_hero_image_url || p.image_url);
   return (
     // padding consumption (Pillar 4): split-spread section spacing.
     <section data-block-section={block.id} className={`mx-auto max-w-7xl px-5 md:px-10 ${ritualPad(block.padding, PAD_16_24)}`}>
-      <div className="grid grid-cols-1 overflow-hidden rounded-3xl border border-stone-200 bg-white md:grid-cols-2">
-        <div className="flex flex-col justify-center gap-5 p-8 md:p-14">
-          <EditableText as="h2" blockId={block.id} field="headline" className="font-serif text-3xl font-bold tracking-tight text-[var(--site-text,oklch(21.6%_0.006_56.043))] md:text-4xl">
+      <div className={`grid grid-cols-1 overflow-hidden rounded-3xl border ${RITUAL_HAIRLINE} ${RITUAL_SURFACE} md:grid-cols-2`}>
+        <div className="flex flex-col justify-center gap-5 p-7 md:p-14">
+          <EditableText as="h2" blockId={block.id} field="headline" className="font-serif text-3xl font-bold tracking-tight text-balance text-[var(--site-text,oklch(21.6%_0.006_56.043))] md:text-4xl">
             {block.headline}
           </EditableText>
           <EditableText as="p" blockId={block.id} field="body" className="max-w-md text-sm leading-relaxed text-[var(--site-muted,oklch(55.3%_0.013_58.071))] md:text-base">
@@ -440,15 +475,18 @@ function RitualSplitCta({ block, shopName, collectionsHref }: {
             href={collectionsHref}
             data-block-id={block.id}
             data-block-field="button_label"
-            className="mt-2 inline-flex min-h-11 items-center self-start rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#1c1917)] px-8 text-[10px] font-bold uppercase tracking-[0.25em] text-white shadow-sm transition hover:brightness-125 active:scale-95"
+            className="mt-2 inline-flex min-h-12 w-full items-center justify-center rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#1c1917)] px-8 text-[10px] font-bold uppercase tracking-[0.25em] text-white shadow-sm transition hover:brightness-125 active:scale-[0.98] sm:w-auto sm:self-start"
           >
             {block.button_label}
           </Link>
         </div>
-        <div aria-hidden className="relative flex min-h-[220px] items-center justify-center bg-[var(--site-accent,#1c1917)] md:min-h-[320px]">
-          <span className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.16),transparent_60%)]" />
-          <span className="relative font-serif text-[7rem] italic leading-none text-white/25 md:text-[10rem]">{monogram}</span>
-        </div>
+        {hasCollage ? (
+          <div className="p-5 md:p-10">{collage}</div>
+        ) : (
+          <div aria-hidden className="relative min-h-[160px] bg-[var(--site-accent,#1c1917)] md:min-h-[320px]">
+            <span className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.16),transparent_60%)]" />
+          </div>
+        )}
       </div>
     </section>
   );
@@ -507,7 +545,7 @@ export default function RitualTemplate({ shop, products, config, heroMedia }: Si
             // value_props: no body section (Fix 2) — the block renders as the
             // SiteMarquee ribbon after the hero.
             case 'product_grid':
-              return <RitualProductGrid block={block} shop={shop} products={featured} />;
+              return <RitualProductGrid block={block} shop={shop} products={featured} catalog={products} />;
             case 'story_text':
               return <RitualStory block={block} shopName={shop.shop_name} />;
             case 'cta_banner':
@@ -519,7 +557,7 @@ export default function RitualTemplate({ shop, products, config, heroMedia }: Si
             case 'testimonials':
               return <RitualTestimonials block={block} />;
             case 'split_cta':
-              return <RitualSplitCta block={block} shopName={shop.shop_name} collectionsHref={collectionsHref} />;
+              return <RitualSplitCta block={block} shop={shop} products={featured} collectionsHref={collectionsHref} />;
             default:
               return null;
           }

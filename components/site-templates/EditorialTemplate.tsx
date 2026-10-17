@@ -15,9 +15,11 @@ import {
   type SiteTemplateProps,
 } from '@/lib/siteTemplates';
 import CarouselTrack from './CarouselTrack';
+import CategoryNav, { categoryAnchorId, distinctCategories } from './CategoryNav';
 import EditableText from './EditableText';
 import GatedVideo from './GatedVideo';
 import HeroBrandPlate from './HeroBrandPlate';
+import ProductCollage, { picturedProducts } from './ProductCollage';
 import ProductTabsIsland from './ProductTabsIsland';
 import Reveal from './Reveal';
 import SiteMarquee from './SiteMarquee';
@@ -129,14 +131,13 @@ function EditorialHero({ block, shop, heroMedia, signal }: {
   /** Honest offer pill (resolveHeroSignal) — null renders NO pill, no gap. */
   signal: HeroSignal | null;
 }) {
-  const initial = (shop.shop_name ?? 'S').trim().charAt(0).toUpperCase() || 'S';
   return (
-    <section data-block-section={block.id} className="grid grid-cols-1 border-b border-neutral-900 md:grid-cols-12">
+    <section data-block-section={block.id} className="grid grid-cols-1 border-b border-[var(--site-text,#171717)] md:grid-cols-12">
       {/* Micro-Homepage: a compact niche opener — the md media pane sits at
           ≈40vh with a 360px content floor (was min(580px,62vh)); mobile drops
           to a 240px plate so the hook + pill + features peek above the fold.
           The copy column still grows the section (min-h clip-fix semantics). */}
-      <div className="relative min-h-[240px] border-neutral-900 md:col-span-7 md:min-h-[max(360px,40vh)] md:border-r">
+      <div className="relative min-h-[240px] border-[var(--site-text,#171717)] md:col-span-7 md:min-h-[max(360px,40vh)] md:border-r">
         {heroMedia?.type === 'video' ? (
           // 2G media gate: unconstrained networks autoplay exactly as before;
           // save-data/2g/3g/reduced-motion get the ad poster (or the monogram
@@ -150,11 +151,9 @@ function EditorialHero({ block, shop, heroMedia, signal }: {
             posterBlurTone="light"
             posterPriority
             fallback={
-              <div aria-hidden className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-neutral-200 via-[#EDEAE2] to-neutral-300">
-                <span className="font-serif text-[10rem] italic leading-none text-neutral-400/40 md:text-[16rem]">{initial}</span>
-              </div>
+              <div aria-hidden className="absolute inset-0 bg-gradient-to-br from-neutral-200 via-[#EDEAE2] to-neutral-300" />
             }
-            playButtonClassName="absolute left-1/2 top-1/2 z-10 flex min-h-11 -translate-x-1/2 -translate-y-1/2 items-center gap-2.5 border border-neutral-900 bg-[#F7F5F0]/95 px-7 py-3.5 text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-900 backdrop-blur-sm transition hover:bg-neutral-900 hover:text-[#F7F5F0] active:scale-95"
+            playButtonClassName="absolute left-1/2 top-1/2 z-10 flex min-h-11 -translate-x-1/2 -translate-y-1/2 items-center gap-2.5 border border-[var(--site-text,#171717)] bg-[color-mix(in_srgb,var(--site-bg,#F7F5F0)_95%,transparent)] px-7 py-3.5 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-text,#171717)] backdrop-blur-sm transition hover:bg-[var(--site-text,#171717)] hover:text-[var(--site-bg,#F7F5F0)] active:scale-95"
           />
         ) : heroMedia ? (
           <SmartImage
@@ -173,8 +172,9 @@ function EditorialHero({ block, shop, heroMedia, signal }: {
           <HeroBrandPlate tone="editorial" shopName={shop.shop_name} />
         )}
       </div>
-      <div className="flex flex-col justify-center gap-4 px-5 py-9 md:col-span-5 md:gap-5 md:px-10 md:py-12">
-        <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-[var(--site-accent,#1a2e1a)]">No. 01 — The Opening</p>
+      {/* Pass 3: the "No. 01 — The Opening" eyebrow was retired (decorative
+          numbering, not merchant identity); the headline leads. */}
+      <div className="flex flex-col justify-center gap-4 px-5 py-8 md:col-span-5 md:gap-5 md:px-10 md:py-12">
         <EditableText
           as="h1"
           blockId={block.id}
@@ -191,7 +191,7 @@ function EditorialHero({ block, shop, heroMedia, signal }: {
             ladder (low stock → new this week → fulfillment fact); null →
             nothing rendered. .sndk-rise never touches an LCP/editor node. */}
         {signal && (
-          <span className="sndk-rise inline-flex min-h-8 items-center gap-2 self-start border border-neutral-900 px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.3em] text-[var(--site-text,oklch(20.5%_0_0))]">
+          <span className="sndk-rise inline-flex min-h-8 items-center gap-2 self-start border border-[var(--site-text,#171717)] px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.3em] text-[var(--site-text,oklch(20.5%_0_0))]">
             <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${signal.kind === 'stock' ? 'bg-amber-700' : 'bg-[var(--site-accent,#1a2e1a)]'}`} />
             {signal.label}
           </span>
@@ -202,9 +202,9 @@ function EditorialHero({ block, shop, heroMedia, signal }: {
             Fallback #171717 IS neutral-900 (the existing Editorial CTA law). */}
         <a
           href="#collection"
-          className="group inline-flex min-h-11 items-center gap-3 self-start rounded-[var(--site-radius,0px)] bg-[var(--site-accent,#171717)] px-8 text-[10px] font-bold uppercase tracking-[0.3em] text-[#F7F5F0] transition hover:brightness-125 active:scale-95"
+          className="group inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-[var(--site-radius,0px)] bg-[var(--site-accent,#171717)] px-8 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-bg,#F7F5F0)] transition hover:brightness-125 active:scale-[0.98] sm:w-auto sm:self-start"
         >
-          Read The Collection
+          Shop The Collection
           <span aria-hidden className="transition-transform group-hover:translate-x-1.5 motion-reduce:transition-none">&rarr;</span>
         </a>
       </div>
@@ -223,23 +223,23 @@ function EditorialFeatures({ shop, featured }: {
     // with a minimal section header instead of a dead jump — the cleaner of
     // the two options for an empty catalog.
     return (
-      <section id="features" className="border-b border-neutral-900 px-5 py-12 text-center md:px-10 md:py-16">
-        <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-neutral-400">Features</p>
-        <p className="mt-3 font-serif text-2xl italic text-neutral-900">The first features are being prepared.</p>
+      <section id="features" className="border-b border-[var(--site-text,#171717)] px-5 py-12 text-center md:px-10 md:py-16">
+        <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-[var(--site-muted,oklch(55.6%_0_0))]">Features</p>
+        <p className="mt-3 font-serif text-2xl italic text-[var(--site-text,#171717)]">The first features are being prepared.</p>
       </section>
     );
   }
   return (
-    <section id="features" className="border-b border-neutral-900">
+    <section id="features" className="border-b border-[var(--site-text,#171717)]">
       {featured.map((p, i) => {
         const badge = editorialStockBadge(p.stock_quantity);
         const reversed = i % 2 === 1;
         return (
           <article
             key={p.id}
-            className={`grid grid-cols-1 md:grid-cols-2 ${i > 0 ? 'border-t border-neutral-900' : ''}`}
+            className={`grid grid-cols-1 md:grid-cols-2 ${i > 0 ? 'border-t border-[var(--site-text,#171717)]' : ''}`}
           >
-            <div className={`group relative aspect-[4/3] overflow-hidden border-neutral-900 md:aspect-auto md:min-h-[500px] ${reversed ? 'md:order-2 md:border-l' : 'md:border-r'}`}>
+            <div className={`group relative aspect-[4/3] overflow-hidden border-[var(--site-text,#171717)] md:aspect-auto md:min-h-[500px] ${reversed ? 'md:order-2 md:border-l' : 'md:border-r'}`}>
               <div className="absolute inset-0">
                 <EditorialProductPlate
                   src={p.ad_hero_image_url ?? p.image_url}
@@ -250,25 +250,30 @@ function EditorialFeatures({ shop, featured }: {
               </div>
               {badge && (
                 <span className={`absolute left-4 top-4 px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.25em] ${
-                  badge.tone === 'out' ? 'bg-neutral-900 text-white' : 'bg-[#F7F5F0] text-amber-800 ring-1 ring-neutral-900'
+                  badge.tone === 'out' ? 'bg-[var(--site-text,#171717)] text-white' : 'bg-[var(--site-bg,#F7F5F0)] text-amber-800 ring-1 ring-[var(--site-text,#171717)]'
                 }`}>
                   {badge.label}
                 </span>
               )}
             </div>
-            <div className={`flex flex-col justify-center gap-5 px-5 py-14 md:px-14 md:py-24 ${reversed ? 'md:order-1' : ''}`}>
-              <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-neutral-400">Feature No. 0{i + 1}</p>
-              <h2 className="font-serif text-3xl font-bold leading-tight md:text-5xl">{p.name}</h2>
+            {/* Pass 3: the eyebrow is the piece's REAL category (or nothing)
+                instead of "Feature No. 0X"; price sits directly under the
+                name in bold ink; the CTA is full-width on phones. */}
+            <div className={`flex flex-col justify-center gap-4 px-5 py-10 md:gap-5 md:px-14 md:py-24 ${reversed ? 'md:order-1' : ''}`}>
+              {p.category && (
+                <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-[var(--site-muted,oklch(55.6%_0_0))]">{p.category}</p>
+              )}
+              <h2 className="font-serif text-3xl font-bold leading-tight text-balance md:text-5xl">{p.name}</h2>
+              <p className="text-2xl font-bold tracking-tight text-[var(--site-text,oklch(20.5%_0_0))]">{editorialPrice(p.price)}</p>
               {p.description && (
                 <p className="line-clamp-3 max-w-md text-sm leading-relaxed text-[var(--site-muted,oklch(43.9%_0_0))] md:text-base">{p.description}</p>
               )}
-              <p className="font-serif text-2xl italic text-[var(--site-text,oklch(20.5%_0_0))]">{editorialPrice(p.price)}</p>
               {/* Accent cohesion (Fix 6): the feature CTA rides --site-accent.
                   Fallback #171717 IS neutral-900 — theme-less rendering stays
                   byte-identical; a themed site recolors the outline + fill. */}
               <Link
                 href={editorialProductHref(shop, p.id)}
-                className="inline-flex self-start rounded-[var(--site-radius,0px)] border border-[var(--site-accent,#171717)] px-9 py-3.5 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-accent,#171717)] transition hover:bg-[var(--site-accent,#171717)] hover:text-[#F7F5F0] active:scale-95"
+                className="inline-flex min-h-12 w-full items-center justify-center rounded-[var(--site-radius,0px)] border border-[var(--site-accent,#171717)] px-9 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-accent,#171717)] transition hover:bg-[var(--site-accent,#171717)] hover:text-[var(--site-bg,#F7F5F0)] active:scale-[0.98] sm:w-auto sm:self-start"
               >
                 View The Piece
               </Link>
@@ -280,35 +285,51 @@ function EditorialFeatures({ shop, featured }: {
   );
 }
 
-function EditorialGrid({ block, shop, products, catalogSize }: {
+function EditorialGrid({ block, shop, products, catalog }: {
   block: ProductGridBlock;
   shop: SiteShop;
   /** The showcase (≤FEATURED_MAX pieces, none repeating the features spread). */
   products: SiteProduct[];
-  /** Full home-slice size — distinguishes "empty catalog" (branded empty
-   *  state) from "the spread already shows everything" (header + bridge only). */
-  catalogSize: number;
+  /** Full home slice — its size distinguishes "empty catalog" (branded empty
+   *  state) from "the spread already shows everything" (header + bridge
+   *  only); its categories drive the discovery strip (Pass 3). */
+  catalog: SiteProduct[];
 }) {
+  const catalogSize = catalog.length;
   const showcase = products.slice(0, FEATURED_MAX);
   // Bridge target: null in slugless studio previews → no bridge rendered.
   const collectionsPath = siteCollectionsPath(shop);
+  const categories = collectionsPath ? distinctCategories(catalog) : [];
   return (
     // padding/align consumption (Pillar 4): grid header zone spacing + layout.
-    <section id="collection" data-block-section={block.id} className="border-b border-neutral-900">
+    <section id="collection" data-block-section={block.id} className="border-b border-[var(--site-text,#171717)]">
       <div className={`flex flex-col gap-4 px-5 md:px-10 ${editorialPad(block.padding, PAD_GRID_HEAD)} ${block.align === 'center' ? 'items-center text-center' : 'items-start justify-between md:flex-row md:items-baseline'}`}>
-        <EditableText as="h2" blockId={block.id} field="title" className="font-serif text-4xl font-black tracking-tight md:text-5xl">
+        <EditableText as="h2" blockId={block.id} field="title" className="font-serif text-3xl font-black tracking-tight text-balance md:text-5xl">
           {block.title}
         </EditableText>
         <EditableText as="p" blockId={block.id} field="intro" className="max-w-md text-sm leading-relaxed text-[var(--site-muted,oklch(55.6%_0_0))]">
           {block.intro}
         </EditableText>
       </div>
+      {/* Category discovery (Pass 3): real inventory categories, hairline
+          chips, each deep-linking to its group on /collections. Renders
+          nothing below two categories. */}
+      {collectionsPath && categories.length >= 2 && (
+        <div className="border-t border-[color-mix(in_srgb,var(--site-text,#171717)_25%,transparent)] px-5 py-4 md:px-10">
+          <CategoryNav
+            tone="editorial"
+            label={null}
+            categories={categories}
+            hrefFor={(c) => `${collectionsPath}#${categoryAnchorId(c)}`}
+          />
+        </div>
+      )}
       {catalogSize === 0 ? (
         // Branded empty state (mirrors /collections): the hero's
         // "Read The Collection" anchor lands on something dignified.
-        <div className="border-t border-neutral-900 px-5 py-20 text-center md:px-10">
-          <p className="font-serif text-2xl italic text-neutral-900">The collection is being prepared.</p>
-          <p className="mt-3 text-sm leading-relaxed text-neutral-500">New pieces are on their way — check back soon.</p>
+        <div className="border-t border-[var(--site-text,#171717)] px-5 py-20 text-center md:px-10">
+          <p className="font-serif text-2xl italic text-[var(--site-text,#171717)]">The collection is being prepared.</p>
+          <p className="mt-3 text-sm leading-relaxed text-[var(--site-muted,oklch(55.6%_0_0))]">New pieces are on their way — check back soon.</p>
         </div>
       ) : showcase.length === 0 ? (
         // 1–2 piece shops: the features spread already shows every piece —
@@ -317,9 +338,9 @@ function EditorialGrid({ block, shop, products, catalogSize }: {
       ) : block.displayMode === 'carousel' ? (
         <CarouselTrack
           ariaLabel={block.title}
-          trackClassName="gap-px border-t border-neutral-900 bg-neutral-900"
-          itemClassName="w-[64vw] max-w-[300px] bg-[#F7F5F0] sm:w-[300px]"
-          buttonClassName="h-11 w-11 border border-neutral-900 bg-[#F7F5F0] text-neutral-900 shadow-lg hover:bg-neutral-900 hover:text-[#F7F5F0] active:scale-95"
+          trackClassName="gap-px border-t border-[var(--site-text,#171717)] bg-[var(--site-text,#171717)]"
+          itemClassName="w-[64vw] max-w-[300px] bg-[var(--site-bg,#F7F5F0)] sm:w-[300px]"
+          buttonClassName="h-11 w-11 border border-[var(--site-text,#171717)] bg-[var(--site-bg,#F7F5F0)] text-[var(--site-text,#171717)] shadow-lg hover:bg-[var(--site-text,#171717)] hover:text-[var(--site-bg,#F7F5F0)] active:scale-95"
           items={showcase.map((p, i) => ({
             key: p.id,
             node: <EditorialProductCard product={p} index={i} href={editorialProductHref(shop, p.id)} sizes="(min-width: 640px) 300px, 64vw" />,
@@ -340,7 +361,7 @@ function EditorialGrid({ block, shop, products, catalogSize }: {
       {catalogSize > 0 && collectionsPath && (
         <Link
           href={collectionsPath}
-          className="group flex min-h-14 items-center justify-between border-t border-neutral-900 bg-[var(--site-accent,#171717)] px-5 text-[10px] font-bold uppercase tracking-[0.3em] text-[#F7F5F0] transition hover:brightness-125 md:px-10"
+          className="group flex min-h-14 items-center justify-between border-t border-[var(--site-text,#171717)] bg-[var(--site-accent,#171717)] px-5 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-bg,#F7F5F0)] transition hover:brightness-125 md:px-10"
         >
           <span>Explore Collection</span>
           <span aria-hidden className="transition-transform duration-300 group-hover:translate-x-1.5 motion-reduce:transition-none">&rarr;</span>
@@ -353,7 +374,7 @@ function EditorialGrid({ block, shop, products, catalogSize }: {
 function EditorialProductTabs({ block }: { block: ProductTabsBlock }) {
   return (
     // padding consumption (Pillar 4): tabs section spacing.
-    <section data-block-section={block.id} className={`border-b border-neutral-900 px-5 md:px-10 ${editorialPad(block.padding, PAD_16_24)}`}>
+    <section data-block-section={block.id} className={`border-b border-[var(--site-text,#171717)] px-5 md:px-10 ${editorialPad(block.padding, PAD_16_24)}`}>
       <div className="mx-auto max-w-4xl">
         <EditableText
           as="h2"
@@ -373,7 +394,7 @@ function EditorialProductTabs({ block }: { block: ProductTabsBlock }) {
 
 function EditorialVideoHero({ block, shopName }: { block: VideoHeroBlock; shopName: string | null }) {
   return (
-    <section data-block-section={block.id} className="border-b border-neutral-900">
+    <section data-block-section={block.id} className="border-b border-[var(--site-text,#171717)]">
       {/* Fold discipline (Fix 5): md frame caps at min(560px,60vh) — px floor
           behavior on large screens, honest height on short laptops. */}
       <div className="relative min-h-[380px] overflow-hidden md:min-h-[min(560px,60vh)]">
@@ -417,9 +438,12 @@ function EditorialVideoHero({ block, shopName }: { block: VideoHeroBlock; shopNa
 // column rules, italic quotes, em-dash attribution. Items are seeded
 // exclusively from real reviews (integrity law).
 function EditorialTestimonials({ block }: { block: TestimonialsBlock }) {
+  // Pass 3: an empty testimonials block renders NOTHING — never a heading
+  // over a void. (The block stays in the config/rail for the editor.)
+  if (block.items.length === 0) return null;
   return (
     // padding/align consumption (Pillar 4): quotes spacing + heading alignment.
-    <section data-block-section={block.id} className={`border-b border-neutral-900 px-5 md:px-10 ${editorialPad(block.padding, PAD_16_24)}`}>
+    <section data-block-section={block.id} className={`border-b border-[var(--site-text,#171717)] px-5 md:px-10 ${editorialPad(block.padding, PAD_16_24)}`}>
       <div className="mx-auto max-w-5xl">
         {block.title ? (
           <EditableText
@@ -431,17 +455,16 @@ function EditorialTestimonials({ block }: { block: TestimonialsBlock }) {
             {block.title}
           </EditableText>
         ) : (
-          <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-neutral-400">Letters</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-[var(--site-muted,oklch(55.6%_0_0))]">Letters</p>
         )}
         <div className="mt-10 grid grid-cols-1 gap-y-10 md:grid-cols-2 md:gap-x-14">
           {block.items.map((item, i) => (
-            <figure key={`${block.id}-quote-${i}`} className={`md:pr-2 ${i > 0 ? 'border-t border-neutral-300 pt-10 md:border-t-0 md:pt-0' : ''}`}>
-              <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-neutral-400">No. 0{i + 1}</p>
+            <figure key={`${block.id}-quote-${i}`} className={`md:pr-2 ${i > 0 ? 'border-t border-[color-mix(in_srgb,var(--site-text,#171717)_25%,transparent)] pt-8 md:border-t-0 md:pt-0' : ''}`}>
               <EditableText
                 as="blockquote"
                 blockId={block.id}
                 field={`items.${i}.quote`}
-                className="mt-4 font-serif text-xl italic leading-relaxed text-[var(--site-text,oklch(20.5%_0_0))] md:text-2xl"
+                className="font-serif text-xl italic leading-relaxed text-[var(--site-text,oklch(20.5%_0_0))] md:text-2xl"
               >
                 {item.quote}
               </EditableText>
@@ -464,16 +487,17 @@ function EditorialTestimonials({ block }: { block: TestimonialsBlock }) {
 }
 
 // Archetype pass (Pillar 3): the two-panel conversion spread in the hairline
-// dialect — copy column beside a solid accent plate. Square corners, print
-// borders; the accent rides --site-accent with the deep-green default.
-function EditorialSplitCta({ block, shop }: { block: SplitCtaBlock; shop: SiteShop }) {
-  const monogram = (shop.shop_name ?? 'S').trim().charAt(0).toUpperCase() || 'S';
+// dialect — copy column beside a product panel. Pass 3: the panel shows the
+// merchant's own pieces (ProductCollage — up to two, linked, priced) instead
+// of an 11rem monogram; a shop with no pictured product gets a plain accent
+// plate. Square corners, print borders; --site-accent, deep-green default.
+function EditorialSplitCta({ block, shop, products }: { block: SplitCtaBlock; shop: SiteShop; products: SiteProduct[] }) {
+  const hasCollage = picturedProducts(products, 1).length > 0;
   return (
-    <section data-block-section={block.id} className="grid grid-cols-1 border-b border-neutral-900 md:grid-cols-2">
+    <section data-block-section={block.id} className="grid grid-cols-1 border-b border-[var(--site-text,#171717)] md:grid-cols-2">
       {/* padding consumption (Pillar 4): split copy-column spacing. */}
-      <div className={`flex flex-col justify-center gap-5 border-neutral-900 px-5 md:border-r md:px-14 ${editorialPad(block.padding, PAD_SPLIT)}`}>
-        <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-[var(--site-accent,#1a2e1a)]">The Invitation</p>
-        <EditableText as="h2" blockId={block.id} field="headline" className="font-serif text-3xl italic leading-tight md:text-5xl">
+      <div className={`flex flex-col justify-center gap-5 border-[var(--site-text,#171717)] px-5 md:border-r md:px-14 ${editorialPad(block.padding, PAD_SPLIT)}`}>
+        <EditableText as="h2" blockId={block.id} field="headline" className="font-serif text-3xl italic leading-tight text-balance md:text-5xl">
           {block.headline}
         </EditableText>
         <EditableText as="p" blockId={block.id} field="body" className="max-w-md text-sm leading-relaxed text-[var(--site-muted,oklch(43.9%_0_0))] md:text-base">
@@ -483,15 +507,20 @@ function EditorialSplitCta({ block, shop }: { block: SplitCtaBlock; shop: SiteSh
           href={siteCollectionsPath(shop) ?? '#collection'}
           data-block-id={block.id}
           data-block-field="button_label"
-          className="mt-1 inline-flex self-start rounded-[var(--site-radius,0px)] border border-[var(--site-accent,#171717)] px-9 py-3.5 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-accent,#171717)] transition hover:bg-[var(--site-accent,#171717)] hover:text-[#F7F5F0] active:scale-95"
+          className="mt-1 inline-flex min-h-12 w-full items-center justify-center rounded-[var(--site-radius,0px)] border border-[var(--site-accent,#171717)] px-9 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-accent,#171717)] transition hover:bg-[var(--site-accent,#171717)] hover:text-[var(--site-bg,#F7F5F0)] active:scale-[0.98] sm:w-auto sm:self-start"
         >
           {block.button_label}
         </Link>
       </div>
-      <div aria-hidden className="relative flex min-h-[220px] items-center justify-center bg-[var(--site-accent,#1a2e1a)] md:min-h-[340px]">
-        <span className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(247,245,240,0.14),transparent_60%)]" />
-        <span className="relative font-serif text-[7rem] italic leading-none text-[#F7F5F0]/25 md:text-[11rem]">{monogram}</span>
-      </div>
+      {hasCollage ? (
+        <div className="border-t border-[var(--site-text,#171717)] px-5 py-8 md:border-t-0 md:px-12 md:py-12">
+          <ProductCollage tone="editorial" products={products} hrefFor={(id) => editorialProductHref(shop, id)} />
+        </div>
+      ) : (
+        <div aria-hidden className="relative min-h-[160px] bg-[var(--site-accent,#1a2e1a)] md:min-h-[340px]">
+          <span className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(247,245,240,0.14),transparent_60%)]" />
+        </div>
+      )}
     </section>
   );
 }
@@ -506,9 +535,11 @@ function EditorialStory({ block, shopName }: { block: StoryBlock; shopName: stri
   const isLong = block.body.length > STORY_LONG_THRESHOLD;
   return (
     // padding/align consumption (Pillar 4): story spacing + quote alignment.
-    <section id="story" data-block-section={block.id} className={`border-b border-neutral-900 px-5 md:px-10 ${editorialPad(block.padding, PAD_STORY)}`}>
+    <section id="story" data-block-section={block.id} className={`border-b border-[var(--site-text,#171717)] px-5 md:px-10 ${editorialPad(block.padding, PAD_STORY)}`}>
       <div className="relative mx-auto max-w-4xl">
-        <span aria-hidden className="pointer-events-none absolute -top-10 left-0 select-none font-serif text-[8rem] leading-none text-neutral-300 md:-top-16 md:text-[12rem]">
+        {/* Pass 3: the pull-quote mark stepped down from 8/12rem to 5/8rem —
+            a typographic cue, not a decorative wall behind the copy. */}
+        <span aria-hidden className="pointer-events-none absolute -top-6 left-0 select-none font-serif text-[5rem] leading-none text-[color-mix(in_srgb,var(--site-text,#171717)_20%,transparent)] md:-top-10 md:text-[8rem]">
           &ldquo;
         </span>
         {/* Fix 1: the quote-clearing padding moved onto this relative wrapper
@@ -580,7 +611,7 @@ export default function EditorialTemplate({ shop, products, config, heroMedia }:
           case 'product_grid':
             return (
               <Reveal key={block.id} delay={Math.min(i * 0.05, 0.15)}>
-                <EditorialGrid block={block} shop={shop} products={showcase} catalogSize={products.length} />
+                <EditorialGrid block={block} shop={shop} products={showcase} catalog={products} />
               </Reveal>
             );
           case 'story_text':
@@ -610,7 +641,7 @@ export default function EditorialTemplate({ shop, products, config, heroMedia }:
           case 'split_cta':
             return (
               <Reveal key={block.id} delay={Math.min(i * 0.05, 0.15)}>
-                <EditorialSplitCta block={block} shop={shop} />
+                <EditorialSplitCta block={block} shop={shop} products={[...spread, ...showcase]} />
               </Reveal>
             );
           default:

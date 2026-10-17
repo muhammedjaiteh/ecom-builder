@@ -32,6 +32,19 @@ export function ritualPrice(p: number | null) {
   return p == null ? '' : `D${Number(p).toLocaleString()}`;
 }
 
+// Pass 3 — palette-safe structure tokens. The deep-luxury archetype pairs
+// this template with a near-black paper (#12100d), where the historical
+// `border-stone-200` / `bg-white` surfaces vanished or glared. Both tokens
+// derive from the live --site-text / --site-bg pair, so the themeless cream
+// site keeps its quiet stone hairlines and the dark palette gets the same
+// relationships inverted. Shared by the template, the chrome and the PDP.
+/** Hairline rule: 12% ink over transparent. */
+export const RITUAL_HAIRLINE = 'border-[color-mix(in_srgb,var(--site-text,#1c1917)_12%,transparent)]';
+/** Section band: paper tinted 6% toward ink (the story/testimonial strips). */
+export const RITUAL_BAND = 'bg-[color-mix(in_srgb,var(--site-bg,#FBFAF7)_94%,var(--site-text,#1c1917))]';
+/** Raised surface: paper tinted 3% toward ink (cards, pills, panes). */
+export const RITUAL_SURFACE = 'bg-[color-mix(in_srgb,var(--site-bg,#FBFAF7)_97%,var(--site-text,#1c1917))]';
+
 // Stock is optional/additive: undefined (not loaded) renders nothing, so every
 // legacy caller keeps its exact output. 0 = sold out, 1..LOW_STOCK_MAX =
 // urgency badge (the same ceiling the hero offer pill uses).
@@ -114,7 +127,7 @@ export function RitualProductCard({ product, index, href, sizes }: {
       <Link href={href} className="absolute inset-0 z-10 rounded-2xl">
         <span className="sr-only">{product.name}</span>
       </Link>
-      <div className="relative aspect-[3/4] overflow-hidden rounded-2xl bg-stone-100">
+      <div className={`relative aspect-[3/4] overflow-hidden rounded-2xl ${RITUAL_SURFACE}`}>
         <RitualProductVisual src={product.ad_hero_image_url ?? product.image_url} alt={product.name} index={index} sizes={imgSizes} />
         {altSrc && (
           // Second photo — revealed by hover (pointer devices) or the toggle
@@ -150,21 +163,24 @@ export function RitualProductCard({ product, index, href, sizes }: {
             {sale && <SaleBadge />}
           </div>
         )}
-        <span className="absolute inset-x-3 bottom-3 z-[2] translate-y-2 rounded-full bg-white/95 py-2.5 text-center text-[10px] font-bold uppercase tracking-[0.2em] text-stone-900 opacity-0 shadow-lg backdrop-blur transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
+        <span className="absolute inset-x-3 bottom-3 z-[2] hidden translate-y-2 rounded-full bg-white/95 py-2.5 text-center text-[10px] font-bold uppercase tracking-[0.2em] text-stone-900 opacity-0 shadow-lg backdrop-blur transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100 md:block">
           View Product
         </span>
       </div>
-      <div className="mt-4 flex items-start justify-between gap-3 px-1">
-        <p className="text-sm font-medium leading-snug text-[var(--site-text,oklch(26.8%_0.007_34.298))]">{product.name}</p>
-        <div className="shrink-0 text-right">
-          <p className="text-sm text-[var(--site-muted,oklch(55.3%_0.013_58.071))]">{ritualPrice(product.price)}</p>
+      {/* Pass 3 hierarchy: name, then the price DIRECTLY beneath it in bold
+          ink (never floated to the card's outer edge) — price is the second
+          thing a shopper reads, so it is the second line of the card. */}
+      <div className="mt-3 px-1">
+        <p className="line-clamp-2 text-sm font-medium leading-snug text-[var(--site-text,oklch(26.8%_0.007_34.298))]">{product.name}</p>
+        <p className="mt-1 flex flex-wrap items-baseline gap-x-2">
+          <span className="text-base font-bold tracking-tight text-[var(--site-text,oklch(21.6%_0.006_56.043))]">{ritualPrice(product.price)}</span>
           {sale && (
-            // The seller's "was" price — muted strikethrough under the price.
-            <s className="block text-[11px] text-[var(--site-muted,oklch(55.3%_0.013_58.071))] line-through opacity-60">
+            // The seller's "was" price — muted strikethrough beside the price.
+            <s className="text-xs text-[var(--site-muted,oklch(55.3%_0.013_58.071))] line-through">
               <span className="sr-only">Was </span>{ritualPrice(sale.compareAt)}
             </s>
           )}
-        </div>
+        </p>
       </div>
     </>
   );
@@ -245,9 +261,12 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
 
       {/* Sticky logo nav */}
       {/* sticky_nav (Pillar 4): absent/true = the historical sticky nav; false = static. */}
-      <nav className={`${config.theme?.sticky_nav === false ? 'relative' : 'sticky top-0'} z-50 border-b border-stone-200/80 bg-[color-mix(in_srgb,var(--site-bg,#FBFAF7)_90%,transparent)] backdrop-blur-md`}>
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 md:h-20 md:px-10">
-          <Link href={base ?? '#'} className="flex min-w-0 items-center gap-3">
+      <nav className={`${config.theme?.sticky_nav === false ? 'relative' : 'sticky top-0'} z-50 border-b ${RITUAL_HAIRLINE} bg-[color-mix(in_srgb,var(--site-bg,#FBFAF7)_90%,transparent)] backdrop-blur-md`}>
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-5 md:h-20 md:px-10">
+          {/* Pass 3 mobile header law: brand identity owns the row (min-w-0
+              flex-1 — long names truncate gracefully instead of pushing the
+              icons out), flanked ONLY by Search + Bag below md. */}
+          <Link href={base ?? '#'} className="flex min-w-0 flex-1 items-center gap-3 md:flex-none">
             {logoUrl ? (
               <SmartImage
                 src={logoUrl}
@@ -255,14 +274,14 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
                 width={36}
                 height={36}
                 blurTone="none"
-                className="h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-stone-200"
+                className="h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-[color-mix(in_srgb,var(--site-text,#1c1917)_12%,transparent)]"
               />
             ) : (
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--site-accent,#1c1917)] font-serif text-sm font-bold text-[#FBFAF7]">
                 {monogram}
               </span>
             )}
-            <span className="truncate font-serif text-lg font-bold tracking-tight">{shop.shop_name}</span>
+            <span className="min-w-0 truncate font-serif text-lg font-bold tracking-tight">{shop.shop_name}</span>
           </Link>
           <div className="hidden items-center gap-8 md:flex">
             <Link href={collectionsHref} className={navLink(active === 'collections')}>Collection</Link>
@@ -277,7 +296,7 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
             <CartBagButton tone="ritual" />
             <Link
               href={collectionsHref}
-              className="inline-flex min-h-11 shrink-0 items-center rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#1c1917)] px-6 text-[10px] font-bold uppercase tracking-[0.2em] text-white shadow-sm transition hover:brightness-125 active:scale-95"
+              className="hidden min-h-11 shrink-0 items-center rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#1c1917)] px-6 text-[10px] font-bold uppercase tracking-[0.2em] text-white shadow-sm transition hover:brightness-125 active:scale-95 md:inline-flex"
             >
               Shop Now
             </Link>
@@ -288,8 +307,12 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
       {children}
 
       {/* Structured footer — shop info, delivery & pickup, contact */}
-      <footer id="contact" className="bg-[#FBFAF7]">
-        <div className="mx-auto grid max-w-7xl grid-cols-1 gap-12 px-5 py-16 md:grid-cols-4 md:gap-8 md:px-10 md:py-20">
+      {/* Pass 3: the footer rides the live paper token (the historical literal
+          #FBFAF7 glared against the deep-luxury dark palette) and gains a
+          bottom allowance on the PDP so the sticky buy bar never covers the
+          last footer row. */}
+      <footer id="contact" className={`border-t ${RITUAL_HAIRLINE} bg-[var(--site-bg,#FBFAF7)] ${active === 'product' ? 'pb-24 md:pb-20' : ''}`}>
+        <div className="mx-auto grid max-w-7xl grid-cols-1 gap-10 px-5 py-14 md:grid-cols-4 md:gap-8 md:px-10 md:py-20">
           <div className="md:col-span-2">
             <div className="flex items-center gap-3">
               {logoUrl ? (
@@ -322,43 +345,45 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
           </div>
 
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-muted,oklch(70.9%_0.01_56.259))]">Shop</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-muted,oklch(55.3%_0.013_58.071))]">Shop</p>
             {/* ≥44px rows: each link IS its tap box (min-h-11), so the column
                 gap shrinks to keep the printed rhythm. */}
             <div className="mt-3 flex flex-col gap-1">
               <Link href={collectionsHref} className="flex min-h-11 items-center text-sm text-[var(--site-muted,oklch(44.4%_0.011_73.639))] transition hover:text-[var(--site-text,oklch(21.6%_0.006_56.043))]">The Collection</Link>
               <a href={homeAnchor('#story')} className="flex min-h-11 items-center text-sm text-[var(--site-muted,oklch(44.4%_0.011_73.639))] transition hover:text-[var(--site-text,oklch(21.6%_0.006_56.043))]">Our Story</a>
-              <Link href={shopUrl} className="flex min-h-11 items-center text-xs text-stone-400 underline-offset-4 transition hover:text-stone-600 hover:underline">
+              <Link href={shopUrl} className="flex min-h-11 items-center text-xs text-[var(--site-muted,oklch(55.3%_0.013_58.071))] underline-offset-4 transition hover:text-[var(--site-text,oklch(21.6%_0.006_56.043))] hover:underline">
                 View classic boutique
               </Link>
             </div>
           </div>
 
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-muted,oklch(70.9%_0.01_56.259))]">Delivery & Contact</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-muted,oklch(55.3%_0.013_58.071))]">Delivery & Contact</p>
             <div className="mt-5 flex flex-col gap-3">
               {fulfillment.map((line) => (
                 <p key={line} className="text-sm text-[var(--site-muted,oklch(44.4%_0.011_73.639))]">{line}</p>
               ))}
-              {pickupNote && <p className="text-xs leading-relaxed text-stone-400">{pickupNote}</p>}
+              {pickupNote && <p className="text-xs leading-relaxed text-[var(--site-muted,oklch(55.3%_0.013_58.071))]">{pickupNote}</p>}
+              {/* Pass 3: a full-width tactile secondary action instead of a
+                  plain-text link — WhatsApp IS the checkout on Sanndikaa. */}
               {whatsAppHref && (
                 <a
                   href={whatsAppHref}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex min-h-11 items-center text-sm font-medium text-stone-900 underline underline-offset-4 transition hover:text-stone-600"
+                  className="mt-1 flex min-h-12 w-full items-center justify-center gap-2 rounded-[var(--site-radius,9999px)] border-2 border-[var(--site-accent,#1c1917)] px-5 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--site-accent,#1c1917)] transition hover:bg-[var(--site-accent,#1c1917)] hover:text-white active:scale-[0.98]"
                 >
-                  Message the boutique on WhatsApp
+                  Message us on WhatsApp
                 </a>
               )}
             </div>
           </div>
         </div>
 
-        <div className="border-t border-stone-200">
+        <div className={`border-t ${RITUAL_HAIRLINE}`}>
           <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-2 px-5 py-6 md:flex-row md:px-10">
             <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--site-muted,oklch(55.3%_0.013_58.071))]">{shop.shop_name}</p>
-            <p className="text-[10px] uppercase tracking-widest text-stone-400">Site generated by Sanndikaa AI</p>
+            <p className="text-[10px] uppercase tracking-widest text-[var(--site-muted,oklch(55.3%_0.013_58.071))]">Site generated by Sanndikaa AI</p>
           </div>
         </div>
       </footer>

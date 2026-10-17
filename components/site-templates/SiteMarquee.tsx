@@ -45,14 +45,16 @@ export type MarqueeTone = 'ritual' | 'editorial' | 'vitality';
 const TONES: Record<MarqueeTone, { glyph: string; section: string; token: string; glyphClass: string }> = {
   ritual: {
     glyph: '—', // —
-    section: 'border-b border-stone-200 bg-[#FBFAF7] py-4 md:py-5',
-    token: 'font-serif text-sm italic tracking-wide text-stone-500',
+    // Pass 3: paper/ink ride the theme tokens so the deep-luxury dark palette
+    // keeps the ribbon on its own paper (the literal #FBFAF7 glared there).
+    section: 'border-b border-[color-mix(in_srgb,var(--site-text,#1c1917)_12%,transparent)] bg-[var(--site-bg,#FBFAF7)] py-3.5 md:py-5',
+    token: 'font-serif text-sm italic tracking-wide text-[var(--site-muted,oklch(55.3%_0.013_58.071))]',
     glyphClass: 'mx-5 font-serif text-sm text-[var(--site-accent,#d6d3d1)] md:mx-8',
   },
   editorial: {
     glyph: '✦', // ✦
-    section: 'border-b border-neutral-900 bg-[#F7F5F0] py-3.5 md:py-4',
-    token: 'text-[10px] font-bold uppercase tracking-[0.35em] text-neutral-900',
+    section: 'border-b border-[var(--site-text,#171717)] bg-[var(--site-bg,#F7F5F0)] py-3.5 md:py-4',
+    token: 'text-[10px] font-bold uppercase tracking-[0.35em] text-[var(--site-text,#171717)]',
     glyphClass: 'mx-5 text-[10px] text-[var(--site-accent,#a3a3a3)] md:mx-8',
   },
   vitality: {

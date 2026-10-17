@@ -55,13 +55,16 @@ const FRAME_STYLES: Record<SiteTone, {
   dotActive: string;
   counter: string;
 }> = {
+  // Pass 3: stone literals → --site-text/--site-bg derivations (dark-palette
+  // safe); the mobile thumb row bleeds to the gutters and hides its scrollbar
+  // so the PAGE never scrolls horizontally.
   ritual: {
     rootMulti: 'md:grid md:grid-cols-[4.5rem_minmax(0,1fr)] md:gap-4',
     frameWrap: '-mx-5 md:mx-0',
-    main: 'relative aspect-[4/5] overflow-hidden bg-stone-100 md:rounded-2xl',
+    main: 'relative aspect-[4/5] overflow-hidden bg-[color-mix(in_srgb,var(--site-bg,#FBFAF7)_92%,var(--site-text,#1c1917))] md:rounded-2xl',
     rail: 'hidden md:flex md:flex-col md:gap-3',
-    mobileThumbs: 'mt-4 flex gap-3 overflow-x-auto pb-1 md:hidden',
-    thumb: 'relative h-[5.5rem] w-[4.5rem] shrink-0 overflow-hidden rounded-xl ring-1 ring-stone-200 transition hover:ring-stone-400',
+    mobileThumbs: '-mx-5 mt-3 flex gap-3 overflow-x-auto px-5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:hidden',
+    thumb: 'relative h-[5.5rem] w-[4.5rem] shrink-0 overflow-hidden rounded-xl ring-1 ring-[color-mix(in_srgb,var(--site-text,#1c1917)_15%,transparent)] transition hover:ring-[color-mix(in_srgb,var(--site-text,#1c1917)_40%,transparent)]',
     thumbActive: 'relative h-[5.5rem] w-[4.5rem] shrink-0 overflow-hidden rounded-xl ring-2 ring-[var(--site-accent,#1c1917)]',
     fallback: 'flex h-full w-full items-center justify-center bg-gradient-to-br from-stone-200 via-stone-100 to-stone-300',
     fallbackInitial: 'font-serif text-6xl italic text-stone-400/70',
@@ -73,24 +76,24 @@ const FRAME_STYLES: Record<SiteTone, {
   editorial: {
     rootMulti: 'md:grid md:grid-cols-[4.5rem_minmax(0,1fr)] md:gap-4',
     frameWrap: '-mx-5 md:mx-0',
-    main: 'relative aspect-[4/5] overflow-hidden border-y border-neutral-900 bg-[#EDEAE2] md:border',
+    main: 'relative aspect-[4/5] overflow-hidden border-y border-[var(--site-text,#171717)] bg-[#EDEAE2] md:border',
     rail: 'hidden md:flex md:flex-col md:gap-3',
-    mobileThumbs: 'mt-4 flex gap-3 overflow-x-auto pb-1 md:hidden',
-    thumb: 'relative h-[5.5rem] w-[4.5rem] shrink-0 overflow-hidden border border-neutral-300 transition hover:border-neutral-900',
+    mobileThumbs: '-mx-5 mt-3 flex gap-3 overflow-x-auto px-5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:hidden',
+    thumb: 'relative h-[5.5rem] w-[4.5rem] shrink-0 overflow-hidden border border-[color-mix(in_srgb,var(--site-text,#171717)_25%,transparent)] transition hover:border-[var(--site-text,#171717)]',
     thumbActive: 'relative h-[5.5rem] w-[4.5rem] shrink-0 overflow-hidden border-2 border-[var(--site-accent,#171717)]',
     fallback: 'flex h-full w-full items-center justify-center bg-gradient-to-br from-neutral-200 via-[#EDEAE2] to-neutral-300',
     fallbackInitial: 'font-serif text-6xl italic text-neutral-400/60',
-    arrow: 'absolute top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center border border-neutral-900 bg-[#F7F5F0]/95 text-neutral-900 backdrop-blur transition hover:bg-neutral-900 hover:text-[#F7F5F0] active:scale-95 md:flex',
+    arrow: 'absolute top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center border border-[var(--site-text,#171717)] bg-[color-mix(in_srgb,var(--site-bg,#F7F5F0)_95%,transparent)] text-[var(--site-text,#171717)] backdrop-blur transition hover:bg-[var(--site-text,#171717)] hover:text-[var(--site-bg,#F7F5F0)] active:scale-95 md:flex',
     dot: 'h-1.5 w-1.5 bg-white/50 transition-all',
     dotActive: 'h-1.5 w-4 bg-white transition-all',
-    counter: 'absolute bottom-3 right-3 z-10 border border-neutral-900 bg-[#F7F5F0]/95 px-2.5 py-1 text-[9px] font-bold tabular-nums tracking-[0.3em] text-neutral-900',
+    counter: 'absolute bottom-3 right-3 z-10 border border-[var(--site-text,#171717)] bg-[color-mix(in_srgb,var(--site-bg,#F7F5F0)_95%,transparent)] px-2.5 py-1 text-[9px] font-bold tabular-nums tracking-[0.3em] text-[var(--site-text,#171717)]',
   },
   neutral: {
     rootMulti: 'md:grid md:grid-cols-[4.5rem_minmax(0,1fr)] md:gap-4',
     frameWrap: '-mx-5 md:mx-0',
     main: 'relative aspect-[4/5] overflow-hidden bg-black md:rounded-2xl md:border md:border-white/10',
     rail: 'hidden md:flex md:flex-col md:gap-3',
-    mobileThumbs: 'mt-4 flex gap-3 overflow-x-auto pb-1 md:hidden',
+    mobileThumbs: '-mx-5 mt-3 flex gap-3 overflow-x-auto px-5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:hidden',
     thumb: 'relative h-[5.5rem] w-[4.5rem] shrink-0 overflow-hidden rounded-xl ring-1 ring-white/15 transition hover:ring-white/40',
     thumbActive: 'relative h-[5.5rem] w-[4.5rem] shrink-0 overflow-hidden rounded-xl ring-2 ring-[var(--site-accent,#f0a500)]',
     fallback: 'flex h-full w-full items-center justify-center bg-gradient-to-br from-[#1c1c1c] via-[#141414] to-[#242424]',

@@ -1,12 +1,16 @@
 import Link from 'next/link';
 import SmartImage from '@/components/SmartImage';
+import CartBagButton from '@/components/site-templates/CartBagButton';
+import CategoryNav, { categoryAnchorId, distinctCategories } from '@/components/site-templates/CategoryNav';
 import EditableText from '@/components/site-templates/EditableText';
 import GatedVideo from '@/components/site-templates/GatedVideo';
 import HeroBrandPlate from '@/components/site-templates/HeroBrandPlate';
+import ProductCollage, { picturedProducts } from '@/components/site-templates/ProductCollage';
 import Reveal from '@/components/site-templates/Reveal';
 import SiteMarquee from '@/components/site-templates/SiteMarquee';
 import SiteSearch from '@/components/site-templates/SiteSearch';
 import StoryClamp from '@/components/site-templates/StoryClamp';
+import { neutralStockBadge } from '@/components/site-templates/chrome/NeutralChrome';
 import {
   findBlock,
   resolveVisibleBlocks,
@@ -14,8 +18,10 @@ import {
   siteCollectionsPath,
   siteProductPath,
   type SiteBlock,
+  type SiteProduct,
   type SiteTemplateProps,
 } from '@/lib/siteTemplates';
+import { buildWhatsAppLink } from '@/lib/orderFlow';
 import { siteThemeStyle } from '@/lib/siteTheme';
 
 // VITALITY — Health, Fitness & Bold General Brands.
@@ -69,6 +75,9 @@ const PAD_16_20: Record<PadKey, string> = {
 // cards, condensed uppercase attribution, accent quote marks. Items are
 // seeded exclusively from real reviews (integrity law).
 function VitalityTestimonials({ block }: { block: TestimonialsBlock }) {
+  // Pass 3: an empty testimonials block renders NOTHING — never a heading
+  // over a void. (The block stays in the config/rail for the editor.)
+  if (block.items.length === 0) return null;
   return (
     // padding/align consumption (Pillar 4): quotes spacing + heading alignment.
     <section data-block-section={block.id} className={`mx-auto max-w-7xl px-5 md:px-10 ${vitalityPad(block.padding, PAD_16_20)}`}>
@@ -106,15 +115,18 @@ function VitalityTestimonials({ block }: { block: TestimonialsBlock }) {
   );
 }
 
-// Archetype pass (Pillar 3): the two-panel spread — copy beside a solid
-// accent panel. Skewed CTA keeps the street register; the panel rides
-// --site-accent with the electric-gold default.
-function VitalitySplitCta({ block, shopName, collectionsHref }: {
+// Archetype pass (Pillar 3): the two-panel spread — copy beside a product
+// panel. Pass 3: the panel shows the merchant's own pieces (ProductCollage —
+// up to two, linked, priced) instead of a 10rem monogram; a shop with no
+// pictured product gets a plain accent plate. Skewed CTA keeps the street
+// register; the plate rides --site-accent with the electric-gold default.
+function VitalitySplitCta({ block, products, productHref, collectionsHref }: {
   block: SplitCtaBlock;
-  shopName: string | null;
+  products: SiteProduct[];
+  productHref: (id: string) => string;
   collectionsHref: string;
 }) {
-  const monogram = (shopName ?? 'S').trim().charAt(0).toUpperCase() || 'S';
+  const hasCollage = picturedProducts(products, 1).length > 0;
   return (
     // padding consumption (Pillar 4): split-spread spacing. The skewed CTA
     // deliberately skips the radius token — skew + radius breaks the dialect.
@@ -136,10 +148,15 @@ function VitalitySplitCta({ block, shopName, collectionsHref }: {
             <span className="inline-block skew-x-[6deg]">{block.button_label}</span>
           </Link>
         </div>
-        <div aria-hidden className="relative flex min-h-[200px] items-center justify-center bg-[var(--site-accent,#f0a500)] md:min-h-[300px]">
-          <span className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(0,0,0,0.25),transparent_60%)]" />
-          <span className="relative text-[7rem] font-black uppercase leading-none text-black/20 md:text-[10rem]">{monogram}</span>
-        </div>
+        {hasCollage ? (
+          <div className="bg-[#0C0C0C] p-5 md:p-10">
+            <ProductCollage tone="neutral" products={products} hrefFor={productHref} />
+          </div>
+        ) : (
+          <div aria-hidden className="relative min-h-[140px] bg-[var(--site-accent,#f0a500)] md:min-h-[300px]">
+            <span className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(0,0,0,0.25),transparent_60%)]" />
+          </div>
+        )}
       </div>
     </section>
   );
@@ -168,9 +185,19 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
   // legacy value would 404. ?classic=1: the Pillar-1 /shop server bridge 307s
   // published-site shops back to /site — the escape's documented bypass.
   const shopUrl = shop.shop_slug ? `/shop/${encodeURIComponent(shop.shop_slug)}?classic=1` : '/';
-  const collectionsHref = siteCollectionsPath(shop) ?? '#lineup';
+  const collectionsPath = siteCollectionsPath(shop);
+  const collectionsHref = collectionsPath ?? '#lineup';
   const productHref = (id: string) => siteProductPath(shop, id) ?? `/product/${id}`;
-  const categoryCount = new Set(products.map((p) => p.category).filter(Boolean)).size || 1;
+  // Pass 3: the stats band ("N products · 1:1 WhatsApp checkout") was retired
+  // as filler; the hero→lineup seam now carries CATEGORY DISCOVERY — the
+  // merchant's real categories as chips deep-linking into /collections
+  // (nothing renders below two categories or in slugless previews).
+  const categories = collectionsPath ? distinctCategories(products) : [];
+  const lineup = products.slice(0, 6);
+  const whatsAppHref = buildWhatsAppLink(
+    shop.phone,
+    `Hello ${shop.shop_name ?? 'there'}! I'm browsing your website and have a question.`
+  );
 
   return (
     // THEME SEAM: a themed config sets --site-accent/--site-serif here (this
@@ -182,15 +209,21 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
       {/* Nav — bold left wordmark, pill CTA right */}
       {/* sticky_nav (Pillar 4): absent/true = the historical sticky nav; false = static. */}
       <nav className={`${config.theme?.sticky_nav === false ? 'relative' : 'sticky top-0'} z-50 border-b border-white/10 bg-[color-mix(in_srgb,var(--site-bg,#0C0C0C)_90%,transparent)] backdrop-blur-md`}>
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 md:px-10">
-          <span className="text-lg font-black uppercase tracking-tight">{shop.shop_name}</span>
-          <div className="flex items-center gap-3 md:gap-6">
-            <a href="#lineup" className="hidden min-h-11 items-center text-[10px] font-black uppercase tracking-[0.25em] text-[color-mix(in_srgb,var(--site-text,#fff)_50%,transparent)] transition hover:text-[var(--site-text,#ffffff)] md:inline-flex">The Lineup</a>
-            {/* Client island: shop-scoped search (neutral/dark dialect). */}
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-5 md:px-10">
+          {/* Pass 3 mobile header law: the wordmark owns the row below md
+              (min-w-0 flex-1, truncating long names instead of pushing the
+              icons out), flanked ONLY by Search + Bag; the pill joins from md. */}
+          <span className="min-w-0 flex-1 truncate text-lg font-black uppercase tracking-tight md:flex-none">{shop.shop_name}</span>
+          <div className="flex shrink-0 items-center gap-1 md:gap-6">
+            <a href="#lineup" className="hidden min-h-11 items-center text-[10px] font-black uppercase tracking-[0.25em] text-[color-mix(in_srgb,var(--site-text,#fff)_60%,transparent)] transition hover:text-[var(--site-text,#ffffff)] md:inline-flex">The Lineup</a>
+            {/* Client islands: shop-scoped search + live cart trigger (the
+                bag was missing from this home nav — the PDP adds to a cart
+                the shopper could not reopen from here). */}
             <SiteSearch tone="neutral" shopId={shop.id} basePath={siteBasePath(shop)} shopName={shop.shop_name} />
+            <CartBagButton tone="neutral" />
             <Link
               href={collectionsHref}
-              className="inline-flex min-h-11 items-center rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#f0a500)] px-6 text-[10px] font-black uppercase tracking-[0.2em] text-black transition hover:brightness-110 active:scale-95"
+              className="hidden min-h-11 items-center rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#f0a500)] px-6 text-[10px] font-black uppercase tracking-[0.2em] text-black transition hover:brightness-110 active:scale-95 md:inline-flex"
             >
               Shop Direct
             </Link>
@@ -240,7 +273,10 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
           <div className="absolute inset-0 bg-gradient-to-t from-[#0C0C0C] via-transparent to-black/40" />
         </div>
 
-        <div className="relative mx-auto max-w-7xl px-5 pb-32 pt-20 md:px-10 md:pb-44 md:pt-28">
+        {/* Pass 3 fold discipline: pb-32/pt-20 → pb-24/pt-14 on phones so the
+            lineup's first row is reachable in one swipe (md keeps the street
+            scale minus the deepest slab). */}
+        <div className="relative mx-auto max-w-7xl px-5 pb-24 pt-14 md:px-10 md:pb-36 md:pt-28">
           {/* tagline is schema-optional on the block (every stored row carries
               it — the legacy projection copies site.tagline); clearing it in
               the cockpit drops the chip, exactly like Ritual's. */}
@@ -261,7 +297,7 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
             as="h1"
             blockId={heroBlock.id}
             field="headline"
-            className="mt-6 max-w-4xl text-5xl font-black uppercase leading-[1.02] tracking-tight md:text-6xl"
+            className="mt-5 max-w-4xl text-4xl font-black uppercase leading-[1.02] tracking-tight text-balance break-words md:text-6xl"
           >
             {heroBlock.headline}
           </EditableText>
@@ -269,13 +305,13 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
             as="p"
             blockId={heroBlock.id}
             field="subheadline"
-            className="mt-6 max-w-xl text-lg leading-relaxed text-[color-mix(in_srgb,var(--site-text,#fff)_70%,transparent)]"
+            className="mt-5 max-w-xl text-base leading-relaxed text-[color-mix(in_srgb,var(--site-text,#fff)_75%,transparent)] md:text-lg"
           >
             {heroBlock.subheadline}
           </EditableText>
           <a
             href="#lineup"
-            className="mt-10 inline-block skew-x-[-6deg] bg-[var(--site-accent,#f0a500)] px-10 py-4 text-xs font-black uppercase tracking-[0.25em] text-black shadow-[6px_6px_0_color-mix(in_srgb,var(--site-accent,#f0a500)_25%,transparent)] transition hover:brightness-110 active:translate-y-0.5"
+            className="mt-8 inline-block min-h-12 skew-x-[-6deg] bg-[var(--site-accent,#f0a500)] px-10 py-4 text-xs font-black uppercase tracking-[0.25em] text-black shadow-[6px_6px_0_color-mix(in_srgb,var(--site-accent,#f0a500)_25%,transparent)] transition hover:brightness-110 active:translate-y-0.5 md:mt-10"
           >
             <span className="inline-block skew-x-[6deg]">See The Lineup</span>
           </a>
@@ -288,33 +324,24 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
           surface (the static gold stripes were retired). */}
       <SiteMarquee config={config} tone="vitality" />
 
-      {/* Stats band — fade-in-up on scroll (static under reduced motion
-          and in editor previews — see Reveal.tsx). */}
-      <section className="mx-auto max-w-7xl px-5 py-16 md:px-10">
-        <Reveal className="grid grid-cols-3 divide-x divide-white/10 text-center">
-          {[
-            { n: `${products.length}`, label: 'Products In The Lineup' },
-            { n: `${categoryCount}`, label: categoryCount === 1 ? 'Focused Category' : 'Categories Covered' },
-            // Truthful signal only (Law 4 integrity): checkout on this site
-            // IS a direct WhatsApp conversation with the seller — never claim
-            // protections the platform does not operate.
-            { n: '1:1', label: 'Direct WhatsApp Checkout' },
-          ].map((s) => (
-            <div key={s.label} className="px-4">
-              <p className="text-4xl font-black tracking-tighter text-[var(--site-accent,#f0a500)] md:text-5xl">{s.n}</p>
-              <p className="mt-2 text-[10px] font-black uppercase tracking-[0.25em] text-white/50">{s.label}</p>
-            </div>
-          ))}
-        </Reveal>
-      </section>
+      {/* Category discovery (Pass 3) — replaces the retired stats band. */}
+      {collectionsPath && categories.length >= 2 && (
+        <section className="mx-auto max-w-7xl px-5 pt-10 md:px-10 md:pt-14">
+          <CategoryNav
+            tone="neutral"
+            categories={categories}
+            hrefFor={(c) => `${collectionsPath}#${categoryAnchorId(c)}`}
+          />
+        </section>
+      )}
 
       {/* Benefit-led product rows — anchored to the product_grid block. The
           rows themselves are this dialect's fixed anatomy (displayMode has no
           surface here — the grid/carousel switch belongs to ritual/editorial). */}
       {gridBlock && (
-      <section id="lineup" data-block-section={gridBlock.id} className="mx-auto max-w-7xl px-5 py-20 md:px-10 md:py-24">
+      <section id="lineup" data-block-section={gridBlock.id} className="mx-auto max-w-7xl px-5 py-14 md:px-10 md:py-24">
         <Reveal>
-          <EditableText as="h2" blockId={gridBlock.id} field="title" className="text-4xl font-black uppercase tracking-tight md:text-5xl">
+          <EditableText as="h2" blockId={gridBlock.id} field="title" className="text-3xl font-black uppercase tracking-tight text-balance md:text-5xl">
             {gridBlock.title}
           </EditableText>
           <EditableText
@@ -327,20 +354,26 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
           </EditableText>
         </Reveal>
 
-        <div className="mt-14 space-y-8">
-          {products.slice(0, 6).map((p, i) => (
+        {/* Pass 3 row anatomy: phones get a compact two-column card (square
+            thumb + name/price/stock) so six pieces fit in two screens; md
+            keeps the alternating wide rows. Price sits directly under the
+            name, live stock badge beside it; the row is one tap target. */}
+        <div className="mt-10 space-y-4 md:mt-14 md:space-y-8">
+          {lineup.map((p, i) => {
+            const badge = neutralStockBadge(p.stock_quantity);
+            return (
             <Reveal key={p.id} delay={Math.min(i, 2) * 0.06}>
             <Link
               href={productHref(p.id)}
-              className={`group grid grid-cols-1 items-center gap-6 rounded-2xl border border-white/10 bg-[#111] p-5 transition-all duration-300 hover:border-[color-mix(in_srgb,var(--site-accent,#f0a500)_50%,transparent)] hover:bg-[#151515] md:grid-cols-[280px_1fr_auto] ${i % 2 === 1 ? 'md:grid-cols-[1fr_280px_auto]' : ''}`}
+              className={`group grid grid-cols-[112px_1fr] items-center gap-4 rounded-2xl border border-white/10 bg-[#111] p-3 transition-all duration-300 hover:border-[color-mix(in_srgb,var(--site-accent,#f0a500)_50%,transparent)] hover:bg-[#151515] md:gap-6 md:p-5 ${i % 2 === 1 ? 'md:grid-cols-[1fr_280px_auto]' : 'md:grid-cols-[280px_1fr_auto]'}`}
             >
-              <div className={`relative aspect-[4/3] overflow-hidden rounded-xl bg-black ${i % 2 === 1 ? 'md:order-2' : ''}`}>
+              <div className={`relative aspect-square overflow-hidden rounded-xl bg-black md:aspect-[4/3] ${i % 2 === 1 ? 'md:order-2' : ''}`}>
                 {(p.ad_hero_image_url || p.image_url) ? (
                   <SmartImage
                     src={p.ad_hero_image_url ?? p.image_url ?? ''}
                     alt={p.name}
                     fill
-                    sizes="(min-width: 768px) 280px, 100vw"
+                    sizes="(min-width: 768px) 280px, 112px"
                     blurTone="dark"
                     className="object-cover transition-transform duration-500 group-hover:scale-[1.05]"
                   />
@@ -348,20 +381,46 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
                   <div className="flex h-full w-full items-center justify-center text-white/20">—</div>
                 )}
               </div>
-              <div className={i % 2 === 1 ? 'md:order-1' : ''}>
-                <p className="text-2xl font-black uppercase tracking-tight">{p.name}</p>
-                {p.description && (
-                  <p className="mt-2 line-clamp-2 max-w-xl text-sm leading-relaxed text-white/55">{p.description}</p>
+              <div className={`min-w-0 ${i % 2 === 1 ? 'md:order-1' : ''}`}>
+                {p.category && (
+                  <p className="text-[10px] font-black uppercase tracking-[0.25em] text-white/60">{p.category}</p>
                 )}
-                <p className="mt-3 text-lg font-black text-[var(--site-accent,#f0a500)]">{price(p.price)}</p>
+                <p className="mt-0.5 line-clamp-2 text-lg font-black uppercase leading-tight tracking-tight md:text-2xl">{p.name}</p>
+                <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="text-xl font-black text-[var(--site-accent,#f0a500)]">{price(p.price)}</span>
+                  {badge && (
+                    <span className={`rounded-sm px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${
+                      badge.tone === 'out' ? 'bg-white text-black' : 'bg-[var(--site-accent,#f0a500)] text-black'
+                    }`}>
+                      {badge.label}
+                    </span>
+                  )}
+                </p>
+                {p.description && (
+                  <p className="mt-2 hidden line-clamp-2 max-w-xl text-sm leading-relaxed text-white/60 md:block">{p.description}</p>
+                )}
               </div>
               <span className={`hidden shrink-0 rounded-full border border-[var(--site-accent,#f0a500)] px-6 py-3 text-[10px] font-black uppercase tracking-[0.2em] text-[var(--site-accent,#f0a500)] transition group-hover:bg-[var(--site-accent,#f0a500)] group-hover:text-black md:block ${i % 2 === 1 ? 'md:order-3' : ''}`}>
                 View
               </span>
             </Link>
             </Reveal>
-          ))}
+            );
+          })}
         </div>
+
+        {/* Conversion bridge (Pass 3): the lineup shows six; the full catalog
+            is one tap away — full-width on phones. */}
+        {collectionsPath && products.length > 0 && (
+          <div className="mt-8 md:mt-10">
+            <Link
+              href={collectionsPath}
+              className="inline-flex min-h-12 w-full items-center justify-center rounded-[var(--site-radius,9999px)] border border-[var(--site-accent,#f0a500)] px-8 text-[10px] font-black uppercase tracking-[0.2em] text-[var(--site-accent,#f0a500)] transition hover:bg-[var(--site-accent,#f0a500)] hover:text-black active:scale-[0.98] sm:w-auto"
+            >
+              {products.length > lineup.length ? 'See The Full Lineup' : 'Browse The Collection'}
+            </Link>
+          </div>
+        )}
       </section>
       )}
 
@@ -397,7 +456,7 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
       )}
       {splitCtaBlock && (
         <Reveal>
-          <VitalitySplitCta block={splitCtaBlock} shopName={shop.shop_name} collectionsHref={collectionsHref} />
+          <VitalitySplitCta block={splitCtaBlock} products={lineup} productHref={productHref} collectionsHref={collectionsHref} />
         </Reveal>
       )}
 
@@ -432,14 +491,28 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
       )}
 
       <footer className="border-t border-white/10 py-10">
+        {/* Pass 3: a full-width tactile WhatsApp action (the checkout
+            channel) above the meta row, when the shop has a number. */}
+        {whatsAppHref && (
+          <div className="mx-auto mb-8 max-w-7xl px-5 md:px-10">
+            <a
+              href={whatsAppHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex min-h-12 w-full items-center justify-center gap-2 rounded-[var(--site-radius,9999px)] border border-white/20 px-5 text-[10px] font-black uppercase tracking-[0.2em] text-white transition hover:border-[var(--site-accent,#f0a500)] hover:text-[var(--site-accent,#f0a500)] active:scale-[0.98] sm:w-auto"
+            >
+              Message us on WhatsApp
+            </a>
+          </div>
+        )}
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-5 md:flex-row md:px-10">
           <p className="text-sm font-black uppercase tracking-tight">{shop.shop_name}</p>
           {/* Deliberate classic-boutique escape (footer only) — mirrors the
               chromes' "View classic boutique" contract. */}
-          <Link href={shopUrl} className="inline-flex min-h-11 items-center text-[10px] font-black uppercase tracking-[0.25em] text-white/40 transition hover:text-white">
+          <Link href={shopUrl} className="inline-flex min-h-11 items-center text-[10px] font-black uppercase tracking-[0.25em] text-white/60 transition hover:text-white">
             View classic boutique
           </Link>
-          <p className="text-[10px] uppercase tracking-widest text-white/30">Site generated by Sanndikaa AI</p>
+          <p className="text-[10px] uppercase tracking-widest text-white/50">Site generated by Sanndikaa AI</p>
         </div>
       </footer>
     </div>

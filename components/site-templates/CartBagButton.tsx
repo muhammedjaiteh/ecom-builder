@@ -43,9 +43,9 @@ const BAG_STYLES: Record<SiteTone, BagStyles> = {
   // ink-on-paper, inverting on hover like the rest of the print language.
   editorial: {
     button:
-      'relative flex h-11 w-11 shrink-0 items-center justify-center border border-neutral-900 bg-[#F7F5F0] text-neutral-900 transition hover:bg-neutral-900 hover:text-[#F7F5F0] active:scale-95',
+      'relative flex h-11 w-11 shrink-0 items-center justify-center border border-neutral-900 bg-[var(--site-bg,#F7F5F0)] text-neutral-900 transition hover:bg-neutral-900 hover:text-[var(--site-bg,#F7F5F0)] active:scale-95',
     badge:
-      'absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center bg-neutral-900 px-1 text-[9px] font-bold leading-none text-[#F7F5F0]',
+      'absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center bg-neutral-900 px-1 text-[9px] font-bold leading-none text-[var(--site-bg,#F7F5F0)]',
     strokeWidth: 1.5,
   },
   // Neutral (Vitality fallback): simple ghost icon on the dark bar, gold badge

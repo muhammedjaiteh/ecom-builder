@@ -79,47 +79,49 @@ type PurchaseStyles = {
 };
 
 const PURCHASE_STYLES: Record<SiteTone, PurchaseStyles> = {
+  // Pass 3: every stone literal became a --site-text/--site-bg derivation so
+  // the deep-luxury dark palette renders the controls on its own paper.
   ritual: {
-    label: 'text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-muted,oklch(70.9%_0.01_56.259))]',
-    pill: 'rounded-full border border-stone-300 bg-white px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-stone-600 transition hover:border-[var(--site-accent,#1c1917)]',
-    pillActive: 'rounded-full border border-[var(--site-accent,#1c1917)] bg-[var(--site-accent,#1c1917)] px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-white',
-    stepper: 'inline-flex items-center rounded-full border border-stone-300 bg-white',
-    stepperButton: 'flex h-11 w-11 items-center justify-center text-stone-500 transition hover:text-stone-900 disabled:opacity-30',
+    label: 'text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-muted,oklch(55.3%_0.013_58.071))]',
+    pill: 'min-h-11 rounded-full border border-[color-mix(in_srgb,var(--site-text,#1c1917)_22%,transparent)] bg-[var(--site-bg,#FBFAF7)] px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-[var(--site-text,oklch(21.6%_0.006_56.043))] transition hover:border-[var(--site-accent,#1c1917)]',
+    pillActive: 'min-h-11 rounded-full border border-[var(--site-accent,#1c1917)] bg-[var(--site-accent,#1c1917)] px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-white',
+    stepper: 'inline-flex items-center rounded-full border border-[color-mix(in_srgb,var(--site-text,#1c1917)_22%,transparent)] bg-[var(--site-bg,#FBFAF7)]',
+    stepperButton: 'flex h-11 w-11 items-center justify-center text-[var(--site-muted,oklch(55.3%_0.013_58.071))] transition hover:text-[var(--site-text,oklch(21.6%_0.006_56.043))] disabled:opacity-30',
     stepperValue: 'w-10 text-center text-sm font-bold text-[var(--site-text,oklch(21.6%_0.006_56.043))]',
-    primaryButton: 'flex min-h-12 w-full flex-1 items-center justify-center gap-3 rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#1c1917)] px-8 text-[10px] font-bold uppercase tracking-[0.25em] text-white shadow-lg transition hover:brightness-125 active:scale-95',
-    secondaryButton: 'flex min-h-12 w-full flex-1 items-center justify-center gap-3 rounded-[var(--site-radius,9999px)] border-2 border-[var(--site-accent,#1c1917)] px-8 text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--site-accent,#1c1917)] transition hover:bg-[var(--site-accent,#1c1917)] hover:text-white active:scale-95',
+    primaryButton: 'flex min-h-12 w-full flex-1 items-center justify-center gap-3 rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#1c1917)] px-8 text-[10px] font-bold uppercase tracking-[0.25em] text-white shadow-lg transition hover:brightness-125 active:scale-[0.98]',
+    secondaryButton: 'flex min-h-12 w-full flex-1 items-center justify-center gap-3 rounded-[var(--site-radius,9999px)] border-2 border-[var(--site-accent,#1c1917)] px-8 text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--site-accent,#1c1917)] transition hover:bg-[var(--site-accent,#1c1917)] hover:text-white active:scale-[0.98]',
     hint: 'text-xs font-medium text-amber-700',
-    soldOut: 'rounded-2xl border border-stone-300 bg-white px-6 py-5 text-center',
-    soldOutTitle: 'text-sm font-bold uppercase tracking-widest text-stone-900',
-    soldOutBody: 'mt-1 text-xs text-stone-500',
-    buyBar: 'border-t border-stone-200 bg-[color-mix(in_srgb,var(--site-bg,#FBFAF7)_92%,transparent)] shadow-[0_-12px_32px_rgba(28,25,23,0.08)] backdrop-blur-md',
-    buyBarThumb: 'relative hidden h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-stone-100 ring-1 ring-stone-200 sm:block',
+    soldOut: 'rounded-2xl border border-[color-mix(in_srgb,var(--site-text,#1c1917)_12%,transparent)] bg-[color-mix(in_srgb,var(--site-bg,#FBFAF7)_97%,var(--site-text,#1c1917))] px-5 py-5 text-center',
+    soldOutTitle: 'text-sm font-bold uppercase tracking-widest text-[var(--site-text,oklch(21.6%_0.006_56.043))]',
+    soldOutBody: 'mt-1 text-xs text-[var(--site-muted,oklch(55.3%_0.013_58.071))]',
+    buyBar: 'border-t border-[color-mix(in_srgb,var(--site-text,#1c1917)_12%,transparent)] bg-[color-mix(in_srgb,var(--site-bg,#FBFAF7)_92%,transparent)] shadow-[0_-12px_32px_rgba(28,25,23,0.08)] backdrop-blur-md',
+    buyBarThumb: 'relative hidden h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-[color-mix(in_srgb,var(--site-bg,#FBFAF7)_92%,var(--site-text,#1c1917))] ring-1 ring-[color-mix(in_srgb,var(--site-text,#1c1917)_12%,transparent)] sm:block',
     buyBarName: 'truncate text-xs font-medium text-[var(--site-text,oklch(21.6%_0.006_56.043))]',
-    buyBarPrice: 'truncate text-base font-light text-[var(--site-text,oklch(21.6%_0.006_56.043))]',
+    buyBarPrice: 'truncate text-base font-semibold text-[var(--site-text,oklch(21.6%_0.006_56.043))]',
     buyBarQty: 'text-[10px] text-[var(--site-muted,oklch(55.3%_0.013_58.071))]',
     buyBarBag: 'flex h-12 w-12 shrink-0 items-center justify-center gap-2 rounded-[var(--site-radius,9999px)] border-2 border-[var(--site-accent,#1c1917)] text-[var(--site-accent,#1c1917)] transition hover:bg-[var(--site-accent,#1c1917)] hover:text-white active:scale-95 sm:w-auto sm:px-6 sm:text-[10px] sm:font-bold sm:uppercase sm:tracking-[0.25em]',
     buyBarButton: 'flex min-h-12 flex-1 items-center justify-center gap-2 rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#1c1917)] px-5 text-[10px] font-bold uppercase tracking-[0.25em] text-white shadow-lg transition hover:brightness-125 active:scale-95 sm:flex-none sm:px-8',
   },
   editorial: {
     label: 'text-[10px] font-bold uppercase tracking-[0.35em] text-[var(--site-muted,oklch(55.6%_0_0))]',
-    pill: 'border border-neutral-300 bg-[#F7F5F0] px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-neutral-600 transition hover:border-neutral-900',
-    pillActive: 'border border-[var(--site-accent,#171717)] bg-[var(--site-accent,#171717)] px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-[#F7F5F0]',
-    stepper: 'inline-flex items-center border border-neutral-900 bg-[#F7F5F0]',
-    stepperButton: 'flex h-11 w-11 items-center justify-center text-neutral-500 transition hover:text-neutral-900 disabled:opacity-30',
+    pill: 'border border-[color-mix(in_srgb,var(--site-text,#171717)_25%,transparent)] bg-[var(--site-bg,#F7F5F0)] px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-neutral-600 transition hover:border-[var(--site-text,#171717)]',
+    pillActive: 'border border-[var(--site-accent,#171717)] bg-[var(--site-accent,#171717)] px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-[var(--site-bg,#F7F5F0)]',
+    stepper: 'inline-flex items-center border border-[var(--site-text,#171717)] bg-[var(--site-bg,#F7F5F0)]',
+    stepperButton: 'flex h-11 w-11 items-center justify-center text-[var(--site-muted,oklch(55.6%_0_0))] transition hover:text-[var(--site-text,#171717)] disabled:opacity-30',
     stepperValue: 'w-10 text-center text-sm font-bold text-[var(--site-text,oklch(20.5%_0_0))]',
-    primaryButton: 'flex min-h-12 w-full flex-1 items-center justify-center gap-3 rounded-[var(--site-radius,0px)] bg-[var(--site-accent,#171717)] px-9 text-[10px] font-bold uppercase tracking-[0.3em] text-[#F7F5F0] transition hover:brightness-125 active:scale-95',
-    secondaryButton: 'flex min-h-12 w-full flex-1 items-center justify-center gap-3 rounded-[var(--site-radius,0px)] border-2 border-[var(--site-accent,#171717)] px-9 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-accent,#171717)] transition hover:bg-[var(--site-accent,#171717)] hover:text-[#F7F5F0] active:scale-95',
+    primaryButton: 'flex min-h-12 w-full flex-1 items-center justify-center gap-3 rounded-[var(--site-radius,0px)] bg-[var(--site-accent,#171717)] px-9 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-bg,#F7F5F0)] transition hover:brightness-125 active:scale-95',
+    secondaryButton: 'flex min-h-12 w-full flex-1 items-center justify-center gap-3 rounded-[var(--site-radius,0px)] border-2 border-[var(--site-accent,#171717)] px-9 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-accent,#171717)] transition hover:bg-[var(--site-accent,#171717)] hover:text-[var(--site-bg,#F7F5F0)] active:scale-95',
     hint: 'text-xs font-medium text-amber-800',
-    soldOut: 'border border-neutral-900 bg-[#F7F5F0] px-6 py-5 text-center',
-    soldOutTitle: 'font-serif text-lg italic text-neutral-900',
-    soldOutBody: 'mt-1 text-xs text-neutral-500',
-    buyBar: 'border-t border-neutral-900 bg-[color-mix(in_srgb,var(--site-bg,#F7F5F0)_94%,transparent)] backdrop-blur-md',
-    buyBarThumb: 'relative hidden h-12 w-12 shrink-0 overflow-hidden border border-neutral-900 bg-[#EDEAE2] sm:block',
+    soldOut: 'border border-[var(--site-text,#171717)] bg-[var(--site-bg,#F7F5F0)] px-6 py-5 text-center',
+    soldOutTitle: 'font-serif text-lg italic text-[var(--site-text,#171717)]',
+    soldOutBody: 'mt-1 text-xs text-[var(--site-muted,oklch(55.6%_0_0))]',
+    buyBar: 'border-t border-[var(--site-text,#171717)] bg-[color-mix(in_srgb,var(--site-bg,#F7F5F0)_94%,transparent)] backdrop-blur-md',
+    buyBarThumb: 'relative hidden h-12 w-12 shrink-0 overflow-hidden border border-[var(--site-text,#171717)] bg-[#EDEAE2] sm:block',
     buyBarName: 'truncate font-serif text-sm italic text-[var(--site-text,oklch(20.5%_0_0))]',
-    buyBarPrice: 'truncate text-sm text-[var(--site-text,oklch(20.5%_0_0))]',
+    buyBarPrice: 'truncate text-base font-bold text-[var(--site-text,oklch(20.5%_0_0))]',
     buyBarQty: 'text-[10px] text-[var(--site-muted,oklch(55.6%_0_0))]',
-    buyBarBag: 'flex h-12 w-12 shrink-0 items-center justify-center gap-2 rounded-[var(--site-radius,0px)] border-2 border-[var(--site-accent,#171717)] text-[var(--site-accent,#171717)] transition hover:bg-[var(--site-accent,#171717)] hover:text-[#F7F5F0] active:scale-95 sm:w-auto sm:px-6 sm:text-[10px] sm:font-bold sm:uppercase sm:tracking-[0.3em]',
-    buyBarButton: 'flex min-h-12 flex-1 items-center justify-center gap-2 rounded-[var(--site-radius,0px)] bg-[var(--site-accent,#171717)] px-5 text-[10px] font-bold uppercase tracking-[0.3em] text-[#F7F5F0] transition hover:brightness-125 active:scale-95 sm:flex-none sm:px-8',
+    buyBarBag: 'flex h-12 w-12 shrink-0 items-center justify-center gap-2 rounded-[var(--site-radius,0px)] border-2 border-[var(--site-accent,#171717)] text-[var(--site-accent,#171717)] transition hover:bg-[var(--site-accent,#171717)] hover:text-[var(--site-bg,#F7F5F0)] active:scale-95 sm:w-auto sm:px-6 sm:text-[10px] sm:font-bold sm:uppercase sm:tracking-[0.3em]',
+    buyBarButton: 'flex min-h-12 flex-1 items-center justify-center gap-2 rounded-[var(--site-radius,0px)] bg-[var(--site-accent,#171717)] px-5 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-bg,#F7F5F0)] transition hover:brightness-125 active:scale-95 sm:flex-none sm:px-8',
   },
   neutral: {
     label: 'text-[10px] font-black uppercase tracking-[0.25em] text-white/50',
@@ -314,11 +316,32 @@ export default function SiteProductPurchase({
     setShowTerminal(true);
   };
 
+  // Pass 3 — restock lead capture: a sold-out piece renders an ACTIVE
+  // "Notify me on WhatsApp" action instead of static text. Same lead record
+  // (recordLead) and the shared sanitized wa.me launch (lib/orderFlow — not
+  // modified) as the order flow; the message is a restock request, never an
+  // order, so no stock mutation is involved.
+  const requestRestock = () => {
+    recordLead(supabase, {
+      sellerId: product.sellerId ?? shopId,
+      productId: product.id,
+      productName: product.name,
+      productPrice: product.price,
+    });
+    const message = `Hello ${shopName}! Please let me know on WhatsApp when "${product.name}" is back in stock.`;
+    const waLink = buildWhatsAppLink(sellerPhone, message) ?? buildWhatsAppLink(DEFAULT_ORDER_PHONE, message)!;
+    launchWhatsApp(waLink);
+  };
+
   if (isOutOfStock) {
     return (
       <div className={styles.soldOut}>
         <p className={styles.soldOutTitle}>Sold Out</p>
-        <p className={styles.soldOutBody}>Check back soon — the boutique restocks regularly.</p>
+        <p className={styles.soldOutBody}>The boutique restocks regularly — be first to know.</p>
+        <button type="button" onClick={requestRestock} className={`${styles.primaryButton} mt-4`}>
+          <Smartphone size={16} />
+          Notify Me via WhatsApp
+        </button>
       </div>
     );
   }
@@ -400,8 +423,10 @@ export default function SiteProductPurchase({
 
       {variantHint && <p className={styles.hint}>{variantHint}</p>}
 
-      {/* Primary CTA row — both prominent, equal width, ≥48px. */}
-      <div ref={ctaRowRef} className="flex flex-col gap-3 pt-1 sm:flex-row">
+      {/* Primary CTA row — both prominent, equal width, ≥48px. Pass 3:
+          flex-col-REVERSE below sm puts "Order via WhatsApp" (the checkout)
+          on top of the stack on phones while keeping it on the right from sm. */}
+      <div ref={ctaRowRef} className="flex flex-col-reverse gap-3 pt-1 sm:flex-row">
         <button type="button" onClick={handleAddToBag} className={styles.secondaryButton}>
           <ShoppingBag size={16} />
           Add to Bag

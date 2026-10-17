@@ -4,7 +4,6 @@ import type { Metadata } from 'next';
 import { SITE_CHROMES, type SiteTone } from '@/components/site-templates/chrome';
 import { SavingsPill } from '@/components/SaleBadge';
 import CollapsibleDescription from '@/components/CollapsibleDescription';
-import ProductRatingBadge from '@/components/ProductRatingBadge';
 import SiteThemeCascade from '@/components/site-templates/SiteThemeCascade';
 import {
   LOW_STOCK_MAX,
@@ -25,9 +24,27 @@ import {
 } from '../../siteData';
 import SiteDraftBadge from '../../SiteDraftBadge';
 import SiteFulfillmentPane from './SiteFulfillmentPane';
+import SitePdpRating from './SitePdpRating';
 import SiteProductGallery, { type GalleryMedia } from './SiteProductGallery';
 import SiteProductPurchase from './SiteProductPurchase';
 import SiteProductReviews from './SiteProductReviews';
+
+// PASS 3 (presentation): mobile-first purchase hierarchy.
+//   • Identity → product → price in ONE screen on a phone: the info column
+//     is `contents` below md, so its two halves become grid items of the page
+//     grid — the headline group (category, name, rating, price, stock) orders
+//     FIRST, the 4:5 gallery second, and the purchase group (description,
+//     variants, CTAs, delivery) third. From md the column snaps back to the
+//     sticky 5-column block beside the 7-column gallery — same DOM, no
+//     duplicated <h1>.
+//   • Rating renders ONLY with ≥1 review (SitePdpRating) — zero-star rows
+//     and "No reviews yet" are gone from the storefront.
+//   • Descriptions ≤ 80 words render fully expanded (no accordion for short
+//     copy); longer copy keeps the clamp + read-more.
+//   • Prices are bold, high-contrast ink in every dialect.
+
+/** Word budget under which the description renders fully expanded. */
+const DESCRIPTION_EXPAND_WORDS = 80;
 
 // /site/[slug]/products/[id] — the on-site Product Detail Page. Gallery,
 // price, stock, quantity, and the REAL checkout (shared cart drawer + direct
@@ -126,69 +143,70 @@ type PdpStyles = {
 // like the home page (FALLBACK LAW: themeless renders stay byte-stable).
 const PDP_STYLES: Record<SiteTone, PdpStyles> = {
   ritual: {
-    section: 'mx-auto max-w-7xl px-5 pb-16 pt-6 md:px-10 md:pb-24 md:pt-10',
-    breadcrumb: 'flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--site-muted,oklch(70.9%_0.01_56.259))]',
+    section: 'mx-auto max-w-7xl px-5 pb-16 pt-5 md:px-10 md:pb-24 md:pt-10',
+    breadcrumb: 'flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--site-muted,oklch(55.3%_0.013_58.071))]',
     breadcrumbLink: 'transition hover:text-[var(--site-text,oklch(21.6%_0.006_56.043))]',
     breadcrumbCurrent: 'truncate text-[var(--site-text,oklch(21.6%_0.006_56.043))]',
-    grid: 'mt-6 grid grid-cols-1 items-start gap-10 md:mt-10 md:grid-cols-12 md:gap-12 lg:gap-16',
-    galleryCol: 'md:col-span-7',
-    // Sticky under the h-20 sticky nav (top-24 = 96px clears it).
-    infoCol: 'md:col-span-5 md:sticky md:top-24 md:self-start',
-    eyebrow: 'text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-muted,oklch(70.9%_0.01_56.259))]',
-    title: 'mt-3 font-serif text-3xl font-bold leading-[1.1] tracking-tight text-[var(--site-text,oklch(21.6%_0.006_56.043))] md:text-4xl lg:text-5xl',
-    price: 'text-2xl font-light tracking-tight text-[var(--site-text,oklch(21.6%_0.006_56.043))]',
-    compareAt: 'text-base font-light tracking-tight text-[var(--site-muted,oklch(70.9%_0.01_56.259))] line-through',
+    grid: 'mt-5 grid grid-cols-1 items-start gap-6 md:mt-10 md:grid-cols-12 md:gap-12 lg:gap-16',
+    galleryCol: 'order-2 md:order-none md:col-span-7',
+    // Sticky under the h-20 sticky nav (top-24 = 96px clears it). `contents`
+    // below md: see the Pass 3 header note.
+    infoCol: 'contents md:block md:col-span-5 md:sticky md:top-24 md:self-start',
+    eyebrow: 'text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-muted,oklch(55.3%_0.013_58.071))]',
+    title: 'mt-2 font-serif text-3xl font-bold leading-[1.1] tracking-tight text-balance text-[var(--site-text,oklch(21.6%_0.006_56.043))] md:mt-3 md:text-4xl lg:text-5xl',
+    price: 'text-2xl font-semibold tracking-tight text-[var(--site-text,oklch(21.6%_0.006_56.043))] md:text-3xl',
+    compareAt: 'text-base tracking-tight text-[var(--site-muted,oklch(55.3%_0.013_58.071))] line-through',
     stock: {
       in: 'rounded-full border border-emerald-700/30 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-800',
       low: 'rounded-full bg-white px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-700 ring-1 ring-amber-200',
       out: 'rounded-full bg-[var(--site-text,#1c1917)] px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white',
     },
-    divider: 'my-7 h-px w-16 bg-[var(--site-accent,#1c1917)]',
-    description: 'max-w-md text-[15px] font-light leading-relaxed text-[var(--site-muted,oklch(44.4%_0.011_73.639))]',
+    divider: 'my-6 h-px w-16 bg-[var(--site-accent,#1c1917)] md:my-7',
+    description: 'max-w-md text-[15px] leading-relaxed text-[var(--site-muted,oklch(44.4%_0.011_73.639))]',
     descriptionToggle: 'text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--site-accent,#1c1917)] hover:opacity-70',
     descriptionFade: 'bg-gradient-to-t from-[var(--site-bg,#FBFAF7)] to-transparent',
     ratingStar: 'fill-yellow-400 text-yellow-400',
-    ratingStarEmpty: 'text-stone-300',
+    ratingStarEmpty: 'text-[color-mix(in_srgb,var(--site-text,#1c1917)_20%,transparent)]',
     ratingText: 'text-xs font-medium text-[var(--site-muted,oklch(44.4%_0.011_73.639))]',
   },
   editorial: {
-    section: 'mx-auto max-w-7xl border-b border-neutral-900 px-5 pb-16 pt-6 md:px-10 md:pb-24 md:pt-10',
-    breadcrumb: 'flex flex-wrap items-center gap-2 text-[9px] font-bold uppercase tracking-[0.3em] text-[var(--site-muted,oklch(70.8%_0_0))]',
+    section: 'mx-auto max-w-7xl border-b border-[var(--site-text,#171717)] px-5 pb-16 pt-5 md:px-10 md:pb-24 md:pt-10',
+    breadcrumb: 'flex flex-wrap items-center gap-2 text-[9px] font-bold uppercase tracking-[0.3em] text-[var(--site-muted,oklch(55.6%_0_0))]',
     breadcrumbLink: 'transition hover:text-[var(--site-text,oklch(20.5%_0_0))]',
     breadcrumbCurrent: 'truncate text-[var(--site-text,oklch(20.5%_0_0))]',
-    grid: 'mt-6 grid grid-cols-1 items-start gap-10 md:mt-10 md:grid-cols-12 md:gap-12 lg:gap-16',
-    galleryCol: 'md:col-span-7',
+    grid: 'mt-5 grid grid-cols-1 items-start gap-6 md:mt-10 md:grid-cols-12 md:gap-12 lg:gap-16',
+    galleryCol: 'order-2 md:order-none md:col-span-7',
     // The masthead is static, so the column only needs to clear the top edge.
-    infoCol: 'md:col-span-5 md:sticky md:top-10 md:self-start',
+    infoCol: 'contents md:block md:col-span-5 md:sticky md:top-10 md:self-start',
     eyebrow: 'text-[10px] font-bold uppercase tracking-[0.35em] text-[var(--site-accent,#1a2e1a)]',
-    title: 'mt-3 font-serif text-3xl italic leading-[1.08] tracking-tight text-[var(--site-text,oklch(20.5%_0_0))] md:text-4xl lg:text-5xl',
-    price: 'font-serif text-2xl italic text-[var(--site-text,oklch(20.5%_0_0))]',
-    compareAt: 'font-serif text-base italic text-[var(--site-muted,oklch(70.8%_0_0))] line-through',
+    title: 'mt-2 font-serif text-3xl italic leading-[1.08] tracking-tight text-balance text-[var(--site-text,oklch(20.5%_0_0))] md:mt-3 md:text-4xl lg:text-5xl',
+    price: 'text-2xl font-bold tracking-tight text-[var(--site-text,oklch(20.5%_0_0))] md:text-3xl',
+    compareAt: 'text-base text-[var(--site-muted,oklch(55.6%_0_0))] line-through',
     stock: {
-      in: 'border border-neutral-900 px-3 py-1 text-[9px] font-bold uppercase tracking-[0.2em] text-[var(--site-text,oklch(20.5%_0_0))]',
-      low: 'bg-[#F7F5F0] px-3 py-1 text-[9px] font-bold uppercase tracking-[0.2em] text-amber-800 ring-1 ring-neutral-900',
-      out: 'bg-neutral-900 px-3 py-1 text-[9px] font-bold uppercase tracking-[0.2em] text-white',
+      in: 'border border-[var(--site-text,#171717)] px-3 py-1 text-[9px] font-bold uppercase tracking-[0.2em] text-[var(--site-text,oklch(20.5%_0_0))]',
+      low: 'bg-[var(--site-bg,#F7F5F0)] px-3 py-1 text-[9px] font-bold uppercase tracking-[0.2em] text-amber-800 ring-1 ring-[var(--site-text,#171717)]',
+      out: 'bg-[var(--site-text,#171717)] px-3 py-1 text-[9px] font-bold uppercase tracking-[0.2em] text-white',
     },
-    divider: 'my-7 h-px w-20 bg-[var(--site-text,#171717)]',
+    divider: 'my-6 h-px w-20 bg-[var(--site-text,#171717)] md:my-7',
     description: 'max-w-md text-[15px] leading-relaxed text-[var(--site-muted,oklch(43.9%_0_0))]',
     descriptionToggle: 'text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-accent,#1a2e1a)] hover:opacity-70',
     descriptionFade: 'bg-gradient-to-t from-[var(--site-bg,#F7F5F0)] to-transparent',
     ratingStar: 'fill-yellow-400 text-yellow-400',
-    ratingStarEmpty: 'text-neutral-300',
+    ratingStarEmpty: 'text-[color-mix(in_srgb,var(--site-text,#171717)_20%,transparent)]',
     ratingText: 'font-serif text-sm italic text-[var(--site-muted,oklch(43.9%_0_0))]',
   },
   neutral: {
-    section: 'mx-auto max-w-7xl px-5 pb-16 pt-6 md:px-10 md:pb-24 md:pt-10',
-    breadcrumb: 'flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.25em] text-white/40',
+    section: 'mx-auto max-w-7xl px-5 pb-16 pt-5 md:px-10 md:pb-24 md:pt-10',
+    breadcrumb: 'flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.25em] text-white/60',
     breadcrumbLink: 'transition hover:text-[var(--site-text,#ffffff)]',
     breadcrumbCurrent: 'truncate text-[var(--site-text,#ffffff)]',
-    grid: 'mt-6 grid grid-cols-1 items-start gap-10 md:mt-10 md:grid-cols-12 md:gap-12 lg:gap-16',
-    galleryCol: 'md:col-span-7',
-    infoCol: 'md:col-span-5 md:sticky md:top-24 md:self-start',
+    grid: 'mt-5 grid grid-cols-1 items-start gap-6 md:mt-10 md:grid-cols-12 md:gap-12 lg:gap-16',
+    galleryCol: 'order-2 md:order-none md:col-span-7',
+    infoCol: 'contents md:block md:col-span-5 md:sticky md:top-24 md:self-start',
     eyebrow: 'text-[10px] font-black uppercase tracking-[0.25em] text-[var(--site-accent,#f0a500)]',
-    title: 'mt-3 text-3xl font-black uppercase leading-tight tracking-tighter text-[var(--site-text,#ffffff)] md:text-4xl lg:text-5xl',
-    price: 'text-2xl font-black text-[var(--site-accent,#f0a500)]',
-    compareAt: 'text-base font-bold text-white/40 line-through',
+    title: 'mt-2 text-3xl font-black uppercase leading-tight tracking-tighter text-balance break-words text-[var(--site-text,#ffffff)] md:mt-3 md:text-4xl lg:text-5xl',
+    price: 'text-2xl font-black text-[var(--site-accent,#f0a500)] md:text-3xl',
+    compareAt: 'text-base font-bold text-white/50 line-through',
     stock: {
       in: 'rounded-sm border border-white/25 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-white/80',
       low: 'rounded-sm bg-[var(--site-accent,#f0a500)] px-3 py-1 text-[10px] font-black uppercase tracking-wider text-black',
@@ -259,6 +277,9 @@ export default async function SiteProductPage({ params }: PageProps) {
   const media = buildGalleryMedia(product);
   const stock = stockStatus(product.stock_quantity);
   const description = product.description?.trim() || null;
+  // Zero-friction copy: short descriptions never hide behind a clamp.
+  const descriptionWords = description ? description.split(/\s+/).filter(Boolean).length : 0;
+  const expandDescription = descriptionWords <= DESCRIPTION_EXPAND_WORDS;
   const priceLabel = product.price == null ? 'Price on request' : formatDalasi(product.price);
   // Compare-at sale (lib/pricing.ts): strictly compare_at_price > price, else
   // nothing changes — the charged price is always `price`.
@@ -290,45 +311,58 @@ export default async function SiteProductPage({ params }: PageProps) {
             </div>
 
             <div className={s.infoCol}>
-              {product.category && <p className={s.eyebrow}>{product.category}</p>}
-              <h1 className={s.title}>{product.name}</h1>
-              {/* Aggregate stars + count → smooth-scrolls to #reviews below. */}
-              <ProductRatingBadge
-                productId={product.id}
-                className="mt-3"
-                starClassName={s.ratingStar}
-                starEmptyClassName={s.ratingStarEmpty}
-                textClassName={s.ratingText}
-              />
-              <div className="mt-5 flex flex-wrap items-center gap-4">
-                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                  <p className={s.price}>{priceLabel}</p>
-                  {sale && (
-                    // The seller's "was" price — muted strikethrough beside the price.
-                    <s className={s.compareAt}>
-                      <span className="sr-only">Was </span>{formatDalasi(sale.compareAt)}
-                    </s>
-                  )}
+              {/* Headline group — FIRST on phones (above the gallery), part of
+                  the sticky column from md. */}
+              <div className="order-1 md:order-none">
+                {product.category && <p className={s.eyebrow}>{product.category}</p>}
+                <h1 className={s.title}>{product.name}</h1>
+                {/* Aggregate stars + count → smooth-scrolls to #reviews below.
+                    Renders ONLY with ≥1 review. */}
+                <SitePdpRating
+                  productId={product.id}
+                  className="mt-3"
+                  starClassName={s.ratingStar}
+                  starEmptyClassName={s.ratingStarEmpty}
+                  textClassName={s.ratingText}
+                />
+                <div className="mt-4 flex flex-wrap items-center gap-3 md:mt-5 md:gap-4">
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <p className={s.price}>{priceLabel}</p>
+                    {sale && (
+                      // The seller's "was" price — muted strikethrough beside the price.
+                      <s className={s.compareAt}>
+                        <span className="sr-only">Was </span>{formatDalasi(sale.compareAt)}
+                      </s>
+                    )}
+                  </div>
+                  {sale && <SavingsPill percentOff={sale.percentOff} shape={tone === 'editorial' ? 'square' : 'pill'} />}
+                  {stock && <span className={s.stock[stock.kind]}>{stock.label}</span>}
                 </div>
-                {sale && <SavingsPill percentOff={sale.percentOff} shape={tone === 'editorial' ? 'square' : 'pill'} />}
-                {stock && <span className={s.stock[stock.kind]}>{stock.label}</span>}
               </div>
 
+              {/* Purchase group — THIRD on phones (below the gallery). */}
+              <div className="order-3 md:order-none">
               {description && (
                 <>
                   <div className={s.divider} />
-                  {/* Clamped to 4 lines; the toggle appears only when the copy overflows. */}
-                  <CollapsibleDescription
-                    text={description}
-                    lines={4}
-                    className={s.description}
-                    toggleClassName={s.descriptionToggle}
-                    fadeClassName={s.descriptionFade}
-                  />
+                  {expandDescription ? (
+                    // ≤ 80 words: fully expanded, no accordion, no fade.
+                    <p className={`whitespace-pre-line ${s.description}`}>{description}</p>
+                  ) : (
+                    // Longer copy: clamped to 6 lines; the toggle appears only
+                    // when the copy actually overflows.
+                    <CollapsibleDescription
+                      text={description}
+                      lines={6}
+                      className={s.description}
+                      toggleClassName={s.descriptionToggle}
+                      fadeClassName={s.descriptionFade}
+                    />
+                  )}
                 </>
               )}
 
-              <div className="mt-9">
+              <div className={description ? 'mt-8 md:mt-9' : 'mt-2 md:mt-6'}>
                 <SiteProductPurchase
                   product={{
                     id: product.id,
@@ -348,8 +382,9 @@ export default async function SiteProductPage({ params }: PageProps) {
               </div>
 
               {/* Delivery & Pickup — the validated shop facts as a data pane. */}
-              <div className="mt-10">
+              <div className="mt-8 md:mt-10">
                 <SiteFulfillmentPane shop={site.shop} productName={product.name} tone={tone} />
+              </div>
               </div>
             </div>
           </div>

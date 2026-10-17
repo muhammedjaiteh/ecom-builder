@@ -79,7 +79,7 @@ export function EditorialProductPlate({ src, alt, index, sizes }: {
 
 // The dense hairline grid the Editorial home page and collections page share.
 export const EDITORIAL_COLLECTION_GRID =
-  'grid grid-cols-2 gap-px border-t border-neutral-900 bg-neutral-900 md:grid-cols-4';
+  'grid grid-cols-2 gap-px border-t border-[var(--site-text,#171717)] bg-[var(--site-text,#171717)] md:grid-cols-4';
 
 /**
  * Paper-colored cells that complete the hairline grid's last row. The grid
@@ -141,7 +141,8 @@ export function EditorialProductCard({ product, index, href, sizes }: {
       <Link href={href} className="absolute inset-0 z-10">
         <span className="sr-only">{product.name}</span>
       </Link>
-      <div className="relative aspect-square overflow-hidden">
+      {/* Pass 3: 4:5 plates (the editorial imagery ratio) replace the square. */}
+      <div className="relative aspect-[4/5] overflow-hidden">
         <EditorialProductPlate src={product.ad_hero_image_url ?? product.image_url} alt={product.name} index={index} sizes={imgSizes} />
         {altSrc ? (
           // Second photo — revealed by hover (pointer devices) or the toggle
@@ -159,7 +160,9 @@ export function EditorialProductCard({ product, index, href, sizes }: {
             />
           </div>
         ) : (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-neutral-900/80 px-3 text-center opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+          // Desktop-only hover plate (pointer devices); phones read the
+          // caption below the image — never an ink wash over the product.
+          <div className="absolute inset-0 hidden flex-col items-center justify-center gap-1.5 bg-[color-mix(in_srgb,var(--site-text,#171717)_80%,transparent)] px-3 text-center opacity-0 transition-opacity duration-300 group-hover:opacity-100 md:flex">
             <p className="font-serif text-lg italic leading-snug text-white md:text-xl">{product.name}</p>
             <p className="flex flex-wrap items-baseline justify-center gap-x-2 text-xs text-white/70">
               <span>{editorialPrice(product.price)}</span>
@@ -174,7 +177,7 @@ export function EditorialProductCard({ product, index, href, sizes }: {
           <div className="absolute right-2 top-2 z-[2] flex flex-col items-end gap-1">
             {badge && (
               <span className={`px-2 py-1 text-[8px] font-bold uppercase tracking-[0.2em] ${
-                badge.tone === 'out' ? 'bg-neutral-900 text-white' : 'bg-[#F7F5F0]/95 text-amber-800'
+                badge.tone === 'out' ? 'bg-[var(--site-text,#171717)] text-white' : 'bg-[color-mix(in_srgb,var(--site-bg,#F7F5F0)_95%,transparent)] text-amber-800'
               }`}>
                 {badge.label}
               </span>
@@ -184,13 +187,16 @@ export function EditorialProductCard({ product, index, href, sizes }: {
           </div>
         )}
       </div>
-      <div className="flex items-baseline justify-between gap-2 border-t border-neutral-900 px-3 py-2.5">
-        <p className="truncate font-serif text-sm italic">{product.name}</p>
-        <p className="flex shrink-0 flex-wrap items-baseline justify-end gap-x-1.5 text-[11px] text-[var(--site-muted,oklch(55.6%_0_0))]">
-          <span>{editorialPrice(product.price)}</span>
+      {/* Pass 3 hierarchy: name (two lines, never truncated to a word), then
+          the price DIRECTLY beneath in bold ink — not a muted 11px figure
+          floated to the plate's edge. */}
+      <div className="border-t border-[var(--site-text,#171717)] px-3 py-3">
+        <p className="line-clamp-2 font-serif text-sm italic leading-snug">{product.name}</p>
+        <p className="mt-1 flex flex-wrap items-baseline gap-x-2">
+          <span className="text-sm font-bold tracking-tight text-[var(--site-text,oklch(20.5%_0_0))]">{editorialPrice(product.price)}</span>
           {sale && (
             // The seller's "was" price — muted strikethrough beside the price.
-            <s className="text-[10px] line-through opacity-60">
+            <s className="text-[11px] text-[var(--site-muted,oklch(55.6%_0_0))] line-through">
               <span className="sr-only">Was </span>{editorialPrice(sale.compareAt)}
             </s>
           )}
@@ -202,8 +208,8 @@ export function EditorialProductCard({ product, index, href, sizes }: {
     return (
       <ProductCardXfade
         className={root}
-        toggleClassName="left-1 top-1 text-neutral-900"
-        chipClassName="border border-neutral-900 bg-[#F7F5F0]/95 px-2 py-1.5"
+        toggleClassName="left-1 top-1 text-[var(--site-text,#171717)]"
+        chipClassName="border border-[var(--site-text,#171717)] bg-[color-mix(in_srgb,var(--site-bg,#F7F5F0)_95%,transparent)] px-2 py-1.5"
         toggleLabel={`Show another photo of ${product.name}`}
       >
         {inner}
@@ -265,8 +271,8 @@ export default function EditorialChrome({ shop, config, active, children }: Site
     <div className="min-h-screen bg-[var(--site-bg,#F7F5F0)] font-sans text-[var(--site-text,oklch(20.5%_0_0))]" style={siteThemeStyle(config)}>
 
       {/* Masthead */}
-      <header className="border-b border-neutral-900">
-        <div className="flex items-center justify-between gap-4 border-b border-neutral-300 px-5 py-2.5 md:px-10">
+      <header className="border-b border-[var(--site-text,#171717)]">
+        <div className="flex items-center justify-between gap-4 border-b border-[color-mix(in_srgb,var(--site-text,#171717)_25%,transparent)] px-5 py-2.5 md:px-10">
           {heroBlock ? (
             <EditableText
               as="p"
@@ -280,7 +286,9 @@ export default function EditorialChrome({ shop, config, active, children }: Site
             <p className="truncate text-[9px] font-bold uppercase tracking-[0.3em] text-[var(--site-muted,oklch(55.6%_0_0))]">{tagline}</p>
           )}
           <div className="flex shrink-0 items-center gap-3 md:gap-4">
-            <Link href={collectionsHref} className="inline-flex min-h-11 shrink-0 items-center text-[9px] font-bold uppercase tracking-[0.3em] text-[var(--site-text,oklch(20.5%_0_0))] underline underline-offset-4 transition hover:text-[var(--site-accent,#1a2e1a)]">
+            {/* Pass 3 mobile header law: the utility bar keeps the tagline +
+                Search + Bag only below md; the shop link joins from md. */}
+            <Link href={collectionsHref} className="hidden min-h-11 shrink-0 items-center text-[9px] font-bold uppercase tracking-[0.3em] text-[var(--site-text,oklch(20.5%_0_0))] underline underline-offset-4 transition hover:text-[var(--site-accent,#1a2e1a)] md:inline-flex">
               Shop The Collection
             </Link>
             {/* Client islands: shop-scoped search + live cart trigger in the
@@ -302,20 +310,20 @@ export default function EditorialChrome({ shop, config, active, children }: Site
                 width={56}
                 height={56}
                 blurTone="none"
-                className="h-12 w-12 rounded-full object-cover ring-1 ring-neutral-300 md:h-14 md:w-14"
+                className="h-12 w-12 rounded-full object-cover ring-1 ring-[color-mix(in_srgb,var(--site-text,#171717)_25%,transparent)] md:h-14 md:w-14"
               />
             </div>
           )}
           {/* Quiet-luxury type cap (Beta QA pass): md:text-7xl → md:text-6xl,
               mobile 4xl → 3xl — long shop names stay one confident line at
               360px instead of a shouting wrap. */}
-          <Link href={base ?? '#'} className="inline-block py-1 font-serif text-3xl font-black uppercase tracking-tight md:text-6xl">
+          <Link href={base ?? '#'} className="inline-block max-w-full py-1 font-serif text-3xl font-black uppercase tracking-tight text-balance break-words md:text-6xl">
             {shop.shop_name}
           </Link>
         </div>
         {/* py moved off the container onto the min-h-11 anchors (navLink) so
             the tap boxes themselves are ≥44px. */}
-        <nav className="flex items-center justify-center gap-7 border-t border-neutral-300 px-5 md:gap-12">
+        <nav className="flex items-center justify-center gap-7 border-t border-[color-mix(in_srgb,var(--site-text,#171717)_25%,transparent)] px-5 md:gap-12">
           <a href={homeAnchor('#features')} className={navLink(false)}>Features</a>
           <Link href={collectionsHref} className={navLink(active === 'collections')}>The Collection</Link>
           <a href={homeAnchor('#story')} className={navLink(false)}>Story</a>
@@ -328,12 +336,14 @@ export default function EditorialChrome({ shop, config, active, children }: Site
           This is the cta_banner block's fixed design slot in the Editorial
           anatomy (the templates' body never renders it). */}
       {/* --site-primary (Pillar 4): the dark sign-off spread rides the primary token. */}
-      <footer className="bg-[var(--site-primary,#141414)] text-[#F7F5F0]">
+      {/* Pass 3: bottom allowance on the PDP so the sticky buy bar never
+          covers the footer's last row. */}
+      <footer className={`bg-[var(--site-primary,#141414)] text-[var(--site-bg,#F7F5F0)] ${active === 'product' ? 'pb-24 md:pb-20' : ''}`}>
         {/* data-block-section: inert marker for the Site Editor's section
             focus (the cta_banner block's fixed design slot lives here). */}
         <div
           data-block-section={ctaBlock?.id}
-          className="mx-auto max-w-7xl px-5 py-20 text-center md:px-10 md:py-28"
+          className="mx-auto max-w-7xl px-5 py-16 text-center md:px-10 md:py-28"
         >
           {ctaBlock ? (
             <>
@@ -374,12 +384,12 @@ export default function EditorialChrome({ shop, config, active, children }: Site
             <p className="font-serif text-3xl font-black uppercase tracking-tight md:text-5xl">{shop.shop_name}</p>
             <div className="flex flex-col gap-2 md:items-end md:text-right">
               {fulfillment.map((line) => (
-                <p key={line} className="text-xs text-white/50">{line}</p>
+                <p key={line} className="text-xs text-white/60">{line}</p>
               ))}
-              <Link href={shopUrl} className="inline-flex min-h-11 items-center text-[10px] font-bold uppercase tracking-[0.25em] text-white/50 underline underline-offset-4 transition hover:text-white">
+              <Link href={shopUrl} className="inline-flex min-h-11 items-center text-[10px] font-bold uppercase tracking-[0.25em] text-white/60 underline underline-offset-4 transition hover:text-white">
                 View classic boutique
               </Link>
-              <p className="mt-1 text-[9px] uppercase tracking-widest text-white/30">Site generated by Sanndikaa AI</p>
+              <p className="mt-1 text-[9px] uppercase tracking-widest text-white/50">Site generated by Sanndikaa AI</p>
             </div>
           </div>
         </div>
