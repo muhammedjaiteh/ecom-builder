@@ -754,17 +754,19 @@ export const ARCHETYPES: Record<ArchetypeKey, SiteArchetype> = {
     template_key: 'ritual',
     // Obsidian paper, bone ink (14.5:1), charcoal primary panels, sharp
     // museum-label corners.
-    theme: { accent: '#7a5c33', display_font: 'bodoni', background: '#12100d', text: '#e8e2d6', primary: '#1d1a15', button_radius: 'sharp' },
+    theme: { accent: '#7a5c33', display_font: 'bodoni', background: '#12100d', text: '#f3efe6', primary: '#1d1a15', button_radius: 'sharp' },
     blockMix: ['hero_banner', 'value_props', 'product_grid', 'split_cta', 'story_text', 'testimonials', 'cta_banner'],
     // The obsidian paper is the hard constraint here: a metallic must sit in
     // the narrow luminance window that clears BOTH 4.5:1 on white labels and
-    // 3:1 against #12100d. All five do (bronze 6.2/3.1, verdigris 4.8/4.0,
-    // slate 5.4/3.5, moss 5.5/3.5, garnet 6.1/3.1); brighter golds and wines
-    // fail one side or the other and were rejected.
+    // 3:1 against #12100d. Bronze 6.2/3.1, verdigris 4.8/4.0, moss 5.5/3.5,
+    // garnet 6.1/3.1. The slate-blue slot was retired (a cool blue read as
+    // corporate against the obsidian) for Champagne Gold #c9a96e — ~9:1
+    // against the paper; NOTE it does NOT clear 4.5:1 under WHITE labels, so
+    // surfaces that pick index 2 must set dark ink on the accent fill.
     accentPresets: [
       { name: 'Antique Bronze', hex: '#7a5c33' },
       { name: 'Verdigris', hex: '#4f7a7a' },
-      { name: 'Slate', hex: '#5a6b8a' },
+      { name: 'Champagne Gold', hex: '#c9a96e' },
       { name: 'Moss', hex: '#5f6f3f' },
       { name: 'Garnet', hex: '#9a4a4a' },
     ],
@@ -1836,3 +1838,367 @@ export function selectFeaturedProducts(products: SiteProduct[], max = FEATURED_M
 // lib/productMedia (the marketplace client bundle consumes it too and must not
 // pull this module's zod schemas); re-exported here for the /site chromes.
 export { secondaryProductImage } from './productMedia';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MERCHANT STRATEGY RESOLVER — a PURE, deterministic mapping from what the
+// merchant sells (studio niche id and/or the inventory-derived primary
+// category) to a visual archetype + a palette. No UI, no rendering, no I/O:
+// the caller decides what to do with the result.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Palette alias — the stored theme layer IS the palette contract. */
+export type WebsiteTheme = SiteTheme;
+
+export type MerchantVisualArchetype =
+  | 'editorial-luxury'
+  | 'clinical-premium'
+  | 'culinary-storytelling'
+  | 'technical-modern'
+  | 'fashion-lookbook'
+  | 'marketplace-modern'
+  | 'bespoke-atelier';
+
+export type MerchantStrategy = {
+  archetype: MerchantVisualArchetype;
+  palette: WebsiteTheme;
+};
+
+/** Sanndikaa house palette (bone paper, forest ink/primary, gold accent) —
+ *  the hex projections of the --mall-* tokens. Used when a merchant has no
+ *  valid brand color and no niche-specific palette applies. */
+export const SANNDIKAA_DEFAULT_PALETTE: Readonly<WebsiteTheme> = Object.freeze({
+  accent: '#b8923a',
+  background: '#f5f2ea',
+  text: '#1b3a2b',
+  primary: '#1b3a2b',
+});
+
+/** Niche palettes — every pair is paper/ink ≥ 4.5:1 by construction. */
+const MERCHANT_PALETTES = {
+  goldObsidian: { accent: '#c9a96e', background: '#12100d', text: '#f3efe6', primary: '#1d1a15' },
+  stoneSage: { accent: '#4f6b58', background: '#f4f1ec', text: '#2f2d29', primary: '#3b4a40' },
+  bronzeForest: { accent: '#a9803f', background: '#14201a', text: '#efe8db', primary: '#1c2a22' },
+  ivoryCharcoal: { accent: '#2b2b2b', background: '#f6f1e8', text: '#1f1d1a', primary: '#2b2b2b' },
+  graphiteSteel: { accent: '#8fa1b3', background: '#1b1d21', text: '#e6e8eb', primary: '#2a2d33' },
+  terracottaLinen: { accent: '#8a3412', background: '#f4ede2', text: '#2b2015', primary: '#8a3412' },
+} as const satisfies Record<string, WebsiteTheme>;
+
+/** Keyword tables — matched as substrings of the lower-cased, whitespace-
+ *  normalised `niche + primaryCategory` string. ORDER IS THE PRECEDENCE:
+ *  marketplace signals are tested before 'home' so "household goods" never
+ *  lands on the fragrance palette. */
+const MERCHANT_KEYWORDS: ReadonlyArray<{ archetype: MerchantVisualArchetype; palette: WebsiteTheme | null; keys: ReadonlyArray<string> }> = [
+  {
+    archetype: 'marketplace-modern',
+    palette: null,
+    keys: ['general', 'multi-category', 'multi category', 'multicategory', 'reseller', 'supermarket', 'household', 'convenience', 'grocery', 'groceries', 'department store', 'general retail', 'variety', 'wholesale'],
+  },
+  {
+    archetype: 'editorial-luxury',
+    palette: MERCHANT_PALETTES.goldObsidian,
+    keys: ['jewelry', 'jewellery', 'jewel', 'watch', 'watches', 'timepiece', 'gold', 'diamond', 'bracelet', 'necklace', 'ring'],
+  },
+  {
+    archetype: 'clinical-premium',
+    palette: MERCHANT_PALETTES.stoneSage,
+    keys: ['cosmetic', 'skincare', 'skin care', 'skin', 'beauty', 'serum', 'lotion', 'soap', 'makeup', 'make-up', 'hair', 'wellness', 'health', 'supplement', 'vitamin', 'botanical', 'self-care', 'fitness'],
+  },
+  {
+    archetype: 'editorial-luxury',
+    palette: MERCHANT_PALETTES.bronzeForest,
+    keys: ['oud', 'fragrance', 'perfume', 'attar', 'bakhoor', 'incense', 'scent', 'candle', 'home', 'decor', 'décor', 'furniture', 'artisanal', 'craft'],
+  },
+  {
+    archetype: 'fashion-lookbook',
+    palette: MERCHANT_PALETTES.ivoryCharcoal,
+    keys: ['fashion', 'abaya', 'abayas', 'apparel', 'clothing', 'clothes', 'modest', 'dress', 'tailor', 'footwear', 'shoe', 'shoes', 'bag', 'handbag', 'wear', 'boutique'],
+  },
+  {
+    archetype: 'technical-modern',
+    palette: MERCHANT_PALETTES.graphiteSteel,
+    keys: ['tech', 'electronic', 'electronics', 'gadget', 'phone', 'laptop', 'computer', 'appliance', 'device', 'audio', 'camera', 'tool', 'accessor'],
+  },
+  {
+    archetype: 'culinary-storytelling',
+    palette: MERCHANT_PALETTES.terracottaLinen,
+    keys: ['food', 'culinary', 'spice', 'spices', 'gourmet', 'beverage', 'drink', 'coffee', 'tea', 'pantry', 'snack', 'bakery', 'honey', 'sauce', 'restaurant', 'catering'],
+  },
+];
+
+/** Studio niche ids map DIRECTLY (exact, case-insensitive) before any
+ *  keyword scan — the seller's declared niche outranks inventory guesses. */
+const NICHE_ID_STRATEGY: Readonly<Record<StudioNicheId, { archetype: MerchantVisualArchetype; palette: WebsiteTheme | null }>> = {
+  jewelry: { archetype: 'editorial-luxury', palette: MERCHANT_PALETTES.goldObsidian },
+  cosmetics: { archetype: 'clinical-premium', palette: MERCHANT_PALETTES.stoneSage },
+  wellness: { archetype: 'clinical-premium', palette: MERCHANT_PALETTES.stoneSage },
+  home: { archetype: 'editorial-luxury', palette: MERCHANT_PALETTES.bronzeForest },
+  fashion: { archetype: 'fashion-lookbook', palette: MERCHANT_PALETTES.ivoryCharcoal },
+  tech: { archetype: 'technical-modern', palette: MERCHANT_PALETTES.graphiteSteel },
+  food: { archetype: 'culinary-storytelling', palette: MERCHANT_PALETTES.terracottaLinen },
+  general: { archetype: 'marketplace-modern', palette: null },
+};
+
+const isStudioNicheId = (value: string): value is StudioNicheId =>
+  Object.prototype.hasOwnProperty.call(NICHE_ID_STRATEGY, value);
+
+/** A 6-digit hex (optionally without '#'), normalised to '#rrggbb' lowercase;
+ *  null for anything else — a brand color never enters the theme unvalidated. */
+function normalizeBrandColor(raw: string | null | undefined): string | null {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  const withHash = trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
+  return HEX_COLOR.test(withHash) ? withHash.toLowerCase() : null;
+}
+
+/** Fallback palette: the merchant's valid brand color as accent + primary on
+ *  the house paper/ink (both ≥ 4.5:1 on their own), else the house palette. */
+function fallbackPalette(brandColor: string | null | undefined): WebsiteTheme {
+  const brand = normalizeBrandColor(brandColor);
+  if (!brand) return { ...SANNDIKAA_DEFAULT_PALETTE };
+  return {
+    accent: brand,
+    background: SANNDIKAA_DEFAULT_PALETTE.background,
+    text: SANNDIKAA_DEFAULT_PALETTE.text,
+    primary: brand,
+  };
+}
+
+/** Resolve the merchant's visual archetype + palette. Pure and deterministic:
+ *  the same inputs always yield the same (structurally fresh) result. Returns
+ *  ONLY { archetype, palette } — no UI or rendering concerns live here.
+ *
+ *  Precedence: declared studio niche id → keyword scan over
+ *  `niche + primaryCategory` (table order above) → bespoke-atelier.
+ *  marketplace-modern and bespoke-atelier carry no fixed palette, so they
+ *  take the brand-color-or-house fallback. */
+export function resolveMerchantStrategy(input: {
+  niche?: string | null;
+  primaryCategory?: string | null;
+  brandColor?: string | null;
+}): MerchantStrategy {
+  const nicheRaw = (input.niche ?? '').trim().toLowerCase();
+  const categoryRaw = (input.primaryCategory ?? '').trim().toLowerCase();
+
+  if (nicheRaw && isStudioNicheId(nicheRaw)) {
+    const hit = NICHE_ID_STRATEGY[nicheRaw];
+    return {
+      archetype: hit.archetype,
+      palette: hit.palette ? { ...hit.palette } : fallbackPalette(input.brandColor),
+    };
+  }
+
+  const haystack = `${nicheRaw} ${categoryRaw}`.replace(/\s+/g, ' ').trim();
+  if (haystack) {
+    for (const entry of MERCHANT_KEYWORDS) {
+      if (entry.keys.some((k) => haystack.includes(k))) {
+        return {
+          archetype: entry.archetype,
+          palette: entry.palette ? { ...entry.palette } : fallbackPalette(input.brandColor),
+        };
+      }
+    }
+  }
+
+  return { archetype: 'bespoke-atelier', palette: fallbackPalette(input.brandColor) };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PRODUCT DESCRIPTION CLEANER — strips ONLY recognised AI boilerplate
+// sentences. Conservative by design: anything that looks like a merchant fact
+// (digits, percentages, units, colons, list markers) is never touched, and
+// nothing is summarised, rewritten, or added.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Sentence-level boilerplate signatures. Each is anchored to the START of a
+ *  sentence so a merchant sentence that merely CONTAINS one of these words
+ *  survives. Extend only with phrases that carry zero product information. */
+const AI_BOILERPLATE_SENTENCE_PATTERNS: ReadonlyArray<RegExp> = [
+  /^experience the (perfect|ultimate|ideal|seamless) (blend|balance|fusion|combination|harmony|mix) of\b/i,
+  /^experience (true |pure |unparalleled |ultimate )?(luxury|elegance|sophistication|comfort)\b/i,
+  /^crafted with (premium|the finest|high[- ]quality|exceptional|superior|only the best) (materials?|ingredients|craftsmanship)\b/i,
+  /^(carefully|meticulously|expertly|thoughtfully|lovingly|beautifully|artfully) (crafted|designed|curated|made|selected)\b/i,
+  /^elevate your (everyday |daily |personal )?(lifestyle|style|look|routine|wardrobe|space|experience|everyday)\b/i,
+  /^(discover|explore|introducing|unveil(ing)?|step into) (our|the|a|an) (collection|range|world|difference|new|latest|exclusive|curated)\b/i,
+  /^discover (the )?(perfect|ultimate|luxury|elegance|sophistication)\b/i,
+  /^indulge (yourself )?in\b/i,
+  /^treat yourself to\b/i,
+  /^perfect for (any|every|all) occasions?\b/i,
+  /^whether you(?:'|’)re .+?, this .+? (is|makes) (the )?(perfect|ideal|ultimate|essential)\b/i,
+  /^look no further\b/i,
+  /^(this|the) (piece|product|item) (effortlessly |seamlessly )?(elevates|transforms|redefines|embodies|exudes|combines|blends) (your|the|timeless|modern|classic|luxury|style|elegance|sophistication)\b/i,
+  /^a (must[- ]have|timeless|perfect|stunning|luxurious|versatile) (addition|piece|staple|choice|essential) (to|for|in) (your|any|every)\b/i,
+  /^(embrace|unleash|redefine|transform) (your|the) (inner|true|everyday|style|elegance|beauty|confidence|lifestyle)\b/i,
+  /^(don(?:'|’)t miss out|order (now|today) (and|to)|shop now (and|to)|get yours (today|now))\b/i,
+];
+
+/** A sentence carrying FACT signals is never removed, even if it starts like
+ *  boilerplate ("Carefully crafted from 18k gold: 2.4g" stays). */
+const FACT_SIGNAL = /[0-9%:]|\b(ml|mg|g|kg|cm|mm|oz|lb|inch|inches|size|sizes|xs|xl|xxl|made (in|of|from)|material:|ingredients:|contains?|how to use|directions?|apply|wash|care)\b/i;
+
+const isBoilerplateSentence = (sentence: string): boolean => {
+  const s = sentence.trim();
+  if (!s) return false;
+  if (FACT_SIGNAL.test(s)) return false;
+  return AI_BOILERPLATE_SENTENCE_PATTERNS.some((re) => re.test(s));
+};
+
+/** Remove recognised AI boilerplate sentences from a product description.
+ *  Preserves line structure, merchant-written sentences, ingredients,
+ *  materials, sizes, usage instructions, and every product-specific fact.
+ *  Never summarises, rewrites, or invents. If EVERY sentence would be
+ *  removed, the original (trimmed) text is returned unchanged — an empty
+ *  product page is worse than a generic one, and the merchant may have
+ *  written it themselves. */
+export function cleanProductDescription(raw?: string | null): string {
+  if (typeof raw !== 'string') return '';
+  const original = raw.replace(/\r\n?/g, '\n').trim();
+  if (!original) return '';
+
+  const cleanedLines = original.split('\n').map((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return '';
+    // List rows / headings are merchant structure — pass through verbatim.
+    if (/^([-*•●▪]|\d+[.)])\s/.test(trimmed) || /^[^.!?]{0,40}:$/.test(trimmed)) return line;
+    const sentences = trimmed.split(/(?<=[.!?…])\s+(?=[^\s])/);
+    const kept = sentences.filter((sentence) => !isBoilerplateSentence(sentence));
+    if (kept.length === sentences.length) return line;
+    return kept.join(' ').trim();
+  });
+
+  // Collapse runs of blank lines created by fully-removed paragraphs.
+  const result = cleanedLines
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return result.length === 0 ? original : result;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STORE CONTENT CLEANER — replaces ONLY recognised cliché LABELS (section
+// titles, headlines, button labels) in a WebsiteConfig with plain, honest
+// defaults. Body copy (intros, stories, subtext) is never touched. Pure:
+// clones, then edits the clone.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Safe default labels — deterministic, merchant-neutral. */
+export const STORE_LABEL_DEFAULTS = Object.freeze({
+  featuredProducts: 'Featured Products',
+  featuredCollection: 'Featured Collection',
+  exploreCollection: 'Explore Collection',
+  ourCollection: 'Our Collection',
+  shopCollection: 'Shop Collection',
+  browseProducts: 'Browse Products',
+  viewCollection: 'View Collection',
+  orderViaWhatsApp: 'Order via WhatsApp',
+});
+
+type ClicheReplacement = {
+  /** Context-free default. */
+  plain: string;
+  /** Category-aware variant; `{category}` is the trimmed primaryCategory. */
+  withCategory?: string;
+};
+
+/** Cliché → replacement. Keys are the NORMALISED label (lower-cased, inner
+ *  whitespace collapsed, trailing punctuation dropped). Exact match only: a
+ *  headline that merely contains "the ritual" is merchant copy and stays. */
+const CLICHE_LABELS: Readonly<Record<string, ClicheReplacement>> = {
+  'the edit': { plain: STORE_LABEL_DEFAULTS.featuredProducts, withCategory: 'Featured {category}' },
+  'the ritual': { plain: STORE_LABEL_DEFAULTS.featuredCollection },
+  'the experience': { plain: STORE_LABEL_DEFAULTS.exploreCollection },
+  'the journey': { plain: STORE_LABEL_DEFAULTS.ourCollection },
+  'begin the ritual': { plain: STORE_LABEL_DEFAULTS.shopCollection, withCategory: 'Shop {category}' },
+  'begin the edit': { plain: STORE_LABEL_DEFAULTS.browseProducts },
+  'finish the silhouette': { plain: STORE_LABEL_DEFAULTS.viewCollection },
+};
+
+const normalizeLabel = (value: string): string =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/[\s.!?:;,—–-]+$/g, '')
+    .replace(/^[“"'‘]+|[”"'’]+$/g, '')
+    .trim();
+
+/** Replace a label when (and only when) it IS a known cliché; clamp the
+ *  category-aware variant to the field budget so a long category can never
+ *  push a title past its schema limit (falls back to the plain default). */
+function replaceClicheLabel(value: string, category: string | null, maxLength: number): string {
+  const hit = CLICHE_LABELS[normalizeLabel(value)];
+  if (!hit) return value;
+  if (category && hit.withCategory) {
+    const contextual = hit.withCategory.replace('{category}', category);
+    if (contextual.length <= maxLength) return contextual;
+  }
+  return hit.plain.length <= maxLength ? hit.plain : value;
+}
+
+/** Replace recognised cliché labels across config.blocks and the legacy
+ *  config.site mirror. Returns a NEW config; the input is never mutated.
+ *  Only label-type fields are inspected (titles, headlines, taglines, button
+ *  labels) — body copy is left exactly as written. */
+export function cleanStoreContent(
+  config: WebsiteConfig,
+  context?: { primaryCategory?: string | null; shopName?: string | null }
+): WebsiteConfig {
+  const next: WebsiteConfig =
+    typeof structuredClone === 'function'
+      ? structuredClone(config)
+      : (JSON.parse(JSON.stringify(config)) as WebsiteConfig);
+
+  const categoryRaw = (context?.primaryCategory ?? '').replace(/\s+/g, ' ').trim();
+  const category = categoryRaw.length > 0 ? categoryRaw : null;
+  const fix = (value: string, max: number) => replaceClicheLabel(value, category, max);
+
+  // ── Blocks ───────────────────────────────────────────────────────────────
+  if (Array.isArray(next.blocks)) {
+    for (const block of next.blocks) {
+      switch (block.type) {
+        case 'hero_banner':
+          block.headline = fix(block.headline, SITE_COPY_LIMITS.hero_headline);
+          if (block.tagline) block.tagline = fix(block.tagline, SITE_COPY_LIMITS.tagline);
+          break;
+        case 'value_props':
+          for (const item of block.items) item.title = fix(item.title, SITE_COPY_LIMITS.value_title);
+          break;
+        case 'product_grid':
+          block.title = fix(block.title, SITE_COPY_LIMITS.collection_title);
+          break;
+        case 'cta_banner':
+          block.headline = fix(block.headline, SITE_COPY_LIMITS.cta_headline);
+          block.button_label = fix(block.button_label, SITE_COPY_LIMITS.cta_button_label);
+          break;
+        case 'split_cta':
+          block.headline = fix(block.headline, SITE_COPY_LIMITS.cta_headline);
+          block.button_label = fix(block.button_label, SITE_COPY_LIMITS.cta_button_label);
+          break;
+        case 'product_tabs':
+          block.title = fix(block.title, SITE_COPY_LIMITS.tabs_heading);
+          for (const tab of block.tabs) tab.title = fix(tab.title, SITE_COPY_LIMITS.tab_title);
+          break;
+        case 'testimonials':
+          if (block.title) block.title = fix(block.title, SITE_COPY_LIMITS.testimonials_heading);
+          break;
+        case 'video_hero':
+          if (block.headline) block.headline = fix(block.headline, SITE_COPY_LIMITS.hero_headline);
+          break;
+        case 'story_text':
+          // Body copy only — never rewritten.
+          break;
+      }
+    }
+  }
+
+  // ── Legacy site.* mirror ─────────────────────────────────────────────────
+  const site = next.site;
+  site.tagline = fix(site.tagline, SITE_COPY_LIMITS.tagline);
+  site.hero_headline = fix(site.hero_headline, SITE_COPY_LIMITS.hero_headline);
+  site.collection_title = fix(site.collection_title, SITE_COPY_LIMITS.collection_title);
+  for (const vp of site.value_props) vp.title = fix(vp.title, SITE_COPY_LIMITS.value_title);
+  site.cta_banner.headline = fix(site.cta_banner.headline, SITE_COPY_LIMITS.cta_headline);
+  site.cta_banner.button_label = fix(site.cta_banner.button_label, SITE_COPY_LIMITS.cta_button_label);
+
+  return next;
+}

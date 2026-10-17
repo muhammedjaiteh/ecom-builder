@@ -24,6 +24,7 @@ MatrixWebsiteGenerationSchema,
   archetypeLayoutBounds,
   buildPreviousDesign,
   classicLayoutBounds,
+  cleanStoreContent,
   generationToConfig,
   pickConceptArchetypes,
   templateFromCategory,
@@ -94,6 +95,32 @@ function describeLayoutBounds(bounds: LayoutBounds): string {
       : '- display_font: fixed on this layout (native grotesque) — omit it.',
   ].join('\n');
 }
+
+/** Copy-integrity directives for the DYNAMIC prompt ONLY. Cache law: the
+ *  cached prefix (cachedSystem) stays byte-identical, so this block rides the
+ *  per-request user message next to <seller_data> in BOTH AI steps — the
+ *  consultation pitches a hero_headline that execute is told to honor, so the
+ *  rules must bind there too. Three mandates: inventory-specific language,
+ *  never-invent business facts, and the four conversion questions every
+ *  storefront must answer. Guidance only — no WebsiteConfig field is added or
+ *  changed; the downstream cleanStoreContent() pass is the deterministic
+ *  backstop for the banned labels. */
+const COPY_INTEGRITY_DIRECTIVES = `<copy_integrity>
+INVENTORY-SPECIFIC LANGUAGE:
+- Every headline, section title and button label must derive from this shop's ACTUAL categories, products, materials or inventory named in <seller_data>.
+- Avoid generic luxury-marketing labels. NEVER write: "The Edit", "The Ritual", "The Experience", "The Journey", "Begin the Ritual", "Begin the Edit", "Finish the Silhouette" — or any abstract label that could sit on any shop.
+- Use concrete inventory language instead: name the category, the material, the product line or the use ("Shea Body Butters", "Shop Abayas", "Oud Attars, 12ml").
+
+NEVER INVENT BUSINESS FACTS:
+- Never state or imply: years in business, awards, certifications, founder stories, customer counts, local manufacturing, handmade / hand-crafted claims, or sourcing / origin claims.
+- Use ONLY the verified information supplied in the shop, niche, category and product data of <seller_data>. If a fact is not supplied, omit it — do not estimate, hedge, or imply it.
+
+FOUR QUESTIONS EVERY STOREFRONT MUST ANSWER CLEARLY:
+1. What does this merchant sell? — the hero and the collection title name the actual categories.
+2. What should I buy first? — the hero and the collection intro point to a concrete product or category.
+3. Why trust this merchant? — value_props built from supplied facts only (delivery, pickup, stock, materials, ingredients) — never invented proof.
+4. How do I order? — every button label names the action (e.g. "Shop Abayas", "Order via WhatsApp").
+</copy_integrity>`;
 
 export async function POST(req: Request) {
   try {
@@ -470,7 +497,9 @@ PITCH THESE TWO ARCHETYPES, IN THIS ORDER:
 1. "${primary.key}" — ${primary.name}
 2. "${secondary.key}" — ${secondary.name}
 
-NICHE CONTEXT: ${nicheContext}.${variationDirective}`;
+NICHE CONTEXT: ${nicheContext}.${variationDirective}
+
+${COPY_INTEGRITY_DIRECTIVES}`;
 
       const { data: pair, provider } = await generateWithFallback({
         schema: ConceptPairSchema,
@@ -666,7 +695,9 @@ ${templateConstraint}
 
 <layout_bounds>
 ${layoutBoundsText}
-</layout_bounds>${entropyEngine}`;
+</layout_bounds>
+
+${COPY_INTEGRITY_DIRECTIVES}${entropyEngine}`;
 
     const { data: generation, provider } = await generateWithFallback({
       schema: MatrixWebsiteGenerationSchema,
@@ -730,6 +761,24 @@ ${layoutBoundsText}
         `${JSON.stringify(legacyGeneration.layout)} → blocks=[${(config.blocks ?? []).map((b) => `${b.type}${b.hidden ? '(hidden)' : ''}`).join(', ')}] theme=${JSON.stringify(config.theme ?? null)}`
       );
     }
+
+    // ── Content cleanup (pure — clone-then-clean, original never mutated) ──
+    // The FINAL assembled config (template pinned, archetype / layout levers
+    // applied) passes through cleanStoreContent before the dry-run return AND
+    // before persistence, so harness output and the stored row agree. Only the
+    // known cliché labels are swapped for inventory-concrete ones; body copy,
+    // blocks, theme, assets and layout are untouched. primaryCategory feeds the
+    // "Featured {category}" / "Shop {category}" variants: the seller-declared
+    // niche label wins (skipped for the catch-all "general" niche, which would
+    // read as a label), else the dominant inventory category in its stored
+    // casing (dominantCategory itself is lowercased for counting).
+    const dominantCategoryLabel =
+      dominantCategory
+        ? products.find((p) => (p.category ?? '').toLowerCase() === dominantCategory)?.category?.trim() || null
+        : null;
+    const primaryCategoryLabel =
+      (nicheKey && nicheKey.toLowerCase() !== 'general' ? nicheLabel : null) ?? dominantCategoryLabel;
+    config = cleanStoreContent(config, { primaryCategory: primaryCategoryLabel, shopName: shop.shop_name });
 
     console.log(`[generate-website] Config by ${provider} for shop ${shop.id}: template=${config.template_key} matrix=${matrix_theme} — ${config.niche_reasoning}`);
 

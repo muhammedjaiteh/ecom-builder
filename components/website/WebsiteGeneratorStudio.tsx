@@ -105,6 +105,12 @@ const mintVariationSeed = () =>
 // raised on the shop's row); the modal pre-fills the purchase message.
 const STUDIO_TOKEN_WHATSAPP = '2203165466';
 
+/** TEMPORARY testing switch, env-controlled only (NEXT_PUBLIC_ENFORCE_QUOTA).
+ *  'true' = the full quota gate (client pre-checks, 402 handling, Token Top-Up
+ *  modal). Anything else = the counters still read/render, but regeneration is
+ *  never blocked and the modal never opens. No billing/quota code is removed. */
+const ENFORCE_GENERATION_QUOTA = process.env.NEXT_PUBLIC_ENFORCE_QUOTA === 'true';
+
 /** True when a generate-website response was the 402 QUOTA_EXCEEDED gate —
  *  matched defensively on status, code, or the server's error copy, since
  *  the transport error carries the body's `error` as its message. */
@@ -165,6 +171,8 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
   const generationsUsed = website?.generations_used ?? (website ? 1 : 0);
   const generationsLimit = website?.generations_limit ?? 2;
   const generationsRemaining = Math.max(0, generationsLimit - generationsUsed);
+  // Client-side gate — only bites while the env flag enforces the quota.
+  const quotaBlocked = ENFORCE_GENERATION_QUOTA && generationsRemaining <= 0;
 
   // Entropy-engine seed coherence: the seed the on-screen concepts were
   // pitched under is held here and re-posted with the EXECUTE step, so the
@@ -340,7 +348,7 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
       setSelectedConcept(null);
       setPhase('choosing');
     } catch (err) {
-      if (isQuotaExceededError(err)) {
+      if (ENFORCE_GENERATION_QUOTA && isQuotaExceededError(err)) {
         setIsQuotaModalOpen(true);
         setPhase('idle');
         return;
@@ -374,7 +382,7 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
   // consultation fires; a first-time seller has nothing to lose and proceeds
   // directly — showing them an "overwrite" warning would be dishonest UX.
   const handleConsultClick = () => {
-    if (generationsRemaining <= 0) {
+    if (quotaBlocked) {
       setIsQuotaModalOpen(true);
       return;
     }
@@ -430,7 +438,7 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
       setSelectedConcept(null);
       setPhase('idle');
     } catch (err) {
-      if (isQuotaExceededError(err)) {
+      if (ENFORCE_GENERATION_QUOTA && isQuotaExceededError(err)) {
         setIsQuotaModalOpen(true);
         setPhase('idle');
         return;
@@ -464,7 +472,7 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
       handleConsultClick();
       return;
     }
-    if (generationsRemaining <= 0) {
+    if (quotaBlocked) {
       setIsQuotaModalOpen(true);
       return;
     }
@@ -484,7 +492,7 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
   // ── Step 2: build the chosen concept ────────────────────────────────────
   const handleBuild = async () => {
     if (selectedConcept === null || !concepts?.[selectedConcept]) return;
-    if (generationsRemaining <= 0) {
+    if (quotaBlocked) {
       setIsQuotaModalOpen(true);
       return;
     }
@@ -518,7 +526,7 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
       setSelectedConcept(null);
       setPhase('idle');
     } catch (err) {
-      if (isQuotaExceededError(err)) {
+      if (ENFORCE_GENERATION_QUOTA && isQuotaExceededError(err)) {
         setIsQuotaModalOpen(true);
         setPhase('choosing');
         return;
@@ -1188,7 +1196,7 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
       {/* ── Token Top-Up modal (quota spent / server 402 QUOTA_EXCEEDED) ────
           Same z-[90] layer as the overwrite warning. */}
       <AnimatePresence>
-        {isQuotaModalOpen && (
+        {ENFORCE_GENERATION_QUOTA && isQuotaModalOpen && (
           <motion.div
             key="quota-topup"
             initial={{ opacity: 0 }}

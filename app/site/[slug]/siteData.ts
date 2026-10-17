@@ -6,6 +6,8 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import {
   WebsiteConfigSchema,
+  cleanProductDescription,
+  cleanStoreContent,
   type SiteProduct,
   type SiteShop,
   type TemplateKey,
@@ -70,6 +72,51 @@ function getSupabase() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Render-time content cleanup — STOREFRONT OUTPUT ONLY.
+// Stored rows are never rewritten and no cache entry is changed: these helpers
+// run OUTSIDE every unstable_cache scope (on the values the cached reads
+// return), so the Data Cache keeps the raw DB rows and a cleaner tweak takes
+// effect on the next request without a bust. Both cleaners are pure
+// (clone-then-clean), so legacy generated websites benefit immediately — no
+// migration, no persistence change, no schema change.
+//   · cleanProductDescription — strips known AI boilerplate sentences from a
+//     product description; facts (sizes, ingredients, materials, usage) stay.
+//   · cleanStoreContent        — swaps the known cliché labels ("The Edit",
+//     "Begin the Ritual", …) for inventory-concrete ones in the parsed config.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function cleanProductForStorefront<T extends { description: string | null }>(product: T): T {
+  if (product.description == null) return product;
+  const cleaned = cleanProductDescription(product.description);
+  return cleaned === product.description ? product : { ...product, description: cleaned };
+}
+
+function cleanProductsForStorefront<T extends { description: string | null }>(products: T[]): T[] {
+  return products.map(cleanProductForStorefront);
+}
+
+/** Dominant inventory category in its stored casing — feeds cleanStoreContent's
+ *  "Featured {category}" / "Shop {category}" variants. Deterministic: ties
+ *  resolve to the first-seen category in the (created_at desc) read order.
+ *  Null when no product carries a category. */
+function dominantCategoryLabel(products: ReadonlyArray<{ category: string | null }>): string | null {
+  const counts = new Map<string, { label: string; count: number }>();
+  for (const p of products) {
+    const label = (p.category ?? '').trim();
+    if (!label) continue;
+    const key = label.toLowerCase();
+    const entry = counts.get(key);
+    if (entry) entry.count += 1;
+    else counts.set(key, { label, count: 1 });
+  }
+  let best: { label: string; count: number } | null = null;
+  for (const entry of counts.values()) {
+    if (!best || entry.count > best.count) best = entry;
+  }
+  return best?.label ?? null;
 }
 
 // Service-role client for the shop_websites reads ONLY. That table was
@@ -329,7 +376,8 @@ export const loadSite = cache(async (slug: string) => {
     shop: shop as SiteShop,
     website,
     storedStatus,
-    products,
+    // Render-time only: the cached read above keeps the raw rows.
+    products: cleanProductsForStorefront(products),
     isOwnerPreview,
     viewer,
   };
@@ -396,9 +444,17 @@ export async function requireSite(slug: string, route: SiteRoute): Promise<Resol
 
   console.log(`[site-route] slug=${slug} route=${route} shop=found website=${data.storedStatus} ${viewerLog(data.viewer)} → serve`);
 
+  // Render-time label cleanup on the VALIDATED config (pure — parsed.data is
+  // cloned, never mutated; nothing is written back). Applies to every stored
+  // website, legacy generations included, from this request on.
+  const config = cleanStoreContent(parsed.data, {
+    primaryCategory: dominantCategoryLabel(data.products),
+    shopName: data.shop.shop_name,
+  });
+
   return {
     shop: data.shop,
-    config: parsed.data,
+    config,
     products: data.products,
     storedStatus: data.storedStatus,
     isOwnerPreview: data.isOwnerPreview,
@@ -495,7 +551,8 @@ export const loadSiteCatalog = cache(async (shopId: string, requestedPage: numbe
   }
 
   return {
-    products,
+    // Render-time only: the cached slice above keeps the raw rows.
+    products: cleanProductsForStorefront(products),
     total,
     page,
     pageCount,
@@ -544,12 +601,14 @@ export const loadSiteProduct = cache(async (rawId: string, shopId: string): Prom
   if (!cleanId) return null;
 
   try {
-    return await readThroughSiteCache(
+    const product = await readThroughSiteCache(
       `pdp-product ${cleanId}`,
       ['site-pdp-product', cleanId, shopId],
       [`site:${shopId}`],
       () => readSiteProduct(cleanId)
     );
+    // Render-time only: the cached read keeps the raw row.
+    return product ? cleanProductForStorefront(product) : null;
   } catch (error) {
     console.error(`[site-route] product read failed for id ${cleanId}: ${error instanceof Error ? error.message : error}`);
     return null;
