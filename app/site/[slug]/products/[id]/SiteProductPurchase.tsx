@@ -8,7 +8,7 @@ import { rememberPurchases } from '@/lib/purchaseMemory';
 import SmartImage from '@/components/SmartImage';
 import {
   DEFAULT_ORDER_PHONE,
-  buildDirectOrderMessage,
+  buildPaymentMethodLines,
   buildWhatsAppLink,
   launchWhatsApp,
   recordLead,
@@ -39,6 +39,14 @@ import type { SiteTone } from '@/components/site-templates/chrome';
 //     transition + motion-reduce) — framer-motion is no longer loaded on the
 //     PDP at all. While hidden the bar is `inert` (React 19) so it is
 //     unfocusable and invisible to assistive tech.
+//
+// PHASE 4A — RICH ORDER PAYLOAD: the direct-order message ALWAYS carries the
+// product name, the selected variant, the quantity, the unit price, the total
+// and the product URL (buildSiteOrderMessage below), so the merchant never has
+// to ask "which one / how many / which colour". It is composed from the shared
+// lib/orderFlow pieces (buildPaymentMethodLines + buildWhatsAppLink +
+// launchWhatsApp + recordLead — none modified); the marketplace PDP keeps its
+// own legacy buildDirectOrderMessage output.
 
 export type PurchaseProduct = {
   id: string;
@@ -51,6 +59,45 @@ export type PurchaseProduct = {
   /** products.user_id — the seller the lead is recorded against. */
   sellerId: string | null;
 };
+
+/** The page the buyer is on, origin + path (no query/hash) — correct on
+ *  /site/[slug] AND on a verified custom domain. Null during SSR. */
+function productPageUrl(): string | null {
+  if (typeof window === 'undefined') return null;
+  return `${window.location.origin}${window.location.pathname}`;
+}
+
+function dalasi(amount: number): string {
+  return `D${Number(amount).toLocaleString()}`;
+}
+
+/** The on-site direct-order message: every fact the merchant needs to confirm
+ *  the order in one reply. Null-safe on price ("Price on request", no total). */
+export function buildSiteOrderMessage(opts: {
+  shopName: string | null | undefined;
+  productName: string;
+  price: number | null | undefined;
+  quantity: number;
+  /** "Color / Size" as chosen, or null when the piece has no variants. */
+  variant: string | null;
+  method: DirectOrderMethod;
+  sellerPhone: string;
+  url: string | null;
+}): string {
+  const { shopName, productName, price, quantity, variant, method, sellerPhone, url } = opts;
+  const qty = Math.max(1, Math.floor(quantity));
+  const lines = [`I want to buy: *${productName}*`];
+  if (variant && variant !== 'None') lines.push(`🎨 Options: ${variant}`);
+  lines.push(`🔢 Quantity: ${qty}`);
+  if (price == null) {
+    lines.push('💰 Price on request');
+  } else {
+    lines.push(`💰 Unit price: ${dalasi(price)}`);
+    lines.push(`💵 Total: ${dalasi(Number(price) * qty)}`);
+  }
+  if (url) lines.push(`🔗 ${url}`);
+  return `👋 Hello ${shopName || 'Seller'}!\n\n${lines.join('\n')}\n\n${buildPaymentMethodLines(method, sellerPhone)}`;
+}
 
 type PurchaseStyles = {
   label: string;
@@ -299,14 +346,16 @@ export default function SiteProductPurchase({
       productPrice: product.price,
     });
 
-    const message = buildDirectOrderMessage({
+    // Phase 4A: the full payload — variant, quantity, unit, total, URL.
+    const message = buildSiteOrderMessage({
       shopName,
       productName: product.name,
       price: product.price,
+      quantity,
+      variant: variantParts.length > 0 ? variantDetails : null,
       method,
       sellerPhone,
-      quantity,
-      variant: variantDetails,
+      url: productPageUrl(),
     });
     const waLink = buildWhatsAppLink(sellerPhone, message) ?? buildWhatsAppLink(DEFAULT_ORDER_PHONE, message)!;
     // Persist + reset BEFORE the same-tab handoff (lib/orderFlow): the tab may
@@ -350,7 +399,11 @@ export default function SiteProductPurchase({
       productName: product.name,
       productPrice: product.price,
     });
-    const message = `Hello ${shopName}! Please let me know on WhatsApp when "${product.name}" is back in stock.`;
+    // Phase 4A: the product URL rides along so the merchant knows WHICH piece.
+    const url = productPageUrl();
+    const message =
+      `Hello ${shopName}! Please let me know on WhatsApp when "${product.name}" is back in stock.` +
+      (url ? `\n🔗 ${url}` : '');
     const waLink = buildWhatsAppLink(sellerPhone, message) ?? buildWhatsAppLink(DEFAULT_ORDER_PHONE, message)!;
     launchWhatsApp(waLink);
   };

@@ -27,7 +27,18 @@ import SiteFulfillmentPane from './SiteFulfillmentPane';
 import SitePdpRating from './SitePdpRating';
 import SiteProductGallery, { type GalleryMedia } from './SiteProductGallery';
 import SiteProductPurchase from './SiteProductPurchase';
+import SiteProductRail from './SiteProductRail';
 import SiteProductReviews from './SiteProductReviews';
+import SiteTrustZone from './SiteTrustZone';
+
+// PHASE 4A (conversion):
+//   • Trust strip (SiteTrustZone) directly under the CTAs — the shop row's
+//     own facts (WhatsApp number, delivery, pickup), nothing invented.
+//   • Rich WhatsApp order payload (SiteProductPurchase.buildSiteOrderMessage):
+//     name, variant, quantity, unit price, total, product URL.
+//   • Cross-sell rail (SiteProductRail) after the reviews, ranked from the
+//     already-loaded site.products — same category → in stock → the rest. No
+//     extra query; the current piece is never shown.
 
 // PASS 3 (presentation): mobile-first purchase hierarchy.
 //   • Identity → product → price in ONE screen on a phone: the info column
@@ -379,6 +390,9 @@ export default async function SiteProductPage({ params }: PageProps) {
                   shopPhone={site.shop.phone ?? null}
                   tone={tone}
                 />
+                {/* Phase 4A trust strip — one line of asserted facts at the
+                    decision moment (renders nothing when the shop asserts none). */}
+                <SiteTrustZone shop={site.shop} tone={tone} className="mt-5" />
               </div>
 
               {/* Delivery & Pickup — the validated shop facts as a data pane. */}
@@ -393,6 +407,18 @@ export default async function SiteProductPage({ params }: PageProps) {
               marketplace PDP, inside this section's container so it shares
               the max-w-7xl gutter. Client island: device-recognised form. */}
           <SiteProductReviews productId={product.id} shopId={site.shop.id} tone={tone} />
+
+          {/* Phase 4A — cross-sell discovery rail from the cached home
+              products (no extra query), after the purchase + review story. */}
+          <SiteProductRail
+            shop={site.shop}
+            templateKey={site.config.template_key}
+            tone={tone}
+            products={site.products}
+            currentId={product.id}
+            currentCategory={product.category ?? null}
+            collectionsPath={collectionsPath}
+          />
         </section>
       </Chrome>
     </>
