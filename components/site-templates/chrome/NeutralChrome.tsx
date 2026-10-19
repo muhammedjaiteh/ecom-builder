@@ -123,7 +123,7 @@ export default function NeutralChrome({ shop, config, active, children }: SiteCh
   return (
     // THEME SEAM: mirrors the Vitality home root — a themed config sets
     // --site-accent/--site-serif; absent theme keeps the gold defaults.
-    <div className="min-h-screen bg-[var(--site-bg,#0C0C0C)] font-sans text-[var(--site-text,#ffffff)]" style={siteThemeStyle(config)}>
+    <div className="min-h-screen overflow-x-clip bg-[var(--site-bg,#0C0C0C)] font-sans text-[var(--site-text,#ffffff)]" style={siteThemeStyle(config)}>
 
       {/* Sticky dark bar — wordmark home link, gold collection CTA */}
       {/* sticky_nav (Pillar 4): absent/true = the historical sticky nav; false = static. */}

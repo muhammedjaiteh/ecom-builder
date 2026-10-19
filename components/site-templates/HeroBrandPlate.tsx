@@ -50,16 +50,21 @@ export default function HeroBrandPlate({ tone }: HeroBrandPlateProps) {
   const t = TONES[tone];
 
   return (
-    // .sndk-parallax (archetype pass): pure-CSS scroll drift on the plate —
-    // @supports-gated, reduced-motion-honoring, zero JS (globals.css).
-    <div aria-hidden className="sndk-parallax absolute inset-0 overflow-hidden">
-      <div className={`sndk-hero-plate absolute inset-0 ${t.gradient}`} />
-      <div
-        className="absolute inset-0 opacity-25 blur-3xl"
-        style={{
-          background: `radial-gradient(ellipse at 28% 72%, var(--site-accent, ${t.accent}), transparent 62%)`,
-        }}
-      />
+    // Static clipping wrapper. The .sndk-parallax drift (archetype pass:
+    // pure-CSS scroll depth, @supports-gated, reduced-motion-honoring, zero
+    // JS — globals.css) lives on the INNER layer: its scale(1.08) must be
+    // clipped by this box, never applied to it, or the plate grows past the
+    // hero pane and the whole page gains a horizontal scroll on phones.
+    <div aria-hidden className="absolute inset-0 overflow-hidden">
+      <div className="sndk-parallax absolute inset-0">
+        <div className={`sndk-hero-plate absolute inset-0 ${t.gradient}`} />
+        <div
+          className="absolute inset-0 opacity-25 blur-3xl"
+          style={{
+            background: `radial-gradient(ellipse at 28% 72%, var(--site-accent, ${t.accent}), transparent 62%)`,
+          }}
+        />
+      </div>
     </div>
   );
 }

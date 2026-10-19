@@ -257,7 +257,7 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
     // THEME SEAM: a themed config sets --site-accent/--site-serif here (the
     // one root every ritual /site page shares); absent theme → no style
     // attribute, and every var() fallback below keeps the stone defaults.
-    <div className="min-h-screen bg-[var(--site-bg,#FBFAF7)] font-sans text-[var(--site-text,oklch(21.6%_0.006_56.043))]" style={siteThemeStyle(config)}>
+    <div className="min-h-screen overflow-x-clip bg-[var(--site-bg,#FBFAF7)] font-sans text-[var(--site-text,oklch(21.6%_0.006_56.043))]" style={siteThemeStyle(config)}>
 
       {/* Sticky logo nav */}
       {/* sticky_nav (Pillar 4): absent/true = the historical sticky nav; false = static. */}

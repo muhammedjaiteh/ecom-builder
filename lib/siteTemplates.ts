@@ -829,9 +829,22 @@ export function fnv1a(input: string): number {
   return hash >>> 0;
 }
 
-/** Ordered archetype candidates for a niche (best-fit first). Every list
- *  carries at least three entries so the hash rotation has room to vary. */
+/** Ordered archetype candidates for a niche (best-fit first).
+ *
+ *  Phase 5A (niche-safe selection): when the category names a STUDIO_NICHES
+ *  entry (by id or label — the route passes the resolved label as
+ *  effectiveCategory), the pool is EXACTLY that niche's recommendedArchetypes.
+ *  A bakery is never pitched street/luxury; the hash still rotates which
+ *  recommended archetype leads. The template-keyword fallback below serves
+ *  free-text / inventory-derived categories that match no studio niche. */
 export function nicheArchetypeCandidates(dominantCategory: string | null | undefined): ArchetypeKey[] {
+  const needle = (dominantCategory ?? '').trim().toLowerCase();
+  const studioNiche = needle
+    ? STUDIO_NICHES.find((n) => n.id === needle || n.label.toLowerCase() === needle)
+    : undefined;
+  if (studioNiche && studioNiche.recommendedArchetypes.length >= 2) {
+    return [...studioNiche.recommendedArchetypes];
+  }
   switch (templateFromCategory(dominantCategory)) {
     case 'editorial':
       // Fashion/apparel/craft — story-led print first.
@@ -849,6 +862,11 @@ export function nicheArchetypeCandidates(dominantCategory: string | null | undef
  *  hash-rotated within the niche-fitting candidates (deterministic variety),
  *  always two DIFFERENT bundles.
  *
+ *  requestedArchetypeKey (Phase 5B): the seller's direct Theme Archetype pick
+ *  is never discarded — it LEADS the pair, and the second concept is drawn
+ *  (hash-rotated) from the same niche-safe candidate pool minus that key, so
+ *  comparison and variation survive the seller's selection.
+ *
  *  variationSeed (regeneration determinism hotfix): an explicit "Regenerate"
  *  click folds a fresh client-minted seed into the hash so the pitched PAIR
  *  rotates across clicks — still drawn from the same niche-fitting candidate
@@ -858,7 +876,8 @@ export function nicheArchetypeCandidates(dominantCategory: string | null | undef
 export function pickConceptArchetypes(
   shopId: string,
   dominantCategory: string | null | undefined,
-  variationSeed?: string | number | null
+  variationSeed?: string | number | null,
+  requestedArchetypeKey?: ArchetypeKey | null
 ): [SiteArchetype, SiteArchetype] {
   const candidates = nicheArchetypeCandidates(dominantCategory);
   const seed =
@@ -869,7 +888,16 @@ export function pickConceptArchetypes(
   // strings sharing a long suffix (every UUID tail collided onto one offset
   // in the compat gate) — folding the high half in restores the variety.
   const hash = fnv1a(seed === null ? shopId : `${shopId}::${seed}`);
-  const offset = ((hash >>> 16) ^ (hash & 0xffff)) % candidates.length;
+  const folded = (hash >>> 16) ^ (hash & 0xffff);
+  if (requestedArchetypeKey && ARCHETYPES[requestedArchetypeKey]) {
+    // Seller selection leads; partner comes from the niche-safe pool. The
+    // ARCHETYPE_KEYS fallback only fires if the pool collapses to the pick
+    // alone (never with ≥2-entry pools) so the pair is always two bundles.
+    const others = candidates.filter((k) => k !== requestedArchetypeKey);
+    const pool = others.length > 0 ? others : ARCHETYPE_KEYS.filter((k) => k !== requestedArchetypeKey);
+    return [ARCHETYPES[requestedArchetypeKey], ARCHETYPES[pool[folded % pool.length]]];
+  }
+  const offset = folded % candidates.length;
   const first = candidates[offset];
   // Second pick: the next DIFFERENT candidate in rotated order — adjacent in
   // fit ranking, so both pitches stay niche-honest while varying per shop.

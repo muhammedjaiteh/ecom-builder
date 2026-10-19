@@ -267,7 +267,7 @@ export default function EditorialChrome({ shop, config, active, children }: Site
     // THEME SEAM: a themed config sets --site-accent/--site-serif here (the
     // one root every editorial /site page shares); absent theme → no style
     // attribute, and every var() fallback keeps the deep-green defaults.
-    <div className="min-h-screen bg-[var(--site-bg,#F7F5F0)] font-sans text-[var(--site-text,oklch(20.5%_0_0))]" style={siteThemeStyle(config)}>
+    <div className="min-h-screen overflow-x-clip bg-[var(--site-bg,#F7F5F0)] font-sans text-[var(--site-text,oklch(20.5%_0_0))]" style={siteThemeStyle(config)}>
 
       {/* Masthead */}
       <header className="border-b border-[var(--site-text,#171717)]">

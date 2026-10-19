@@ -440,10 +440,17 @@ export async function POST(req: Request) {
     // candidates rotated by the shop-id hash, so two cosmetics shops are
     // pitched different pairs (deterministic variety, stable per shop). A
     // variationSeed (explicit regeneration) folds into that hash so repeat
-    // clicks rotate the pair instead of replaying it.
+    // clicks rotate the pair instead of replaying it. A seller-picked
+    // archetype (Studio Step 1B) always leads the pair; its partner is drawn
+    // from the same niche-safe pool (Phase 5B).
     // ═══════════════════════════════════════════════════════════════════════
     if (step === 'concepts') {
-      const [primary, secondary] = pickConceptArchetypes(shop.id, effectiveCategory, variationSeed);
+      const [primary, secondary] = pickConceptArchetypes(
+        shop.id,
+        effectiveCategory,
+        variationSeed,
+        requestedArchetypeKey
+      );
 
       // STATIC block (cachedSystem): byte-identical on every request — role,
       // the FULL archetype catalog (built from ARCHETYPES constants), copy

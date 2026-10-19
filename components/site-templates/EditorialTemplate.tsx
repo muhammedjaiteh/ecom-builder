@@ -137,7 +137,7 @@ function EditorialHero({ block, shop, heroMedia, signal }: {
           ≈40vh with a 360px content floor (was min(580px,62vh)); mobile drops
           to a 240px plate so the hook + pill + features peek above the fold.
           The copy column still grows the section (min-h clip-fix semantics). */}
-      <div className="relative min-h-[240px] border-[var(--site-text,#171717)] md:col-span-7 md:min-h-[max(360px,40vh)] md:border-r">
+      <div className="relative min-h-[240px] overflow-hidden border-[var(--site-text,#171717)] md:col-span-7 md:min-h-[max(360px,40vh)] md:border-r">
         {heroMedia?.type === 'video' ? (
           // 2G media gate: unconstrained networks autoplay exactly as before;
           // save-data/2g/3g/reduced-motion get the ad poster (or the monogram
