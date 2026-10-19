@@ -8,6 +8,11 @@ import { ELITE_COPY_RULES } from '@/lib/adCopy';
 import { repairShopSlug, slugify } from '@/lib/slugify';
 import { canUseStudio } from '@/lib/tiers';
 import { runSiteAssetPhase } from '@/lib/siteAssets';
+
+/** TEMPORARY testing switch, env-controlled only (ENFORCE_QUOTA). 'true' =
+ *  the 402 QUOTA_EXCEEDED gate is enforced; anything else = unlimited
+ *  generations. No billing/quota code is removed. */
+const ENFORCE_GENERATION_QUOTA = process.env.ENFORCE_QUOTA === 'true';
 import {
 MatrixWebsiteGenerationSchema,
   ACCENT_PRESET_SLOTS,
@@ -408,7 +413,11 @@ export async function POST(req: Request) {
       }
       if (!Number.isFinite(generationsUsed)) generationsUsed = 0;
       if (!Number.isFinite(generationsLimit)) generationsLimit = 2;
-      if (generationsUsed >= generationsLimit) {
+      // TEMPORARY testing switch, env-controlled only (ENFORCE_QUOTA). Mirrors
+      // NEXT_PUBLIC_ENFORCE_QUOTA in WebsiteGeneratorStudio.tsx: unless
+      // ENFORCE_QUOTA === 'true' the 402 gate below is skipped. The lookup and
+      // counter write stay live so generations_used keeps tracking usage.
+      if (ENFORCE_GENERATION_QUOTA && generationsUsed >= generationsLimit) {
         return NextResponse.json(
           {
             error:
