@@ -89,12 +89,24 @@ export function conceptTemplateFromCategory(dominantCategory: string | null | un
   return templateFromCategory(dominantCategory) === 'editorial' ? 'editorial' : 'ritual';
 }
 
+// Phase 5C — food / culinary / bakery terms. Checked AFTER the editorial and
+// ritual keyword matchers and BEFORE the `vitality` fallback so inventory-
+// based routing for a bakery/café never lands on high-contrast-street.
+const CULINARY_CATEGORY_KEYWORDS: ReadonlyArray<string> = [
+  'food', 'cake', 'cakes', 'cupcake', 'cupcakes', 'bakery', 'pastry', 'dessert',
+  'cafe', 'restaurant', 'catering', 'spice', 'grocery', 'beverage',
+];
+
 // Deterministic fallback when the seller's dominant product category needs a
 // template without an LLM in the loop (used only as a matcher hint / safety net).
 export function templateFromCategory(dominantCategory: string | null | undefined): TemplateKey {
   const c = (dominantCategory ?? '').toLowerCase();
   if (SITE_TEMPLATES.editorial.matchKeywords.some((k) => c.includes(k))) return 'editorial';
   if (SITE_TEMPLATES.ritual.matchKeywords.some((k) => c.includes(k))) return 'ritual';
+  // Phase 5C — culinary guardrail. Food/bakery inventory must never fall
+  // through to `vitality` (high-contrast-street); route it to `editorial`
+  // whose archetype pool is the warm-editorial / pastel-minimalist pair.
+  if (CULINARY_CATEGORY_KEYWORDS.some((k) => c.includes(k))) return 'editorial';
   return 'vitality';
 }
 

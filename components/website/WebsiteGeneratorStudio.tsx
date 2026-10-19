@@ -486,7 +486,12 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
 
   const handleNicheSelect = (id: StudioNicheId) => {
     setSelectedNiche(id);
-    setSelectedArchetype(defaultArchetypeFor(id));
+    // Phase 5C auto-sync: keep the merchant's archetype if the new niche still
+    // recommends it; otherwise snap to that niche's first recommended bundle so
+    // a bakery can never carry High-Contrast Street into the build request.
+    if (!recommendedArchetypesFor(id).includes(selectedArchetype)) {
+      setSelectedArchetype(defaultArchetypeFor(id));
+    }
   };
 
   // ── Step 2: build the chosen concept ────────────────────────────────────
@@ -617,6 +622,7 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
       : null;
 
   const recommendedForNiche = recommendedArchetypesFor(selectedNiche);
+  const selectedNicheLabel = STUDIO_NICHES.find((n) => n.id === selectedNiche)?.label ?? 'this niche';
   const quotaWhatsAppHref = `https://wa.me/${STUDIO_TOKEN_WHATSAPP}?text=${encodeURIComponent(
     `Hello Sanndikaa Team, I would like to purchase a Website Studio Token (+2 extra generations) for my shop: ${shop.shop_name ?? shopSlug ?? shop.id}`
   )}`;
@@ -774,6 +780,10 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
                     const a = ARCHETYPES[key];
                     const active = key === selectedArchetype;
                     const recommended = recommendedForNiche.includes(key);
+                    // Phase 5C guardrail: non-recommended archetypes stay visible
+                    // but are disabled, so the merchant sees WHY the option is
+                    // off-limits instead of wondering where it went.
+                    const blocked = !recommended;
                     const swatches = [a.theme.background, a.theme.primary, a.theme.accent, a.theme.text]
                       .filter((hex): hex is string => typeof hex === 'string');
                     return (
@@ -782,13 +792,15 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
                         type="button"
                         role="radio"
                         aria-checked={active}
-                        disabled={busy}
+                        aria-disabled={blocked || undefined}
+                        disabled={busy || blocked}
+                        title={blocked ? `Not recommended for ${selectedNicheLabel}` : undefined}
                         onClick={() => setSelectedArchetype(key)}
                         className={`relative rounded-2xl border bg-white p-4 pr-12 text-left transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 ${
                           active
                             ? 'border-gray-900 shadow-md ring-2 ring-gray-900'
                             : 'border-gray-200 hover:border-gray-400'
-                        }`}
+                        } ${blocked ? 'pointer-events-none opacity-50 grayscale' : ''}`}
                       >
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="font-serif text-base font-bold text-gray-900">{a.name}</p>
@@ -798,6 +810,11 @@ type GenPhase = 'idle' | 'consulting' | 'choosing' | 'building';
                           {recommended && (
                             <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-emerald-700 ring-1 ring-emerald-200">
                               Recommended
+                            </span>
+                          )}
+                          {blocked && (
+                            <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-gray-600 ring-1 ring-gray-200">
+                              Not recommended for {selectedNicheLabel}
                             </span>
                           )}
                         </div>
