@@ -674,6 +674,10 @@ Return a JSON object:
     "block_align"          : { <section type>: "left" | "center" }
     "theme_preset_index"   : integer 0-${ACCENT_PRESET_SLOTS - 1} into the bounds' accent presets (0 = the default) — never a color value
     "display_font"         : one of the bounds' display faces
+    "layout_strategy"      : OPTIONAL structural variants — select them DYNAMICALLY from the inventory and the vibe, never by default: {
+        "hero" : "split" for high-fashion / editorial inventory (two-panel: type beside a tall 4:5 image) | "standard" full-bleed visual for bold, image-led products (food, objects, crafts, anything that sells on one hero shot) | "text-centric" for minimal or service-led vibes (consultancy, skincare clinics, bespoke tailoring) where the words carry the fold
+        "grid" : "masonry" when product imagery has varied aspect ratios or reads as lifestyle photography | "featured-first" when the <seller_data> shows one clear flagship product (a hero SKU, a signature piece, the top seller) that should lead oversized before the rest | "standard" for uniform catalogs of like-for-like items
+      }
   }`;
 
     // ── Layout bounds (per-request → dynamic prompt) ───────────────────────

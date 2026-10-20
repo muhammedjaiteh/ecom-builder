@@ -964,6 +964,25 @@ export function buildPreviousDesign(prior: unknown): PreviousDesign | null {
   return snapshot as PreviousDesign;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Layout polymorphism (Phase 6A). Structural VARIANT picks the model makes per
+// build — which hero composition and which collection grid the renderer should
+// draw. Every key optional and the object itself optional everywhere it is
+// declared: legacy shop_websites rows (and every cascade provider that omits
+// it) validate unchanged and the renderer falls back to 'standard'.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const LayoutStrategySchema = z.object({
+  /** Hero composition — 'split' editorial two-panel, 'text-centric' type-led
+   *  (service/minimal), 'standard' full-bleed visual (the absent default). */
+  hero: z.enum(['standard', 'split', 'text-centric']).optional(),
+  /** Collection grid — 'masonry' for varied ratios/lifestyle, 'featured-first'
+   *  when one flagship leads, 'standard' uniform catalog (the absent default). */
+  grid: z.enum(['standard', 'masonry', 'featured-first']).optional(),
+});
+
+export type LayoutStrategy = z.infer<typeof LayoutStrategySchema>;
+
 export const WebsiteConfigSchema = z.object({
   template_key: z.enum(TEMPLATE_KEYS),
   niche_reasoning: z.string().min(1),
@@ -999,6 +1018,9 @@ export const WebsiteConfigSchema = z.object({
    *  PreviousDesignSchema above. Declared here so zod's key-stripping can
    *  never silently drop the snapshot on a content-API rebuild. */
   previous: PreviousDesignSchema.optional(),
+  /** Optional structural variant picks (Phase 6A) — see LayoutStrategySchema.
+   *  STRICTLY optional: stored legacy storefronts never carry it. */
+  layout_strategy: LayoutStrategySchema.optional(),
 });
 
 export type WebsiteConfig = z.infer<typeof WebsiteConfigSchema>;
@@ -1191,6 +1213,9 @@ export const WebsiteLayoutSchema = z.object({
   theme_preset_index: z.number().int().min(0).max(ACCENT_PRESET_SLOTS - 1).optional(),
   /** Curated face — honored only when inside the bounds' displayFonts. */
   display_font: z.enum(SITE_FONT_KEYS).optional(),
+  /** Layout polymorphism (Phase 6A): hero / grid structural variants. Carried
+   *  verbatim onto config.layout_strategy by applyGenerationLayout. */
+  layout_strategy: LayoutStrategySchema.optional(),
 });
 
 export type WebsiteLayout = z.infer<typeof WebsiteLayoutSchema>;
@@ -1620,6 +1645,16 @@ export function applyGenerationLayout(
 
   const next: WebsiteConfig = { ...config, blocks: ordered };
   if (Object.keys(theme).length > 0) next.theme = theme;
+  // Phase 6A: structural variant picks ride onto the config untouched. Only
+  // written when the model chose at least one key, so a generation without
+  // them leaves a prior/absent layout_strategy exactly as it was.
+  const strategy = layout.layout_strategy;
+  if (strategy && (strategy.hero || strategy.grid)) {
+    next.layout_strategy = {
+      ...(strategy.hero ? { hero: strategy.hero } : {}),
+      ...(strategy.grid ? { grid: strategy.grid } : {}),
+    };
+  }
   return next;
 }
 
