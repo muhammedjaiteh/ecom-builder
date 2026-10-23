@@ -678,6 +678,10 @@ Return a JSON object:
         "hero" : "split" for high-fashion / editorial inventory (two-panel: type beside a tall 4:5 image) | "standard" full-bleed visual for bold, image-led products (food, objects, crafts, anything that sells on one hero shot) | "text-centric" for minimal or service-led vibes (consultancy, skincare clinics, bespoke tailoring) where the words carry the fold
         "grid" : "masonry" when product imagery has varied aspect ratios or reads as lifestyle photography | "featured-first" when the <seller_data> shows one clear flagship product (a hero SKU, a signature piece, the top seller) that should lead oversized before the rest | "standard" for uniform catalogs of like-for-like items
       }
+    "storefront_family"    : ALWAYS set this — route the section rhythm by the merchant's COMMERCE MODEL, read from the <seller_data> inventory and niche, never by default:
+        "lifestyle-story" : fashion, beauty, jewelry, fragrance, and luxury goods — Hero → Story → Collection → Trust band → CTA (the boutique lookbook: narrative before catalog)
+        "product-first"   : tech, electronics, general marketplaces, and utility goods — Hero → Collection → Trust band → Story → CTA (shoppers land straight in the catalog)
+        "menu-occasion"   : bakeries, cafes, catering, and restaurants — Hero → Trust band → Story → Collection → CTA (occasion and vibe first, then the menu)
   }`;
 
     // ── Layout bounds (per-request → dynamic prompt) ───────────────────────

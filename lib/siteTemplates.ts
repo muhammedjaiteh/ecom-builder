@@ -1196,6 +1196,31 @@ const perBlock = <T extends z.ZodType>(value: T) => z.object({
   testimonials: value.optional(),
 });
 
+/** Storefront families (Phase 7) — commerce-model routing for the baseline
+ *  block sequence. Each family seats the SAME five generated slots; only the
+ *  rhythm differs:
+ *    'lifestyle-story' : Hero → Story → Grid → Values → CTA (boutique lookbook)
+ *    'product-first'   : Hero → Grid → Values → Story → CTA (straight to catalog)
+ *    'menu-occasion'   : Hero → Values → Story → Grid → CTA (occasion, then menu) */
+export const STOREFRONT_FAMILIES = ['product-first', 'lifestyle-story', 'menu-occasion'] as const;
+export type StorefrontFamily = (typeof STOREFRONT_FAMILIES)[number];
+export const StorefrontFamilySchema = z.enum(STOREFRONT_FAMILIES);
+export const DEFAULT_STOREFRONT_FAMILY: StorefrontFamily = 'lifestyle-story';
+
+type FamilySlot = 'hero' | 'story' | 'grid' | 'values' | 'cta';
+const STOREFRONT_FAMILY_ORDER: Record<StorefrontFamily, readonly FamilySlot[]> = {
+  'lifestyle-story': ['hero', 'story', 'grid', 'values', 'cta'],
+  'product-first': ['hero', 'grid', 'values', 'story', 'cta'],
+  'menu-occasion': ['hero', 'values', 'story', 'grid', 'cta'],
+};
+
+/** Safe family resolution: anything absent or unknown (legacy configs, a
+ *  provider that ignored the enum) → the default family. */
+export function resolveStorefrontFamily(value: unknown): StorefrontFamily {
+  const parsed = StorefrontFamilySchema.safeParse(value);
+  return parsed.success ? parsed.data : DEFAULT_STOREFRONT_FAMILY;
+}
+
 export const WebsiteLayoutSchema = z.object({
   /** Ordered section types to SHOW. Server law (resolveLayoutBlockOrder):
    *  hero_banner first, product_grid present, only types from the bounds, no
@@ -1216,6 +1241,12 @@ export const WebsiteLayoutSchema = z.object({
   /** Layout polymorphism (Phase 6A): hero / grid structural variants. Carried
    *  verbatim onto config.layout_strategy by applyGenerationLayout. */
   layout_strategy: LayoutStrategySchema.optional(),
+  /** Storefront family (Phase 7): the commerce-model rhythm the assembler
+   *  uses for the DEFAULT block sequence in generationToConfig. Absent (every
+   *  legacy generation) resolves to 'lifestyle-story' — the pre-Phase-7
+   *  order, byte-identical. A model-chosen block_order still wins afterwards
+   *  via applyGenerationLayout; the family only sets the baseline rhythm. */
+  storefront_family: StorefrontFamilySchema.optional(),
 });
 
 export type WebsiteLayout = z.infer<typeof WebsiteLayoutSchema>;
@@ -1287,29 +1318,50 @@ export type WebsiteGeneration = z.infer<typeof WebsiteGenerationSchema>;
  *  STRUCTURAL, not content — this assembler ignores it; applyGenerationLayout
  *  (or applyArchetype, which calls it) reorders/themes the result afterwards. */
 export function generationToConfig(gen: WebsiteGeneration): WebsiteConfig {
-  const blocks: SiteBlock[] = [
-    {
+  // Phase 7 — Storefront Families: the five generated slots are built once,
+  // then pushed in the family's rhythm. Legacy generations (no
+  // layout.storefront_family) resolve to 'lifestyle-story'.
+  const family = resolveStorefrontFamily(gen.layout?.storefront_family);
+  const slots: Record<FamilySlot, SiteBlock> = {
+    hero: {
       id: 'hero',
       type: 'hero_banner',
       headline: gen.hero.headline,
       subheadline: gen.hero.subheadline,
       tagline: gen.hero.tagline,
     },
-    {
+    values: {
       id: 'values',
       type: 'value_props',
       items: gen.value_props.map((v) => ({ title: v.title, body: v.body })),
     },
-    { id: 'grid', type: 'product_grid', title: gen.product_grid.title, intro: gen.product_grid.intro },
-    { id: 'story', type: 'story_text', body: gen.story.body },
-    {
+    grid: { id: 'grid', type: 'product_grid', title: gen.product_grid.title, intro: gen.product_grid.intro },
+    story: { id: 'story', type: 'story_text', body: gen.story.body },
+    cta: {
       id: 'cta',
       type: 'cta_banner',
       headline: gen.cta.headline,
       subtext: gen.cta.subtext,
       button_label: gen.cta.button_label,
     },
-  ];
+  };
+
+  const blocks: SiteBlock[] = [];
+  switch (family) {
+    case 'product-first':
+      // Hero → Grid → Values → Story → CTA — shoppers land in the catalog.
+      for (const slot of STOREFRONT_FAMILY_ORDER['product-first']) blocks.push(slots[slot]);
+      break;
+    case 'menu-occasion':
+      // Hero → Values → Story → Grid → CTA — occasion and vibe first, then the menu.
+      for (const slot of STOREFRONT_FAMILY_ORDER['menu-occasion']) blocks.push(slots[slot]);
+      break;
+    case 'lifestyle-story':
+    default:
+      // Hero → Story → Grid → Values → CTA — the classic boutique lookbook rhythm.
+      for (const slot of STOREFRONT_FAMILY_ORDER['lifestyle-story']) blocks.push(slots[slot]);
+      break;
+  }
 
   // Seed carries the seo.* the mirror preserves; every other field is
   // overwritten from the blocks (all five types present by construction).
