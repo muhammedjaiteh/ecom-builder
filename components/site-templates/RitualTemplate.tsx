@@ -9,6 +9,7 @@ import {
   siteCollectionsPath,
   type HeroMedia,
   type HeroSignal,
+  type LayoutStrategy,
   type SiteBlock,
   type SiteShop,
   type SiteProduct,
@@ -106,13 +107,135 @@ const PAD_16_24: Record<PadKey, string> = {
 };
 
 
-function RitualHero({ block, shop, heroMedia, signal }: {
+// Phase 6B: hero/grid structural variants. The variant is read from
+// config.layout_strategy (Phase 6A, strictly optional) — absent/'standard'
+// (and any unknown value) falls through to the EXACT historical markup, so
+// every stored legacy storefront renders byte-identically.
+type HeroVariant = NonNullable<LayoutStrategy['hero']>;
+type GridVariant = NonNullable<LayoutStrategy['grid']>;
+
+function RitualHero({ block, shop, heroMedia, signal, variant }: {
   block: HeroBlock;
   shop: SiteShop;
   heroMedia: HeroMedia;
   /** Honest offer pill (resolveHeroSignal) — null renders NO pill, no gap. */
   signal: HeroSignal | null;
+  /** Phase 6B structural variant — undefined ≡ 'standard'. */
+  variant?: HeroVariant;
 }) {
+  if (variant === 'text-centric') {
+    // Typography-led opener on the site surface: NO hero plate, no scrim.
+    // Centered oversized serif headline, generous vertical air, ONE accent
+    // CTA. Ink tokens replace the white-on-dark palette of the full-bleed hero.
+    return (
+      <header data-block-section={block.id} className={`border-b ${RITUAL_HAIRLINE} px-5 py-20 md:px-10 md:py-32`}>
+        <div className="mx-auto flex max-w-4xl flex-col items-center gap-6 text-center md:gap-8">
+          {block.tagline && (
+            <EditableText as="p" blockId={block.id} field="tagline" className="text-[11px] font-bold uppercase tracking-[0.35em] text-[var(--site-muted,oklch(55.3%_0.013_58.071))]">
+              {block.tagline}
+            </EditableText>
+          )}
+          <EditableText
+            as="h1"
+            blockId={block.id}
+            field="headline"
+            className="font-serif text-4xl font-bold leading-[1.05] tracking-tight text-balance text-[var(--site-text,oklch(21.6%_0.006_56.043))] md:text-6xl lg:text-7xl"
+          >
+            {block.headline}
+          </EditableText>
+          <EditableText as="p" blockId={block.id} field="subheadline" className="max-w-xl text-base leading-relaxed text-[var(--site-muted,oklch(55.3%_0.013_58.071))] md:text-lg">
+            {block.subheadline}
+          </EditableText>
+          {signal && (
+            <span className={`sndk-rise inline-flex min-h-8 items-center gap-2 rounded-full border ${RITUAL_HAIRLINE} px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--site-text,oklch(21.6%_0.006_56.043))]`}>
+              <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${signal.kind === 'stock' ? 'bg-amber-500' : 'bg-[var(--site-accent,#1c1917)]'}`} />
+              {signal.label}
+            </span>
+          )}
+          <div className="w-full pt-2 sm:w-auto">
+            <a
+              href="#collection"
+              className="inline-flex min-h-12 w-full items-center justify-center rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#1c1917)] px-10 text-center text-[10px] font-bold uppercase tracking-[0.25em] text-white shadow-lg transition hover:brightness-125 active:scale-[0.98] sm:w-auto"
+            >
+              Shop The Collection
+            </a>
+          </div>
+        </div>
+      </header>
+    );
+  }
+
+  if (variant === 'split') {
+    // Two-panel opener: copy + CTA on the site surface (left), the hero media
+    // as a tall rounded 4:5 plate (right) — no full-bleed wash, no scrim.
+    // Mobile stacks plate-first so the brand image still leads the fold.
+    return (
+      <header data-block-section={block.id} className={`border-b ${RITUAL_HAIRLINE}`}>
+        <div className="mx-auto grid max-w-7xl grid-cols-1 gap-8 px-5 py-8 md:grid-cols-2 md:items-center md:gap-14 md:px-10 md:py-16">
+          <div className="order-2 flex flex-col items-start md:order-1">
+            {block.tagline && (
+              <EditableText as="p" blockId={block.id} field="tagline" className="text-[11px] font-bold uppercase tracking-[0.35em] text-[var(--site-muted,oklch(55.3%_0.013_58.071))]">
+                {block.tagline}
+              </EditableText>
+            )}
+            <EditableText
+              as="h1"
+              blockId={block.id}
+              field="headline"
+              className="mt-4 max-w-xl font-serif text-3xl font-bold leading-[1.08] tracking-tight text-balance text-[var(--site-text,oklch(21.6%_0.006_56.043))] md:text-5xl lg:text-6xl"
+            >
+              {block.headline}
+            </EditableText>
+            <EditableText as="p" blockId={block.id} field="subheadline" className="mt-5 max-w-md text-sm leading-relaxed text-[var(--site-muted,oklch(55.3%_0.013_58.071))] md:text-base">
+              {block.subheadline}
+            </EditableText>
+            {signal && (
+              <span className={`sndk-rise mt-5 inline-flex min-h-8 items-center gap-2 rounded-full border ${RITUAL_HAIRLINE} px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--site-text,oklch(21.6%_0.006_56.043))]`}>
+                <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${signal.kind === 'stock' ? 'bg-amber-500' : 'bg-[var(--site-accent,#1c1917)]'}`} />
+                {signal.label}
+              </span>
+            )}
+            <div className="mt-7 w-full md:mt-9">
+              <a
+                href="#collection"
+                className="inline-flex min-h-12 w-full items-center justify-center rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#1c1917)] px-8 text-center text-[10px] font-bold uppercase tracking-[0.25em] text-white shadow-lg transition hover:brightness-125 active:scale-[0.98] sm:w-auto"
+              >
+                Shop The Collection
+              </a>
+            </div>
+          </div>
+          <div className={`relative order-1 aspect-[4/5] overflow-hidden rounded-3xl bg-stone-900 md:order-2 ${RITUAL_SURFACE}`}>
+            {heroMedia?.type === 'video' ? (
+              <GatedVideo
+                src={heroMedia.url}
+                poster={heroMedia.poster}
+                alt={shop.shop_name ?? 'Hero'}
+                className="absolute inset-0 h-full w-full object-cover"
+                posterSizes="(min-width: 768px) 50vw, 100vw"
+                posterBlurTone="dark"
+                posterPriority
+                fallback={<div aria-hidden className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(214,203,186,0.35),transparent_55%),linear-gradient(to_bottom_right,#292524,#1c1917,#3a352e)]" />}
+                playButtonClassName="absolute left-1/2 top-1/2 z-10 flex min-h-11 -translate-x-1/2 -translate-y-1/2 items-center gap-2.5 rounded-full bg-white/95 px-7 py-3.5 text-[10px] font-bold uppercase tracking-[0.25em] text-stone-900 shadow-lg backdrop-blur transition hover:bg-white active:scale-95"
+              />
+            ) : heroMedia ? (
+              <SmartImage
+                src={heroMedia.url}
+                alt={shop.shop_name ?? 'Hero'}
+                fill
+                priority
+                sizes="(min-width: 768px) 50vw, 100vw"
+                blurTone="dark"
+                className="object-cover"
+              />
+            ) : (
+              <HeroBrandPlate tone="ritual" shopName={shop.shop_name} />
+            )}
+          </div>
+        </div>
+      </header>
+    );
+  }
+
   return (
     // min-h (not fixed h): budget-length copy at 360px can outgrow the frame —
     // the hero grows with it instead of clipping against overflow-hidden.
@@ -226,7 +349,7 @@ function ritualFeaturedLayout(count: number): { grid: string; sizes: string } {
   }
 }
 
-function RitualProductGrid({ block, shop, products, catalog }: {
+function RitualProductGrid({ block, shop, products, catalog, variant }: {
   block: ProductGridBlock;
   shop: SiteShop;
   /** The showcase selection (selectFeaturedProducts) — capped again here so a
@@ -234,6 +357,8 @@ function RitualProductGrid({ block, shop, products, catalog }: {
   products: SiteProduct[];
   /** The full home slice — drives the category discovery strip (Pass 3). */
   catalog: SiteProduct[];
+  /** Phase 6B structural variant — undefined ≡ 'standard'. */
+  variant?: GridVariant;
 }) {
   const featured = products.slice(0, FEATURED_MAX);
   const count = featured.length;
@@ -286,6 +411,21 @@ function RitualProductGrid({ block, shop, products, catalog }: {
               node: <RitualProductCard product={p} index={i} href={ritualProductHref(shop, p.id)} sizes="(min-width: 640px) 300px, 68vw" />,
             }))}
           />
+        </div>
+      ) : variant === 'featured-first' ? (
+        // Phase 6B featured-first: the lead piece spans the full 2-col row on
+        // phones and a 2×2 block at md inside the classic four-across grid;
+        // the remaining cards keep their standard size beside/below it.
+        <div className="mt-10 grid grid-cols-2 gap-x-5 gap-y-12 md:mt-16 md:grid-cols-4 md:gap-x-8 md:gap-y-16">
+          {featured.map((p, i) =>
+            i === 0 ? (
+              <div key={p.id} className="col-span-2 md:row-span-2">
+                <RitualProductCard product={p} index={i} href={ritualProductHref(shop, p.id)} sizes="(min-width: 1024px) 50vw, 100vw" />
+              </div>
+            ) : (
+              <RitualProductCard key={p.id} product={p} index={i} href={ritualProductHref(shop, p.id)} sizes="(min-width: 1024px) 25vw, 50vw" />
+            ),
+          )}
         </div>
       ) : (
         <div className={`mt-10 md:mt-16 ${layout.grid}`}>
@@ -531,6 +671,10 @@ export default function RitualTemplate({ shop, products, config, heroMedia }: Si
   // tiles, newest-first ties, deduped, capped at FEATURED_MAX.
   const featured = selectFeaturedProducts(products, FEATURED_MAX);
   const heroSignal = resolveHeroSignal({ shop, featured });
+  // Phase 6B: structural variants from the optional layout strategy. Absent
+  // on every legacy row → undefined → the historical markup, unchanged.
+  const heroVariant = config.layout_strategy?.hero;
+  const gridVariant = config.layout_strategy?.grid;
 
   return (
     <RitualChrome shop={shop} config={config} active="home">
@@ -541,11 +685,11 @@ export default function RitualTemplate({ shop, products, config, heroMedia }: Si
         const section = (() => {
           switch (block.type) {
             case 'hero_banner':
-              return <RitualHero block={block} shop={shop} heroMedia={heroMedia} signal={heroSignal} />;
+              return <RitualHero block={block} shop={shop} heroMedia={heroMedia} signal={heroSignal} variant={heroVariant} />;
             // value_props: no body section (Fix 2) — the block renders as the
             // SiteMarquee ribbon after the hero.
             case 'product_grid':
-              return <RitualProductGrid block={block} shop={shop} products={featured} catalog={products} />;
+              return <RitualProductGrid block={block} shop={shop} products={featured} catalog={products} variant={gridVariant} />;
             case 'story_text':
               return <RitualStory block={block} shopName={shop.shop_name} />;
             case 'cta_banner':

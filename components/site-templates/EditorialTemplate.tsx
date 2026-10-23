@@ -9,6 +9,7 @@ import {
   siteCollectionsPath,
   type HeroMedia,
   type HeroSignal,
+  type LayoutStrategy,
   type SiteBlock,
   type SiteProduct,
   type SiteShop,
@@ -124,13 +125,122 @@ const PAD_SPLIT: Record<PadKey, string> = {
 };
 
 
-function EditorialHero({ block, shop, heroMedia, signal }: {
+// Phase 6B: hero/grid structural variants. The variant is read from
+// config.layout_strategy (Phase 6A, strictly optional) — absent/'standard'
+// (and any unknown value) falls through to the EXACT historical markup, so
+// every stored legacy storefront renders byte-identically.
+type HeroVariant = NonNullable<LayoutStrategy['hero']>;
+type GridVariant = NonNullable<LayoutStrategy['grid']>;
+
+function EditorialHero({ block, shop, heroMedia, signal, variant }: {
   block: HeroBlock;
   shop: SiteShop;
   heroMedia: HeroMedia;
   /** Honest offer pill (resolveHeroSignal) — null renders NO pill, no gap. */
   signal: HeroSignal | null;
+  /** Phase 6B structural variant — undefined ≡ 'standard'. */
+  variant?: HeroVariant;
 }) {
+  // Shared copy nodes — identical EditableText targeting in every variant so
+  // the Site Editor's field mapping never changes with the layout.
+  const pill = signal && (
+    <span className="sndk-rise inline-flex min-h-8 items-center gap-2 self-start border border-[var(--site-text,#171717)] px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.3em] text-[var(--site-text,oklch(20.5%_0_0))]">
+      <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${signal.kind === 'stock' ? 'bg-amber-700' : 'bg-[var(--site-accent,#1a2e1a)]'}`} />
+      {signal.label}
+    </span>
+  );
+  const cta = (
+    <a
+      href="#collection"
+      className="group inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-[var(--site-radius,0px)] bg-[var(--site-accent,#171717)] px-8 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-bg,#F7F5F0)] transition hover:brightness-125 active:scale-[0.98] sm:w-auto sm:self-start"
+    >
+      Shop The Collection
+      <span aria-hidden className="transition-transform group-hover:translate-x-1.5 motion-reduce:transition-none">&rarr;</span>
+    </a>
+  );
+
+  if (variant === 'text-centric') {
+    // Typography-led opener: NO hero plate. A centered, oversized serif
+    // headline on paper with a hairline rule above, generous vertical air,
+    // and the same accent CTA. Media (if any) is deliberately unused here.
+    return (
+      <section data-block-section={block.id} className="border-b border-[var(--site-text,#171717)] px-5 py-20 md:px-10 md:py-32">
+        <div className="mx-auto flex max-w-4xl flex-col items-center gap-6 text-center md:gap-8">
+          <span aria-hidden className="h-px w-16 bg-[var(--site-text,#171717)]" />
+          <EditableText
+            as="h1"
+            blockId={block.id}
+            field="headline"
+            className="font-serif text-4xl italic leading-[1.05] tracking-tight text-balance md:text-6xl lg:text-7xl"
+          >
+            {block.headline}
+          </EditableText>
+          <EditableText as="p" blockId={block.id} field="subheadline" className="max-w-xl text-base leading-relaxed text-[var(--site-muted,oklch(43.9%_0_0))] md:text-lg">
+            {block.subheadline}
+          </EditableText>
+          {/* Row wrappers: the shared pill/CTA carry self-start (a cross-axis
+              hint in the standard column) — in a row they stay centered. */}
+          {signal && <div className="flex justify-center">{pill}</div>}
+          <div className="flex w-full justify-center">{cta}</div>
+        </div>
+      </section>
+    );
+  }
+
+  if (variant === 'split') {
+    // Mirrored, taller split: copy leads on the LEFT (5 cols, bold upright
+    // serif, left rule) and the plate sits on the RIGHT (7 cols at ≈56vh) —
+    // the inverse of the standard 7/5 media-first opener.
+    return (
+      <section data-block-section={block.id} className="grid grid-cols-1 border-b border-[var(--site-text,#171717)] md:grid-cols-12">
+        <div className="order-2 flex flex-col justify-center gap-5 border-[var(--site-text,#171717)] px-5 py-10 md:order-1 md:col-span-5 md:gap-6 md:border-r md:px-12 md:py-16">
+          <span aria-hidden className="h-px w-12 bg-[var(--site-accent,#1a2e1a)]" />
+          <EditableText
+            as="h1"
+            blockId={block.id}
+            field="headline"
+            className="font-serif text-3xl font-bold leading-[1.05] tracking-tight text-balance md:text-5xl lg:text-6xl"
+          >
+            {block.headline}
+          </EditableText>
+          <EditableText as="p" blockId={block.id} field="subheadline" className="max-w-md text-sm leading-relaxed text-[var(--site-muted,oklch(43.9%_0_0))] md:text-base">
+            {block.subheadline}
+          </EditableText>
+          {pill}
+          {cta}
+        </div>
+        <div className="relative order-1 min-h-[280px] overflow-hidden md:order-2 md:col-span-7 md:min-h-[max(480px,56vh)]">
+          {heroMedia?.type === 'video' ? (
+            <GatedVideo
+              src={heroMedia.url}
+              poster={heroMedia.poster}
+              alt={shop.shop_name ?? 'Hero'}
+              className="absolute inset-0 h-full w-full object-cover"
+              posterSizes="(min-width: 768px) 58vw, 100vw"
+              posterBlurTone="light"
+              posterPriority
+              fallback={
+                <div aria-hidden className="absolute inset-0 bg-gradient-to-br from-neutral-200 via-[#EDEAE2] to-neutral-300" />
+              }
+              playButtonClassName="absolute left-1/2 top-1/2 z-10 flex min-h-11 -translate-x-1/2 -translate-y-1/2 items-center gap-2.5 border border-[var(--site-text,#171717)] bg-[color-mix(in_srgb,var(--site-bg,#F7F5F0)_95%,transparent)] px-7 py-3.5 text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--site-text,#171717)] backdrop-blur-sm transition hover:bg-[var(--site-text,#171717)] hover:text-[var(--site-bg,#F7F5F0)] active:scale-95"
+            />
+          ) : heroMedia ? (
+            <SmartImage
+              src={heroMedia.url}
+              alt={shop.shop_name ?? 'Hero'}
+              fill
+              priority
+              sizes="(min-width: 768px) 58vw, 100vw"
+              className="sndk-parallax object-cover"
+            />
+          ) : (
+            <HeroBrandPlate tone="editorial" shopName={shop.shop_name} />
+          )}
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section data-block-section={block.id} className="grid grid-cols-1 border-b border-[var(--site-text,#171717)] md:grid-cols-12">
       {/* Micro-Homepage: a compact niche opener — the md media pane sits at
@@ -285,7 +395,7 @@ function EditorialFeatures({ shop, featured }: {
   );
 }
 
-function EditorialGrid({ block, shop, products, catalog }: {
+function EditorialGrid({ block, shop, products, catalog, variant }: {
   block: ProductGridBlock;
   shop: SiteShop;
   /** The showcase (≤FEATURED_MAX pieces, none repeating the features spread). */
@@ -294,6 +404,8 @@ function EditorialGrid({ block, shop, products, catalog }: {
    *  state) from "the spread already shows everything" (header + bridge
    *  only); its categories drive the discovery strip (Pass 3). */
   catalog: SiteProduct[];
+  /** Phase 6B structural variant — undefined ≡ 'standard'. */
+  variant?: GridVariant;
 }) {
   const catalogSize = catalog.length;
   const showcase = products.slice(0, FEATURED_MAX);
@@ -346,6 +458,25 @@ function EditorialGrid({ block, shop, products, catalog }: {
             node: <EditorialProductCard product={p} index={i} href={editorialProductHref(shop, p.id)} sizes="(min-width: 640px) 300px, 64vw" />,
           }))}
         />
+      ) : variant === 'featured-first' ? (
+        // Phase 6B featured-first: the lead piece spans the full 2-col row on
+        // phones and a 2×2 block at md inside the SAME hairline grid; the rest
+        // keep their standard plates beside/below it. The lead occupies 2
+        // cells on mobile / 4 at md — i.e. 1 + 1 = 2 / 1 + 3 = 4 extra cells
+        // versus a plain card — so itemCount + 3 feeds the exact same filler
+        // arithmetic (both breakpoints, parity preserved) with no new helper.
+        <div className={EDITORIAL_COLLECTION_GRID}>
+          {showcase.map((p, i) =>
+            i === 0 ? (
+              <div key={p.id} className="col-span-2 bg-[var(--site-bg,#F7F5F0)] md:row-span-2 [&>*]:h-full">
+                <EditorialProductCard product={p} index={i} href={editorialProductHref(shop, p.id)} sizes="(min-width: 768px) 50vw, 100vw" />
+              </div>
+            ) : (
+              <EditorialProductCard key={p.id} product={p} index={i} href={editorialProductHref(shop, p.id)} />
+            ),
+          )}
+          <EditorialGridFillers itemCount={showcase.length + 3} />
+        </div>
       ) : (
         <div className={EDITORIAL_COLLECTION_GRID}>
           {showcase.map((p, i) => (
@@ -587,6 +718,10 @@ export default function EditorialTemplate({ shop, products, config, heroMedia }:
   const spreadIds = new Set(spread.map((p) => p.id));
   const showcase = selectFeaturedProducts(products.filter((p) => !spreadIds.has(p.id)), FEATURED_MAX);
   const heroSignal = resolveHeroSignal({ shop, featured: [...spread, ...showcase] });
+  // Phase 6B: structural variants from the optional layout strategy. Absent
+  // on every legacy row → undefined → the historical markup, unchanged.
+  const heroVariant = config.layout_strategy?.hero;
+  const gridVariant = config.layout_strategy?.grid;
 
   return (
     <EditorialChrome shop={shop} config={config} active="home">
@@ -598,7 +733,7 @@ export default function EditorialTemplate({ shop, products, config, heroMedia }:
           case 'hero_banner':
             return (
               <Fragment key={block.id}>
-                <EditorialHero block={block} shop={shop} heroMedia={heroMedia} signal={heroSignal} />
+                <EditorialHero block={block} shop={shop} heroMedia={heroMedia} signal={heroSignal} variant={heroVariant} />
                 {/* Kinetic marquee on the hero→features seam — never inside a
                     Reveal (it is already motion), no data-block markers, so
                     the Site Editor's rect math is untouched. */}
@@ -611,7 +746,7 @@ export default function EditorialTemplate({ shop, products, config, heroMedia }:
           case 'product_grid':
             return (
               <Reveal key={block.id} delay={Math.min(i * 0.05, 0.15)}>
-                <EditorialGrid block={block} shop={shop} products={showcase} catalog={products} />
+                <EditorialGrid block={block} shop={shop} products={showcase} catalog={products} variant={gridVariant} />
               </Reveal>
             );
           case 'story_text':
