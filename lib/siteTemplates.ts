@@ -983,6 +983,62 @@ export const LayoutStrategySchema = z.object({
 
 export type LayoutStrategy = z.infer<typeof LayoutStrategySchema>;
 
+/** Storefront families (Phase 7) — commerce-model routing for the baseline
+ *  block sequence. Each family seats the SAME five generated slots; only the
+ *  rhythm differs:
+ *    'lifestyle-story' : Hero → Story → Grid → Values → CTA (boutique lookbook)
+ *    'product-first'   : Hero → Grid → Values → Story → CTA (straight to catalog)
+ *    'menu-occasion'   : Hero → Values → Story → Grid → CTA (occasion, then menu) */
+export const STOREFRONT_FAMILIES = ['product-first', 'lifestyle-story', 'menu-occasion'] as const;
+export type StorefrontFamily = (typeof STOREFRONT_FAMILIES)[number];
+export const StorefrontFamilySchema = z.enum(STOREFRONT_FAMILIES);
+export const DEFAULT_STOREFRONT_FAMILY: StorefrontFamily = 'lifestyle-story';
+
+type FamilySlot = 'hero' | 'story' | 'grid' | 'values' | 'cta';
+const STOREFRONT_FAMILY_ORDER: Record<StorefrontFamily, readonly FamilySlot[]> = {
+  'lifestyle-story': ['hero', 'story', 'grid', 'values', 'cta'],
+  'product-first': ['hero', 'grid', 'values', 'story', 'cta'],
+  'menu-occasion': ['hero', 'values', 'story', 'grid', 'cta'],
+};
+
+/** Safe family resolution: anything absent or unknown (legacy configs, a
+ *  provider that ignored the enum) → the default family. */
+export function resolveStorefrontFamily(value: unknown): StorefrontFamily {
+  const parsed = StorefrontFamilySchema.safeParse(value);
+  return parsed.success ? parsed.data : DEFAULT_STOREFRONT_FAMILY;
+}
+
+/** Family slot → the generated block type it seats. */
+const FAMILY_SLOT_TYPE: Record<FamilySlot, SiteBlockType> = {
+  hero: 'hero_banner',
+  story: 'story_text',
+  grid: 'product_grid',
+  values: 'value_props',
+  cta: 'cta_banner',
+};
+
+/** Phase 7A — family-aware block mix. Re-seats the five family slots inside
+ *  an existing ordered mix in the family's rhythm while every OTHER type the
+ *  mix names (split_cta, testimonials, …) keeps its exact index — so the
+ *  archetype still decides WHICH sections exist and where its extras anchor,
+ *  and the family only decides the core rhythm. Slots the mix does not name
+ *  are skipped. Pure. `family` absent/invalid → the SAME array back
+ *  (reference identity), so every legacy path stays byte-identical. */
+export function familyAwareBlockMix<T extends ReadonlyArray<SiteBlockType>>(
+  mix: T,
+  family: StorefrontFamily | null | undefined
+): T | SiteBlockType[] {
+  const parsed = StorefrontFamilySchema.safeParse(family);
+  if (!parsed.success) return mix;
+  const present = new Set<SiteBlockType>(mix);
+  const rhythm = STOREFRONT_FAMILY_ORDER[parsed.data]
+    .map((slot) => FAMILY_SLOT_TYPE[slot])
+    .filter((type) => present.has(type));
+  const core = new Set<SiteBlockType>(rhythm);
+  let cursor = 0;
+  return mix.map((type) => (core.has(type) ? rhythm[cursor++] : type));
+}
+
 export const WebsiteConfigSchema = z.object({
   template_key: z.enum(TEMPLATE_KEYS),
   niche_reasoning: z.string().min(1),
@@ -1021,6 +1077,10 @@ export const WebsiteConfigSchema = z.object({
   /** Optional structural variant picks (Phase 6A) — see LayoutStrategySchema.
    *  STRICTLY optional: stored legacy storefronts never carry it. */
   layout_strategy: LayoutStrategySchema.optional(),
+  /** Optional storefront family (Phase 7A) — METADATA ONLY, persisted beside
+   *  layout_strategy so the chosen commerce rhythm survives the pipeline.
+   *  Never read by a renderer. STRICTLY optional: legacy rows never carry it. */
+  storefront_family: StorefrontFamilySchema.optional(),
 });
 
 export type WebsiteConfig = z.infer<typeof WebsiteConfigSchema>;
@@ -1195,31 +1255,6 @@ const perBlock = <T extends z.ZodType>(value: T) => z.object({
   split_cta: value.optional(),
   testimonials: value.optional(),
 });
-
-/** Storefront families (Phase 7) — commerce-model routing for the baseline
- *  block sequence. Each family seats the SAME five generated slots; only the
- *  rhythm differs:
- *    'lifestyle-story' : Hero → Story → Grid → Values → CTA (boutique lookbook)
- *    'product-first'   : Hero → Grid → Values → Story → CTA (straight to catalog)
- *    'menu-occasion'   : Hero → Values → Story → Grid → CTA (occasion, then menu) */
-export const STOREFRONT_FAMILIES = ['product-first', 'lifestyle-story', 'menu-occasion'] as const;
-export type StorefrontFamily = (typeof STOREFRONT_FAMILIES)[number];
-export const StorefrontFamilySchema = z.enum(STOREFRONT_FAMILIES);
-export const DEFAULT_STOREFRONT_FAMILY: StorefrontFamily = 'lifestyle-story';
-
-type FamilySlot = 'hero' | 'story' | 'grid' | 'values' | 'cta';
-const STOREFRONT_FAMILY_ORDER: Record<StorefrontFamily, readonly FamilySlot[]> = {
-  'lifestyle-story': ['hero', 'story', 'grid', 'values', 'cta'],
-  'product-first': ['hero', 'grid', 'values', 'story', 'cta'],
-  'menu-occasion': ['hero', 'values', 'story', 'grid', 'cta'],
-};
-
-/** Safe family resolution: anything absent or unknown (legacy configs, a
- *  provider that ignored the enum) → the default family. */
-export function resolveStorefrontFamily(value: unknown): StorefrontFamily {
-  const parsed = StorefrontFamilySchema.safeParse(value);
-  return parsed.success ? parsed.data : DEFAULT_STOREFRONT_FAMILY;
-}
 
 export const WebsiteLayoutSchema = z.object({
   /** Ordered section types to SHOW. Server law (resolveLayoutBlockOrder):
@@ -1478,9 +1513,14 @@ export function applyArchetype(
   const testimonials = buildTestimonialsFromReviews(reviews);
   if (testimonials) pool.push(testimonials);
 
+  // Phase 7A: when the generation chose a storefront family, the archetype's
+  // mix is re-seated in that family's rhythm (extras keep their anchors). No
+  // family → the raw archetype blockMix, exactly as before.
+  const mix = familyAwareBlockMix(archetype.blockMix, gen.layout?.storefront_family);
+
   const used = new Set<string>();
   const ordered: SiteBlock[] = [];
-  for (const type of archetype.blockMix) {
+  for (const type of mix) {
     const block = pool.find((b) => b.type === type && !used.has(b.id));
     if (block) {
       used.add(block.id);
@@ -1634,14 +1674,18 @@ export function applyGenerationLayout(
 
   const pool: SiteBlock[] = (config.blocks ?? legacySiteToBlocks(config.site)).map((b) => ({ ...b }));
   const requested = resolveLayoutBlockOrder(bounds, layout.block_order);
-  const order: SiteBlockType[] = requested ? [...requested] : [...bounds.blockMix];
+  // Phase 7A: the default order (block_order absent/invalid) and the
+  // server-gated anchor walk both follow the family-aware mix — the same
+  // array as bounds.blockMix whenever no storefront_family was chosen.
+  const familyMix = familyAwareBlockMix(bounds.blockMix, layout.storefront_family);
+  const order: SiteBlockType[] = requested ? [...requested] : [...familyMix];
 
   if (requested) {
     for (const gated of bounds.serverGated) {
       if (order.includes(gated) || !pool.some((b) => b.type === gated)) continue;
       let insertAt = order.length;
-      for (let i = bounds.blockMix.indexOf(gated) - 1; i >= 0; i -= 1) {
-        const pos = order.indexOf(bounds.blockMix[i]);
+      for (let i = familyMix.indexOf(gated) - 1; i >= 0; i -= 1) {
+        const pos = order.indexOf(familyMix[i]);
         if (pos !== -1) {
           insertAt = pos + 1;
           break;
@@ -1707,6 +1751,11 @@ export function applyGenerationLayout(
       ...(strategy.grid ? { grid: strategy.grid } : {}),
     };
   }
+  // Phase 7A: the chosen family persists as metadata beside layout_strategy.
+  // Only written when the model chose a valid one, so a generation without
+  // it leaves a prior/absent storefront_family exactly as it was.
+  const familyPick = StorefrontFamilySchema.safeParse(layout.storefront_family);
+  if (familyPick.success) next.storefront_family = familyPick.data;
   return next;
 }
 
