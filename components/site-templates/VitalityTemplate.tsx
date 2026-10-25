@@ -34,10 +34,12 @@ import { siteThemeStyle } from '@/lib/siteTheme';
 //
 // COCKPIT ADMISSION (Hotfix 2): the high-contrast-street archetype made
 // vitality a first-class GENERATED base, so this template is now an editable
-// cockpit surface (EDITABLE_TEMPLATE_COMPONENTS). The FIXED-SLOT contract
-// stays — sections render in this file's deterministic positions (first
-// visible block of each type wins, never array order) — but every section is
-// now ANCHORED to its block: data-block-section on the wrapper and
+// cockpit surface (EDITABLE_TEMPLATE_COMPONENTS). Phase 7B (Template
+// Unchaining) retired the FIXED-SLOT body: the hero stays the pinned opener,
+// but grid / story / testimonials / split_cta / cta_banner now render at their
+// config.blocks ARRAY POSITION (first visible block of each type still wins —
+// a duplicate type is skipped, so legacy rows render unchanged). Every section
+// is ANCHORED to its block: data-block-section on the wrapper and
 // EditableText/data-block-field on every copy node (inert data attributes on
 // the public site, exactly like RitualTemplate's), and a hidden/removed block
 // skips its slot via resolveVisibleBlocks. Copy reads from the block — the
@@ -163,19 +165,31 @@ function VitalitySplitCta({ block, products, productHref, collectionsHref }: {
 }
 
 export default function VitalityTemplate({ shop, products, config, heroMedia }: SiteTemplateProps) {
-  // Cockpit admission (see header): EVERY section is block-anchored now. The
+  // Cockpit admission (see header): EVERY section is block-anchored. The
   // classic anatomy reads its copy from the first VISIBLE block of each type
   // (byte-identical to the retired site.* reads on every stored row — the
-  // writers keep the mirror in sync); the archetype slots keep their
-  // deterministic positions — testimonials after the Brand story, the split
-  // spread after that (before the CTA). A hidden/removed block skips its slot.
+  // writers keep the mirror in sync). A hidden/removed block skips its section.
+  //
+  // Phase 7B (Template Unchaining): the body now RESPECTS config.blocks
+  // order. The hero stays the pinned opener — its diagonal header, the seam
+  // marquee and the category-discovery strip are one welded unit — and every
+  // other body section (product rows, story, testimonials, split spread, CTA)
+  // renders at its ARRAY POSITION instead of a fixed template slot. The
+  // historical "first visible block of each type wins" law is preserved (a
+  // second block of an already-rendered type is skipped), so every stored
+  // legacy row (hero → grid → story → cta) renders in its exact pre-7B
+  // anatomy and the editor's one-slot-per-type add catalog stays truthful.
   const visibleBlocks = resolveVisibleBlocks(config);
   const heroBlock = findBlock(visibleBlocks, 'hero_banner');
-  const gridBlock = findBlock(visibleBlocks, 'product_grid');
-  const storyBlock = findBlock(visibleBlocks, 'story_text');
-  const ctaBlock = findBlock(visibleBlocks, 'cta_banner');
-  const testimonialsBlock = findBlock(visibleBlocks, 'testimonials');
-  const splitCtaBlock = findBlock(visibleBlocks, 'split_cta');
+  const seenTypes = new Set<SiteBlock['type']>();
+  const bodyBlocks = visibleBlocks.filter((b) => {
+    // hero_banner is the pinned opener above; value_props render exclusively
+    // as the SiteMarquee ribbon (Fix 2) — neither flows in the body.
+    if (b.type === 'hero_banner' || b.type === 'value_props') return false;
+    if (seenTypes.has(b.type)) return false;
+    seenTypes.add(b.type);
+    return true;
+  });
   // Omnichannel hygiene (Phase 9): primary journeys stay on the branded site.
   // Nav/CTA route to the on-site catalog; product rows open the on-site PDP —
   // the same siteProductPath helper the chromes use (slugless previews keep
@@ -335,22 +349,28 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
         </section>
       )}
 
-      {/* Benefit-led product rows — anchored to the product_grid block. The
-          rows themselves are this dialect's fixed anatomy (displayMode has no
-          surface here — the grid/carousel switch belongs to ritual/editorial). */}
-      {gridBlock && (
-      <section id="lineup" data-block-section={gridBlock.id} className="mx-auto max-w-7xl px-5 py-14 md:px-10 md:py-24">
+      {/* Phase 7B: the body flows in config.blocks order. Each case keeps its
+          exact historical markup — only the POSITION is now block-driven. */}
+      {bodyBlocks.map((block) => {
+        switch (block.type) {
+          case 'product_grid':
+            // Benefit-led product rows — anchored to the product_grid block.
+            // The rows themselves are this dialect's fixed anatomy (displayMode
+            // has no surface here — the grid/carousel switch belongs to
+            // ritual/editorial).
+            return (
+      <section key={block.id} id="lineup" data-block-section={block.id} className="mx-auto max-w-7xl px-5 py-14 md:px-10 md:py-24">
         <Reveal>
-          <EditableText as="h2" blockId={gridBlock.id} field="title" className="text-3xl font-black uppercase tracking-tight text-balance md:text-5xl">
-            {gridBlock.title}
+          <EditableText as="h2" blockId={block.id} field="title" className="text-3xl font-black uppercase tracking-tight text-balance md:text-5xl">
+            {block.title}
           </EditableText>
           <EditableText
             as="p"
-            blockId={gridBlock.id}
+            blockId={block.id}
             field="intro"
             className="mt-3 max-w-xl text-sm leading-relaxed text-[color-mix(in_srgb,var(--site-text,#fff)_60%,transparent)]"
           >
-            {gridBlock.intro}
+            {block.intro}
           </EditableText>
         </Reveal>
 
@@ -422,11 +442,11 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
           </div>
         )}
       </section>
-      )}
-
-      {/* Brand story — anchored to the story_text block. */}
-      {storyBlock && (
-      <section data-block-section={storyBlock.id} className="border-y border-white/10 bg-[#111] py-20 md:py-24">
+            );
+          case 'story_text':
+            // Brand story — anchored to the story_text block.
+            return (
+      <section key={block.id} data-block-section={block.id} className="border-y border-white/10 bg-[#111] py-20 md:py-24">
         <Reveal className="mx-auto max-w-3xl px-5 md:px-10">
           <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[var(--site-accent,#f0a500)]">The Mission</p>
           {/* Fix 1: 3-line teaser + Read-the-full-story reveal (fade matches
@@ -436,59 +456,68 @@ export default function VitalityTemplate({ shop, products, config, heroMedia }: 
             <StoryClamp tone="vitality">
               <EditableText
                 as="p"
-                blockId={storyBlock.id}
+                blockId={block.id}
                 field="body"
                 className="text-2xl font-bold leading-relaxed text-[color-mix(in_srgb,var(--site-text,#fff)_90%,transparent)] md:text-3xl"
               >
-                {storyBlock.body}
+                {block.body}
               </EditableText>
             </StoryClamp>
           </div>
         </Reveal>
       </section>
-      )}
-
-      {/* Archetype slots — render ONLY when the config carries the blocks. */}
-      {testimonialsBlock && (
-        <Reveal>
-          <VitalityTestimonials block={testimonialsBlock} />
-        </Reveal>
-      )}
-      {splitCtaBlock && (
-        <Reveal>
-          <VitalitySplitCta block={splitCtaBlock} products={lineup} productHref={productHref} collectionsHref={collectionsHref} />
-        </Reveal>
-      )}
-
-      {/* CTA — anchored to the cta_banner block. Button copy carries the two
-          data attributes on the Link itself (the documented interactive-node
-          pattern — see EditableText's header); the click-capture's closest()
-          walk resolves clicks on the inner skew span to it. */}
-      {ctaBlock && (
-      <section data-block-section={ctaBlock.id} className="py-24 text-center">
+            );
+          case 'testimonials':
+            // Archetype section — renders ONLY when the config carries the block.
+            return (
+              <Reveal key={block.id}>
+                <VitalityTestimonials block={block} />
+              </Reveal>
+            );
+          case 'split_cta':
+            return (
+              <Reveal key={block.id}>
+                <VitalitySplitCta block={block} products={lineup} productHref={productHref} collectionsHref={collectionsHref} />
+              </Reveal>
+            );
+          case 'cta_banner':
+            // CTA — anchored to the cta_banner block. Button copy carries the
+            // two data attributes on the Link itself (the documented
+            // interactive-node pattern — see EditableText's header); the
+            // click-capture's closest() walk resolves clicks on the inner skew
+            // span to it.
+            return (
+      <section key={block.id} data-block-section={block.id} className="py-24 text-center">
         <Reveal className="mx-auto max-w-2xl px-5 md:px-10">
-          <EditableText as="h2" blockId={ctaBlock.id} field="headline" className="text-4xl font-black uppercase tracking-tight md:text-5xl">
-            {ctaBlock.headline}
+          <EditableText as="h2" blockId={block.id} field="headline" className="text-4xl font-black uppercase tracking-tight md:text-5xl">
+            {block.headline}
           </EditableText>
           <EditableText
             as="p"
-            blockId={ctaBlock.id}
+            blockId={block.id}
             field="subtext"
             className="mx-auto mt-4 max-w-lg text-base leading-relaxed text-[color-mix(in_srgb,var(--site-text,#fff)_60%,transparent)]"
           >
-            {ctaBlock.subtext}
+            {block.subtext}
           </EditableText>
           <Link
             href={collectionsHref}
-            data-block-id={ctaBlock.id}
+            data-block-id={block.id}
             data-block-field="button_label"
             className="mt-10 inline-block skew-x-[-6deg] bg-[var(--site-accent,#f0a500)] px-12 py-5 text-sm font-black uppercase tracking-[0.25em] text-black shadow-[8px_8px_0_color-mix(in_srgb,var(--site-accent,#f0a500)_25%,transparent)] transition hover:brightness-110 active:translate-y-0.5"
           >
-            <span className="inline-block skew-x-[6deg]">{ctaBlock.button_label}</span>
+            <span className="inline-block skew-x-[6deg]">{block.button_label}</span>
           </Link>
         </Reveal>
       </section>
-      )}
+            );
+          default:
+            // product_tabs / video_hero have NO surface in this dialect
+            // (editorModel's VITALITY_UNRENDERED_TYPES keeps them out of the
+            // add catalog); value_props/hero_banner were filtered above.
+            return null;
+        }
+      })}
 
       <footer className="border-t border-white/10 py-10">
         {/* Pass 3: a full-width tactile WhatsApp action (the checkout
