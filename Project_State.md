@@ -7,9 +7,9 @@ The objective is not to produce websites that look AI-generated.
 The objective is to produce storefronts that feel intentionally designed for the merchant's niche, inventory, and customers.
 
 Current Status
-Current Phase: 6B Complete
+Current Phase: 7B Complete
 
-Next Phase: Storefront Families Investigation (Phase 7 Planning)
+Next Phase: Subtraction Family Specification (Read-Only Design Phase)
 
 Completed Work
 Pass 1
@@ -96,30 +96,40 @@ Text-centric hero
 Standard grid
 Featured-first grid
 Backward-compatible rendering of layout_strategy
+Phase 7A
+Storefront Family Preservation
+
+Delivered:
+
+storefront_family survives generation pipeline
+storefront_family survives applyArchetype()
+storefront_family survives applyGenerationLayout()
+storefront_family persisted onto WebsiteConfig
+family ordering no longer overwritten during generation
+Phase 7B
+Template Unchaining
+
+Delivered:
+
+VitalityTemplate no longer forces fixed body ordering
+VitalityTemplate respects config.blocks ordering
+storefront_family ordering now reaches rendering layer
+backward compatibility preserved
+TypeScript and ESLint clean
 Current Discovery
-Founder testing across multiple regenerations revealed:
+Founder testing across Food, Cosmetics, Marketplace, Electronics, and Bakery storefronts revealed:
 
 Copy variation is high.
 Concept quality is improving.
+Structural ordering variation exists.
 Perceived design variation remains low.
-Merchants primarily judge uniqueness through:
+The storefronts still feel too similar despite:
 
-Page structure
-Merchandising flow
-Hero composition
-Content hierarchy
-Product presentation
-rather than headlines, stories, or theme names.
-
-The current bottleneck is no longer archetype selection.
-
-The current bottleneck is structural variation.
-
-Different regenerations frequently produce different copy but still feel like the same storefront because generationToConfig() assembles largely similar merchandising structures.
-
-Merchant Testing Findings (October 2026)
-Testing across repeated storefront generations showed:
-
+different concepts
+different archetypes
+different ordering
+different hero variants
+Merchant Testing Findings
 Najat Cakes
 The generator successfully produces:
 
@@ -127,91 +137,150 @@ Different concept names
 Different stories
 Different headlines
 Different brand narratives
-However, repeated generations still feel visually similar because the same merchandising sequence is used across most outputs.
+However, repeated generations still feel visually similar because the same overall commerce model is used.
 
-Key Learning
-Merchants do not perceive:
+Cosmetics
+Multiple generations produced different copy and themes but retained the same overall perception:
 
-Different headlines
-Different stories
-Different CTA text
-as meaningful design variation.
+Hero → Collection → Products → Story
 
-Merchants perceive:
-
-Different page hierarchy
-Different merchandising strategy
-Different storefront structure
-as meaningful design variation.
-
-Important Discovery
-The AI model is not the bottleneck.
-
-The current bottleneck is the assembly layer.
-
-generationToConfig() currently converts many ideas into similar storefront structures.
-
-Current Focus
-Phase 6B delivered:
-
-standard hero
-split hero
-text-centric hero
-standard grid
-featured-first grid
-The next investigation is whether layout variants alone create meaningful perceived variation.
-
-Emerging Direction:
-
-Phase 7 – Storefront Families
-Potential families:
-
-Product First
-Examples:
+Marketplace
+Different concepts still felt structurally similar because the merchandising experience remained largely unchanged.
 
 Electronics
-Marketplace
-Grocery
-Structure:
+The storefront felt different in branding but not different enough in interaction, density, or page rhythm.
 
-Hero → Categories → Products → Trust → CTA
+Important Discovery
+The AI model is NOT the bottleneck.
 
-Lifestyle Story
-Examples:
+The prompting system is NOT the bottleneck.
 
-Fashion
-Jewellery
-Beauty
-Structure:
+The archetype system is NOT the bottleneck.
 
-Hero → Story → Featured Products → Collection → CTA
+The current bottleneck is how storefronts are composed.
 
-Menu & Occasion
-Examples:
+Merchants judge uniqueness primarily through:
 
-Bakery
-Restaurant
-Catering
-Structure:
+interaction models
+merchandising strategies
+section density
+product presentation
+overall composition
+Merchants do not strongly perceive:
 
-Hero → Occasion Categories → Menu Grid → Booking / WhatsApp CTA
+copy changes
+palette changes
+archetype changes
+block reordering
+as meaningful differentiation.
 
+Banjul Noir Discovery
+Banjul Noir is the first storefront in the codebase that consistently feels fundamentally different.
+
+Key reasons:
+
+Interaction Model
+Banjul Noir behaves more like an app than a traditional storefront page.
+
+Section Subtraction
+Instead of adding more sections, it removes them.
+
+It focuses on:
+
+Hero → Catalog
+
+while most AI storefronts continue adding:
+
+values
+stories
+marquees
+testimonials
+bridges
+CTA sections
+Merchandising Density
+Products become the primary content rather than supporting content.
+
+Visual Identity
+Banjul Noir combines:
+
+dark premium surfaces
+framed product plates
+mono metadata voice
+sparse navigation
+scarcity language
+but these are secondary effects.
+
+The strongest differentiator remains:
+
+interaction and composition.
+
+Current Direction
+The project has shifted from:
+
+Theme Variation
+
+towards:
+
+Storefront Composition
+
+Future differentiation should come from:
+
+composition profiles
+storefront families
+commerce modes
+rather than additional archetypes.
+
+Next Investigation
+Subtraction Family
 Goal:
 
-Allow businesses in the same niche to generate meaningfully different commerce structures without creating template explosion.
+Create a storefront family that feels fundamentally different through removal rather than addition.
+
+Initial principles:
+
+Hero
+Full catalog grid
+Quiet chrome
+Reduced section count
+Framed product presentation
+Monospace metadata voice
+Strong merchandising density
+This phase is currently DESIGN ONLY.
+
+No implementation approved yet.
 
 Known Future Opportunities
 Better bakery hero imagery
 Food-specific CTA language
-Additional layout strategies
+Full catalog mode
+Staggered masonry grids
 Storefront families
+Commerce modes
 Conversion analytics
 Merchant intelligence
 Learning loops from storefront performance
+Architectural Lessons Learned
+Lesson 1
+Routing bugs create bigger problems than weak AI models.
+
+Lesson 2
+Merchants care more about layout and merchandising than copy.
+
+Lesson 3
+Storefront families are more valuable than additional archetypes.
+
+Lesson 4
+Subtraction can create more perceived quality than adding features.
+
+Lesson 5
+Interaction patterns create stronger differentiation than visual themes.
+
 Do Not Reintroduce
 Bakery → Nightclub concepts
 Food → High Contrast Street routing
 Ignoring merchant archetype selection
-Mobile viewport overflow/wiggle
+Mobile viewport overflow / wiggle
 Category routing inconsistencies
 Theme picker / niche incompatibility
+storefront_family overwrite bug
+Fixed Vitality body ordering
