@@ -684,6 +684,7 @@ Return a JSON object:
         "menu-occasion"   : bakeries, cafes, catering, and restaurants — Hero → Trust band → Story → Collection → CTA (occasion and vibe first, then the menu)
         "subtraction"     : a high-confidence premium commerce layout that removes storytelling and marketing clutter in favour of a strong hero and a full catalog product wall. Best suited to luxury, visual, product-led brands where confidence comes from restraint rather than explanation.
       SUBTRACTION RULES: "subtraction" is available ONLY when template_key is "ritual" — NEVER select it for "editorial" or "vitality". Prefer it for luxury boutiques, jewellery, fragrance, premium cosmetics, artisan products, and highly visual product catalogs. Do not force it: keep choosing "lifestyle-story", "product-first", or "menu-occasion" whenever one of them fits the merchant better.
+      SUBTRACTION DEFAULTS: when selecting "subtraction", prefer layout_strategy.grid = "masonry" and product_grid.catalog = "full" unless there is a specific reason a different configuration better serves the merchant.
   }`;
 
     // ── Layout bounds (per-request → dynamic prompt) ───────────────────────
