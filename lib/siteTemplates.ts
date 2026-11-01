@@ -1280,18 +1280,19 @@ export type GenerationBlockType = (typeof GENERATION_BLOCK_TYPES)[number];
 const layoutPadding = z.enum(['compact', 'default', 'spacious']);
 const layoutAlign = z.enum(['left', 'center']);
 
-/** One optional pick per generation block type. A PLAIN object (never a
- *  record/propertyNames schema): every provider in the cascade — Anthropic
- *  tool schemas, Gemini's OpenAPI subset, OpenAI json_schema — accepts it. */
-const perBlock = <T extends z.ZodType>(value: T) => z.object({
-  hero_banner: value.optional(),
-  value_props: value.optional(),
-  product_grid: value.optional(),
-  story_text: value.optional(),
-  cta_banner: value.optional(),
-  split_cta: value.optional(),
-  testimonials: value.optional(),
-});
+/** One optional pick per CONSUMING generation block type. A PLAIN object
+ *  (never a record/propertyNames schema): every provider in the cascade —
+ *  Anthropic tool schemas, Gemini's OpenAPI subset, OpenAI json_schema —
+ *  accepts it. Keys mirror BLOCK_SETTINGS exactly (the truthful registry):
+ *  hero_banner / value_props register no spacing control and split_cta no
+ *  alignment, so those picks were always dropped by applyGenerationLayout
+ *  (blockConsumesSetting). Omitting them trims the optional-parameter count
+ *  below the Anthropic Fable tool-schema limit; a stray key still parses
+ *  (z.object strips unknowns) and renders byte-identically — ignored. */
+const BLOCK_PADDING_KEYS = ['product_grid', 'story_text', 'cta_banner', 'split_cta', 'testimonials'] as const;
+const BLOCK_ALIGN_KEYS = ['product_grid', 'story_text', 'cta_banner', 'testimonials'] as const;
+const perBlock = <T extends z.ZodType, K extends GenerationBlockType>(value: T, keys: ReadonlyArray<K>) =>
+  z.object(Object.fromEntries(keys.map((k) => [k, value.optional()])) as Record<K, z.ZodOptional<T>>);
 
 export const WebsiteLayoutSchema = z.object({
   /** Ordered section types to SHOW. Server law (resolveLayoutBlockOrder):
@@ -1304,8 +1305,8 @@ export const WebsiteLayoutSchema = z.object({
   /** Rhythm per section — applied only to types whose templates consume the
    *  switch (BLOCK_SETTINGS is the truthful registry). 'default' = the
    *  canonical absent form. */
-  block_padding: perBlock(layoutPadding).optional(),
-  block_align: perBlock(layoutAlign).optional(),
+  block_padding: perBlock(layoutPadding, BLOCK_PADDING_KEYS).optional(),
+  block_align: perBlock(layoutAlign, BLOCK_ALIGN_KEYS).optional(),
   /** Index into the bounds' accent presets (0 = bundle default). NEVER a hex. */
   theme_preset_index: z.number().int().min(0).max(ACCENT_PRESET_SLOTS - 1).optional(),
   /** Curated face — honored only when inside the bounds' displayFonts. */
@@ -1797,12 +1798,12 @@ export function applyGenerationLayout(
   for (const block of ordered) {
     const key = generationKey(block.type);
     if (!key) continue;
-    const pad = layout.block_padding?.[key];
+    const pad = (layout.block_padding as Partial<Record<GenerationBlockType, 'compact' | 'default' | 'spacious'>> | undefined)?.[key];
     if (pad && blockConsumesSetting(block.type, 'padding')) {
       if (pad === 'default') delete block.padding;
       else block.padding = pad;
     }
-    const align = layout.block_align?.[key];
+    const align = (layout.block_align as Partial<Record<GenerationBlockType, 'left' | 'center'>> | undefined)?.[key];
     if (align && blockConsumesSetting(block.type, 'align')) block.align = align;
   }
 
