@@ -682,6 +682,8 @@ Return a JSON object:
         "lifestyle-story" : fashion, beauty, jewelry, fragrance, and luxury goods — Hero → Story → Collection → Trust band → CTA (the boutique lookbook: narrative before catalog)
         "product-first"   : tech, electronics, general marketplaces, and utility goods — Hero → Collection → Trust band → Story → CTA (shoppers land straight in the catalog)
         "menu-occasion"   : bakeries, cafes, catering, and restaurants — Hero → Trust band → Story → Collection → CTA (occasion and vibe first, then the menu)
+        "subtraction"     : a high-confidence premium commerce layout that removes storytelling and marketing clutter in favour of a strong hero and a full catalog product wall. Best suited to luxury, visual, product-led brands where confidence comes from restraint rather than explanation.
+      SUBTRACTION RULES: "subtraction" is available ONLY when template_key is "ritual" — NEVER select it for "editorial" or "vitality". Prefer it for luxury boutiques, jewellery, fragrance, premium cosmetics, artisan products, and highly visual product catalogs. Do not force it: keep choosing "lifestyle-story", "product-first", or "menu-occasion" whenever one of them fits the merchant better.
   }`;
 
     // ── Layout bounds (per-request → dynamic prompt) ───────────────────────
