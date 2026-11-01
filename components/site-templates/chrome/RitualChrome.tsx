@@ -111,12 +111,25 @@ export const RITUAL_COLLECTION_GRID =
  * server article: identical visuals, zero JavaScript. No data-block-* attrs
  * are added here (the grid SECTION owns editor targeting).
  */
-export function RitualProductCard({ product, index, href, sizes }: {
+/** Step 2 (Subtraction Family): optional card frame ratio. 'portrait' is
+ *  the historical 3:4 frame and the default, so every existing caller (home
+ *  showcase, /collections) renders byte-identically. The masonry wall
+ *  alternates 'portrait' / 'square' and gives its row-spanning cards 'tall'. */
+export type RitualCardRatio = 'portrait' | 'square' | 'tall';
+const RITUAL_CARD_RATIO: Record<RitualCardRatio, string> = {
+  portrait: 'aspect-[3/4]',
+  square: 'aspect-square',
+  tall: 'aspect-[2/3]',
+};
+
+export function RitualProductCard({ product, index, href, sizes, ratio }: {
   product: SiteProduct;
   index: number;
   href: string;
   /** Slot-tuned sizes; defaults to the shared grid breakpoints. */
   sizes?: string;
+  /** Frame ratio; absent ≡ 'portrait' (the historical 3:4 frame). */
+  ratio?: RitualCardRatio;
 }) {
   const badge = ritualStockBadge(product.stock_quantity);
   // Compare-at sale (lib/pricing.ts): strictly compare_at_price > price.
@@ -128,7 +141,7 @@ export function RitualProductCard({ product, index, href, sizes }: {
       <Link href={href} className="absolute inset-0 z-10 rounded-2xl">
         <span className="sr-only">{product.name}</span>
       </Link>
-      <div className={`relative aspect-[3/4] overflow-hidden rounded-2xl ${RITUAL_SURFACE}`}>
+      <div className={`relative ${RITUAL_CARD_RATIO[ratio ?? 'portrait']} overflow-hidden rounded-2xl ${RITUAL_SURFACE}`}>
         <RitualProductVisual src={product.ad_hero_image_url ?? product.image_url} alt={product.name} index={index} sizes={imgSizes} />
         {altSrc && (
           // Second photo — revealed by hover (pointer devices) or the toggle

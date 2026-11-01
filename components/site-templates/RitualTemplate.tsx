@@ -32,6 +32,7 @@ import RitualChrome, {
   RITUAL_SURFACE,
   RitualProductCard,
   ritualProductHref,
+  type RitualCardRatio,
 } from './chrome/RitualChrome';
 
 // MINIMAL (template_key 'ritual') — Layout A.
@@ -349,7 +350,19 @@ function ritualFeaturedLayout(count: number): { grid: string; sizes: string } {
   }
 }
 
-function RitualProductGrid({ block, shop, products, catalog, variant }: {
+// Step 2 (Subtraction Family): the home slice upstream (siteData) is capped
+// at 12. In full-catalog mode the Explore Collection bridge renders ONLY when
+// the wall hits that cap — i.e. there may be more pieces on /collections.
+const HOME_SLICE_CAP = 12;
+
+// Masonry rhythm (layout_strategy.grid === 'masonry'): every 5th card spans
+// two rows in a 'tall' frame; the rest alternate 'portrait' / 'square'.
+function ritualMasonryRatio(i: number): RitualCardRatio {
+  if (i % 5 === 4) return 'tall';
+  return i % 2 === 0 ? 'portrait' : 'square';
+}
+
+function RitualProductGrid({ block, shop, products, catalog, variant, hideCategories }: {
   block: ProductGridBlock;
   shop: SiteShop;
   /** The showcase selection (selectFeaturedProducts) — capped again here so a
@@ -359,13 +372,20 @@ function RitualProductGrid({ block, shop, products, catalog, variant }: {
   catalog: SiteProduct[];
   /** Phase 6B structural variant — undefined ≡ 'standard'. */
   variant?: GridVariant;
+  /** Step 2 (Subtraction): suppress the category discovery strip. Absent ≡ false. */
+  hideCategories?: boolean;
 }) {
-  const featured = products.slice(0, FEATURED_MAX);
+  // Step 2: block.catalog === 'full' renders the ENTIRE home slice (no
+  // showcase cap); absent/'showcase' keeps the exact historical selection.
+  const fullCatalog = block.catalog === 'full';
+  const featured = fullCatalog ? catalog : products.slice(0, FEATURED_MAX);
   const count = featured.length;
   const alignLeft = block.align === 'left';
   const layout = ritualFeaturedLayout(count);
   // Bridge target: null in slugless studio previews → no bridge rendered.
   const collectionsPath = siteCollectionsPath(shop);
+  // Full-catalog bridge law: only when the slice equals the upstream cap.
+  const showBridge = fullCatalog ? count === HOME_SLICE_CAP : count > 0;
   // Category discovery: real categories from the merchant's inventory, each
   // deep-linking to its group on /collections. CategoryNav renders nothing
   // below two categories or without a real collections path.
@@ -382,7 +402,7 @@ function RitualProductGrid({ block, shop, products, catalog, variant }: {
         </EditableText>
       </div>
 
-      {collectionsPath && (
+      {collectionsPath && !hideCategories && (
         <CategoryNav
           tone="ritual"
           label={null}
@@ -427,6 +447,19 @@ function RitualProductGrid({ block, shop, products, catalog, variant }: {
             ),
           )}
         </div>
+      ) : variant === 'masonry' ? (
+        // Step 2 masonry: dense row packing, alternating frame ratios, every
+        // 5th card spanning two rows. Standard / featured-first untouched.
+        <div className="mt-10 grid grid-flow-row-dense grid-cols-2 gap-x-5 gap-y-12 md:mt-16 md:grid-cols-3 md:gap-x-8 md:gap-y-16 lg:grid-cols-4">
+          {featured.map((p, i) => {
+            const ratio = ritualMasonryRatio(i);
+            return (
+              <div key={p.id} className={ratio === 'tall' ? 'row-span-2' : undefined}>
+                <RitualProductCard product={p} index={i} href={ritualProductHref(shop, p.id)} ratio={ratio} sizes="(min-width: 1024px) 25vw, (min-width: 768px) 33vw, 50vw" />
+              </div>
+            );
+          })}
+        </div>
       ) : (
         <div className={`mt-10 md:mt-16 ${layout.grid}`}>
           {featured.map((p, i) => (
@@ -439,7 +472,7 @@ function RitualProductGrid({ block, shop, products, catalog, variant }: {
           full catalog. Conditional: needs pieces to explore AND a real
           /site path (slugless previews render none). No data-block attrs.
           Pass 3: full-width on phones (thumb-reach CTA), inline from sm. */}
-      {count > 0 && collectionsPath && (
+      {showBridge && collectionsPath && (
         <div className={`mt-10 flex md:mt-14 ${alignLeft ? 'justify-start' : 'justify-center'}`}>
           <Link
             href={collectionsPath}
@@ -675,6 +708,10 @@ export default function RitualTemplate({ shop, products, config, heroMedia }: Si
   // on every legacy row → undefined → the historical markup, unchanged.
   const heroVariant = config.layout_strategy?.hero;
   const gridVariant = config.layout_strategy?.grid;
+  // Step 2 (Subtraction Family, Ritual-only): Hero → Product Wall → Footer.
+  // No marquee, no offer pill, no category strip. Every other family (and
+  // every legacy row without storefront_family) renders exactly as before.
+  const subtraction = config.storefront_family === 'subtraction';
 
   return (
     <RitualChrome shop={shop} config={config} active="home">
@@ -685,11 +722,11 @@ export default function RitualTemplate({ shop, products, config, heroMedia }: Si
         const section = (() => {
           switch (block.type) {
             case 'hero_banner':
-              return <RitualHero block={block} shop={shop} heroMedia={heroMedia} signal={heroSignal} variant={heroVariant} />;
+              return <RitualHero block={block} shop={shop} heroMedia={heroMedia} signal={subtraction ? null : heroSignal} variant={heroVariant} />;
             // value_props: no body section (Fix 2) — the block renders as the
             // SiteMarquee ribbon after the hero.
             case 'product_grid':
-              return <RitualProductGrid block={block} shop={shop} products={featured} catalog={products} variant={gridVariant} />;
+              return <RitualProductGrid block={block} shop={shop} products={featured} catalog={products} variant={gridVariant} hideCategories={subtraction} />;
             case 'story_text':
               return <RitualStory block={block} shopName={shop.shop_name} />;
             case 'cta_banner':
@@ -715,7 +752,7 @@ export default function RitualTemplate({ shop, products, config, heroMedia }: Si
           return (
             <Fragment key={block.id}>
               {section}
-              <SiteMarquee config={config} tone="ritual" />
+              {!subtraction && <SiteMarquee config={config} tone="ritual" />}
             </Fragment>
           );
         }
