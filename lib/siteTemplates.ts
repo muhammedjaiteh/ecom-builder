@@ -211,6 +211,12 @@ export const ProductGridBlockSchema = z.object({
    *  scroll-snap track. No site.* mirror exists for it — blocksToLegacySite
    *  deliberately never reads it. */
   displayMode: z.enum(['grid', 'carousel']).optional(),
+  /** Subtraction Family (Step 1) — catalog scope switch. OPTIONAL and
+   *  additive: absent means 'showcase' (the capped featured selection every
+   *  stored row renders today); 'full' asks the renderer for the whole home
+   *  slice. No site.* mirror exists for it — blocksToLegacySite never reads
+   *  it. Rendering lands in Step 2; this field is the stored contract only. */
+  catalog: z.enum(['showcase', 'full']).optional(),
   hidden,
   padding,
   align,
@@ -468,6 +474,18 @@ export const BLOCK_SETTINGS: Record<SiteBlockType, ReadonlyArray<BlockSettingDes
       options: [
         { value: 'grid', label: 'Grid' },
         { value: 'carousel', label: 'Carousel' },
+      ],
+    },
+    // Subtraction Family (Step 1): clearValue 'showcase' DELETES the key —
+    // the canonical absent form, mirroring the displayMode precedent.
+    {
+      kind: 'select',
+      path: 'catalog',
+      label: 'Catalog',
+      clearValue: 'showcase',
+      options: [
+        { value: 'showcase', label: 'Showcase' },
+        { value: 'full', label: 'Full catalog' },
       ],
     },
     PADDING_SETTING,
@@ -988,25 +1006,44 @@ export type LayoutStrategy = z.infer<typeof LayoutStrategySchema>;
  *  rhythm differs:
  *    'lifestyle-story' : Hero → Story → Grid → Values → CTA (boutique lookbook)
  *    'product-first'   : Hero → Grid → Values → Story → CTA (straight to catalog)
- *    'menu-occasion'   : Hero → Values → Story → Grid → CTA (occasion, then menu) */
-export const STOREFRONT_FAMILIES = ['product-first', 'lifestyle-story', 'menu-occasion'] as const;
+ *    'menu-occasion'   : Hero → Values → Story → Grid → CTA (occasion, then menu)
+ *    'subtraction'     : Hero → Grid ONLY (Step 1 foundation). The three
+ *                        remaining core slots are still seated — HIDDEN —
+ *                        so no content is lost and the eye toggle restores
+ *                        them. RITUAL-ONLY: on any other template the family
+ *                        coerces to the default (see applyGenerationLayout). */
+export const STOREFRONT_FAMILIES = ['product-first', 'lifestyle-story', 'menu-occasion', 'subtraction'] as const;
 export type StorefrontFamily = (typeof STOREFRONT_FAMILIES)[number];
 export const StorefrontFamilySchema = z.enum(STOREFRONT_FAMILIES);
 export const DEFAULT_STOREFRONT_FAMILY: StorefrontFamily = 'lifestyle-story';
+/** The only template whose body can honestly render a two-section page. */
+export const SUBTRACTION_TEMPLATE_KEY: TemplateKey = 'ritual';
 
 type FamilySlot = 'hero' | 'story' | 'grid' | 'values' | 'cta';
+const ALL_FAMILY_SLOTS: readonly FamilySlot[] = ['hero', 'story', 'grid', 'values', 'cta'];
 const STOREFRONT_FAMILY_ORDER: Record<StorefrontFamily, readonly FamilySlot[]> = {
   'lifestyle-story': ['hero', 'story', 'grid', 'values', 'cta'],
   'product-first': ['hero', 'grid', 'values', 'story', 'cta'],
   'menu-occasion': ['hero', 'values', 'story', 'grid', 'cta'],
+  subtraction: ['hero', 'grid'],
 };
 
 /** Safe family resolution: anything absent or unknown (legacy configs, a
- *  provider that ignored the enum) → the default family. */
-export function resolveStorefrontFamily(value: unknown): StorefrontFamily {
+ *  provider that ignored the enum) → the default family. When a templateKey
+ *  is supplied, 'subtraction' on a non-ritual template ALSO resolves to the
+ *  default — the Ritual-only law, enforced wherever the template is known. */
+export function resolveStorefrontFamily(value: unknown, templateKey?: TemplateKey | null): StorefrontFamily {
   const parsed = StorefrontFamilySchema.safeParse(value);
-  return parsed.success ? parsed.data : DEFAULT_STOREFRONT_FAMILY;
+  if (!parsed.success) return DEFAULT_STOREFRONT_FAMILY;
+  if (parsed.data === 'subtraction' && templateKey && templateKey !== SUBTRACTION_TEMPLATE_KEY) {
+    return DEFAULT_STOREFRONT_FAMILY;
+  }
+  return parsed.data;
 }
+
+/** Block types the subtraction rhythm keeps VISIBLE; every other block in
+ *  the assembled config ships hidden (content preserved, restorable). */
+const SUBTRACTION_VISIBLE_TYPES: ReadonlySet<SiteBlockType> = new Set<SiteBlockType>(['hero_banner', 'product_grid']);
 
 /** Family slot → the generated block type it seats. */
 const FAMILY_SLOT_TYPE: Record<FamilySlot, SiteBlockType> = {
@@ -1356,7 +1393,9 @@ export function generationToConfig(gen: WebsiteGeneration): WebsiteConfig {
   // Phase 7 — Storefront Families: the five generated slots are built once,
   // then pushed in the family's rhythm. Legacy generations (no
   // layout.storefront_family) resolve to 'lifestyle-story'.
-  const family = resolveStorefrontFamily(gen.layout?.storefront_family);
+  // Subtraction (Step 1): resolved against the generation's template so a
+  // non-ritual build assembles the default rhythm from the start.
+  const family = resolveStorefrontFamily(gen.layout?.storefront_family, gen.template_key);
   const slots: Record<FamilySlot, SiteBlock> = {
     hero: {
       id: 'hero',
@@ -1391,6 +1430,17 @@ export function generationToConfig(gen: WebsiteGeneration): WebsiteConfig {
       // Hero → Values → Story → Grid → CTA — occasion and vibe first, then the menu.
       for (const slot of STOREFRONT_FAMILY_ORDER['menu-occasion']) blocks.push(slots[slot]);
       break;
+    case 'subtraction': {
+      // Hero → Grid — then every core slot the rhythm omits is seated HIDDEN
+      // in canonical order, so the five-slot anatomy (and the site.* mirror
+      // it feeds) stays intact and nothing can disappear.
+      const rhythm = STOREFRONT_FAMILY_ORDER.subtraction;
+      for (const slot of rhythm) blocks.push(slots[slot]);
+      for (const slot of ALL_FAMILY_SLOTS) {
+        if (!rhythm.includes(slot)) blocks.push({ ...slots[slot], hidden: true });
+      }
+      break;
+    }
     case 'lifestyle-story':
     default:
       // Hero → Story → Grid → Values → CTA — the classic boutique lookbook rhythm.
@@ -1673,11 +1723,27 @@ export function applyGenerationLayout(
   if (!layout) return config;
 
   const pool: SiteBlock[] = (config.blocks ?? legacySiteToBlocks(config.site)).map((b) => ({ ...b }));
+  // Subtraction (Step 1) — Ritual-only law. The model may name the family
+  // under any bundle; here the bounds' template decides. A non-ritual build
+  // coerces to the default family (layout_strategy untouched), and any core
+  // block generationToConfig pre-hid for subtraction is un-hidden so the
+  // block_order walk below is the ONLY visibility authority on this path.
+  const requestedFamily = StorefrontFamilySchema.safeParse(layout.storefront_family);
+  const subtractionRequested = requestedFamily.success && requestedFamily.data === 'subtraction';
+  const subtractionActive = subtractionRequested && bounds.templateKey === SUBTRACTION_TEMPLATE_KEY;
+  const effectiveFamily: StorefrontFamily | undefined = requestedFamily.success
+    ? resolveStorefrontFamily(requestedFamily.data, bounds.templateKey)
+    : undefined;
+  if (subtractionRequested && !subtractionActive) {
+    for (const block of pool) {
+      if (block.hidden && (Object.values(FAMILY_SLOT_TYPE) as SiteBlockType[]).includes(block.type)) delete block.hidden;
+    }
+  }
   const requested = resolveLayoutBlockOrder(bounds, layout.block_order);
   // Phase 7A: the default order (block_order absent/invalid) and the
   // server-gated anchor walk both follow the family-aware mix — the same
   // array as bounds.blockMix whenever no storefront_family was chosen.
-  const familyMix = familyAwareBlockMix(bounds.blockMix, layout.storefront_family);
+  const familyMix = familyAwareBlockMix(bounds.blockMix, effectiveFamily);
   const order: SiteBlockType[] = requested ? [...requested] : [...familyMix];
 
   if (requested) {
@@ -1708,6 +1774,16 @@ export function applyGenerationLayout(
     if (used.has(block.id)) continue;
     const omittedByModel = requested !== null && bounds.blockMix.includes(block.type);
     ordered.push(omittedByModel ? { ...block, hidden: true } : block);
+  }
+
+  // Subtraction on Ritual: everything outside the hero → grid rhythm ships
+  // HIDDEN (values, story, cta, split_cta, testimonials …) — never dropped.
+  // Defaults land ONLY on absent keys: an explicit catalog pick survives.
+  if (subtractionActive) {
+    for (const block of ordered) {
+      if (!SUBTRACTION_VISIBLE_TYPES.has(block.type)) block.hidden = true;
+      else if (block.type === 'product_grid' && block.catalog === undefined) block.catalog = 'full';
+    }
   }
 
   if (bounds.carouselHonored && layout.product_grid_display) {
@@ -1751,11 +1827,22 @@ export function applyGenerationLayout(
       ...(strategy.grid ? { grid: strategy.grid } : {}),
     };
   }
+  // Subtraction on Ritual (Step 1): type-led opener + masonry wall are the
+  // family's defaults — applied ONLY to keys neither the model nor a prior
+  // strategy set, so explicit picks always win. (The coerced non-ritual
+  // path never reaches here: subtractionActive is false there.)
+  if (subtractionActive) {
+    next.layout_strategy = {
+      hero: strategy?.hero ?? config.layout_strategy?.hero ?? 'text-centric',
+      grid: strategy?.grid ?? config.layout_strategy?.grid ?? 'masonry',
+    };
+  }
   // Phase 7A: the chosen family persists as metadata beside layout_strategy.
   // Only written when the model chose a valid one, so a generation without
-  // it leaves a prior/absent storefront_family exactly as it was.
-  const familyPick = StorefrontFamilySchema.safeParse(layout.storefront_family);
-  if (familyPick.success) next.storefront_family = familyPick.data;
+  // it leaves a prior/absent storefront_family exactly as it was. The
+  // persisted value is the EFFECTIVE family (post-coercion), never a
+  // subtraction tag on a template that cannot render it.
+  if (effectiveFamily) next.storefront_family = effectiveFamily;
   return next;
 }
 

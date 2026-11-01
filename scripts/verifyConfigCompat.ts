@@ -781,6 +781,95 @@ if (genWithLayoutParse.success) {
     (classicVitality.blocks ?? []).every((b) => b.type !== 'product_grid' || b.displayMode === undefined) &&
     classicVitality.theme?.accent === TEMPLATE_THEMES.vitality.swatches[2].hex);
   check('classic vitality: assembly validates strictly', WebsiteConfigSchema.safeParse(classicVitality).success);
+
+  // ── Subtraction Family — Step 1 foundation ─────────────────────────────
+  const subtractionGen = WebsiteGenerationSchema.parse({
+    ...generationSampleRaw,
+    template_key: 'ritual',
+    layout: { storefront_family: 'subtraction' },
+  });
+  const subtractionSeed = generationToConfig(subtractionGen);
+  check('subtraction (assembler): all five core slots seated, none dropped',
+    (subtractionSeed.blocks ?? []).length === 5, `got ${(subtractionSeed.blocks ?? []).length}`);
+  check('subtraction (assembler): hero → grid visible, values/story/cta hidden',
+    JSON.stringify(resolveVisibleBlocks(subtractionSeed).map((b) => b.type)) === JSON.stringify(['hero_banner', 'product_grid']) &&
+    (subtractionSeed.blocks ?? []).filter((b) => b.hidden).map((b) => b.type).sort().join(',') === 'cta_banner,story_text,value_props');
+
+  // (A) Ritual + subtraction through the classic bounds.
+  const subRitual = applyGenerationLayout(subtractionSeed, subtractionGen.layout, classicLayoutBounds('ritual'));
+  const subRitualParse = WebsiteConfigSchema.safeParse(subRitual);
+  check('subtraction/ritual: assembly validates strictly', subRitualParse.success,
+    subRitualParse.success ? undefined : JSON.stringify(subRitualParse.error.issues).slice(0, 300));
+  const subRitualVisible = resolveVisibleBlocks(subRitual).map((b) => b.type);
+  check('subtraction/ritual: hero visible first, grid visible, nothing else visible',
+    JSON.stringify(subRitualVisible) === JSON.stringify(['hero_banner', 'product_grid']), subRitualVisible.join(','));
+  check('subtraction/ritual: remaining core blocks present AND hidden (never dropped)',
+    (subRitual.blocks ?? []).length === 5 &&
+    (subRitual.blocks ?? []).filter((b) => b.hidden).map((b) => b.type).sort().join(',') === 'cta_banner,story_text,value_props');
+  const subRitualGrid = (subRitual.blocks ?? []).find((b) => b.type === 'product_grid');
+  check('subtraction/ritual: product_grid.catalog defaults to full',
+    subRitualGrid?.type === 'product_grid' && subRitualGrid.catalog === 'full');
+  check('subtraction/ritual: layout_strategy defaults to text-centric hero + masonry grid',
+    subRitual.layout_strategy?.hero === 'text-centric' && subRitual.layout_strategy?.grid === 'masonry');
+  check('subtraction/ritual: storefront_family persisted as subtraction', subRitual.storefront_family === 'subtraction');
+  check('subtraction/ritual: site.* mirror intact (hidden blocks still mirror)',
+    JSON.stringify(subRitual.site) === JSON.stringify(generationToConfig(subtractionGen).site));
+
+  // (A') Explicit picks win over the family defaults.
+  const subExplicitGen = WebsiteGenerationSchema.parse({
+    ...generationSampleRaw,
+    template_key: 'ritual',
+    layout: { storefront_family: 'subtraction', layout_strategy: { hero: 'split', grid: 'featured-first' } },
+  });
+  const subExplicit = applyGenerationLayout(generationToConfig(subExplicitGen), subExplicitGen.layout, classicLayoutBounds('ritual'));
+  check('subtraction/ritual: explicit layout_strategy survives (split + featured-first)',
+    subExplicit.layout_strategy?.hero === 'split' && subExplicit.layout_strategy?.grid === 'featured-first');
+  // Archetype path on a ritual bundle (deep-luxury): split_cta + testimonials
+  // are pooled by the archetype and must ship hidden, not dropped.
+  const luxury = ARCHETYPES['deep-luxury'];
+  const subLuxury = applyArchetype(generationToConfig(subtractionGen), luxury, subtractionGen, sampleReviews);
+  const subLuxuryVisible = resolveVisibleBlocks(subLuxury).map((b) => b.type);
+  check('subtraction/deep-luxury: hero + grid visible only; split_cta & testimonials hidden, never dropped',
+    JSON.stringify(subLuxuryVisible) === JSON.stringify(['hero_banner', 'product_grid']) &&
+    (subLuxury.blocks ?? []).length === 7 &&
+    (subLuxury.blocks ?? []).filter((b) => b.hidden).map((b) => b.type).sort().join(',') === 'cta_banner,split_cta,story_text,testimonials,value_props',
+    `${subLuxuryVisible.join(',')} / ${(subLuxury.blocks ?? []).length}`);
+  check('subtraction/deep-luxury: assembly validates strictly', WebsiteConfigSchema.safeParse(subLuxury).success);
+
+  // (B) Editorial / Vitality + subtraction → coerced to lifestyle-story.
+  for (const t of ['editorial', 'vitality'] as const) {
+    const coercedGen = WebsiteGenerationSchema.parse({ ...generationSampleRaw, template_key: t, layout: { storefront_family: 'subtraction' } });
+    const coerced = applyGenerationLayout(generationToConfig(coercedGen), coercedGen.layout, classicLayoutBounds(t));
+    check(`subtraction/${t}: coerced to lifestyle-story`, coerced.storefront_family === 'lifestyle-story', String(coerced.storefront_family));
+    check(`subtraction/${t}: lifestyle-story rhythm, nothing hidden`,
+      JSON.stringify(resolveVisibleBlocks(coerced).map((b) => b.type)) === JSON.stringify(['hero_banner', 'story_text', 'product_grid', 'value_props', 'cta_banner']) &&
+      (coerced.blocks ?? []).every((b) => b.hidden === undefined),
+      resolveVisibleBlocks(coerced).map((b) => b.type).join(','));
+    check(`subtraction/${t}: layout_strategy untouched by coercion`, coerced.layout_strategy === undefined);
+    const coercedGrid = (coerced.blocks ?? []).find((b) => b.type === 'product_grid');
+    check(`subtraction/${t}: catalog NOT forced to full`, coercedGrid?.type === 'product_grid' && coercedGrid.catalog === undefined);
+  }
+  // Template drift: the generation said ritual (assembler pre-hid the
+  // leftovers) but the bounds resolved to vitality — the coercion un-hides.
+  const drifted = applyGenerationLayout(subtractionSeed, subtractionGen.layout, classicLayoutBounds('vitality'));
+  check('subtraction/drift ritual→vitality: pre-hidden core blocks un-hidden, family coerced',
+    drifted.storefront_family === 'lifestyle-story' && (drifted.blocks ?? []).every((b) => b.hidden === undefined) &&
+    (drifted.blocks ?? []).length === 5);
+  // Street archetype (vitality base) through applyArchetype.
+  const subStreet = applyArchetype(generationToConfig(subtractionGen), street, subtractionGen, sampleReviews);
+  check('subtraction/high-contrast-street: coerced to lifestyle-story, blocks follow the family rhythm, none hidden',
+    subStreet.storefront_family === 'lifestyle-story' &&
+    (subStreet.blocks ?? []).every((b) => b.hidden === undefined) &&
+    WebsiteConfigSchema.safeParse(subStreet).success);
+
+  // (C) No layout → reference identity, unchanged by the foundation.
+  check('subtraction foundation: absent layout still returns the SAME config object (reference identity)',
+    applyGenerationLayout(subtractionSeed, undefined, classicLayoutBounds('ritual')) === subtractionSeed &&
+    applyGenerationLayout(classicBase, null, classicLayoutBounds('ritual')) === classicBase);
+  // Schema superset: the catalog switch is optional; absent rows validate.
+  check('product_grid.catalog is optional (legacy rows unchanged)', WebsiteConfigSchema.safeParse(legacyConfig).success);
+  check('product_grid.catalog rejects values outside showcase|full',
+    !WebsiteConfigSchema.safeParse({ ...subRitual, blocks: (subRitual.blocks ?? []).map((b) => (b.type === 'product_grid' ? { ...b, catalog: 'all' } : b)) }).success);
 }
 
 if (failures > 0) {
