@@ -7,9 +7,9 @@ The objective is not to produce websites that look AI-generated.
 The objective is to produce storefronts that feel intentionally designed for the merchant's niche, inventory, and customers.
 
 Current Status
-Current Phase: 7B Complete
+Current Phase: 8A Complete
 
-Next Phase: Subtraction Family Specification (Read-Only Design Phase)
+Next Phase: 8B Subtraction Family Rendering
 
 Completed Work
 Pass 1
@@ -116,6 +116,26 @@ VitalityTemplate respects config.blocks ordering
 storefront_family ordering now reaches rendering layer
 backward compatibility preserved
 TypeScript and ESLint clean
+Phase 8A
+Subtraction Family Foundation
+
+Delivered:
+
+subtraction storefront_family added
+Ritual-only enforcement for subtraction family
+full/showcase catalog mode added to product_grid
+hidden-leftover strategy implemented
+storefront family guardrails added
+subtraction compatibility verification added
+non-Ritual subtraction coerces safely to lifestyle-story
+compatibility coverage expanded
+backward compatibility preserved
+Status:
+
+Infrastructure complete.
+
+No merchant-facing rendering changes yet.
+
 Current Discovery
 Founder testing across Food, Cosmetics, Marketplace, Electronics, and Bakery storefronts revealed:
 
@@ -230,24 +250,24 @@ storefront families
 commerce modes
 rather than additional archetypes.
 
-Next Investigation
-Subtraction Family
+Next Phase: 8B Subtraction Family Rendering
 Goal:
 
-Create a storefront family that feels fundamentally different through removal rather than addition.
+Create the first storefront family that differentiates itself through subtraction rather than addition.
 
-Initial principles:
+Planned characteristics:
 
-Hero
-Full catalog grid
+Hero-only opening
+Full catalog product display
+Masonry product presentation
 Quiet chrome
-Reduced section count
-Framed product presentation
+Hidden story/value clutter
+Framed product cards
 Monospace metadata voice
-Strong merchandising density
-This phase is currently DESIGN ONLY.
+Reduced section density
+Expected outcome:
 
-No implementation approved yet.
+Merchants should immediately perceive a different shopping experience even before reading copy.
 
 Known Future Opportunities
 Better bakery hero imagery
