@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Home — the thin dashboard overview.
 //
-// Headline metrics (Total Sales, Gross Revenue, Best Seller) and Recent
+// Headline metrics (Paid Orders, Gross Revenue, Best Seller) and Recent
 // Activity, all derived from the shared orders seam (lib/useOrders). Nothing
 // else lives here: Customers, Ad Studio, Broadcast, Discounts and Reviews are
 // real routes under /dashboard/* (see components/dashboard/DashboardSidebar),
@@ -26,6 +26,7 @@ import {
 import { DashboardShell } from '@/components/dashboard/DashboardShell';
 import { OnboardingInterceptor } from '@/components/onboarding/MagicStorefrontBuilder';
 import { resolveDashboardUser } from '@/lib/dashboardAuth';
+import { formatDalasi } from '@/lib/currency';
 import { orderTotal } from '@/lib/orderMetrics';
 import { useOrders } from '@/lib/useOrders';
 import { useShopRow } from '@/lib/useShopRow';
@@ -103,7 +104,7 @@ export default function DashboardHomePage() {
   }, [router, supabase]);
 
   // Vocabulary-aware headline metrics (sql/analytics.sql): a sale is a PAID
-  // ('completed') order. Total Sales and Gross Revenue both derive from that
+  // ('completed') order. Paid Orders and Gross Revenue both derive from that
   // set alone, so they can never disagree with the Paid Orders / Gross Revenue
   // cards on /dashboard/analytics. Pending orders are not sales yet, and
   // cancelled ones never were. Best Seller excludes cancelled orders only
@@ -180,14 +181,14 @@ export default function DashboardHomePage() {
           <div className="relative overflow-hidden rounded-[2rem] bg-[#1a2e1a] p-6 text-white shadow-lg">
             <div className="absolute -mr-4 -mt-4 h-24 w-24 rounded-full bg-white/10 blur-2xl" />
             <div className="relative z-10">
-              <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-emerald-400"><BarChart3 size={14} /> Total Sales</p>
+              <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-emerald-400"><BarChart3 size={14} /> Paid Orders</p>
               <div className="font-serif text-4xl font-medium">{totalOrders}</div>
             </div>
           </div>
 
           <div className="rounded-[2rem] border border-gray-100 bg-white p-6 shadow-sm">
             <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-400"><DollarSign size={14} className="text-green-600" /> Gross Revenue</p>
-            <div className="font-serif text-3xl font-medium text-gray-900">D{totalRevenue.toLocaleString()}</div>
+            <div className="font-serif text-3xl font-medium text-gray-900">{formatDalasi(totalRevenue) ?? 'D0'}</div>
           </div>
 
           <div className="rounded-[2rem] border border-gray-100 bg-white p-6 shadow-sm">
@@ -206,7 +207,7 @@ export default function DashboardHomePage() {
                 </div>
                 <div>
                   <p className="text-sm font-bold text-gray-900">{order.customers.name}</p>
-                  <p className="text-xs tabular-nums text-gray-500">D{orderTotal(order).toLocaleString()}</p>
+                  <p className="text-xs tabular-nums text-gray-500">{formatDalasi(orderTotal(order)) ?? 'D0'}</p>
                 </div>
               </div>
               <Link href="/dashboard/orders" className="text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-gray-900">View</Link>

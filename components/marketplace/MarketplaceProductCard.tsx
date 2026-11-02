@@ -155,7 +155,7 @@ export default function MarketplaceProductCard({
             </p>
           )}
         </div>
-        <h3 className="mt-1 line-clamp-2 text-[12px] font-medium leading-4 text-mall-forest/90 group-hover:underline md:text-[13px] md:leading-[18px]">
+        <h3 className="mt-1 line-clamp-2 min-h-8 text-[12px] font-medium leading-4 text-mall-forest/90 group-hover:underline md:min-h-9 md:text-[13px] md:leading-[18px]">
           {product.name}
         </h3>
       </div>

@@ -178,7 +178,9 @@ function DashboardGate({ userId, children }: { userId: string; children: React.R
  return (
     <>
       <DashboardSidebar shopName={shopName} shopSlug={shop?.shop_slug ?? null} />
-      <div className="lg:pl-60">{children}</div>
+      {/* pb-* reserves the floating mobile Menu pill's band (DashboardSidebar)
+          once for every dashboard page — no per-page bottom-padding hacks. */}
+      <div className="pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-0 lg:pl-60">{children}</div>
       <AdRenderNotifier />
     </>
   );;

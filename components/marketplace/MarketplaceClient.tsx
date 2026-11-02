@@ -211,8 +211,6 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
   // fallback (zero category/title matches) instead of exact lexical results.
   const [searchRelated, setSearchRelated] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [newsletterEmail, setNewsletterEmail] = useState('');
-  const [newsletterSubmitted, setNewsletterSubmitted] = useState(false);
 
   const { cartCount, setIsCartOpen } = useCart();
 
@@ -333,7 +331,7 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
     return {
       id: 'new-store-drops',
       kicker: 'Fresh on the floor',
-      title: 'New Store Drops',
+      title: 'Latest Arrivals',
       description: 'The newest listing from every boutique, flagships first.',
       products,
     };
@@ -1009,40 +1007,30 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
             <p className="mt-2 text-sm text-mall-bone/60">
               New boutiques, exclusive drops, and curated edits — straight to your inbox.
             </p>
-            {newsletterSubmitted ? (
-              <div
-                role="status"
-                aria-live="polite"
-                className="mt-6 rounded-2xl bg-white/10 px-6 py-4 text-sm font-medium text-mall-bone"
+            {/* Launch Hardening P0: no persistence exists for subscriptions
+                yet, so the form is a neutral "coming soon" state — it never
+                claims an email was saved. Inputs are disabled, not hidden, so
+                the section keeps its rhythm. */}
+            <form
+              aria-disabled="true"
+              onSubmit={(e) => e.preventDefault()}
+              className="mt-6 flex w-full flex-col gap-3 sm:flex-row"
+            >
+              <input
+                type="email"
+                disabled
+                placeholder="Newsletter opening soon"
+                aria-label="Newsletter opening soon"
+                className="h-12 w-full cursor-not-allowed rounded-full bg-white/10 px-5 text-base font-medium text-mall-bone/60 outline-none ring-1 ring-white/10 placeholder:text-mall-bone/40"
+              />
+              <button
+                type="button"
+                disabled
+                className="h-12 cursor-not-allowed whitespace-nowrap rounded-full bg-mall-gold/40 px-7 text-sm font-semibold text-mall-forest/80"
               >
-                ✓ Subscribed successfully. Welcome to the Sanndikaa community.
-              </div>
-            ) : (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (!newsletterEmail.trim()) return;
-                  setNewsletterEmail('');
-                  setNewsletterSubmitted(true);
-                }}
-                className="mt-6 flex w-full flex-col gap-3 sm:flex-row"
-              >
-                <input
-                  type="email"
-                  value={newsletterEmail}
-                  onChange={(e) => setNewsletterEmail(e.target.value)}
-                  placeholder="Enter your email address"
-                  required
-                  className="h-12 w-full rounded-full bg-white/10 px-5 text-base font-medium text-mall-bone outline-none ring-1 ring-white/10 transition placeholder:text-mall-bone/40 focus:ring-mall-gold/60"
-                />
-                <button
-                  type="submit"
-                  className="h-12 whitespace-nowrap rounded-full bg-mall-gold px-7 text-sm font-semibold text-mall-forest transition hover:brightness-105"
-                >
-                  Subscribe
-                </button>
-              </form>
-            )}
+                Coming Soon
+              </button>
+            </form>
           </div>
         </div>
       </section>
@@ -1052,7 +1040,7 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
       ═══════════════════════════════════════════════════════ */}
       <footer className="bg-mall-ivory pb-[env(safe-area-inset-bottom)]">
         <div className="mx-auto max-w-7xl px-4 py-12 md:px-10">
-          <div className="grid grid-cols-2 gap-10 md:grid-cols-4 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-10 md:grid-cols-4">
 
             <div className="col-span-2 lg:col-span-2">
               <Link href="/" aria-label="Sanndikaa home">
@@ -1106,14 +1094,9 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
               </ul>
             </div>
 
-            <div>
-              <h4 className="mb-4 text-xs font-bold uppercase tracking-widest text-mall-forest">Support</h4>
-              <ul className="space-y-3">
-                <li><Link href="/support" className="text-sm text-mall-forest/60 transition hover:text-mall-forest">Help Center</Link></li>
-                <li><Link href="/support/how-ordering-works" className="text-sm text-mall-forest/60 transition hover:text-mall-forest">How Ordering Works</Link></li>
-                <li><Link href="/contact" className="text-sm text-mall-forest/60 transition hover:text-mall-forest">Contact Us</Link></li>
-              </ul>
-            </div>
+            {/* Support column (Help Center · How Ordering Works · Contact Us)
+                is suppressed until those routes exist — no dead navigation
+                paths ship to the public floor. Launch Hardening P0. */}
 
           </div>
 
