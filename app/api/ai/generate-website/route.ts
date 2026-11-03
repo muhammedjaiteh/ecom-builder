@@ -15,6 +15,8 @@ import { runSiteAssetPhase } from '@/lib/siteAssets';
 const ENFORCE_GENERATION_QUOTA = process.env.ENFORCE_QUOTA === 'true';
 import {
 MatrixWebsiteGenerationSchema,
+  FEATURED_MAX,
+  selectFeaturedProducts,
   ACCENT_PRESET_SLOTS,
   ARCHETYPE_KEYS,
   ARCHETYPES,
@@ -125,6 +127,11 @@ FOUR QUESTIONS EVERY STOREFRONT MUST ANSWER CLEARLY:
 2. What should I buy first? — the hero and the collection intro point to a concrete product or category.
 3. Why trust this merchant? — value_props built from supplied facts only (delivery, pickup, stock, materials, ingredients) — never invented proof.
 4. How do I order? — every button label names the action (e.g. "Shop Abayas", "Order via WhatsApp").
+
+STORY ↔ FEATURED-PRODUCT CONSISTENCY (BINDING):
+- <seller_data> lists FEATURED PRODUCTS — the exact pieces the storefront renders in the hero and the collection grid.
+- story (body), product_grid.intro, hero copy and the concept "vibe" may name or describe ONLY products from that FEATURED list. Never build the narrative around a product that is in the wider inventory but absent from the FEATURED list — the customer cannot see it.
+- Category-level language ("Kojic soaps", "Oud attars") is fine when it describes the FEATURED pieces; a named product must be one of them.
 </copy_integrity>`;
 
 export async function POST(req: Request) {
@@ -438,6 +445,30 @@ export async function POST(req: Request) {
       .map((p) => `- ${p.name} (${p.category ?? 'uncategorised'}${p.price ? `, D${p.price}` : ''})${p.description ? `: ${String(p.description).slice(0, 120)}` : ''}`)
       .join('\n');
 
+    // Story ↔ product grounding: mirror the renderer's featured window so the
+    // copy describes what the page actually shows. app/site/[slug]/siteData.ts
+    // readHomeProducts reads the 12 newest rows (created_at desc — the same
+    // order as the read above), and Ritual/Editorial run selectFeaturedProducts
+    // over that window for the hero + showcase. Prompt-only: nothing persisted.
+    const featuredProducts = selectFeaturedProducts(
+      products.slice(0, 12).map((p) => ({
+        id: p.id,
+        name: p.name,
+        price: typeof p.price === 'number' ? p.price : null,
+        description: p.description,
+        image_url: p.image_url,
+        ad_video_url: p.ad_video_url,
+        ad_hero_image_url: p.ad_hero_image_url,
+        category: p.category,
+      })),
+      FEATURED_MAX,
+    );
+    const featuredSummary = featuredProducts
+      .map((p, i) => `${i + 1}. ${p.name} (${p.category ?? 'uncategorised'}${p.price ? `, D${p.price}` : ''})${p.description ? `: ${String(p.description).slice(0, 120)}` : ''}`)
+      .join('\n');
+    const featuredBlock = `FEATURED PRODUCTS (the ${featuredProducts.length} pieces the storefront displays in the hero and collection grid — story, product_grid intro and hero copy must reference ONLY these):
+${featuredSummary}`;
+
     const templateCatalog = Object.values(SITE_TEMPLATES)
       .map((t) => `- "${t.key}" — ${t.name} (${t.niche}): ${t.description}`)
       .join('\n');
@@ -505,6 +536,8 @@ Return a JSON object:
       const prompt = `SHOP:
 - Name: ${shop.shop_name}
 ${shop.bio ? `- Bio: ${shop.bio}` : ''}
+
+${featuredBlock}
 
 INVENTORY (${products.length} products, first 15 shown):
 ${inventorySummary}
@@ -711,6 +744,8 @@ SHOP:
 - Name: ${shop.shop_name}
 ${shop.bio ? `- Bio: ${shop.bio}` : ''}
 ${nicheLabel ? `- Declared niche: ${nicheLabel} — the seller chose this niche explicitly; tailor the storefront to it` : ''}
+
+${featuredBlock}
 
 INVENTORY (${products.length} products, first 15 shown):
 ${inventorySummary}

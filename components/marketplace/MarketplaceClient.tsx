@@ -561,11 +561,16 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
             </button>
 
             <div className="flex items-center justify-center">
-              <Link href="/" className="flex-shrink-0" aria-label="Sanndikaa home">
+              {/* /logo.png is a 500×500 canvas whose wordmark occupies only rows
+                  193–296 (~21% of the height). Rendering the canvas at 48px left
+                  a ~10px wordmark. Crop in CSS instead: a 48px window clips a
+                  192px-tall render so the wordmark lands ~40px tall. Header
+                  height is unchanged. Replace with a cropped asset post-launch. */}
+              <Link href="/" className="flex h-12 flex-shrink-0 items-center overflow-hidden" aria-label="Sanndikaa home">
                 <img
                   src="/logo.png"
                   alt="Sanndikaa"
-                  className="h-12 w-auto flex-shrink-0 object-contain brightness-0 invert"
+                  className="h-[192px] w-auto max-w-none flex-shrink-0 -translate-y-[2px] brightness-0 invert"
                 />
               </Link>
             </div>
@@ -623,11 +628,12 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
         {/* ── DESKTOP HEADER (visible from md+) — 72px ── */}
         <div className="hidden w-full md:block">
           <div className="mx-auto flex max-w-[1600px] items-center gap-6 px-10 py-3">
-            <Link href="/" className="flex-shrink-0" aria-label="Sanndikaa home">
+            {/* Same CSS crop as the mobile logo — see the note there. */}
+            <Link href="/" className="flex h-12 flex-shrink-0 items-center overflow-hidden" aria-label="Sanndikaa home">
               <img
                 src="/logo.png"
                 alt="Sanndikaa"
-                className="h-12 w-auto flex-shrink-0 object-contain brightness-0 invert"
+                className="h-[192px] w-auto max-w-none flex-shrink-0 -translate-y-[2px] brightness-0 invert"
               />
             </Link>
             <div className="flex items-center gap-4">
