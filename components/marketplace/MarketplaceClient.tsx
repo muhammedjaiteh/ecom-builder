@@ -1,25 +1,21 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
-  Search, ShoppingBag, X, Menu, Sparkles,
-  Shield, MessageCircle, Mail, ArrowRight,
+  Search, ShoppingBag, X, Menu,
+  Shield, MessageCircle, ArrowRight,
 } from 'lucide-react';
 import { useCart } from '@/components/CartProvider';
 import CinematicTile, { type CinematicTileData } from '@/components/marketplace/CinematicTile';
-import MarketplaceMarquee from '@/components/marketplace/MarketplaceMarquee';
 import PlaybackCoordinator from '@/components/marketplace/PlaybackCoordinator';
-import MarketplaceBoutiqueCard, { BOUTIQUE_CARD_WIDTH } from '@/components/marketplace/MarketplaceBoutiqueCard';
+import MarketplaceBoutiqueCard from '@/components/marketplace/MarketplaceBoutiqueCard';
 import MarketplaceProductCard, {
   CARD_SHADOW,
-  RAIL_CARD_WIDTH,
   type RailProduct,
 } from '@/components/marketplace/MarketplaceProductCard';
-import RailSection, { type RailItem } from '@/components/marketplace/RailSection';
-import { tierFamily } from '@/components/marketplace/format';
 import {
   compareTierThenReviewScore,
   getTierRank,
@@ -31,8 +27,8 @@ import type { Product } from '@/lib/types';
 import type { MarketplaceShop, ReviewScoreEntry } from '@/app/marketplaceData';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MarketplaceClient — the mall's interactive shell (Amazon-mobile density,
-// luxury finish).
+// MarketplaceClient — the mall's interactive shell, MERCHANT-FIRST
+// (Phase 9A, Step A: hierarchy and subtraction).
 //
 // app/page.tsx is a SERVER component: it runs the bounded cached reads
 // (app/marketplaceData.ts — shops ≤40, products ≤96 lean, review aggregates
@@ -41,26 +37,19 @@ import type { MarketplaceShop, ReviewScoreEntry } from '@/app/marketplaceData';
 // data: every surface below is a pure re-slicing of that one payload —
 //
 //   header (forest, two-row on mobile: burger · logo · cart / search)
-//   browse chips      — horizontal snap rail of jump targets (rails + categories)
 //   HERO              — edge-to-edge featured banner, fixed heights (188→340px)
-//   trust marquee     — one thin ivory line
-//   DISCOVERY RAILS   — "Trending Today" (or the honest "Top Picks"),
-//                       "New Store Drops", "Featured Flagships" — DEDUPED in
-//                       page order: a product shown by the hero or an earlier
-//                       rail is filtered out of every rail below it
-//   CATEGORY SHELVES  — one rail per populated category, a double-width
-//                       cinematic feature tile in slot 0 when a film exists,
-//                       cadence-capped full-bleed interludes between them
-//   BOUTIQUE RAIL     — compact boutique cards (logo · tier · 3 thumbs · Visit)
-//   newsletter · footer
+//   THE HOUSES        — every ranked shop as a full-width vertical merchant
+//                       block (Step B replaces the block with a chapter)
+//   BROWSE BY CATEGORY — one compact text-link row; each link runs the
+//                       existing semantic search for that category
+//   footer
 //
-// Every rail is a scroll-snap track (CarouselTrack via RailSection): no
-// vertical grid anywhere on the home surface — the only grid left is the
-// search-results view, where a dense 2-up grid IS the right scan pattern.
-// The first paint is real server HTML with the hero + first rail above the
-// fold on 2G, zero CLS (fixed hero heights, fixed card widths, fixed media
-// aspects). Interactivity — semantic search, playback election, storefront
-// link upgrades, cart — is unchanged in behavior.
+// Subtracted in Step A (merchant-first law, claude.md Marketplace Identity
+// Principle): browse chips, trust marquee, the three discovery rails,
+// category product shelves, interlude banners, and the disabled newsletter.
+// The only product grid left is the search-results view, where a dense
+// 2-up grid IS the right scan pattern. Interactivity — semantic search,
+// playback election, storefront link upgrades, cart — is unchanged.
 // ─────────────────────────────────────────────────────────────────────────────
 
 type Shop = MarketplaceShop;
@@ -69,63 +58,41 @@ type ProductWithShop = RailProduct;
 type CategoryShelf = {
   id: string;
   title: string;
-  description: string;
   keywords: string[];
-  emptyMessage: string;
 };
 
 const CATEGORY_SHELVES: CategoryShelf[] = [
   {
     id: 'beauty-personal-care',
     title: 'Beauty & Personal Care',
-    description: 'Skincare, fragrance, and self-care essentials from independent boutiques.',
     keywords: ['beauty', 'wellness', 'personal care', 'skincare', 'makeup', 'fragrance'],
-    emptyMessage: 'No beauty products have been added yet.',
   },
   {
     id: 'fashion-apparel',
     title: 'Fashion & Apparel',
-    description: 'Statement clothing, ready-to-wear pieces, and everyday style picks.',
     keywords: ['fashion', 'apparel', 'clothing'],
-    emptyMessage: 'No fashion products have been added yet.',
   },
   {
     id: 'sneakers-footwear',
     title: 'Sneakers & Footwear',
-    description: 'Sneakers, slides, and standout footwear worth rotating into your collection.',
     keywords: ['sneaker', 'footwear', 'shoe'],
-    emptyMessage: 'No footwear products have been added yet.',
   },
   {
     id: 'home-artisan',
     title: 'Home & Artisan',
-    description: 'Handcrafted goods, home decor, and artisan-made pieces for every space.',
     keywords: ['home', 'artisan', 'decor', 'handmade', 'craft'],
-    emptyMessage: 'No home and artisan products have been added yet.',
   },
   {
     id: 'tech-accessories',
     title: 'Tech Accessories',
-    description: 'Cables, cases, and smart accessories for modern everyday life.',
     keywords: ['tech', 'accessories', 'electronics', 'gadget', 'phone', 'cable', 'case'],
-    emptyMessage: 'No tech products have been added yet.',
   },
   {
     id: 'food-culinary',
     title: 'Food & Culinary',
-    description: 'Local flavours, spices, snacks, and artisan food products.',
     keywords: ['food', 'culinary', 'spice', 'snack', 'drink', 'beverage', 'sauce', 'ingredient'],
-    emptyMessage: 'No food products have been added yet.',
   },
 ];
-
-type DiscoveryRail = {
-  id: string;
-  kicker: string;
-  title: string;
-  description: string;
-  products: ProductWithShop[];
-};
 
 function categoryMatchesShelf(category: string | null | undefined, keywords: string[]): boolean {
   const value = category?.toLowerCase().trim();
@@ -139,39 +106,6 @@ function withShop(product: Product, shop: Shop): ProductWithShop {
     shop: { shop_name: shop.shop_name, shop_slug: shop.shop_slug, subscription_tier: shop.subscription_tier },
   };
 }
-
-// ── Layout constants ──────────────────────────────────────────────────────────
-// Discovery rails are capped so a single prolific seller can't turn a feed
-// into a wall; the category shelves below still carry every product.
-const RAIL_LIMIT = 12;
-// "Trending Today" is a claim — it needs at least this many REVIEWED pieces
-// behind it, otherwise the lead rail labels itself "Top Picks" honestly.
-const MIN_TRENDING_REVIEWED = 2;
-// LCP budget: the leading cards of the topmost rail carry Next/Image
-// `priority` (preload + fetchpriority=high) alongside the hero poster.
-const LCP_PRIORITY_CARDS = 2;
-
-// ── Cinematic curation ────────────────────────────────────────────────────────
-// CADENCE CAP (enforced in code, not taste): at most ONE interlude banner per
-// INTERLUDE_EVERY_N_SHELVES category shelves — two shelves ≈ one viewport of
-// content — and at most ONE feature tile per shelf (the selector takes only
-// the first film-bearing product per shelf). The hero consumes the top
-// candidate FIRST so it never reappears as the first shelf's feature tile.
-const INTERLUDE_EVERY_N_SHELVES = 2;
-
-// The mobile menu drawer collapses via a `duration-300` max-height transition
-// (see MOBILE MENU PANEL). Category jumps wait this long before scrolling so
-// the target is measured AFTER the drawer has released its layout height.
-const MOBILE_MENU_COLLAPSE_MS = 300;
-
-// scroll-mt clears the sticky header on jumps with breathing room so a rail
-// heading is never covered or clipped: mobile header is 124px (68px logo row +
-// 56px search row) plus the safe-area inset → 9rem (144px) + inset; desktop
-// header is 72px → 6rem (96px).
-const SECTION_SCROLL_MT = 'scroll-mt-[calc(9rem_+_env(safe-area-inset-top))] md:scroll-mt-24';
-
-// Feature tile = two cards + one gap wide, so the shelf row stays continuous.
-const FEATURE_TILE_WIDTH = 'w-[312px] sm:w-[348px] md:w-[384px] lg:w-[416px]';
 
 function toCinematicTile(p: ProductWithShop, withVideo: boolean): CinematicTileData {
   return {
@@ -267,197 +201,19 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
     [marketplaceProducts]
   );
 
-  // ── DISCOVERY RAILS — pure, DEDUPED re-slices of the ranked payload ──────
-  // Each rail is derived here, before render, from the rails above it: the
-  // hero's product is excluded from every rail, Trending's products from
-  // New Store Drops and Featured Flagships, and Drops' products from
-  // Flagships. The cascade is a chain of immutable filters over frozen id
-  // sets — no tracking Set is mutated while JSX renders, so a re-render can
-  // never flip which rail "owns" a product. A rail drained by the cascade
-  // simply does not render (the category shelves below still carry every
-  // product — they are the catalogue, not a curation).
-  const leadRail = useMemo<DiscoveryRail | null>(() => {
-    // Trending Today. Reviewed pieces lead, unreviewed fill; BOTH partitions
-    // keep the canonical tier-then-score order, so a paid tier is never
-    // outranked inside the rail (lib/feedRanking law). Fewer than
-    // MIN_TRENDING_REVIEWED reviewed pieces → the rail is "Top Picks": no
-    // trend claim a buyer never made.
-    const pool = hero ? marketplaceProducts.filter((p) => p.id !== hero.id) : marketplaceProducts;
-    const reviewed = pool.filter((p) => (reviewStats.get(p.id)?.count ?? 0) > 0);
-    const unreviewed = pool.filter((p) => (reviewStats.get(p.id)?.count ?? 0) === 0);
-    const products = [...reviewed, ...unreviewed].slice(0, RAIL_LIMIT);
-    if (products.length === 0) return null;
-    return reviewed.length >= MIN_TRENDING_REVIEWED
-      ? {
-          id: 'trending-today',
-          kicker: 'Most loved right now',
-          title: 'Trending Today',
-          description: 'The pieces buyers are rating highest across the floor.',
-          products,
-        }
-      : {
-          id: 'top-picks',
-          kicker: 'Curated from the floor',
-          title: 'Top Picks',
-          description: 'Leading pieces from our highest-ranked boutiques.',
-          products,
-        };
-  }, [marketplaceProducts, reviewStats, hero]);
-
-  // Ids already on the page above New Store Drops: the hero + the lead rail.
-  const leadIds = useMemo(() => {
-    const ids = new Set<string>(leadRail?.products.map((p) => p.id) ?? []);
-    if (hero) ids.add(hero.id);
-    return ids;
-  }, [leadRail, hero]);
-
-  const dropsRail = useMemo<DiscoveryRail | null>(() => {
-    // New Store Drops. Each boutique's list arrives newest-first
-    // (app/marketplaceData reads products created_at DESC and groups in
-    // order), so a round-robin over the RANKED shops yields every boutique's
-    // latest UNSEEN listing before anyone's second — one prolific seller
-    // never monopolises the rail, and nothing from the lead rail repeats.
-    const products: ProductWithShop[] = [];
-    const depth = shops.reduce((max, shop) => Math.max(max, shop.products.length), 0);
-    outer: for (let i = 0; i < depth; i++) {
-      for (const shop of shops) {
-        const product = shop.products[i];
-        if (!product || leadIds.has(product.id)) continue;
-        products.push(withShop(product, shop));
-        if (products.length >= RAIL_LIMIT) break outer;
-      }
-    }
-    if (products.length < 2) return null;
-    return {
-      id: 'new-store-drops',
-      kicker: 'Fresh on the floor',
-      title: 'Latest Arrivals',
-      description: 'The newest listing from every boutique, flagships first.',
-      products,
-    };
-  }, [shops, leadIds]);
-
-  // Ids on the page above Featured Flagships: everything in leadIds + Drops.
-  const dropsIds = useMemo(() => {
-    const ids = new Set<string>(leadIds);
-    dropsRail?.products.forEach((p) => ids.add(p.id));
-    return ids;
-  }, [leadIds, dropsRail]);
-
-  const flagshipsRail = useMemo<DiscoveryRail | null>(() => {
-    // Featured Flagships — the gold family (flagship + legacy advanced),
-    // already first in the ranked order, minus every piece shown above.
-    // Absent entirely when no paid tier is live or the cascade drained it:
-    // the rail is a placement, never a placeholder.
-    const products = marketplaceProducts
-      .filter((p) => tierFamily(p.shop?.subscription_tier) === 'featured' && !dropsIds.has(p.id))
-      .slice(0, RAIL_LIMIT);
-    if (products.length === 0) return null;
-    return {
-      id: 'featured-flagships',
-      kicker: 'Flagship boutiques',
-      title: 'Featured Flagships',
-      description: 'Pieces from the boutiques leading the Sanndikaa floor.',
-      products,
-    };
-  }, [marketplaceProducts, dropsIds]);
-
-  const discoveryRails = useMemo<DiscoveryRail[]>(
-    () => [leadRail, dropsRail, flagshipsRail].filter((rail): rail is DiscoveryRail => rail !== null),
-    [leadRail, dropsRail, flagshipsRail]
-  );
-
-  // Only shelves with live products exist on the page. An empty category
-  // renders NOTHING — no section, no placeholder boutique cards — and is
-  // likewise absent from every category nav (drawer, chips, footer) so a
-  // jump never targets a section that isn't in the DOM.
+  // Browse by category — only categories with live products exist on the
+  // page (an empty category renders no link anywhere: row or footer). Each
+  // link runs the existing semantic search for its title; there are no
+  // product shelves to jump to any more.
   const visibleShelves = useMemo(
-    () => CATEGORY_SHELVES
-      .map((shelf) => ({
-        ...shelf,
-        products: marketplaceProducts.filter((p) => categoryMatchesShelf(p.category, shelf.keywords)),
-      }))
-      .filter((shelf) => shelf.products.length > 0),
+    () => CATEGORY_SHELVES.filter((shelf) =>
+      marketplaceProducts.some((p) => categoryMatchesShelf(p.category, shelf.keywords))
+    ),
     [marketplaceProducts]
   );
 
-  // Cinematic curation — tier-ranked by construction (marketplaceProducts is
-  // already flagship/advanced-first). One pass assigns every living slot so a
-  // product never appears in two curation surfaces at once:
-  //   0. the hero (already chosen above) is marked used;
-  //   1. feature tiles: first film-bearing product per shelf (max 1/section);
-  //   2. interludes: cadence-capped queue between VISIBLE shelves — films
-  //      first, still-life editions (ad hero stills) fill when no film remains.
-  const curation = useMemo(() => {
-    const used = new Set<string>();
-    if (hero) used.add(hero.id);
 
-    const featureByShelf = new Map<string, ProductWithShop>();
-    for (const shelf of visibleShelves) {
-      const candidate = shelf.products.find((p) => p.ad_video_url && !used.has(p.id));
-      if (candidate) {
-        featureByShelf.set(shelf.id, candidate);
-        used.add(candidate.id);
-      }
-    }
-
-    const queue = [
-      ...marketplaceProducts.filter((p) => p.ad_video_url && !used.has(p.id)),
-      ...marketplaceProducts.filter((p) => !p.ad_video_url && p.ad_hero_image_url && !used.has(p.id)),
-    ];
-    let cursor = 0;
-    const next = () => (cursor < queue.length ? queue[cursor++] : null);
-
-    const interludeByIndex = new Map<number, ProductWithShop>();
-    visibleShelves.forEach((_, i) => {
-      if ((i + 1) % INTERLUDE_EVERY_N_SHELVES !== 0) return;
-      const pick = next();
-      if (pick) interludeByIndex.set(i, pick);
-    });
-
-    return { featureByShelf, interludeByIndex };
-  }, [visibleShelves, marketplaceProducts, hero]);
-
-  // Browse chips: every jump target on the page, rails first, in page order.
-  const browseChips = useMemo(
-    () => [
-      ...discoveryRails.map((rail) => ({ id: rail.id, label: rail.title })),
-      ...visibleShelves.map((shelf) => ({ id: shelf.id, label: shelf.title })),
-    ],
-    [discoveryRails, visibleShelves]
-  );
-
-  // Pending jump timer — a second tap cancels the first so two smooth
-  // scrolls never fight over the viewport.
-  const jumpTimerRef = useRef<number | null>(null);
-
-  const handleCategoryJump = (sectionId: string) => {
-    // Captured BEFORE the state update: the drawer is about to collapse, and
-    // its 300ms max-height transition shifts everything below the header.
-    const drawerWasOpen = isMobileMenuOpen;
-
-    setSearchQuery('');
-    setIsSearching(false);
-    setSearchResults(null);
-    setSearchRelated(false);
-    setIsMobileMenuOpen(false); // close immediately — never wait on the scroll
-
-    if (typeof window === 'undefined') return;
-    if (jumpTimerRef.current !== null) window.clearTimeout(jumpTimerRef.current);
-
-    // Wait for layout to settle before measuring the target: the full drawer
-    // collapse when it was open (plus one frame of slack), otherwise just the
-    // next frame so React has committed the shelves (e.g. after clearing a
-    // search). Measuring mid-collapse is what produced the overshoot.
-    const settleMs = drawerWasOpen ? MOBILE_MENU_COLLAPSE_MS + 50 : 0;
-    jumpTimerRef.current = window.setTimeout(() => {
-      jumpTimerRef.current = null;
-      window.requestAnimationFrame(() => {
-        document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      });
-    }, settleMs);
-  };
-
+  // ── Search ──────────────────────────────────────────────────────────────
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
     // Clear results when the input is emptied so the rails reappear
@@ -466,10 +222,12 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
     }
   };
 
-  const handleSearchSubmit = async () => {
-    const q = searchQuery.trim();
+  const handleSearchSubmit = async (query?: string) => {
+    const q = (query ?? searchQuery).trim();
     if (!q) return;
 
+    if (query !== undefined) setSearchQuery(q);
+    setIsMobileMenuOpen(false);
     setIsSearching(true);
     setSearchResults(null);
 
@@ -520,16 +278,6 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
       priority={options.priority === true}
     />
   );
-
-  const railItems = (railId: string, products: ProductWithShop[], priorityCount = 0): RailItem[] =>
-    products.map((product, index) => ({
-      key: `${railId}-${product.id}-${product.shop.shop_slug}`,
-      node: (
-        <div className={RAIL_CARD_WIDTH}>
-          {renderProductCard(product, { priority: index < priorityCount })}
-        </div>
-      ),
-    }));
 
   // ── Render ────────────────────────────────────────────────────────────────
   // No loading skeleton branch: the server hands this component real rails,
@@ -614,7 +362,7 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                 </button>
               ) : (
                 <button
-                  onClick={handleSearchSubmit}
+                  onClick={() => handleSearchSubmit()}
                   className="flex min-w-[44px] items-center justify-center bg-mall-gold px-4"
                   aria-label="Search"
                 >
@@ -670,7 +418,7 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                 </button>
               ) : (
                 <button
-                  onClick={handleSearchSubmit}
+                  onClick={() => handleSearchSubmit()}
                   className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-mall-gold text-mall-forest transition hover:brightness-105"
                   aria-label="Search"
                 >
@@ -714,19 +462,19 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
             >
               Open Your Boutique
             </Link>
-            {browseChips.length > 0 && (
+            {visibleShelves.length > 0 && (
               <>
                 <div className="my-2 border-t border-mall-forest/10" />
                 <p className="px-4 pb-1 text-[10px] font-bold uppercase tracking-[0.28em] text-mall-gold">
                   Browse
                 </p>
-                {browseChips.map((chip) => (
+                {visibleShelves.map((shelf) => (
                   <button
-                    key={chip.id}
-                    onClick={() => handleCategoryJump(chip.id)}
+                    key={shelf.id}
+                    onClick={() => handleSearchSubmit(shelf.title)}
                     className="flex min-h-[44px] items-center justify-between rounded-xl px-4 text-left text-sm font-medium text-mall-forest transition active:bg-mall-bone"
                   >
-                    {chip.label}
+                    {shelf.title}
                     <ArrowRight size={14} className="text-mall-forest/40" aria-hidden />
                   </button>
                 ))}
@@ -745,44 +493,26 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
         <h1 className="sr-only">Sanndikaa Marketplace &mdash; Africa&apos;s finest boutiques, under one roof.</h1>
         {isSearching ? (
 
-          /* ── AI LOADING STATE ────────────────────────────── */
+          /* ── SEARCH LOADING — one quiet line, no theatre ── */
           <motion.div
             className="flex min-h-[60vh] flex-col items-center justify-center px-4 py-24 text-center"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.4, ease: 'easeOut' }}
+            role="status"
+            aria-live="polite"
           >
-            <div className="relative mb-6 flex h-16 w-16 items-center justify-center">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-mall-forest/20" />
-              <div className="relative flex h-14 w-14 items-center justify-center rounded-full bg-mall-forest text-mall-gold shadow-lg">
-                <Sparkles size={22} />
-              </div>
-            </div>
-            <h2 className="font-serif text-lg font-semibold text-mall-forest">Your Personal Stylist is curating matches...</h2>
-            <p className="mt-2 text-sm text-mall-forest/60">Searching across every boutique for &ldquo;{searchQuery}&rdquo;</p>
-            <div className="mt-6 flex items-center gap-1.5">
-              {[0, 150, 300].map((delay) => (
-                <span
-                  key={delay}
-                  className="h-2 w-2 animate-bounce rounded-full bg-mall-forest/40"
-                  style={{ animationDelay: `${delay}ms` }}
-                />
-              ))}
-            </div>
+            <p className="font-serif text-lg text-mall-forest">Searching the houses for &ldquo;{searchQuery}&rdquo;</p>
           </motion.div>
-
         ) : searchResults !== null ? (
 
           /* ── SEMANTIC SEARCH RESULTS — the one dense grid on the page ── */
           <div className="animate-in fade-in mx-auto max-w-[1600px] px-4 pb-20 pt-5 duration-300 md:px-10 md:pt-8">
             <div className="mb-5 flex items-center justify-between gap-4">
               <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <Sparkles size={13} className="text-mall-gold" aria-hidden />
-                  <span className="text-[10px] font-bold uppercase tracking-[0.28em] text-mall-gold">
-                    {searchRelated ? 'AI Stylist — Closest Matches' : 'Marketplace Results'}
-                  </span>
-                </div>
+                <span className="text-[10px] font-bold uppercase tracking-[0.28em] text-mall-gold">
+                  {searchRelated ? 'Closest matches' : 'Results'}
+                </span>
                 <h2 className="mt-1 truncate font-serif text-xl font-semibold tracking-tight text-mall-forest md:text-2xl">
                   Matches for{' '}
                   <span className="text-mall-forest/55">&ldquo;{searchQuery}&rdquo;</span>
@@ -803,16 +533,16 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                 </div>
                 <h3 className="font-serif text-lg font-semibold text-mall-forest">No exact matches found</h3>
                 <p className="mt-2 max-w-sm text-sm text-mall-forest/60">
-                  We couldn&apos;t find an exact match for that vibe. Try another search, or browse a feed below.
+                  Nothing matched that search. Try another, or browse a category.
                 </p>
                 <div className="mt-6 flex flex-wrap justify-center gap-2">
-                  {browseChips.map((chip) => (
+                  {visibleShelves.map((shelf) => (
                     <button
-                      key={chip.id}
-                      onClick={() => handleCategoryJump(chip.id)}
+                      key={shelf.id}
+                      onClick={() => handleSearchSubmit(shelf.title)}
                       className="h-10 rounded-full bg-mall-bone px-4 text-sm font-medium text-mall-forest ring-1 ring-mall-forest/10 transition hover:bg-white"
                     >
-                      {chip.label}
+                      {shelf.title}
                     </button>
                   ))}
                 </div>
@@ -847,29 +577,11 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
 
         ) : (
 
-          /* ── THE MALL: chips · hero · marquee · rails · shelves · boutiques
-             PlaybackCoordinator enforces the one-playing-video rule across
-             the hero, every interlude, and every feature tile below. */
+          /* ── THE MALL: hero · The Houses · Browse by category
+             PlaybackCoordinator enforces the one-playing-video rule for the
+             hero film (and every chapter film Step B adds). */
           <PlaybackCoordinator>
           <div className="pb-2">
-
-            {/* ── BROWSE CHIPS — jump rail, 36px pills with a ≥44px hit area ── */}
-            {browseChips.length > 0 && (
-              <nav aria-label="Browse the mall" className="hide-scrollbar flex snap-x gap-2 overflow-x-auto px-4 py-2.5 scroll-px-4 md:px-10 md:py-3 md:scroll-px-10">
-                {browseChips.map((chip) => (
-                  <button
-                    key={chip.id}
-                    type="button"
-                    onClick={() => handleCategoryJump(chip.id)}
-                    className="relative h-9 shrink-0 snap-start whitespace-nowrap rounded-full bg-mall-ivory px-3.5 text-[12px] font-semibold text-mall-forest shadow-[0_1px_2px_rgba(27,58,45,0.08)] ring-1 ring-mall-forest/[0.08] transition active:bg-mall-forest active:text-mall-bone before:absolute before:-inset-y-2 before:inset-x-0 before:content-['']"
-                  >
-                    {chip.label}
-                  </button>
-                ))}
-                <div aria-hidden className="w-1 shrink-0 md:w-4" />
-              </nav>
-            )}
-
             {/* ── HERO — edge-to-edge, fixed height, the top-ranked living piece ── */}
             {hero ? (
               <CinematicTile variant="hero" data={toCinematicTile(hero, true)} kicker="Featured drop" priority />
@@ -887,77 +599,9 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
               </section>
             )}
 
-            {/* ── TRUST MARQUEE — every claim feature-verified (Pillar 3) ── */}
-            <MarketplaceMarquee />
-
-            {/* ── DISCOVERY RAILS ── */}
-            {discoveryRails.map((rail, railIndex) => (
-              <RailSection
-                key={rail.id}
-                id={rail.id}
-                kicker={rail.kicker}
-                title={rail.title}
-                description={rail.description}
-                ariaLabel={rail.title}
-                className={SECTION_SCROLL_MT}
-                paddingClassName={railIndex === 0 ? 'pt-5 pb-3 md:pt-7 md:pb-4' : 'py-3 md:py-4'}
-                items={railItems(rail.id, rail.products, railIndex === 0 ? LCP_PRIORITY_CARDS : 0)}
-              />
-            ))}
-
-            {/* ── CATEGORY SHELVES + CINEMATIC CURATION ──
-                visibleShelves is pre-filtered to products.length > 0: an empty
-                category renders no section and no placeholder cards. */}
-            {visibleShelves.map((shelf, shelfIndex) => {
-              const featured = curation.featureByShelf.get(shelf.id) ?? null;
-              const shelfProducts = featured
-                ? shelf.products.filter((p) => p.id !== featured.id)
-                : shelf.products;
-              const interlude = curation.interludeByIndex.get(shelfIndex) ?? null;
-              const items: RailItem[] = [
-                // Feature tile — max ONE per shelf (cadence cap): double-width,
-                // same card anatomy, living media box, carousel slot 0.
-                ...(featured
-                  ? [{
-                      key: `${shelf.id}-feature-${featured.id}`,
-                      node: (
-                        <div className={FEATURE_TILE_WIDTH}>
-                          <CinematicTile variant="feature" data={toCinematicTile(featured, true)} />
-                        </div>
-                      ),
-                    }]
-                  : []),
-                ...railItems(shelf.id, shelfProducts),
-              ];
-              return (
-                <div key={shelf.id}>
-                  <RailSection
-                    id={shelf.id}
-                    title={shelf.title}
-                    description={shelf.description}
-                    ariaLabel={shelf.title}
-                    className={SECTION_SCROLL_MT}
-                    paddingClassName="py-3 md:py-4"
-                    trailing={
-                      <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-mall-forest/45 tabular-nums">
-                        {shelf.products.length} piece{shelf.products.length !== 1 ? 's' : ''}
-                      </span>
-                    }
-                    items={items}
-                  />
-
-                  {/* Full-bleed interlude — cadence-capped to one per
-                      ~viewport of shelf content (every second visible shelf). */}
-                  {interlude && (
-                    <div className="py-3 md:py-5">
-                      <CinematicTile variant="interlude" data={toCinematicTile(interlude, true)} />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-
-            {/* ── SHOP BY BOUTIQUE ── */}
+            {/* ── THE HOUSES — every ranked shop, full-width, vertical.
+                Step A keeps MarketplaceBoutiqueCard as the block; Step B
+                replaces it with a proper merchant chapter. ── */}
             {shops.length === 0 ? (
               /* Curation, never an apology: the empty boutique floor is a
                  designed invitation (conversion surface, Law 1). */
@@ -976,70 +620,42 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                 </div>
               </section>
             ) : (
-              <RailSection
-                id="shop-by-boutique"
-                kicker="Independent sellers"
-                title="Shop by Boutique"
-                description="Discover curated boutiques from independent sellers."
-                ariaLabel="Boutiques"
-                className={SECTION_SCROLL_MT}
-                paddingClassName="pt-4 pb-6 md:pt-6 md:pb-10"
-                items={shops.map((shop) => ({
-                  key: shop.id,
-                  node: (
-                    <div className={`${BOUTIQUE_CARD_WIDTH} h-full`}>
-                      <MarketplaceBoutiqueCard shop={shop} href={shopHref(shop)} />
-                    </div>
-                  ),
-                }))}
-              />
+              <section id="the-houses" aria-label="The Houses" className="px-4 pt-10 pb-6 md:px-10 md:pt-16 md:pb-10">
+                <h2 className="font-serif text-3xl font-semibold tracking-tight text-mall-forest text-balance md:text-4xl">
+                  The Houses
+                </h2>
+                <div className="mx-auto mt-8 flex max-w-2xl flex-col gap-6 md:mt-12 md:gap-8">
+                  {shops.map((shop) => (
+                    <MarketplaceBoutiqueCard key={shop.id} shop={shop} href={shopHref(shop)} />
+                  ))}
+                </div>
+              </section>
             )}
 
+            {/* ── BROWSE BY CATEGORY — one compact text-link row; each link
+                runs the existing search for its category. ── */}
+            {visibleShelves.length > 0 && (
+              <nav aria-label="Browse by category" className="px-4 pb-10 md:px-10 md:pb-16">
+                <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-mall-gold">Browse by category</p>
+                <ul className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
+                  {visibleShelves.map((shelf) => (
+                    <li key={shelf.id}>
+                      <button
+                        type="button"
+                        onClick={() => handleSearchSubmit(shelf.title)}
+                        className="relative py-2 text-sm font-medium text-mall-forest underline-offset-4 transition hover:underline before:absolute before:-inset-y-1 before:inset-x-0 before:content-['']"
+                      >
+                        {shelf.title}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </nav>
+            )}
           </div>
           </PlaybackCoordinator>
         )}
       </main>
-
-      {/* ═══════════════════════════════════════════════════════
-          NEWSLETTER
-      ═══════════════════════════════════════════════════════ */}
-      <section className="bg-mall-forest">
-        <div className="mx-auto max-w-7xl px-4 py-12 md:px-10">
-          <div className="mx-auto max-w-xl text-center">
-            <div className="mb-3 flex items-center justify-center">
-              <Mail size={22} className="text-mall-gold" aria-hidden />
-            </div>
-            <h2 className="font-serif text-2xl font-semibold tracking-tight text-mall-bone">Stay in the loop</h2>
-            <p className="mt-2 text-sm text-mall-bone/60">
-              New boutiques, exclusive drops, and curated edits — straight to your inbox.
-            </p>
-            {/* Launch Hardening P0: no persistence exists for subscriptions
-                yet, so the form is a neutral "coming soon" state — it never
-                claims an email was saved. Inputs are disabled, not hidden, so
-                the section keeps its rhythm. */}
-            <form
-              aria-disabled="true"
-              onSubmit={(e) => e.preventDefault()}
-              className="mt-6 flex w-full flex-col gap-3 sm:flex-row"
-            >
-              <input
-                type="email"
-                disabled
-                placeholder="Newsletter opening soon"
-                aria-label="Newsletter opening soon"
-                className="h-12 w-full cursor-not-allowed rounded-full bg-white/10 px-5 text-base font-medium text-mall-bone/60 outline-none ring-1 ring-white/10 placeholder:text-mall-bone/40"
-              />
-              <button
-                type="button"
-                disabled
-                className="h-12 cursor-not-allowed whitespace-nowrap rounded-full bg-mall-gold/40 px-7 text-sm font-semibold text-mall-forest/80"
-              >
-                Coming Soon
-              </button>
-            </form>
-          </div>
-        </div>
-      </section>
 
       {/* ═══════════════════════════════════════════════════════
           FOOTER
@@ -1076,13 +692,13 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                     Homepage
                   </button>
                 </li>
-                {browseChips.map((chip) => (
-                  <li key={chip.id}>
+                {visibleShelves.map((shelf) => (
+                  <li key={shelf.id}>
                     <button
-                      onClick={() => handleCategoryJump(chip.id)}
+                      onClick={() => handleSearchSubmit(shelf.title)}
                       className="text-left text-sm text-mall-forest/60 transition hover:text-mall-forest"
                     >
-                      {chip.label}
+                      {shelf.title}
                     </button>
                   </li>
                 ))}
