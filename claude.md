@@ -130,3 +130,30 @@ Trust components make only truthful claims.
 Marketplace branding is clearly visible.
 No generated copy references products the customer cannot see.
 If any of the above fail, treat it as a storefront-integrity defect rather than a copywriting issue.
+
+Marketplace Identity Principle
+
+Sanndikaa is a merchant-discovery platform first and a product marketplace second.
+
+BANNED:
+
+- Inventory-first homepages
+- Commodity retail language
+- Product feeds masquerading as discovery
+- Merchant identity hidden behind products
+
+Preferred:
+
+- Merchant-first presentation
+- House identity
+- Provenance
+- Curated selection
+- Editorial hierarchy
+
+A buyer should remember:
+
+who sold it
+
+before
+
+what was sold.
