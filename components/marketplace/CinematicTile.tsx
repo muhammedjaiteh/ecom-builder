@@ -82,14 +82,31 @@ type CinematicTileProps = {
   /** LCP hint — true only for the tile that opens the page (the hero) or leads
    *  the topmost populated shelf. Forwarded to Next/Image on the poster. */
   priority?: boolean;
+  /** Merchant-first override (Phase 9A Step B): when set, the ONE anchor
+   *  navigates here instead of /product/[id]. Used by the Featured House
+   *  hero to enter the resolved storefront. */
+  href?: string;
+  /** Headline override — the house name on the Featured House hero. When set,
+   *  the kicker line drops its "· shopName" suffix (it would repeat). */
+  headline?: string;
+  /** CTA label override (defaults to "Shop now"). */
+  ctaLabel?: string;
 };
 
 /** Hero heights — fixed per breakpoint (zero CLS, rails stay above the fold). */
 const HERO_HEIGHT = 'h-[188px] sm:h-[232px] md:h-[300px] lg:h-[340px]';
 
-export default function CinematicTile({ data, variant, kicker, priority = false }: CinematicTileProps) {
+export default function CinematicTile({
+  data,
+  variant,
+  kicker,
+  priority = false,
+  href: hrefOverride,
+  headline,
+  ctaLabel,
+}: CinematicTileProps) {
   const price = formatDalasi(data.price);
-  const href = `/product/${data.id}`;
+  const href = hrefOverride ?? `/product/${data.id}`;
 
   if (variant === 'hero') {
     return (
@@ -103,16 +120,21 @@ export default function CinematicTile({ data, variant, kicker, priority = false 
         <div aria-hidden className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-t from-mall-forest/95 via-mall-forest/55 via-40% to-mall-forest/0" />
         <div aria-hidden className="pointer-events-none absolute inset-0 z-[1] hidden bg-gradient-to-r from-mall-forest/80 via-mall-forest/25 to-transparent md:block" />
 
-        {/* The ONE anchor: the whole banner navigates to the product. */}
-        <Link href={href} aria-label={`${data.name} — ${data.shopName}`} className="absolute inset-0 z-[2]" />
+        {/* The ONE anchor: the whole banner navigates to the product (or the
+            storefront when `href` is overridden). */}
+        <Link
+          href={href}
+          aria-label={headline ? `${headline} — enter the house` : `${data.name} — ${data.shopName}`}
+          className="absolute inset-0 z-[2]"
+        />
 
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[3] px-4 pb-4 md:px-10 md:pb-8">
           <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-mall-gold">
             {kicker ?? 'Featured drop'}
-            <span className="text-mall-bone/50"> · {data.shopName}</span>
+            {!headline && <span className="text-mall-bone/50"> · {data.shopName}</span>}
           </p>
-          <p className="mt-1.5 line-clamp-2 max-w-xl font-serif text-[22px] font-semibold leading-[1.1] text-mall-bone sm:text-2xl md:mt-2 md:text-4xl">
-            {data.name}
+          <p className="mt-1.5 line-clamp-2 max-w-xl text-balance font-serif text-[22px] font-semibold leading-[1.1] text-mall-bone sm:text-2xl md:mt-2 md:text-4xl">
+            {headline ?? data.name}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 md:mt-3">
             {price && <p className="text-sm font-semibold tabular-nums text-mall-bone md:text-base">{price}</p>}
@@ -122,7 +144,7 @@ export default function CinematicTile({ data, variant, kicker, priority = false 
                 stays ≥ 4.5:1 on any pixel; the gold hairline lifts it off the
                 forest wash so two dark planes never merge. */}
             <span className="inline-flex h-10 items-center gap-1.5 rounded-full bg-black px-4 text-[10px] font-bold uppercase tracking-[0.22em] text-mall-bone ring-1 ring-mall-gold/70 md:h-11 md:px-5">
-              Shop now <ArrowRight size={12} className="text-mall-gold" aria-hidden />
+              {ctaLabel ?? 'Shop now'} <ArrowRight size={12} className="text-mall-gold" aria-hidden />
             </span>
           </div>
         </div>

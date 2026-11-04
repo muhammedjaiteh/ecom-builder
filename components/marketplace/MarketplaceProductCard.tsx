@@ -56,13 +56,24 @@ type MarketplaceProductCardProps = {
   stats?: ReviewStats;
   /** LCP hint — true only for the leading cards of the topmost rail. */
   priority?: boolean;
+  /** Presentation (Phase 9A Step B). 'rail' is the unchanged default used by
+   *  search results. 'evidence' is the house-chapter card: house name →
+   *  product name → price, 4:5 media, and NO tier pill, sale badge,
+   *  was-price or star row — the product is evidence of its house, not a
+   *  buying signal. */
+  variant?: 'rail' | 'evidence';
+  /** Next/Image `sizes` override for frames wider than the rail width. */
+  sizes?: string;
 };
 
 export default function MarketplaceProductCard({
   product,
   stats,
   priority = false,
+  variant = 'rail',
+  sizes = RAIL_CARD_SIZES,
 }: MarketplaceProductCardProps) {
+  const evidence = variant === 'evidence';
   const imgUrl = product.image_urls?.[0] || product.image_url || null;
   const altSrc = secondaryProductImage({ image_url: imgUrl, image_urls: product.image_urls });
   const family = tierFamily(product.shop?.subscription_tier);
@@ -74,6 +85,24 @@ export default function MarketplaceProductCard({
   const rated = Boolean(stats && stats.count > 0);
 
   const root = 'group relative flex flex-col';
+
+  // Evidence text block — house, piece, price. Price sits directly below the
+  // title in bold (claude.md Zero-Friction Layout).
+  const evidenceText = (
+    <div className="mt-3 min-w-0 px-0.5">
+      {product.shop?.shop_name && (
+        <p className="truncate text-[10px] font-semibold uppercase tracking-[0.18em] text-[color-mix(in_oklab,var(--color-mall-forest)_75%,black)]">
+          {product.shop.shop_name}
+        </p>
+      )}
+      <h3 className="mt-1 line-clamp-2 text-[13px] font-medium leading-[18px] text-mall-forest group-hover:underline md:text-[14px] md:leading-5">
+        {product.name}
+      </h3>
+      <p className="mt-1 text-[14px] font-semibold leading-none tracking-tight text-mall-forest tabular-nums md:text-[15px]">
+        {price ?? '—'}
+      </p>
+    </div>
+  );
 
   const inner = (
     <>
@@ -90,7 +119,7 @@ export default function MarketplaceProductCard({
             fill
             priority={priority}
             className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.04]"
-            sizes={RAIL_CARD_SIZES}
+            sizes={sizes}
           />
         ) : (
           <div className="flex h-full items-center justify-center text-mall-forest/20">
@@ -109,12 +138,12 @@ export default function MarketplaceProductCard({
               fill
               blurTone="none"
               className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.04]"
-              sizes={RAIL_CARD_SIZES}
+              sizes={sizes}
             />
           </div>
         )}
 
-        {(family !== 'standard' || sale) && (
+        {!evidence && (family !== 'standard' || sale) && (
           // Badge stack (z-[2]: above both photos, below the stretched link).
           // Tier is a micro-pill — never a coloured ring around the photo.
           <div className="absolute left-1.5 top-1.5 z-[2] flex flex-col items-start gap-1">
@@ -133,7 +162,8 @@ export default function MarketplaceProductCard({
         )}
       </div>
 
-      {/* Text block — three rows, zero slack. */}
+      {evidence ? evidenceText : (
+      /* Text block — three rows, zero slack. */
       <div className="mt-2 min-w-0 px-0.5">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <p className="mr-auto flex items-baseline gap-1.5 whitespace-nowrap">
@@ -159,6 +189,7 @@ export default function MarketplaceProductCard({
           {product.name}
         </h3>
       </div>
+      )}
     </>
   );
 

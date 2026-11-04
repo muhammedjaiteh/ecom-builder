@@ -107,20 +107,6 @@ function withShop(product: Product, shop: Shop): ProductWithShop {
   };
 }
 
-function toCinematicTile(p: ProductWithShop, withVideo: boolean): CinematicTileData {
-  return {
-    id: p.id,
-    name: p.name,
-    price: p.price ?? null,
-    shopName: p.shop?.shop_name || 'Sanndikaa boutique',
-    // The seller's best pixels: Ad Studio hero still first, then the photo.
-    // (image_url IS image_urls[0] by the insert contract, so the fallback
-    // chain renders the same pixel whether or not the feed carried the array.)
-    posterUrl: p.ad_hero_image_url ?? p.image_urls?.[0] ?? p.image_url ?? null,
-    videoUrl: withVideo ? p.ad_video_url ?? null : null,
-  };
-}
-
 type MarketplaceClientProps = {
   /** Ranked shops with products attached — app/marketplaceData.loadMarketplace. */
   initialShops: MarketplaceShop[];
@@ -187,19 +173,41 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
       .map((ranked) => ranked.product);
   }, [shops, reviewStats]);
 
-  // ── HERO — the top-ranked product with the richest media ─────────────────
-  // Film first (the living banner), then an Ad Studio hero still, then any
-  // photographed piece. marketplaceProducts is tier-ranked, so the paid
-  // placement law (flagship first) governs who opens the mall. null → the
-  // brand plate renders instead (never an empty dark slab).
-  const hero = useMemo<ProductWithShop | null>(
-    () =>
-      marketplaceProducts.find((p) => p.ad_video_url) ??
-      marketplaceProducts.find((p) => p.ad_hero_image_url) ??
-      marketplaceProducts.find((p) => p.image_urls?.[0] || p.image_url) ??
-      null,
-    [marketplaceProducts]
-  );
+  // ── FEATURED HOUSE — the first-ranked shop opens the mall ────────────────
+  // shops[] arrives tier-then-review ranked (app/marketplaceData), so the
+  // paid placement law (flagship first) still governs who opens the floor.
+  // Media is the house's strongest REAL pixels, the hero's historical chain
+  // scoped to one shop: a film first, then an Ad Studio still, then any
+  // photographed piece, then the house logo. No media at all → the brand
+  // plate renders (never an empty dark slab). The tile's `id` keys the
+  // playback election, so it stays the film-bearing product's id.
+  const featuredHouse = shops[0] ?? null;
+  const featuredHouseTile = useMemo<CinematicTileData | null>(() => {
+    if (!featuredHouse) return null;
+    const film = featuredHouse.products.find((p) => p.ad_video_url) ?? null;
+    const still = featuredHouse.products.find((p) => p.ad_hero_image_url) ?? null;
+    const photo = featuredHouse.products.find((p) => p.image_urls?.[0] || p.image_url) ?? null;
+    const posterUrl =
+      film?.ad_hero_image_url ?? film?.image_urls?.[0] ?? film?.image_url ??
+      still?.ad_hero_image_url ??
+      photo?.image_urls?.[0] ?? photo?.image_url ??
+      featuredHouse.logo_url ?? null;
+    if (!posterUrl && !film) return null;
+    return {
+      id: film?.id ?? still?.id ?? photo?.id ?? featuredHouse.id,
+      name: featuredHouse.shop_name,
+      price: null,
+      shopName: featuredHouse.shop_name,
+      posterUrl,
+      videoUrl: film?.ad_video_url ?? null,
+    };
+  }, [featuredHouse]);
+
+  // ── THE HOUSES — every ranked shop as a chapter ──────────────────────────
+  // The Featured House already opened the page, so the chapters start at the
+  // second-ranked shop. A one-house floor still gets a chapter: that is the
+  // only place its pieces appear as evidence.
+  const houseChapters = shops.length > 1 ? shops.slice(1) : shops;
 
   // Browse by category — only categories with live products exist on the
   // page (an empty category renders no link anywhere: row or footer). Each
@@ -582,9 +590,18 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
              hero film (and every chapter film Step B adds). */
           <PlaybackCoordinator>
           <div className="pb-2">
-            {/* ── HERO — edge-to-edge, fixed height, the top-ranked living piece ── */}
-            {hero ? (
-              <CinematicTile variant="hero" data={toCinematicTile(hero, true)} kicker="Featured drop" priority />
+            {/* ── FEATURED HOUSE — edge-to-edge, fixed height; the ONE anchor
+                enters the resolved storefront (classic → /site → domain). ── */}
+            {featuredHouse && featuredHouseTile ? (
+              <CinematicTile
+                variant="hero"
+                data={featuredHouseTile}
+                kicker="The Featured House"
+                headline={featuredHouse.shop_name}
+                ctaLabel="Enter the house"
+                href={shopHref(featuredHouse)}
+                priority
+              />
             ) : (
               /* Brand plate — the floor has nothing photographed yet. Same
                  fixed heights as the hero so the page never reflows. */
@@ -599,9 +616,8 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
               </section>
             )}
 
-            {/* ── THE HOUSES — every ranked shop, full-width, vertical.
-                Step A keeps MarketplaceBoutiqueCard as the block; Step B
-                replaces it with a proper merchant chapter. ── */}
+            {/* ── THE HOUSES — one editorial chapter per ranked shop, with
+                1–3 pieces as evidence (MarketplaceBoutiqueCard). ── */}
             {shops.length === 0 ? (
               /* Curation, never an apology: the empty boutique floor is a
                  designed invitation (conversion surface, Law 1). */
@@ -624,9 +640,9 @@ export default function MarketplaceClient({ initialShops, initialReviewScores }:
                 <h2 className="font-serif text-3xl font-semibold tracking-tight text-mall-forest text-balance md:text-4xl">
                   The Houses
                 </h2>
-                <div className="mx-auto mt-8 flex max-w-2xl flex-col gap-6 md:mt-12 md:gap-8">
-                  {shops.map((shop) => (
-                    <MarketplaceBoutiqueCard key={shop.id} shop={shop} href={shopHref(shop)} />
+                <div className="mx-auto mt-8 flex max-w-2xl flex-col gap-12 md:mt-12 md:gap-16">
+                  {houseChapters.map((shop, index) => (
+                    <MarketplaceBoutiqueCard key={shop.id} shop={shop} href={shopHref(shop)} number={index + 1} />
                   ))}
                 </div>
               </section>

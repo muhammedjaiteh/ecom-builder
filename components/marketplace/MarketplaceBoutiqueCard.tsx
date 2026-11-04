@@ -1,108 +1,132 @@
+import type { ReactNode } from 'react';
 import Link from 'next/link';
-import { ArrowRight, BadgeCheck, ShoppingBag, Store } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import SmartImage from '@/components/SmartImage';
-import { SaleBadge } from '@/components/SaleBadge';
-import { saleOf } from '@/lib/pricing';
 import type { MarketplaceShop } from '@/app/marketplaceData';
-import { CARD_SHADOW } from './MarketplaceProductCard';
-import { tierFamily } from './format';
+import MarketplaceProductCard, { type RailProduct } from './MarketplaceProductCard';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MarketplaceBoutiqueCard — the "Shop by Boutique" rail card: logo · name ·
-// tier mark · piece count · Visit, then the boutique's three newest pieces as
-// square thumbs. The whole card is an ivory plate on the bone canvas; the
-// tier is a mark beside the name, never an outline around the card.
+// MarketplaceBoutiqueCard — the HOUSE CHAPTER (Phase 9A Step B). One
+// full-width editorial block per ranked shop on the merchant-first home:
+//
+//   HOUSE NO. N                      ← eyebrow
+//   Shop name           (logo mark)  ← serif, text-balance, clamps at 2 lines
+//   1–3 pieces as EVIDENCE           ← MarketplaceProductCard variant="evidence"
+//   Enter the house                  ← one full-width tactile link
+//
+// Nothing else: no piece counts, tier/pro/featured marks, paid-plan hints,
+// ratings, sale badges or was-prices (claude.md Marketplace Identity
+// Principle — a buyer remembers who sold it before what was sold).
+//
+// Rhythm alternates by chapter number so no two consecutive houses look
+// alike: ODD chapters lead with one dominant piece (full-width 4:5, then the
+// rest in a half row); EVEN chapters align the heading right and give every
+// piece an equal frame. A one-piece house renders a single frame in both
+// rhythms — no structure is fabricated where the catalogue lacks pieces.
 //
 // `href` is resolved by the caller (MarketplaceClient upgrades /shop/{slug}
 // to /site/{slug} or a custom domain once the batched storefront lookup
 // lands) so this card stays a pure render of one shop.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Fixed snap-item width for the boutique rail. */
-export const BOUTIQUE_CARD_WIDTH = 'w-[264px] sm:w-[300px]';
+/** Evidence frames the chapter renders at most. */
+const EVIDENCE_LIMIT = 3;
+
+const SIZES_FULL = '(max-width: 768px) calc(100vw - 32px), 672px';
+const SIZES_HALF = '(max-width: 768px) calc(50vw - 22px), 330px';
+const SIZES_THIRD = '(max-width: 768px) calc(33vw - 16px), 216px';
 
 type MarketplaceBoutiqueCardProps = {
   shop: MarketplaceShop;
-  /** Storefront destination for the Visit button (classic or premium path). */
+  /** Storefront destination for "Enter the house" (classic or premium path). */
   href: string;
+  /** 1-based chapter number ("House No. N"); governs the odd/even rhythm. */
+  number?: number;
 };
 
-export default function MarketplaceBoutiqueCard({ shop, href }: MarketplaceBoutiqueCardProps) {
-  const family = tierFamily(shop.subscription_tier);
-  const thumbs = shop.products.slice(0, 3);
-  const count = shop.products.length;
+function HouseMark({ shop }: { shop: MarketplaceShop }) {
+  return (
+    <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full bg-mall-forest ring-1 ring-mall-forest/15">
+      {shop.logo_url ? (
+        <SmartImage
+          src={shop.logo_url}
+          alt=""
+          fill
+          blurTone="none"
+          className="object-cover"
+          sizes="40px"
+        />
+      ) : (
+        // Initial plate — the same idiom as CinematicTile's empty poster.
+        <span className="flex h-full items-center justify-center font-serif text-lg italic text-mall-bone/80">
+          {(shop.shop_name || 'S').charAt(0).toUpperCase()}
+        </span>
+      )}
+    </div>
+  );
+}
+
+export default function MarketplaceBoutiqueCard({ shop, href, number = 1 }: MarketplaceBoutiqueCardProps) {
+  const odd = number % 2 === 1;
+  const pieces: RailProduct[] = shop.products.slice(0, EVIDENCE_LIMIT).map((product) => ({
+    ...product,
+    shop: { shop_name: shop.shop_name, shop_slug: shop.shop_slug, subscription_tier: shop.subscription_tier },
+  }));
+  const [lead, ...rest] = pieces;
+
+  // Evidence layout — derived from what the house actually has.
+  let evidence: ReactNode = null;
+  if (pieces.length === 1 && lead) {
+    evidence = <MarketplaceProductCard product={lead} variant="evidence" sizes={SIZES_FULL} />;
+  } else if (odd && lead) {
+    evidence = (
+      <div className="flex flex-col gap-4 md:gap-5">
+        <MarketplaceProductCard product={lead} variant="evidence" sizes={SIZES_FULL} />
+        <div className="grid grid-cols-2 gap-3 md:gap-4">
+          {rest.map((product) => (
+            <MarketplaceProductCard key={product.id} product={product} variant="evidence" sizes={SIZES_HALF} />
+          ))}
+        </div>
+      </div>
+    );
+  } else if (pieces.length > 0) {
+    const cols = pieces.length === 2 ? 'grid-cols-2' : 'grid-cols-3';
+    evidence = (
+      <div className={`grid gap-3 md:gap-4 ${cols}`}>
+        {pieces.map((product) => (
+          <MarketplaceProductCard
+            key={product.id}
+            product={product}
+            variant="evidence"
+            sizes={pieces.length === 2 ? SIZES_HALF : SIZES_THIRD}
+          />
+        ))}
+      </div>
+    );
+  }
 
   return (
-    <article className={`flex h-full flex-col rounded-xl bg-mall-ivory p-3 ${CARD_SHADOW}`}>
-      <div className="flex items-center gap-2.5">
-        <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full bg-mall-bone ring-1 ring-mall-forest/10">
-          {shop.logo_url ? (
-            <SmartImage
-              src={shop.logo_url}
-              alt={shop.shop_name}
-              fill
-              blurTone="none"
-              className="object-cover"
-              sizes="36px"
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center text-mall-forest/30">
-              <Store size={15} strokeWidth={1.75} />
-            </div>
-          )}
-        </div>
+    <article className="border-t border-mall-forest/10 pt-10 md:pt-14">
+      <header className={`flex items-start gap-4 ${odd ? '' : 'flex-row-reverse text-right'}`}>
+        <HouseMark shop={shop} />
         <div className="min-w-0 flex-1">
-          <h3 className="flex items-center gap-1 text-[13px] font-semibold leading-tight text-mall-forest">
-            <span className="truncate">{shop.shop_name}</span>
-            {family === 'featured' && <BadgeCheck size={13} className="shrink-0 text-mall-gold" aria-label="Featured boutique" />}
-            {family === 'pro' && <BadgeCheck size={13} className="shrink-0 text-mall-sage" aria-label="Pro boutique" />}
-          </h3>
-          <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-mall-forest/50">
-            {count} piece{count !== 1 ? 's' : ''}
+          <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-mall-gold">
+            House No. {number}
           </p>
+          <h3 className="mt-1.5 line-clamp-2 break-words text-balance font-serif text-2xl font-semibold leading-tight text-mall-forest md:text-3xl">
+            {shop.shop_name}
+          </h3>
         </div>
-        <Link
-          href={href}
-          className={`inline-flex h-9 shrink-0 items-center gap-1 rounded-full px-3.5 text-[11px] font-bold uppercase tracking-[0.12em] transition ${
-            family === 'featured'
-              ? 'bg-mall-gold text-mall-forest hover:brightness-105'
-              : 'bg-mall-forest text-mall-bone hover:bg-black'
-          }`}
-        >
-          Visit <ArrowRight size={11} aria-hidden />
-        </Link>
-      </div>
+      </header>
 
-      <div className="mt-3 grid grid-cols-3 gap-1.5">
-        {thumbs.map((product) => {
-          const imgUrl = product.image_urls?.[0] || product.image_url || null;
-          const sale = saleOf(product.price, product.compare_at_price);
-          return (
-            <Link
-              key={product.id}
-              href={`/product/${product.id}`}
-              aria-label={product.name}
-              className="group/thumb relative aspect-square overflow-hidden rounded-md bg-mall-bone"
-            >
-              {imgUrl ? (
-                <SmartImage
-                  src={imgUrl}
-                  alt=""
-                  fill
-                  blurTone="none"
-                  className="object-cover transition-transform duration-700 ease-out group-hover/thumb:scale-[1.05]"
-                  sizes="(max-width: 640px) 80px, 92px"
-                />
-              ) : (
-                <div className="flex h-full items-center justify-center text-mall-forest/20">
-                  <ShoppingBag size={16} strokeWidth={1.5} />
-                </div>
-              )}
-              {sale && <SaleBadge className="absolute left-1 top-1 z-[2]" />}
-            </Link>
-          );
-        })}
-      </div>
+      {evidence && <div className="mt-6 md:mt-8">{evidence}</div>}
+
+      <Link
+        href={href}
+        className="mt-6 flex h-12 w-full items-center justify-center gap-2 bg-mall-forest text-[11px] font-bold uppercase tracking-[0.22em] text-mall-bone transition hover:bg-black active:scale-[0.98] md:mt-8"
+      >
+        Enter the house <ArrowRight size={13} aria-hidden />
+      </Link>
     </article>
   );
 }
