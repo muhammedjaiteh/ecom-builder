@@ -27,6 +27,7 @@ import Reveal from './Reveal';
 import SiteMarquee from './SiteMarquee';
 import StoryClamp from './StoryClamp';
 import VideoHeroMedia from './VideoHeroMedia';
+import { buildWhatsAppLink } from '@/lib/orderFlow';
 import RitualChrome, {
   RITUAL_BAND,
   RITUAL_HAIRLINE,
@@ -116,7 +117,54 @@ const PAD_16_24: Record<PadKey, string> = {
 type HeroVariant = NonNullable<LayoutStrategy['hero']>;
 type GridVariant = NonNullable<LayoutStrategy['grid']>;
 
-function RitualHero({ block, shop, heroMedia, signal, variant }: {
+// Phase 10D.1: recipe cuts. The cut is derived from resolveRitualComposition
+// (Phase 10C) — 'counter' ONLY when the config asks for the Product-First
+// recipe AND the live slice passes eligibility; every other recipe (classic,
+// subtraction, and the not-yet-built gallery) passes undefined, so the
+// sections render their exact historical markup.
+type RitualCut = 'counter';
+
+// Counter grid: the dense uniform wall — 2 / 3 / 4 / 5 columns with tight
+// gaps, every tile the same 3:4 frame. Bounded, utilitarian, no air.
+const COUNTER_GRID =
+  'grid grid-cols-2 gap-x-3 gap-y-8 md:grid-cols-3 md:gap-x-5 md:gap-y-10 lg:grid-cols-4 xl:grid-cols-5';
+const COUNTER_CARD_SIZES =
+  '(min-width: 1280px) 20vw, (min-width: 1024px) 25vw, (min-width: 768px) 33vw, 50vw';
+// Counter section rhythm: one notch tighter than the grid's compact map.
+const PAD_COUNTER: Record<PadKey, string> = {
+  compact: 'py-6 md:py-10',
+  default: 'py-8 md:py-12',
+  spacious: 'py-12 md:py-20',
+};
+
+/** Sticky category strip — the counter's PRIMARY navigation. Pinned directly
+ *  under the sticky nav (h-16 / md:h-20 → top-16 / md:top-20; a static nav
+ *  pins it at top-0), one layer beneath the nav's z-50. Renders nothing below
+ *  two categories or without a real /collections path (CategoryNav law), so a
+ *  focused single-aisle shop never gets an empty sticky bar. Server-only, no
+ *  data-block markers (like the marquee: not an editor target). */
+function RitualCounterStrip({ categories, collectionsPath, stickyNav }: {
+  categories: string[];
+  collectionsPath: string | null;
+  stickyNav: boolean;
+}) {
+  if (!collectionsPath || categories.length < 2) return null;
+  return (
+    <div className={`sticky ${stickyNav ? 'top-16 md:top-20' : 'top-0'} z-40 border-b ${RITUAL_HAIRLINE} bg-[color-mix(in_srgb,var(--site-bg,#FBFAF7)_92%,transparent)] backdrop-blur-md`}>
+      <div className="mx-auto max-w-7xl px-5 py-2.5 md:px-10">
+        <CategoryNav
+          tone="ritual"
+          label={null}
+          categories={categories}
+          hrefFor={(c) => `${collectionsPath}#${categoryAnchorId(c)}`}
+          ariaLabel="Shop by aisle"
+        />
+      </div>
+    </div>
+  );
+}
+
+function RitualHero({ block, shop, heroMedia, signal, variant, cut }: {
   block: HeroBlock;
   shop: SiteShop;
   heroMedia: HeroMedia;
@@ -124,7 +172,50 @@ function RitualHero({ block, shop, heroMedia, signal, variant }: {
   signal: HeroSignal | null;
   /** Phase 6B structural variant — undefined ≡ 'standard'. */
   variant?: HeroVariant;
+  /** Phase 10D.1 recipe cut — absent ≡ the historical variants. */
+  cut?: RitualCut;
 }) {
+  if (cut === 'counter' && (variant === undefined || variant === 'text-centric')) {
+    // Product-First "Counter" opener — the SHELF HEADER. Type-led like the
+    // text-centric variant but left-aligned, compact, and WITHOUT a CTA: the
+    // catalog sits directly beneath, so the catalog IS the CTA (a "Shop The
+    // Collection" button pointing 100px down is noise). Desktop: a two-column
+    // band — headline left, hook + honest signal right. An explicit 'split' /
+    // 'standard' pick on a counter site still renders its own variant below.
+    return (
+      <header data-block-section={block.id} className={`border-b ${RITUAL_HAIRLINE} px-5 py-8 md:px-10 md:py-12`}>
+        <div className="mx-auto grid max-w-7xl grid-cols-1 gap-5 md:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] md:items-end md:gap-12">
+          <div>
+            {block.tagline && (
+              <EditableText as="p" blockId={block.id} field="tagline" className="text-[11px] font-bold uppercase tracking-[0.35em] text-[var(--site-muted,oklch(55.3%_0.013_58.071))]">
+                {block.tagline}
+              </EditableText>
+            )}
+            <EditableText
+              as="h1"
+              blockId={block.id}
+              field="headline"
+              className="mt-3 max-w-2xl font-serif text-3xl font-bold leading-[1.08] tracking-tight text-balance text-[var(--site-text,oklch(21.6%_0.006_56.043))] md:text-5xl"
+            >
+              {block.headline}
+            </EditableText>
+          </div>
+          <div className="flex flex-col items-start gap-4">
+            <EditableText as="p" blockId={block.id} field="subheadline" className="max-w-md text-sm leading-relaxed text-[var(--site-muted,oklch(55.3%_0.013_58.071))] md:text-base">
+              {block.subheadline}
+            </EditableText>
+            {signal && (
+              <span className={`sndk-rise inline-flex min-h-8 items-center gap-2 rounded-full border ${RITUAL_HAIRLINE} px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--site-text,oklch(21.6%_0.006_56.043))]`}>
+                <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${signal.kind === 'stock' ? 'bg-amber-500' : 'bg-[var(--site-accent,#1c1917)]'}`} />
+                {signal.label}
+              </span>
+            )}
+          </div>
+        </div>
+      </header>
+    );
+  }
+
   if (variant === 'text-centric') {
     // Typography-led opener on the site surface: NO hero plate, no scrim.
     // Centered oversized serif headline, generous vertical air, ONE accent
@@ -363,7 +454,7 @@ function ritualMasonryRatio(i: number): RitualCardRatio {
   return i % 2 === 0 ? 'portrait' : 'square';
 }
 
-function RitualProductGrid({ block, shop, products, catalog, variant, hideCategories }: {
+function RitualProductGrid({ block, shop, products, catalog, variant, hideCategories, cut }: {
   block: ProductGridBlock;
   shop: SiteShop;
   /** The showcase selection (selectFeaturedProducts) — capped again here so a
@@ -375,14 +466,27 @@ function RitualProductGrid({ block, shop, products, catalog, variant, hideCatego
   variant?: GridVariant;
   /** Step 2 (Subtraction): suppress the category discovery strip. Absent ≡ false. */
   hideCategories?: boolean;
+  /** Phase 10D.1 recipe cut — absent ≡ the historical section. */
+  cut?: RitualCut;
 }) {
+  const counter = cut === 'counter';
   // Step 2: block.catalog === 'full' renders the ENTIRE home slice (no
   // showcase cap); absent/'showcase' keeps the exact historical selection.
-  const fullCatalog = block.catalog === 'full';
+  // Counter (10D.1): the catalog is the page — an ABSENT pick defaults to the
+  // full slice; an explicit 'showcase' from the editor still wins.
+  const fullCatalog = block.catalog === 'full' || (counter && block.catalog === undefined);
   const featured = fullCatalog ? catalog : products.slice(0, FEATURED_MAX);
   const count = featured.length;
-  const alignLeft = block.align === 'left';
+  // Counter headers sit left by default (a shelf label, not a centrepiece);
+  // an explicit 'center' pick still wins.
+  const alignLeft = block.align === 'left' || (counter && block.align === undefined);
   const layout = ritualFeaturedLayout(count);
+  // Counter sold-out tiles carry a restock-notify WhatsApp link (null when the
+  // shop has no phone → the tile renders a plain "Sold out" row).
+  const notifyHrefFor = (p: SiteProduct) =>
+    counter
+      ? buildWhatsAppLink(shop.phone, `Hello ${shop.shop_name ?? 'there'}! Please let me know when "${p.name}" is back in stock.`)
+      : null;
   // Bridge target: null in slugless studio previews → no bridge rendered.
   const collectionsPath = siteCollectionsPath(shop);
   // Full-catalog bridge law: only when the slice equals the upstream cap.
@@ -393,9 +497,9 @@ function RitualProductGrid({ block, shop, products, catalog, variant, hideCatego
   const categories = collectionsPath ? distinctCategories(catalog) : [];
   return (
     // padding/align consumption (Pillar 4): grid section spacing + header alignment.
-    <section id="collection" data-block-section={block.id} className={`mx-auto max-w-7xl px-5 md:px-10 ${ritualPad(block.padding, PAD_20_28)}`}>
+    <section id="collection" data-block-section={block.id} className={`mx-auto max-w-7xl px-5 md:px-10 ${ritualPad(block.padding, counter ? PAD_COUNTER : PAD_20_28)}`}>
       <div className={alignLeft ? 'max-w-xl text-left' : 'mx-auto max-w-xl text-center'}>
-        <EditableText as="h2" blockId={block.id} field="title" className="font-serif text-3xl font-bold tracking-tight text-balance text-[var(--site-text,oklch(21.6%_0.006_56.043))] md:text-5xl">
+        <EditableText as="h2" blockId={block.id} field="title" className={`font-serif font-bold tracking-tight text-balance text-[var(--site-text,oklch(21.6%_0.006_56.043))] ${counter ? 'text-2xl md:text-4xl' : 'text-3xl md:text-5xl'}`}>
           {block.title}
         </EditableText>
         <EditableText as="p" blockId={block.id} field="intro" className="mt-4 text-sm leading-relaxed text-[var(--site-muted,oklch(55.3%_0.013_58.071))] md:text-base">
@@ -460,6 +564,22 @@ function RitualProductGrid({ block, shop, products, catalog, variant, hideCatego
               </div>
             );
           })}
+        </div>
+      ) : variant === 'counter' ? (
+        // Phase 10D.1 counter wall: dense uniform grid, counter card anatomy
+        // (hairline tile, mono aisle eyebrow, persistent order row).
+        <div className={`mt-6 md:mt-10 ${COUNTER_GRID}`}>
+          {featured.map((p, i) => (
+            <RitualProductCard
+              key={p.id}
+              product={p}
+              index={i}
+              href={ritualProductHref(shop, p.id)}
+              sizes={COUNTER_CARD_SIZES}
+              anatomy="counter"
+              notifyHref={notifyHrefFor(p)}
+            />
+          ))}
         </div>
       ) : (
         <div className={`mt-10 md:mt-16 ${layout.grid}`}>
@@ -722,6 +842,19 @@ export default function RitualTemplate({ shop, products, config, heroMedia }: Si
   // No marquee, no offer pill, no category strip. Every other family (and
   // every legacy row without storefront_family) renders exactly as before.
   const subtraction = config.storefront_family === 'subtraction';
+  // Phase 10D.1 — Product-First "Counter" recipe. Activates ONLY when the
+  // Phase 10C resolver lands on 'product-first' (grid 'counter' + eligible
+  // slice); an ineligible request already degraded to 'classic' upstream.
+  // Composition: shelf-header hero (no CTA) → STICKY category strip (the
+  // grid's own strip is suppressed — one strip owns navigation) → full
+  // counter wall, un-revealed (utilitarian, instant) → value-props marquee
+  // relocated BELOW the wall as a trust strip → whatever else is visible →
+  // the structured footer (unchanged: delivery/pickup/contact are buying
+  // facts, and the desktop "Shop Now" pill stays — RitualChrome untouched).
+  const counter = composition.recipe === 'product-first';
+  const cut: RitualCut | undefined = counter ? 'counter' : undefined;
+  const counterCollectionsPath = counter ? siteCollectionsPath(shop) : null;
+  const counterCategories = counterCollectionsPath ? distinctCategories(products) : [];
 
   return (
     <RitualChrome shop={shop} config={config} active="home">
@@ -732,11 +865,11 @@ export default function RitualTemplate({ shop, products, config, heroMedia }: Si
         const section = (() => {
           switch (block.type) {
             case 'hero_banner':
-              return <RitualHero block={block} shop={shop} heroMedia={heroMedia} signal={subtraction ? null : heroSignal} variant={heroVariant} />;
+              return <RitualHero block={block} shop={shop} heroMedia={heroMedia} signal={subtraction ? null : heroSignal} variant={heroVariant} cut={cut} />;
             // value_props: no body section (Fix 2) — the block renders as the
             // SiteMarquee ribbon after the hero.
             case 'product_grid':
-              return <RitualProductGrid block={block} shop={shop} products={featured} catalog={products} variant={gridVariant} hideCategories={subtraction} />;
+              return <RitualProductGrid block={block} shop={shop} products={featured} catalog={products} variant={gridVariant} hideCategories={subtraction || counter} cut={cut} />;
             case 'story_text':
               return <RitualStory block={block} shopName={shop.shop_name} />;
             case 'cta_banner':
@@ -759,10 +892,32 @@ export default function RitualTemplate({ shop, products, config, heroMedia }: Si
           // after the hero, never inside a Reveal (it is already motion), and
           // carries no data-block markers — invisible to the Site Editor's
           // section rect math.
+          // Counter (10D.1): the seam carries the sticky category strip
+          // instead; the marquee moves below the wall.
           return (
             <Fragment key={block.id}>
               {section}
-              {!subtraction && <SiteMarquee config={config} tone="ritual" />}
+              {counter ? (
+                <RitualCounterStrip
+                  categories={counterCategories}
+                  collectionsPath={counterCollectionsPath}
+                  stickyNav={config.theme?.sticky_nav !== false}
+                />
+              ) : (
+                !subtraction && <SiteMarquee config={config} tone="ritual" />
+              )}
+            </Fragment>
+          );
+        }
+        if (counter && block.type === 'product_grid') {
+          // Counter wall: NO Reveal (the catalog is the page — it must be
+          // there the instant the shopper lands, not fade in), followed by
+          // the relocated value-props ribbon as the trust strip under the
+          // wall. Outside a Reveal for the same reason as at the hero seam.
+          return (
+            <Fragment key={block.id}>
+              {section}
+              <SiteMarquee config={config} tone="ritual" />
             </Fragment>
           );
         }

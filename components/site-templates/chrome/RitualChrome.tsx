@@ -122,7 +122,17 @@ const RITUAL_CARD_RATIO: Record<RitualCardRatio, string> = {
   tall: 'aspect-[2/3]',
 };
 
-export function RitualProductCard({ product, index, href, sizes, ratio }: {
+/** Phase 10D.1 (Product-First "Counter" recipe): optional card anatomy.
+ *  Absent ≡ the historical card, byte-identical for every existing caller.
+ *  'counter' — the shop-counter tile: hairline-bordered frame, mono category
+ *  eyebrow, name, bold price, and a PERSISTENT order row under the price
+ *  (visible without hover — phones have no hover). The hover "View Product"
+ *  pill is dropped because the row replaces it. Sold-out tiles turn the row
+ *  into an active "Notify via WhatsApp" lead-capture link (CLAUDE.md
+ *  transactional law) when the caller supplies notifyHref. */
+export type RitualCardAnatomy = 'counter';
+
+export function RitualProductCard({ product, index, href, sizes, ratio, anatomy, notifyHref }: {
   product: SiteProduct;
   index: number;
   href: string;
@@ -130,18 +140,25 @@ export function RitualProductCard({ product, index, href, sizes, ratio }: {
   sizes?: string;
   /** Frame ratio; absent ≡ 'portrait' (the historical 3:4 frame). */
   ratio?: RitualCardRatio;
+  /** Card anatomy; absent ≡ the historical card. */
+  anatomy?: RitualCardAnatomy;
+  /** WhatsApp restock-notify link for sold-out counter tiles (null → plain
+   *  "Sold out" row). Ignored outside the counter anatomy. */
+  notifyHref?: string | null;
 }) {
   const badge = ritualStockBadge(product.stock_quantity);
   // Compare-at sale (lib/pricing.ts): strictly compare_at_price > price.
   const sale = saleOf(product.price, product.compare_at_price);
   const altSrc = secondaryProductImage(product);
   const imgSizes = sizes ?? RITUAL_CARD_SIZES;
+  const counter = anatomy === 'counter';
+  const soldOut = badge?.tone === 'out';
   const inner = (
     <>
-      <Link href={href} className="absolute inset-0 z-10 rounded-2xl">
+      <Link href={href} className={`absolute inset-0 z-10 ${counter ? 'rounded-xl' : 'rounded-2xl'}`}>
         <span className="sr-only">{product.name}</span>
       </Link>
-      <div className={`relative ${RITUAL_CARD_RATIO[ratio ?? 'portrait']} overflow-hidden rounded-2xl ${RITUAL_SURFACE}`}>
+      <div className={`relative ${RITUAL_CARD_RATIO[ratio ?? 'portrait']} overflow-hidden ${counter ? `rounded-xl border ${RITUAL_HAIRLINE}` : 'rounded-2xl'} ${RITUAL_SURFACE}`}>
         <RitualProductVisual src={product.ad_hero_image_url ?? product.image_url} alt={product.name} index={index} sizes={imgSizes} />
         {altSrc && (
           // Second photo — revealed by hover (pointer devices) or the toggle
@@ -177,14 +194,21 @@ export function RitualProductCard({ product, index, href, sizes, ratio }: {
             {sale && <SaleBadge />}
           </div>
         )}
-        <span className="absolute inset-x-3 bottom-3 z-[2] hidden translate-y-2 rounded-full bg-white/95 py-2.5 text-center text-[10px] font-bold uppercase tracking-[0.2em] text-stone-900 opacity-0 shadow-lg backdrop-blur transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100 md:block">
-          View Product
-        </span>
+        {!counter && (
+          <span className="absolute inset-x-3 bottom-3 z-[2] hidden translate-y-2 rounded-full bg-white/95 py-2.5 text-center text-[10px] font-bold uppercase tracking-[0.2em] text-stone-900 opacity-0 shadow-lg backdrop-blur transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100 md:block">
+            View Product
+          </span>
+        )}
       </div>
       {/* Pass 3 hierarchy: name, then the price DIRECTLY beneath it in bold
           ink (never floated to the card's outer edge) — price is the second
           thing a shopper reads, so it is the second line of the card. */}
       <div className="mt-3 px-1">
+        {counter && product.category?.trim() && (
+          // Counter eyebrow: the aisle this tile belongs to, in the mono
+          // metadata voice. Deep muted ink (≥ 4.5:1 on the paper tokens).
+          <p className="mb-1 truncate font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--site-muted,oklch(44.4%_0.011_73.639))]">{product.category.trim()}</p>
+        )}
         <p className="line-clamp-2 text-sm font-medium leading-snug text-[var(--site-text,oklch(26.8%_0.007_34.298))]">{product.name}</p>
         <p className="mt-1 flex flex-wrap items-baseline gap-x-2">
           <span className="text-base font-bold tracking-tight text-[var(--site-text,oklch(21.6%_0.006_56.043))]">{ritualPrice(product.price)}</span>
@@ -195,6 +219,36 @@ export function RitualProductCard({ product, index, href, sizes, ratio }: {
             </s>
           )}
         </p>
+        {counter && (
+          // Persistent order row — the counter's conversion surface. In stock:
+          // a hairline-topped "Order" line that the stretched link already
+          // covers (decorative, no second anchor). Sold out: an ACTIVE WhatsApp
+          // restock-notify anchor — a SIBLING of the stretched link (never
+          // nested), lifted above it (relative z-20) so the tap lands on
+          // WhatsApp, not the PDP.
+          soldOut ? (
+            notifyHref ? (
+              <a
+                href={notifyHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`relative z-20 mt-2.5 flex min-h-10 items-center justify-between border-t ${RITUAL_HAIRLINE} pt-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--site-accent,#1c1917)] transition hover:opacity-80 active:scale-[0.98]`}
+              >
+                <span>Notify via WhatsApp</span>
+                <span aria-hidden>&rarr;</span>
+              </a>
+            ) : (
+              <p className={`mt-2.5 flex min-h-10 items-center border-t ${RITUAL_HAIRLINE} pt-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--site-muted,oklch(44.4%_0.011_73.639))]`}>
+                Sold out
+              </p>
+            )
+          ) : (
+            <p aria-hidden className={`mt-2.5 flex min-h-10 items-center justify-between border-t ${RITUAL_HAIRLINE} pt-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--site-text,oklch(21.6%_0.006_56.043))]`}>
+              <span>Order</span>
+              <span className="transition-transform duration-300 group-hover:translate-x-1 motion-reduce:transition-none">&rarr;</span>
+            </p>
+          )
+        )}
       </div>
     </>
   );

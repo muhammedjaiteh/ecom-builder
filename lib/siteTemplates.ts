@@ -1859,6 +1859,30 @@ export function applyGenerationLayout(
       grid: strategy?.grid ?? config.layout_strategy?.grid ?? 'masonry',
     };
   }
+  // Phase 10D.1 — Product-First "Counter" generation defaults. Reached ONLY
+  // when guardRecipeGridPick let 'counter' through (Ritual + generation gate
+  // open — the gate is closed today, so this is inert for every current
+  // build) and subtraction is not active (subtraction wins at resolve time).
+  // Mirrors the subtraction block's law: defaults land on ABSENT keys only.
+  //   · hero defaults to the type-led opener (the counter cut renders it);
+  //   · product_grid.catalog defaults to 'full' (the catalog is the page);
+  //   · story_text / cta_banner / split_cta ship HIDDEN (restorable with the
+  //     eye toggle) — but ONLY when the model gave no valid block_order; an
+  //     explicit order that names them is an explicit pick and wins.
+  if (!subtractionActive && next.layout_strategy?.grid === 'counter') {
+    next.layout_strategy = { hero: next.layout_strategy.hero ?? 'text-centric', grid: 'counter' };
+    for (const block of ordered) {
+      if (block.type === 'product_grid') {
+        if (block.catalog === undefined) block.catalog = 'full';
+      } else if (
+        requested === null &&
+        (block.type === 'story_text' || block.type === 'cta_banner' || block.type === 'split_cta') &&
+        block.hidden === undefined
+      ) {
+        block.hidden = true;
+      }
+    }
+  }
   // Phase 7A: the chosen family persists as metadata beside layout_strategy.
   // Only written when the model chose a valid one, so a generation without
   // it leaves a prior/absent storefront_family exactly as it was. The
