@@ -4,6 +4,7 @@ import SmartImage from '@/components/SmartImage';
 import {
   FEATURED_MAX,
   resolveHeroSignal,
+  resolveRitualComposition,
   resolveVisibleBlocks,
   selectFeaturedProducts,
   siteCollectionsPath,
@@ -706,8 +707,17 @@ export default function RitualTemplate({ shop, products, config, heroMedia }: Si
   const heroSignal = resolveHeroSignal({ shop, featured });
   // Phase 6B: structural variants from the optional layout strategy. Absent
   // on every legacy row → undefined → the historical markup, unchanged.
-  const heroVariant = config.layout_strategy?.hero;
-  const gridVariant = config.layout_strategy?.grid;
+  // Phase 10C: the variants now arrive through resolveRitualComposition —
+  // for 'classic' and 'subtraction' (every stored row today) it returns the
+  // RAW config values, so this is byte-identical to reading them directly.
+  // A 'counter' / 'gallery' grid (new values; written only by a future
+  // generation or explicit upgrade) is eligibility-checked here against the
+  // live slice and degrades one step when the data no longer qualifies. The
+  // recipe cuts themselves are NOT built yet: both values fall through the
+  // grid ternary below to the standard grid until Phase 10D.
+  const composition = resolveRitualComposition({ config, products, heroMedia });
+  const heroVariant = composition.hero;
+  const gridVariant = composition.grid;
   // Step 2 (Subtraction Family, Ritual-only): Hero → Product Wall → Footer.
   // No marquee, no offer pill, no category strip. Every other family (and
   // every legacy row without storefront_family) renders exactly as before.

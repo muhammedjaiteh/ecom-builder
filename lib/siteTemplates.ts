@@ -960,6 +960,12 @@ export const PreviousDesignSchema = z.looseObject({
   blocks: z.unknown().optional(),
   theme: z.unknown().optional(),
   assets: z.unknown().optional(),
+  /** Phase 10C: the structural keys ride the snapshot too, so a restore
+   *  after a recipe generation round-trips the composition exactly instead
+   *  of dropping the site to the classic cut. Older snapshots (no keys)
+   *  restore exactly as before. */
+  layout_strategy: z.unknown().optional(),
+  storefront_family: z.unknown().optional(),
   /** ISO timestamp the snapshot was written. */
   saved_at: z.string().optional(),
 });
@@ -974,7 +980,9 @@ export function buildPreviousDesign(prior: unknown): PreviousDesign | null {
   if (typeof prior !== 'object' || prior === null || Array.isArray(prior)) return null;
   const source = prior as Record<string, unknown>;
   const snapshot: Record<string, unknown> = { saved_at: new Date().toISOString() };
-  for (const key of ['template_key', 'niche_reasoning', 'site', 'blocks', 'theme', 'assets'] as const) {
+  // Phase 10C: layout_strategy + storefront_family join the copied keys so
+  // the composition survives a restore (both optional — absent stays absent).
+  for (const key of ['template_key', 'niche_reasoning', 'site', 'blocks', 'theme', 'assets', 'layout_strategy', 'storefront_family'] as const) {
     if (source[key] !== undefined) {
       snapshot[key] = JSON.parse(JSON.stringify(source[key]));
     }
@@ -995,8 +1003,14 @@ export const LayoutStrategySchema = z.object({
    *  (service/minimal), 'standard' full-bleed visual (the absent default). */
   hero: z.enum(['standard', 'split', 'text-centric']).optional(),
   /** Collection grid — 'masonry' for varied ratios/lifestyle, 'featured-first'
-   *  when one flagship leads, 'standard' uniform catalog (the absent default). */
-  grid: z.enum(['standard', 'masonry', 'featured-first']).optional(),
+   *  when one flagship leads, 'standard' uniform catalog (the absent default).
+   *  Phase 10C recipe discriminators (RITUAL-ONLY, additive): 'counter' keys
+   *  the Product-First recipe and 'gallery' keys the Gallery-Led recipe — see
+   *  resolveRitualRecipe. No stored row carries either value (both are new),
+   *  so every legacy storefront resolves to the 'classic' recipe and renders
+   *  byte-identically. Until the recipe cuts land (Phase 10D) the templates'
+   *  fall-through ternaries draw both as the standard grid. */
+  grid: z.enum(['standard', 'masonry', 'featured-first', 'counter', 'gallery']).optional(),
 });
 
 export type LayoutStrategy = z.infer<typeof LayoutStrategySchema>;
@@ -1821,7 +1835,14 @@ export function applyGenerationLayout(
   // Phase 6A: structural variant picks ride onto the config untouched. Only
   // written when the model chose at least one key, so a generation without
   // them leaves a prior/absent layout_strategy exactly as it was.
-  const strategy = layout.layout_strategy;
+  // Phase 10C: the recipe grid values ('counter' / 'gallery') are RITUAL-ONLY
+  // and generation-gated — guardRecipeGridPick drops them on any other
+  // template and whenever RITUAL_RECIPE_GENERATION_ENABLED is off (no
+  // automatic upgrades: a row can only carry a recipe once the cuts ship).
+  // Every historical value passes through untouched.
+  const strategy = layout.layout_strategy
+    ? { ...layout.layout_strategy, grid: guardRecipeGridPick(layout.layout_strategy.grid, bounds.templateKey) }
+    : layout.layout_strategy;
   if (strategy && (strategy.hero || strategy.grid)) {
     next.layout_strategy = {
       ...(strategy.hero ? { hero: strategy.hero } : {}),
@@ -2102,6 +2123,247 @@ export function selectFeaturedProducts(products: SiteProduct[], max = FEATURED_M
 // lib/productMedia (the marketplace client bundle consumes it too and must not
 // pull this module's zod schemas); re-exported here for the /site chromes.
 export { secondaryProductImage } from './productMedia';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RITUAL RECIPES (Phase 10C — infrastructure only). A recipe is the
+// COMPOSITION a Ritual storefront renders: which sections exist, how dense
+// the navigation is, what anatomy the cards carry. Phase 10's law: two
+// merchants on the same theme must not receive the same skeleton, and
+// reordering / palette / copy do not count.
+//
+// Resolution is PURE and reads only existing config keys — no new column, no
+// new config field. Discriminators:
+//   'subtraction'   : storefront_family === 'subtraction' (the live Step-2
+//                     render law, unchanged — it wins over any grid value).
+//   'gallery-led'   : layout_strategy.grid === 'gallery'
+//   'product-first' : layout_strategy.grid === 'counter'
+//   'classic'       : everything else — INCLUDING storefront_family
+//                     'product-first' on its own, which stays a rhythm (a
+//                     block order), never a recipe. That is what keeps every
+//                     stored row byte-identical: the two recipe values are
+//                     new, so no published site can resolve to a recipe
+//                     until a generation or an explicit upgrade writes one.
+//
+// Eligibility (10B.1 rules) is evaluated twice: at GENERATION time, where the
+// route knows the inventory (wired when the prompt exposes the values), and
+// at RENDER time by resolveRitualComposition, where the data may have changed
+// since publish. A written recipe that is no longer eligible DEGRADES one
+// step to an existing cut — it never throws and never jumps template.
+//
+// Visual cuts are NOT built here: RitualTemplate's grid ternary falls through
+// to the standard grid for 'counter' / 'gallery' until Phase 10D adds the
+// branches. This section only establishes the architecture.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const RITUAL_RECIPES = ['classic', 'product-first', 'gallery-led', 'subtraction'] as const;
+export type RitualRecipe = (typeof RITUAL_RECIPES)[number];
+
+/** Grid values that KEY a recipe (Ritual-only). */
+export const RECIPE_GRID_VALUES = ['counter', 'gallery'] as const;
+export type RecipeGridValue = (typeof RECIPE_GRID_VALUES)[number];
+
+/** Generation gate (no automatic upgrades): while false, applyGenerationLayout
+ *  strips 'counter' / 'gallery' from every model pick, so no row can carry a
+ *  recipe before its cut ships. Phase 10D flips this together with the prompt
+ *  lines that teach the model when to choose each value. */
+export const RITUAL_RECIPE_GENERATION_ENABLED = false;
+
+/** Thresholds from the 10B.1 rules — one place, so the generation gate, the
+ *  render fallback and any future dashboard "Upgrade available" badge agree. */
+export const RITUAL_RECIPE_RULES = Object.freeze({
+  productFirst: Object.freeze({
+    /** Priced pieces in the home slice — OR the category floor below. */
+    minPricedProducts: 6,
+    /** Distinct categories — the sticky strip needs aisles. */
+    minCategories: 2,
+    /** Share of the home slice that must carry a real photo (gradient tiles
+     *  in a dense grid read as a broken shop). */
+    minPicturedRatio: 0.7,
+  }),
+  galleryLed: Object.freeze({
+    /** Pictured, in-stock exhibits. Fewer → nothing to hang. */
+    minExhibits: 2,
+    /** Exhibit cap — larger catalogs reach /collections via the bridge. */
+    maxExhibits: 6,
+  }),
+});
+
+function isRecipeGridValue(value: unknown): value is RecipeGridValue {
+  return typeof value === 'string' && (RECIPE_GRID_VALUES as readonly string[]).includes(value);
+}
+
+/** Generation-time guard for a model's grid pick: recipe values survive ONLY
+ *  on Ritual AND while the generation gate is open; every other value (or
+ *  absence) passes through untouched. Pure. */
+export function guardRecipeGridPick(
+  grid: LayoutStrategy['grid'] | undefined,
+  templateKey: TemplateKey
+): LayoutStrategy['grid'] | undefined {
+  if (!isRecipeGridValue(grid)) return grid;
+  if (templateKey !== SUBTRACTION_TEMPLATE_KEY) return undefined;
+  if (!RITUAL_RECIPE_GENERATION_ENABLED) return undefined;
+  return grid;
+}
+
+/** Which recipe a config ASKS for. Pure; reads existing keys only. Non-ritual
+ *  configs always resolve to 'classic' (the recipe values are meaningless
+ *  there and the Editorial/Vitality bodies never consult this). */
+export function resolveRitualRecipe(
+  config: Pick<WebsiteConfig, 'template_key' | 'storefront_family' | 'layout_strategy'>
+): RitualRecipe {
+  if (config.template_key !== SUBTRACTION_TEMPLATE_KEY) return 'classic';
+  if (config.storefront_family === 'subtraction') return 'subtraction';
+  const grid = config.layout_strategy?.grid;
+  if (grid === 'gallery') return 'gallery-led';
+  if (grid === 'counter') return 'product-first';
+  return 'classic';
+}
+
+/** A product that can be shown at exhibit scale: a real photo, never a
+ *  gradient tile. Ad Studio renders count (they rank first in selection). */
+export function isPicturedProduct(p: Pick<SiteProduct, 'image_url' | 'ad_hero_image_url'>): boolean {
+  return Boolean(p.ad_hero_image_url || p.image_url);
+}
+
+/** Gallery exhibit selection: pictured pieces only, in-stock first (unknown
+ *  stock counts as in-stock — the field is optional/additive), then the
+ *  shared showcase ranking, capped. Sold-out pieces are kept ONLY when the
+ *  in-stock set cannot fill the minimum — an exhibit a buyer cannot own is a
+ *  dead end at full-bleed scale. Deterministic. */
+export function selectGalleryExhibits(
+  products: SiteProduct[],
+  max: number = RITUAL_RECIPE_RULES.galleryLed.maxExhibits
+): SiteProduct[] {
+  const pictured = selectFeaturedProducts(products.filter(isPicturedProduct), Number.MAX_SAFE_INTEGER);
+  const inStock = pictured.filter((p) => p.stock_quantity == null || p.stock_quantity > 0);
+  if (inStock.length >= RITUAL_RECIPE_RULES.galleryLed.minExhibits) return inStock.slice(0, max);
+  return pictured.slice(0, max);
+}
+
+function distinctCategoryCount(products: ReadonlyArray<Pick<SiteProduct, 'category'>>): number {
+  const seen = new Set<string>();
+  for (const p of products) {
+    const c = p.category?.trim();
+    if (c) seen.add(c);
+  }
+  return seen.size;
+}
+
+export type RecipeEligibility = {
+  eligible: boolean;
+  /** Human-readable rule misses — empty when eligible. Stable strings so a
+   *  dashboard badge or a generation log can show the merchant why. */
+  reasons: string[];
+};
+
+/** The 10B.1 eligibility rules, evaluated against whatever slice the caller
+ *  holds (the 12-piece home read at render time; the full inventory at
+ *  generation time). 'classic' and 'subtraction' are always eligible — their
+ *  renders are live today and carry their own laws. Pure. */
+export function ritualRecipeEligibility(
+  recipe: RitualRecipe,
+  input: {
+    products: SiteProduct[];
+    /** The resolved masthead media — null means the animated brand plate,
+     *  which is not an acceptable 72vh entrance. */
+    heroMedia: HeroMedia;
+    storefrontFamily?: StorefrontFamily | null;
+  }
+): RecipeEligibility {
+  const reasons: string[] = [];
+  const { products, heroMedia } = input;
+  switch (recipe) {
+    case 'product-first': {
+      const rules = RITUAL_RECIPE_RULES.productFirst;
+      const priced = products.filter((p) => p.price != null).length;
+      const categories = distinctCategoryCount(products);
+      if (priced < rules.minPricedProducts && categories < rules.minCategories) {
+        reasons.push(`needs ${rules.minPricedProducts} priced products or ${rules.minCategories} categories (has ${priced} priced, ${categories} categories)`);
+      }
+      const pictured = products.filter(isPicturedProduct).length;
+      const ratio = products.length === 0 ? 0 : pictured / products.length;
+      if (ratio < rules.minPicturedRatio) {
+        reasons.push(`needs ${Math.round(rules.minPicturedRatio * 100)}% pictured products (has ${Math.round(ratio * 100)}%)`);
+      }
+      break;
+    }
+    case 'gallery-led': {
+      const rules = RITUAL_RECIPE_RULES.galleryLed;
+      if (!heroMedia) reasons.push('needs hero media (site hero image or shop banner)');
+      const exhibits = selectGalleryExhibits(products, rules.maxExhibits).length;
+      if (exhibits < rules.minExhibits) {
+        reasons.push(`needs ${rules.minExhibits} pictured products (has ${exhibits})`);
+      }
+      if (input.storefrontFamily === 'menu-occasion') reasons.push('menu-occasion merchants are not gallery merchants');
+      break;
+    }
+    case 'classic':
+    case 'subtraction':
+      break;
+  }
+  return { eligible: reasons.length === 0, reasons };
+}
+
+export type RitualComposition = {
+  /** The recipe the config asks for. */
+  requested: RitualRecipe;
+  /** The recipe actually drawn after render-time eligibility. */
+  recipe: RitualRecipe;
+  /** Effective structural variants the template consumes — for 'classic' and
+   *  'subtraction' these are the RAW config values (byte-identical law). */
+  hero: LayoutStrategy['hero'];
+  grid: LayoutStrategy['grid'];
+  /** Why a requested recipe degraded — null when it did not. */
+  fallback: string | null;
+};
+
+/** RENDER-TIME fallback rules (10B.1 §4) — one step down, deterministic,
+ *  never a template jump, never a throw. Pure.
+ *    classic / subtraction : raw hero + raw grid, unchanged.
+ *    product-first         : eligible → hero defaults to 'text-centric', grid
+ *                            'counter'. Ineligible → 'classic' with the raw
+ *                            hero and the standard grid.
+ *    gallery-led           : eligible → hero defaults to 'standard', grid
+ *                            'gallery'. Hero media missing but exhibits
+ *                            present → 'classic', standard hero,
+ *                            featured-first grid (the closest live cut).
+ *                            Exhibits short → 'classic', raw hero, standard grid. */
+export function resolveRitualComposition(input: {
+  config: Pick<WebsiteConfig, 'template_key' | 'storefront_family' | 'layout_strategy'>;
+  products: SiteProduct[];
+  heroMedia: HeroMedia;
+}): RitualComposition {
+  const { config, products, heroMedia } = input;
+  const requested = resolveRitualRecipe(config);
+  const rawHero = config.layout_strategy?.hero;
+  const rawGrid = config.layout_strategy?.grid;
+  if (requested === 'classic' || requested === 'subtraction') {
+    return { requested, recipe: requested, hero: rawHero, grid: rawGrid, fallback: null };
+  }
+  const eligibility = ritualRecipeEligibility(requested, {
+    products,
+    heroMedia,
+    storefrontFamily: config.storefront_family ?? null,
+  });
+  if (eligibility.eligible) {
+    return {
+      requested,
+      recipe: requested,
+      hero: rawHero ?? (requested === 'product-first' ? 'text-centric' : 'standard'),
+      grid: requested === 'product-first' ? 'counter' : 'gallery',
+      fallback: null,
+    };
+  }
+  const fallback = eligibility.reasons.join('; ');
+  if (requested === 'gallery-led') {
+    const exhibits = selectGalleryExhibits(products).length;
+    if (!heroMedia && exhibits >= RITUAL_RECIPE_RULES.galleryLed.minExhibits) {
+      return { requested, recipe: 'classic', hero: 'standard', grid: 'featured-first', fallback };
+    }
+    return { requested, recipe: 'classic', hero: rawHero, grid: 'standard', fallback };
+  }
+  return { requested, recipe: 'classic', hero: rawHero, grid: 'standard', fallback };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MERCHANT STRATEGY RESOLVER — a PURE, deterministic mapping from what the
