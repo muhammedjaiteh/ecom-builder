@@ -158,6 +158,8 @@ before
 
 what was sold.
 
+## Storefront Architecture Engine (Phase 10) Sanndikaa does not generate themes. Sanndikaa generates commerce architectures. ### Theme ≠ Architecture Themes may share colours, typography, or visual identity. Architectures define: - how products are discovered - how merchants are presented - how trust is communicated - how conversion occurs Palette variation alone is not meaningful storefront variation. ### Same-Theme Anti-Clone Rule Two merchants using the same theme must not receive recognisably identical storefronts. A storefront fails if its skeleton remains substantially identical after: - colours are removed - copy is blurred - merchant names are hidden - rendered screenshots are viewed as thumbnails Meaningful variation includes: - section existence - section hierarchy - hero anatomy - grid anatomy - navigation density - commerce strategy - conversion flow - footer philosophy - card behavior - media rhythm Meaningful variation does NOT include: - colour changes - font changes - spacing changes - headline rewrites - CTA copy changes ### Recipe System Storefront generation now uses: Commerce Mode → Storefront Family → Composition Recipe → Visual System → Palette Recipes are renderer concepts, not prompt concepts. Recipes must survive all anti-clone tests. ### Ritual Family Current supported recipes: - classic - product-first (Counter) - gallery-led (Vitrine) - subtraction New recipes must include: 1. Eligibility rules 2. Asset requirements 3. Render-time fallbacks 4. Migration strategy 5. Anti-clone verification before implementation approval.
+
 ## Same-Theme Anti-Clone Rule
 
 Two merchants selecting the same theme must not receive the same storefront skeleton by default.

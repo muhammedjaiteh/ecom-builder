@@ -332,3 +332,75 @@ Category routing inconsistencies
 Theme picker / niche incompatibility
 storefront_family overwrite bug
 Fixed Vitality body ordering
+# Phase 10 — Storefront Architecture Engine
+
+## Corrected Diagnosis
+
+Theme variation alone does not produce meaningful storefront differentiation.
+
+The primary limitation was architectural convergence:
+
+- Multiple themes resolve to the same React template.
+- Multiple themes share identical block mixes.
+- Most theme variation is limited to:
+  - color
+  - typography
+  - spacing
+  - section ordering
+
+This causes merchants selecting the same theme to receive structurally similar storefronts.
+
+## Anti-Clone Standard
+
+Two storefronts generated from the same theme must remain visibly different when:
+
+- colours are converted to greyscale
+- copy is blurred
+- merchant names are hidden
+- screenshots are viewed at thumbnail size
+
+Palette and copy differences alone do not count as meaningful variation.
+
+Variation must come from:
+
+- composition
+- merchandising hierarchy
+- navigation density
+- interaction pattern
+- card anatomy
+- visual rhythm
+- conversion flow
+
+## Phase 10C Complete
+
+Delivered:
+
+- Ritual recipe engine infrastructure.
+- Recipe resolution layer:
+  - classic
+  - product-first
+  - gallery-led
+  - subtraction
+- Eligibility rules.
+- Render-time fallback rules.
+- Backward-compatible snapshot support.
+- Recipe generation guard.
+- Gallery exhibit selection helper.
+
+Compatibility:
+
+- Existing storefronts remain byte-identical.
+- Published stores do not automatically upgrade.
+- No database migration required.
+- No new database columns required.
+
+Status:
+
+Phase 10D pending.
+
+Next objective:
+
+Implement visual recipe cuts for:
+
+1. Ritual Product-First ("Counter")
+2. Ritual Gallery-Led ("Vitrine")
