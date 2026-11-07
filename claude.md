@@ -157,3 +157,27 @@ who sold it
 before
 
 what was sold.
+
+## Same-Theme Anti-Clone Rule
+
+Two merchants selecting the same theme must not receive the same storefront skeleton by default.
+
+Meaningful variation must affect:
+
+- section existence
+- composition
+- merchandising hierarchy
+- interaction pattern
+- card anatomy
+- media rhythm
+- navigation density
+- conversion flow
+
+Palette, copy, spacing, and block-order changes alone do not count as different website designs.
+
+A same-theme generation fails if two storefronts remain recognisably identical when:
+
+- colours are converted to greyscale
+- copy is blurred
+- merchant names are hidden
+- screenshots are viewed as small thumbnails
