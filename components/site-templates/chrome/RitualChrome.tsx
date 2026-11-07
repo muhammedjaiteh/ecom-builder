@@ -130,7 +130,12 @@ const RITUAL_CARD_RATIO: Record<RitualCardRatio, string> = {
  *  pill is dropped because the row replaces it. Sold-out tiles turn the row
  *  into an active "Notify via WhatsApp" lead-capture link (CLAUDE.md
  *  transactional law) when the caller supplies notifyHref. */
-export type RitualCardAnatomy = 'counter';
+/** Phase 10D.2 (Gallery-Led "Vitrine" recipe): 'plate' — the exhibit: a
+ *  frameless 4:5 photograph (no radius, no border, no badge overlay, no hover
+ *  pill, no order row) with a quiet centred caption beneath — serif italic
+ *  name, mono price, scarcity as caption text rather than a sticker. Media
+ *  first; the piece is admired before it is priced. */
+export type RitualCardAnatomy = 'counter' | 'plate';
 
 export function RitualProductCard({ product, index, href, sizes, ratio, anatomy, notifyHref }: {
   product: SiteProduct;
@@ -152,13 +157,18 @@ export function RitualProductCard({ product, index, href, sizes, ratio, anatomy,
   const altSrc = secondaryProductImage(product);
   const imgSizes = sizes ?? RITUAL_CARD_SIZES;
   const counter = anatomy === 'counter';
+  const plate = anatomy === 'plate';
   const soldOut = badge?.tone === 'out';
+  // Plate frame: the exhibit is always the mandated 4:5 editorial frame,
+  // frameless — no radius, no hairline. Other anatomies keep their ratio prop.
+  const frameRatio = plate ? 'aspect-[4/5]' : RITUAL_CARD_RATIO[ratio ?? 'portrait'];
+  const frameShape = plate ? '' : counter ? `rounded-xl border ${RITUAL_HAIRLINE}` : 'rounded-2xl';
   const inner = (
     <>
-      <Link href={href} className={`absolute inset-0 z-10 ${counter ? 'rounded-xl' : 'rounded-2xl'}`}>
+      <Link href={href} className={`absolute inset-0 z-10 ${plate ? 'rounded-none' : counter ? 'rounded-xl' : 'rounded-2xl'}`}>
         <span className="sr-only">{product.name}</span>
       </Link>
-      <div className={`relative ${RITUAL_CARD_RATIO[ratio ?? 'portrait']} overflow-hidden ${counter ? `rounded-xl border ${RITUAL_HAIRLINE}` : 'rounded-2xl'} ${RITUAL_SURFACE}`}>
+      <div className={`relative ${frameRatio} overflow-hidden ${frameShape} ${RITUAL_SURFACE}`}>
         <RitualProductVisual src={product.ad_hero_image_url ?? product.image_url} alt={product.name} index={index} sizes={imgSizes} />
         {altSrc && (
           // Second photo — revealed by hover (pointer devices) or the toggle
@@ -178,7 +188,7 @@ export function RitualProductCard({ product, index, href, sizes, ratio, anatomy,
         )}
         {/* z-[2]: badge + chip stay legible over EITHER photo, below the
             stretched link (z-10) so they never carve a dead tap zone. */}
-        {(badge || sale) && (
+        {!plate && (badge || sale) && (
           <div className="absolute left-3 top-3 z-[2] flex flex-col items-start gap-1.5">
             {badge && (
               <span
@@ -194,15 +204,36 @@ export function RitualProductCard({ product, index, href, sizes, ratio, anatomy,
             {sale && <SaleBadge />}
           </div>
         )}
-        {!counter && (
+        {!counter && !plate && (
           <span className="absolute inset-x-3 bottom-3 z-[2] hidden translate-y-2 rounded-full bg-white/95 py-2.5 text-center text-[10px] font-bold uppercase tracking-[0.2em] text-stone-900 opacity-0 shadow-lg backdrop-blur transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100 md:block">
             View Product
           </span>
         )}
       </div>
-      {/* Pass 3 hierarchy: name, then the price DIRECTLY beneath it in bold
-          ink (never floated to the card's outer edge) — price is the second
-          thing a shopper reads, so it is the second line of the card. */}
+      {plate ? (
+        // Exhibit caption (10D.2): centred, quiet. Name in serif italic; the
+        // price DIRECTLY beneath in bold mono (the Pass 3 hierarchy law holds
+        // — bold, high-contrast, never floated); scarcity and the "was" price
+        // ride the same mono line as caption text, never a sticker over the
+        // photograph. px-5 keeps the caption off the gutter when the plate
+        // bleeds edge-to-edge on phones.
+        <div className="mt-4 px-5 text-center md:mt-5 md:px-0">
+          <p className="font-serif text-lg italic leading-snug text-[var(--site-text,oklch(26.8%_0.007_34.298))] md:text-xl">{product.name}</p>
+          <p className="mt-1.5 font-mono text-[11px] tracking-[0.15em] text-[var(--site-text,oklch(21.6%_0.006_56.043))]">
+            <span className="font-bold">{ritualPrice(product.price)}</span>
+            {sale && (
+              <s className="ml-2 text-[var(--site-muted,oklch(44.4%_0.011_73.639))] line-through">
+                <span className="sr-only">Was </span>{ritualPrice(sale.compareAt)}
+              </s>
+            )}
+            {badge && (
+              <span className="text-[var(--site-muted,oklch(44.4%_0.011_73.639))]">
+                <span aria-hidden> · </span>{badge.label}
+              </span>
+            )}
+          </p>
+        </div>
+      ) : (
       <div className="mt-3 px-1">
         {counter && product.category?.trim() && (
           // Counter eyebrow: the aisle this tile belongs to, in the mono
@@ -250,6 +281,7 @@ export function RitualProductCard({ product, index, href, sizes, ratio, anatomy,
           )
         )}
       </div>
+      )}
     </>
   );
   if (altSrc) {
@@ -272,7 +304,12 @@ export function ritualProductHref(shop: SiteChromeProps['shop'], productId: stri
   return siteProductPath(shop, productId) ?? `/product/${productId}`;
 }
 
-export default function RitualChrome({ shop, config, active, children }: SiteChromeProps) {
+/** Phase 10D.2: `quiet` is the Gallery-Led chrome — two desktop nav links
+ *  (Collection, Story) with NO "Shop Now" pill, and the single-column colophon
+ *  footer (brand → one fulfillment line → WhatsApp → copyright) in place of
+ *  the four-column structured footer. Absent ≡ the historical chrome, so
+ *  /collections and the PDP (which pass nothing) render byte-identically. */
+export default function RitualChrome({ shop, config, active, children, quiet }: SiteChromeProps & { quiet?: boolean }) {
   const { site } = config;
   // Block-driven copy (Phase 3): the footer's bio fallback is the hero
   // block's tagline; the site.* mirror keeps the value identical for legacy
@@ -353,7 +390,7 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
           <div className="hidden items-center gap-8 md:flex">
             <Link href={collectionsHref} className={navLink(active === 'collections')}>Collection</Link>
             <a href={homeAnchor('#story')} className={navLink(false)}>Story</a>
-            <a href="#contact" className={navLink(false)}>Contact</a>
+            {!quiet && <a href="#contact" className={navLink(false)}>Contact</a>}
           </div>
           <div className="flex shrink-0 items-center gap-1 md:gap-2">
             {/* Client islands: shop-scoped search + live cart trigger — the
@@ -361,18 +398,59 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
                 reaches every /site page. */}
             <SiteSearch tone="ritual" shopId={shop.id} basePath={base} shopName={shop.shop_name} />
             <CartBagButton tone="ritual" />
-            <Link
-              href={collectionsHref}
-              className="hidden min-h-11 shrink-0 items-center rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#1c1917)] px-6 text-[10px] font-bold uppercase tracking-[0.2em] text-white shadow-sm transition hover:brightness-125 active:scale-95 md:inline-flex"
-            >
-              Shop Now
-            </Link>
+            {!quiet && (
+              <Link
+                href={collectionsHref}
+                className="hidden min-h-11 shrink-0 items-center rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#1c1917)] px-6 text-[10px] font-bold uppercase tracking-[0.2em] text-white shadow-sm transition hover:brightness-125 active:scale-95 md:inline-flex"
+              >
+                Shop Now
+              </Link>
+            )}
           </div>
         </div>
       </nav>
 
       {children}
 
+      {quiet ? (
+        // Colophon footer (10D.2, Gallery-Led): the page ends quietly. ONE
+        // centred column — brand mark, name, a single fulfillment line in the
+        // mono voice, the tactile WhatsApp action, copyright. No link columns.
+        <footer id="contact" className={`border-t ${RITUAL_HAIRLINE} bg-[var(--site-bg,#FBFAF7)] ${active === 'product' ? 'pb-24 md:pb-20' : ''}`}>
+          <div className="mx-auto flex max-w-7xl flex-col items-center gap-6 px-5 py-16 text-center md:py-24">
+            {logoUrl ? (
+              <SmartImage
+                src={logoUrl}
+                alt={shop.shop_name ?? 'Logo'}
+                width={48}
+                height={48}
+                blurTone="none"
+                className="h-12 w-12 rounded-full object-cover ring-1 ring-[color-mix(in_srgb,var(--site-text,#1c1917)_12%,transparent)]"
+              />
+            ) : (
+              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--site-accent,#1c1917)] font-serif text-lg font-bold text-[#FBFAF7]">
+                {monogram}
+              </span>
+            )}
+            <p className="font-serif text-2xl font-bold text-[var(--site-text,oklch(21.6%_0.006_56.043))]">{shop.shop_name}</p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-[var(--site-muted,oklch(44.4%_0.011_73.639))]">
+              {fulfillment.join(' · ')}
+            </p>
+            {whatsAppHref && (
+              <a
+                href={whatsAppHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex min-h-12 w-full items-center justify-center gap-2 rounded-[var(--site-radius,9999px)] border-2 border-[var(--site-accent,#1c1917)] px-8 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--site-accent,#1c1917)] transition hover:bg-[var(--site-accent,#1c1917)] hover:text-white active:scale-[0.98] sm:w-auto"
+              >
+                Message us on WhatsApp
+              </a>
+            )}
+            <p className="text-[10px] uppercase tracking-widest text-[var(--site-muted,oklch(55.3%_0.013_58.071))]">&copy; {year} {shop.shop_name}</p>
+          </div>
+        </footer>
+      ) : (
+      <>
       {/* Structured footer — shop info, delivery & pickup, contact */}
       {/* Pass 3: the footer rides the live paper token (the historical literal
           #FBFAF7 glared against the deep-luxury dark palette) and gains a
@@ -451,6 +529,8 @@ export default function RitualChrome({ shop, config, active, children }: SiteChr
           </div>
         </div>
       </footer>
+      </>
+      )}
     </div>
   );
 }

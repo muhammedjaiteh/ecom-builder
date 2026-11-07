@@ -1883,6 +1883,18 @@ export function applyGenerationLayout(
       }
     }
   }
+  // Phase 10D.2 — Gallery-Led "Vitrine" generation defaults. Same reach
+  // conditions and the same absent-keys-only law as the counter block above
+  // (inert while the generation gate is closed):
+  //   · hero defaults to the full-bleed opener (the entrance cut renders it);
+  //   · cta_banner ships HIDDEN — the split spread is the gallery's closing
+  //     CTA — but ONLY when the model gave no valid block_order.
+  if (!subtractionActive && next.layout_strategy?.grid === 'gallery') {
+    next.layout_strategy = { hero: next.layout_strategy.hero ?? 'standard', grid: 'gallery' };
+    for (const block of ordered) {
+      if (requested === null && block.type === 'cta_banner' && block.hidden === undefined) block.hidden = true;
+    }
+  }
   // Phase 7A: the chosen family persists as metadata beside layout_strategy.
   // Only written when the model chose a valid one, so a generation without
   // it leaves a prior/absent storefront_family exactly as it was. The

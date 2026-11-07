@@ -3,10 +3,12 @@ import Link from 'next/link';
 import SmartImage from '@/components/SmartImage';
 import {
   FEATURED_MAX,
+  findBlock,
   resolveHeroSignal,
   resolveRitualComposition,
   resolveVisibleBlocks,
   selectFeaturedProducts,
+  selectGalleryExhibits,
   siteCollectionsPath,
   type HeroMedia,
   type HeroSignal,
@@ -122,7 +124,18 @@ type GridVariant = NonNullable<LayoutStrategy['grid']>;
 // recipe AND the live slice passes eligibility; every other recipe (classic,
 // subtraction, and the not-yet-built gallery) passes undefined, so the
 // sections render their exact historical markup.
-type RitualCut = 'counter';
+type RitualCut = 'counter' | 'gallery';
+
+// Phase 10D.2 — Gallery-Led "Vitrine". The exhibit rhythm: double the
+// whitespace (CLAUDE.md), one plate per viewport on phones, a staggered
+// two-column gallery from md. Desire, admiration, collection — never a wall.
+const PAD_GALLERY: Record<PadKey, string> = {
+  compact: 'py-16 md:py-24',
+  default: 'py-24 md:py-40',
+  spacious: 'py-32 md:py-48',
+};
+// Each plate is 100vw on phones (edge-to-edge) and half the row from md.
+const GALLERY_PLATE_SIZES = '(min-width: 768px) 50vw, 100vw';
 
 // Counter grid: the dense uniform wall — 2 / 3 / 4 / 5 columns with tight
 // gaps, every tile the same 3:4 frame. Bounded, utilitarian, no air.
@@ -210,6 +223,76 @@ function RitualHero({ block, shop, heroMedia, signal, variant, cut }: {
                 {signal.label}
               </span>
             )}
+          </div>
+        </div>
+      </header>
+    );
+  }
+
+  if (cut === 'gallery' && (variant === undefined || variant === 'standard')) {
+    // Gallery-Led "Vitrine" ENTRANCE (10D.2): the first exhibit. Full-bleed
+    // media at ~72vh on phones / ~80vh on desktop (the classic opener is a
+    // compact ~40vh niche hero), the same high-contrast scrim, tagline and an
+    // oversized serif headline, the hook small beneath, ONE CTA. No signal
+    // pill (the caller passes null), no marquee after it, no category strip —
+    // nothing sells here; the room is entered. An explicit 'split' /
+    // 'text-centric' pick on a gallery site still renders its own variant.
+    return (
+      <header data-block-section={block.id} className="relative flex min-h-[max(520px,72vh)] w-full items-end overflow-hidden bg-stone-900 md:min-h-[80vh]">
+        {heroMedia?.type === 'video' ? (
+          <GatedVideo
+            src={heroMedia.url}
+            poster={heroMedia.poster}
+            alt={shop.shop_name ?? 'Hero'}
+            className="absolute inset-0 h-full w-full object-cover"
+            posterSizes="100vw"
+            posterBlurTone="dark"
+            posterPriority
+            fallback={<div aria-hidden className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(214,203,186,0.35),transparent_55%),linear-gradient(to_bottom_right,#292524,#1c1917,#3a352e)]" />}
+            playButtonClassName="absolute left-1/2 top-1/2 z-10 flex min-h-11 -translate-x-1/2 -translate-y-1/2 items-center gap-2.5 rounded-full bg-white/95 px-7 py-3.5 text-[10px] font-bold uppercase tracking-[0.25em] text-stone-900 shadow-lg backdrop-blur transition hover:bg-white active:scale-95"
+          />
+        ) : heroMedia ? (
+          <SmartImage
+            src={heroMedia.url}
+            alt={shop.shop_name ?? 'Hero'}
+            fill
+            priority
+            sizes="100vw"
+            blurTone="dark"
+            className="sndk-parallax object-cover"
+          />
+        ) : (
+          // Unreachable when the resolver's eligibility holds (hero media is
+          // required); kept as the honest null tier should media vanish
+          // between resolution and paint.
+          <HeroBrandPlate tone="ritual" shopName={shop.shop_name} />
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+
+        <div className="relative mx-auto w-full max-w-7xl px-5 pb-14 pt-32 md:px-10 md:pb-20">
+          {block.tagline && (
+            <EditableText as="p" blockId={block.id} field="tagline" className="text-[11px] font-bold uppercase tracking-[0.35em] text-white/70">
+              {block.tagline}
+            </EditableText>
+          )}
+          <EditableText
+            as="h1"
+            blockId={block.id}
+            field="headline"
+            className="mt-5 max-w-3xl font-serif text-4xl font-bold leading-[1.02] tracking-tight text-balance text-white md:text-6xl lg:text-7xl"
+          >
+            {block.headline}
+          </EditableText>
+          <EditableText as="p" blockId={block.id} field="subheadline" className="mt-5 max-w-md text-sm leading-relaxed text-white/75">
+            {block.subheadline}
+          </EditableText>
+          <div className="mt-8 md:mt-10">
+            <a
+              href="#collection"
+              className="inline-flex min-h-12 w-full items-center justify-center rounded-[var(--site-radius,9999px)] bg-[var(--site-accent,#1c1917)] px-10 text-center text-[10px] font-bold uppercase tracking-[0.25em] text-white shadow-lg ring-1 ring-white/20 transition hover:brightness-125 active:scale-[0.98] sm:w-auto"
+            >
+              Shop The Collection
+            </a>
           </div>
         </div>
       </header>
@@ -470,12 +553,16 @@ function RitualProductGrid({ block, shop, products, catalog, variant, hideCatego
   cut?: RitualCut;
 }) {
   const counter = cut === 'counter';
+  const gallery = cut === 'gallery';
   // Step 2: block.catalog === 'full' renders the ENTIRE home slice (no
   // showcase cap); absent/'showcase' keeps the exact historical selection.
   // Counter (10D.1): the catalog is the page — an ABSENT pick defaults to the
   // full slice; an explicit 'showcase' from the editor still wins.
   const fullCatalog = block.catalog === 'full' || (counter && block.catalog === undefined);
-  const featured = fullCatalog ? catalog : products.slice(0, FEATURED_MAX);
+  // Gallery (10D.2): the EXHIBITS — pictured pieces only, in-stock first,
+  // capped at six (selectGalleryExhibits). The catalog switch has no meaning
+  // in a vitrine: larger catalogs are reached through the quiet bridge.
+  const featured = gallery ? selectGalleryExhibits(catalog) : fullCatalog ? catalog : products.slice(0, FEATURED_MAX);
   const count = featured.length;
   // Counter headers sit left by default (a shelf label, not a centrepiece);
   // an explicit 'center' pick still wins.
@@ -490,14 +577,27 @@ function RitualProductGrid({ block, shop, products, catalog, variant, hideCatego
   // Bridge target: null in slugless studio previews → no bridge rendered.
   const collectionsPath = siteCollectionsPath(shop);
   // Full-catalog bridge law: only when the slice equals the upstream cap.
-  const showBridge = fullCatalog ? count === HOME_SLICE_CAP : count > 0;
+  const showBridge = gallery ? count > 0 : fullCatalog ? count === HOME_SLICE_CAP : count > 0;
   // Category discovery: real categories from the merchant's inventory, each
   // deep-linking to its group on /collections. CategoryNav renders nothing
   // below two categories or without a real collections path.
   const categories = collectionsPath ? distinctCategories(catalog) : [];
   return (
     // padding/align consumption (Pillar 4): grid section spacing + header alignment.
-    <section id="collection" data-block-section={block.id} className={`mx-auto max-w-7xl px-5 md:px-10 ${ritualPad(block.padding, counter ? PAD_COUNTER : PAD_20_28)}`}>
+    <section id="collection" data-block-section={block.id} className={`mx-auto max-w-7xl px-5 md:px-10 ${ritualPad(block.padding, gallery ? PAD_GALLERY : counter ? PAD_COUNTER : PAD_20_28)}`}>
+      {gallery ? (
+        // Vitrine label (10D.2): the collection title as a small mono eyebrow
+        // and the intro as a serif italic line — a wall label, not a headline.
+        // The exhibits are the headline.
+        <div className="mx-auto max-w-xl text-center">
+          <EditableText as="h2" blockId={block.id} field="title" className="font-mono text-[11px] font-bold uppercase tracking-[0.3em] text-[var(--site-muted,oklch(44.4%_0.011_73.639))]">
+            {block.title}
+          </EditableText>
+          <EditableText as="p" blockId={block.id} field="intro" className="mt-5 font-serif text-xl italic leading-relaxed text-balance text-[var(--site-text,oklch(26.8%_0.007_34.298))] md:text-2xl">
+            {block.intro}
+          </EditableText>
+        </div>
+      ) : (
       <div className={alignLeft ? 'max-w-xl text-left' : 'mx-auto max-w-xl text-center'}>
         <EditableText as="h2" blockId={block.id} field="title" className={`font-serif font-bold tracking-tight text-balance text-[var(--site-text,oklch(21.6%_0.006_56.043))] ${counter ? 'text-2xl md:text-4xl' : 'text-3xl md:text-5xl'}`}>
           {block.title}
@@ -506,6 +606,7 @@ function RitualProductGrid({ block, shop, products, catalog, variant, hideCatego
           {block.intro}
         </EditableText>
       </div>
+      )}
 
       {collectionsPath && !hideCategories && (
         <CategoryNav
@@ -565,6 +666,25 @@ function RitualProductGrid({ block, shop, products, catalog, variant, hideCatego
             );
           })}
         </div>
+      ) : variant === 'gallery' ? (
+        // Phase 10D.2 exhibit flow. Phones: one plate per viewport — each
+        // exhibit bleeds edge-to-edge (-mx-5), snaps to the top of the scroll
+        // (snap-start + scroll-mt for the sticky nav; the page-level
+        // proximity snap is opted in by data-site-snap, globals.css) and is
+        // followed by a long breath. Desktop: a staggered two-column gallery —
+        // every even plate drops 10rem so the eye moves plate to plate down
+        // the room, never row to row across a grid. Plate anatomy: frameless
+        // 4:5, no sticker, no hover pill, quiet caption.
+        <div
+          data-site-snap="y"
+          className="-mx-5 mt-14 flex flex-col gap-24 md:mx-0 md:mt-24 md:grid md:grid-cols-2 md:gap-x-24 md:gap-y-32 md:[&>*:nth-child(even)]:mt-40"
+        >
+          {featured.map((p, i) => (
+            <div key={p.id} className="snap-start scroll-mt-16 md:scroll-mt-20">
+              <RitualProductCard product={p} index={i} href={ritualProductHref(shop, p.id)} sizes={GALLERY_PLATE_SIZES} anatomy="plate" />
+            </div>
+          ))}
+        </div>
       ) : variant === 'counter' ? (
         // Phase 10D.1 counter wall: dense uniform grid, counter card anatomy
         // (hairline tile, mono aisle eyebrow, persistent order row).
@@ -593,7 +713,20 @@ function RitualProductGrid({ block, shop, products, catalog, variant, hideCatego
           full catalog. Conditional: needs pieces to explore AND a real
           /site path (slugless previews render none). No data-block attrs.
           Pass 3: full-width on phones (thumb-reach CTA), inline from sm. */}
-      {showBridge && collectionsPath && (
+      {showBridge && collectionsPath && gallery && (
+        // Quiet bridge (10D.2): a serif text link with a hairline underline —
+        // the strong accent pill would turn the vitrine back into a shop.
+        <div className="mt-20 flex justify-center md:mt-32">
+          <Link
+            href={collectionsPath}
+            className="group inline-flex min-h-11 items-center gap-3 border-b border-[var(--site-text,#1c1917)] pb-1 font-serif text-lg italic text-[var(--site-text,oklch(21.6%_0.006_56.043))] transition hover:opacity-70 md:text-xl"
+          >
+            See the full collection
+            <span aria-hidden className="transition-transform duration-300 group-hover:translate-x-1 motion-reduce:transition-none">&rarr;</span>
+          </Link>
+        </div>
+      )}
+      {showBridge && collectionsPath && !gallery && (
         <div className={`mt-10 flex md:mt-14 ${alignLeft ? 'justify-start' : 'justify-center'}`}>
           <Link
             href={collectionsPath}
@@ -663,7 +796,48 @@ function RitualVideoHero({ block, shopName }: { block: VideoHeroBlock; shopName:
   );
 }
 
-function RitualStory({ block, shopName }: { block: StoryBlock; shopName: string | null }) {
+function RitualStory({ block, shopName, cut, notes }: {
+  block: StoryBlock;
+  shopName: string | null;
+  /** Phase 10D.2 recipe cut — absent ≡ the historical story band. */
+  cut?: RitualCut;
+  /** Gallery "Notes": the visible value_props items. The marquee is
+   *  suppressed on a gallery site, so this is the props' only surface —
+   *  content preserved, re-voiced. Not an inline edit target (same law as the
+   *  marquee: value props edit through the SectionRail inspector). */
+  notes?: ReadonlyArray<{ title: string; body: string }>;
+}) {
+  if (cut === 'gallery') {
+    // WALL TEXT (10D.2): no band tint, no label column, no clamp. A centred
+    // serif passage at the gallery rhythm — the story is read standing in the
+    // room, in full (brand_story budgets ≤ 600 chars; the clamp's teaser law
+    // exists for the compact classic band, not for a wall). Beneath it the
+    // numbered Notes in the mono voice.
+    const items = notes ?? [];
+    return (
+      <section id="story" data-block-section={block.id} className={ritualPad(block.padding, PAD_GALLERY)}>
+        <div className="mx-auto max-w-2xl px-5 text-center md:px-10">
+          <p className="font-mono text-[11px] font-bold uppercase tracking-[0.3em] text-[var(--site-muted,oklch(44.4%_0.011_73.639))]">{shopName}</p>
+          <EditableText as="p" blockId={block.id} field="body" className="mt-8 font-serif text-2xl font-medium leading-relaxed text-balance text-[var(--site-text,oklch(26.8%_0.007_34.298))] md:text-4xl md:leading-snug">
+            {block.body}
+          </EditableText>
+          {items.length > 0 && (
+            <ol className={`mx-auto mt-16 max-w-md divide-y border-y text-left ${RITUAL_HAIRLINE} [&>li]:border-[color-mix(in_srgb,var(--site-text,#1c1917)_12%,transparent)]`}>
+              {items.map((n, i) => (
+                <li key={`${block.id}-note-${i}`} className="grid grid-cols-[2.75rem_1fr] gap-4 py-5">
+                  <span className="font-mono text-[11px] tracking-[0.2em] text-[var(--site-muted,oklch(44.4%_0.011_73.639))]">{String(i + 1).padStart(2, '0')}</span>
+                  <div>
+                    <p className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-[var(--site-text,oklch(21.6%_0.006_56.043))]">{n.title}</p>
+                    <p className="mt-1.5 text-sm leading-relaxed text-[var(--site-muted,oklch(44.4%_0.011_73.639))]">{n.body}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      </section>
+    );
+  }
   return (
     // padding/align consumption (Pillar 4): story spacing + copy alignment.
     <section id="story" data-block-section={block.id} className={`border-y ${RITUAL_HAIRLINE} ${RITUAL_BAND} ${ritualPad(block.padding, PAD_20_28)}`}>
@@ -833,8 +1007,8 @@ export default function RitualTemplate({ shop, products, config, heroMedia }: Si
   // A 'counter' / 'gallery' grid (new values; written only by a future
   // generation or explicit upgrade) is eligibility-checked here against the
   // live slice and degrades one step when the data no longer qualifies. The
-  // recipe cuts themselves are NOT built yet: both values fall through the
-  // grid ternary below to the standard grid until Phase 10D.
+  // cuts: 'counter' (10D.1) and 'gallery' (10D.2) each have their own grid
+  // branch, hero cut, and chrome treatment below.
   const composition = resolveRitualComposition({ config, products, heroMedia });
   const heroVariant = composition.hero;
   const gridVariant = composition.grid;
@@ -852,12 +1026,21 @@ export default function RitualTemplate({ shop, products, config, heroMedia }: Si
   // the structured footer (unchanged: delivery/pickup/contact are buying
   // facts, and the desktop "Shop Now" pill stays — RitualChrome untouched).
   const counter = composition.recipe === 'product-first';
-  const cut: RitualCut | undefined = counter ? 'counter' : undefined;
+  // Phase 10D.2 — Gallery-Led "Vitrine" recipe. Activates ONLY when the
+  // resolver lands on 'gallery-led' (grid 'gallery' + hero media + ≥2
+  // pictured exhibits). Composition: entrance hero (no pill, no marquee, no
+  // strip) → exhibits (one per viewport / staggered two columns) → quiet
+  // text-link bridge → wall text with Notes (the value props' only surface
+  // here) → closing split-CTA spread → the dark cta_banner is NOT drawn →
+  // quiet chrome (two nav links, no pill, colophon footer).
+  const gallery = composition.recipe === 'gallery-led';
+  const cut: RitualCut | undefined = counter ? 'counter' : gallery ? 'gallery' : undefined;
   const counterCollectionsPath = counter ? siteCollectionsPath(shop) : null;
   const counterCategories = counterCollectionsPath ? distinctCategories(products) : [];
+  const galleryNotes = gallery ? (findBlock(blocks, 'value_props')?.items ?? []) : [];
 
   return (
-    <RitualChrome shop={shop} config={config} active="home">
+    <RitualChrome shop={shop} config={config} active="home" quiet={gallery}>
       {blocks.map((block, i) => {
         // The hero (LCP) never animates; every other section rides the Reveal
         // island (fade-in-up on scroll, static in editor previews / reduced
@@ -865,15 +1048,17 @@ export default function RitualTemplate({ shop, products, config, heroMedia }: Si
         const section = (() => {
           switch (block.type) {
             case 'hero_banner':
-              return <RitualHero block={block} shop={shop} heroMedia={heroMedia} signal={subtraction ? null : heroSignal} variant={heroVariant} cut={cut} />;
+              return <RitualHero block={block} shop={shop} heroMedia={heroMedia} signal={subtraction || gallery ? null : heroSignal} variant={heroVariant} cut={cut} />;
             // value_props: no body section (Fix 2) — the block renders as the
-            // SiteMarquee ribbon after the hero.
+            // SiteMarquee ribbon after the hero (gallery: as the story Notes).
             case 'product_grid':
-              return <RitualProductGrid block={block} shop={shop} products={featured} catalog={products} variant={gridVariant} hideCategories={subtraction || counter} cut={cut} />;
+              return <RitualProductGrid block={block} shop={shop} products={featured} catalog={products} variant={gridVariant} hideCategories={subtraction || counter || gallery} cut={cut} />;
             case 'story_text':
-              return <RitualStory block={block} shopName={shop.shop_name} />;
+              return <RitualStory block={block} shopName={shop.shop_name} cut={cut} notes={galleryNotes} />;
             case 'cta_banner':
-              return <RitualCta block={block} collectionsHref={collectionsHref} />;
+              // Gallery (10D.2): the dark banner is never drawn — the split
+              // spread is the closing CTA. The block stays in the config/rail.
+              return gallery ? null : <RitualCta block={block} collectionsHref={collectionsHref} />;
             case 'product_tabs':
               return <RitualProductTabs block={block} />;
             case 'video_hero':
@@ -904,7 +1089,7 @@ export default function RitualTemplate({ shop, products, config, heroMedia }: Si
                   stickyNav={config.theme?.sticky_nav !== false}
                 />
               ) : (
-                !subtraction && <SiteMarquee config={config} tone="ritual" />
+                !subtraction && !gallery && <SiteMarquee config={config} tone="ritual" />
               )}
             </Fragment>
           );

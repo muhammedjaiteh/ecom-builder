@@ -235,3 +235,18 @@ body {
     transition: none;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Phase 10D.2 — Gallery-Led exhibits: page-level vertical scroll-snap, opted
+   in by the exhibit track's data-site-snap="y" attribute (RitualTemplate).
+   PROXIMITY, never mandatory: the room settles on a plate when the scroll
+   stops near one and otherwise scrolls freely — the mandatory mode fights
+   the sticky nav and short captions. Pure CSS (no island); :has() keeps it
+   scoped to documents that actually contain a gallery, so every other page
+   is untouched. Reduced motion: free scroll.
+   ───────────────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: no-preference) {
+  html:has([data-site-snap="y"]) {
+    scroll-snap-type: y proximity;
+  }
+}
