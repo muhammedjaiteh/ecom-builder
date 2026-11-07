@@ -7,9 +7,11 @@ The objective is not to produce websites that look AI-generated.
 The objective is to produce storefronts that feel intentionally designed for the merchant's niche, inventory, and customers.
 
 Current Status
-Current Phase: 8A Complete
+Current Phase: 10 — Storefront Architecture Engine (strategic pivot)
 
-Next Phase: 8B Subtraction Family Rendering
+Current Step: Phase 10A read-only truth audit pending
+
+Previous Milestone: 8A Complete (8B Subtraction Family Rendering superseded by Phase 10 scope)
 
 Completed Work
 Pass 1
@@ -268,6 +270,32 @@ Reduced section density
 Expected outcome:
 
 Merchants should immediately perceive a different shopping experience even before reading copy.
+
+Phase 10 — Storefront Architecture Engine
+Current Highest-Priority Problem
+The four selectable themes still converge on a small number of fixed React skeletons.
+
+Sellers choosing the same theme can receive structurally identical storefronts despite different niches and inventories.
+
+Copy and palette changes do not count as meaningful design variation.
+
+Current Direction
+Phase 10 — Storefront Architecture Engine.
+
+Goal
+Move from:
+
+Theme → fixed template
+
+to:
+
+Commerce Mode → Storefront Family → Composition Recipe → Visual System → Curated Palette.
+
+Status
+Phase 10A read-only truth audit pending.
+
+Governing Rule
+See the Same-Theme Anti-Clone Rule in CLAUDE.md. Two merchants selecting the same theme must not receive the same storefront skeleton by default.
 
 Known Future Opportunities
 Better bakery hero imagery
