@@ -2402,6 +2402,315 @@ export function resolveRitualComposition(input: {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ARCHITECTURE ASSIGNMENT ENGINE (Phase 10H — recommendation only).
+//
+// A PURE, deterministic, explainable mapping from what the route knows at
+// generation time (niche, inventory, hero media, any forced template) to the
+// architecture the merchant SHOULD receive: Classic (narrative commerce),
+// Counter (catalog commerce) or Gallery (desire commerce). Spec: Phase 10G.
+//
+// Laws:
+//   · Informational while RITUAL_RECIPE_GENERATION_ENABLED is false — the
+//     route calls it once, logs the object, and changes NOTHING downstream.
+//     Routing, template selection, prompt and persisted config are untouched.
+//   · Eligibility is NOT re-stated here: Counter and Gallery reuse
+//     ritualRecipeEligibility verbatim, so the engine, the generation guard
+//     and the render-time fallback can never disagree. Classic is the floor.
+//   · Category normalisation below exists for COUNTING ONLY — stored category
+//     strings and every renderer keep their raw casing.
+//   · No I/O, no hashing, no randomness: the same inputs give the same object.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const ARCHITECTURES = ['classic', 'counter', 'gallery'] as const;
+export type Architecture = (typeof ARCHITECTURES)[number];
+export type AssignmentConfidence = 'high' | 'medium' | 'low';
+export type AssignmentOverride = 'seller-template' | 'seller-archetype' | 'concept' | null;
+
+/** The reliable generation-time signals (Phase 10F) the decision is built
+ *  from. Every dashboard "Why" line is composed from these — never from model
+ *  free text — so a merchant can verify each claim against their inventory. */
+export type ArchitectureSignals = {
+  /** Resolved STUDIO_NICHES id, or null when the niche is free text / absent. */
+  niche: StudioNicheId | null;
+  productCount: number;
+  pricedCount: number;
+  /** 0–1, two decimals. Pictured = real photo or Ad Studio hero (isPicturedProduct). */
+  picturedRatio: number;
+  /** Distinct categories after normalizeCategoryForAssignment. */
+  categoryCount: number;
+  heroMedia: boolean;
+  /** Products carrying an Ad Studio hero still or video. */
+  adStudioAssets: number;
+};
+
+export type ArchitectureAssignment = {
+  architecture: Architecture;
+  /** Recommended template. Counter/Gallery → 'ritual'; Classic → the existing
+   *  category heuristic (templateFromCategory) or the forced template. */
+  template: TemplateKey;
+  confidence: AssignmentConfidence;
+  /** One terse sentence a merchant can read; composed from signals + rules. */
+  reason: string;
+  /** Verbatim ritualRecipeEligibility results — same strings the render-time
+   *  fallback and any future "Upgrade available" badge show. */
+  eligibility: { counter: RecipeEligibility; gallery: RecipeEligibility };
+  signals: ArchitectureSignals;
+  /** What forced the template when one was forced — null when the model is
+   *  free to choose. A forced non-Ritual template degrades a recipe to Classic. */
+  overriddenBy: AssignmentOverride;
+};
+
+export type ArchitectureAssignmentInput = {
+  /** Seller-declared niche: a STUDIO_NICHES id, its label, or short free text. */
+  niche: string | null | undefined;
+  /** Inventory-derived dominant category — the keyword-scan fallback when the
+   *  niche resolves to no studio id (mirrors the route's effectiveCategory). */
+  dominantCategory?: string | null;
+  /** The FULL inventory slice the route holds (not the 12-piece home read). */
+  products: SiteProduct[];
+  /** Resolved the same way the renderer resolves it (resolveHeroMedia). */
+  heroMedia: HeroMedia;
+  /** A template already decided upstream (seller override, archetype pick or
+   *  approved concept) — null/undefined when the model will choose. */
+  forcedTemplate?: { template: TemplateKey; source: Exclude<AssignmentOverride, null> } | null;
+};
+
+/** Niche → architecture preference (Phase 10F category map). null = no strong
+ *  preference: the tie-break flow decides (Classic unless the catalog clearly
+ *  reads as a counter or a vitrine). 'food' is absent on purpose — it is a
+ *  hard rejection (menu-occasion) handled before preferences are consulted. */
+const NICHE_ARCHITECTURE_PREFERENCE: Readonly<Partial<Record<StudioNicheId, Exclude<Architecture, 'classic'> | null>>> = Object.freeze({
+  cosmetics: null,
+  fashion: 'gallery',
+  jewelry: 'gallery',
+  home: null,
+  wellness: 'counter',
+  tech: 'counter',
+  general: 'counter',
+});
+
+/** Free-text / inventory keyword fallbacks — consulted ONLY when no studio
+ *  niche id resolves. Culinary words reuse CULINARY_CATEGORY_KEYWORDS. */
+const COUNTER_CATEGORY_KEYWORDS: ReadonlyArray<string> = [
+  'electronic', 'tech', 'gadget', 'phone', 'laptop', 'appliance', 'hardware', 'tool',
+  'pharmacy', 'medic', 'supplement', 'vitamin', 'general', 'retail', 'department', 'household',
+];
+const GALLERY_CATEGORY_KEYWORDS: ReadonlyArray<string> = [
+  'jewel', 'gold', 'watch', 'fragrance', 'perfume', 'attar', 'oud', 'fashion', 'abaya',
+  'dress', 'couture', 'artisan', 'craft', 'handmade', 'art',
+];
+const SERVICE_CATEGORY_KEYWORDS: ReadonlyArray<string> = [
+  'event', 'service', 'booking', 'consult', 'rental', 'hire', 'planner', 'photograph',
+];
+
+/** Tie-break thresholds (Phase 10G §2). One place, next to the recipe rules. */
+export const ARCHITECTURE_ASSIGNMENT_RULES = Object.freeze({
+  /** Priced pieces at/above which an undecided niche reads as a counter. */
+  counterPricedTieBreak: 12,
+  /** Priced pieces BELOW which an undecided niche (with hero media) reads as a vitrine. */
+  galleryPricedTieBreak: 7,
+  /** Counter never fires on a catalog this small even if the 10B.1 category
+   *  floor passes — two categories of two products is not a counter. */
+  counterMinProducts: 4,
+  /** "Preferred" (high-confidence) Counter bar — Phase 10G §3. */
+  counterStrong: Object.freeze({ minPriced: 12, minCategories: 3, minPicturedRatio: 0.9 }),
+  /** "Preferred" Gallery bar — Phase 10G §3. */
+  galleryStrong: Object.freeze({ minExhibits: 3, minAdStudioAssets: 1 }),
+});
+
+/** Category key for COUNTING ONLY: trim, collapse whitespace, lowercase, and a
+ *  conservative English singular ("Dresses" → "dress", "Watches" → "watch",
+ *  "Accessories" → "accessory", "Decor " → "decor"). Never applied to stored
+ *  data or rendered labels. Empty → null (uncategorised is not a category). */
+export function normalizeCategoryForAssignment(raw: string | null | undefined): string | null {
+  if (typeof raw !== 'string') return null;
+  const base = raw.trim().replace(/\s+/g, ' ').toLowerCase();
+  if (!base) return null;
+  if (base.length <= 3) return base;
+  if (base.endsWith('ies') && base.length > 4) return `${base.slice(0, -3)}y`;
+  if (/(ches|shes|sses|xes|zes)$/.test(base)) return base.slice(0, -2);
+  if (base.endsWith('ss') || base.endsWith('us') || base.endsWith('is')) return base;
+  if (base.endsWith('s')) return base.slice(0, -1);
+  return base;
+}
+
+function normalizedCategoryCount(products: ReadonlyArray<Pick<SiteProduct, 'category'>>): number {
+  const seen = new Set<string>();
+  for (const p of products) {
+    const key = normalizeCategoryForAssignment(p.category);
+    if (key) seen.add(key);
+  }
+  return seen.size;
+}
+
+/** Studio niche id from an id, a label, or null. Pure. */
+function resolveStudioNicheId(niche: string | null | undefined): StudioNicheId | null {
+  const needle = (niche ?? '').trim().toLowerCase();
+  if (!needle) return null;
+  const hit = STUDIO_NICHES.find((n) => n.id === needle || n.label.toLowerCase() === needle);
+  return hit ? hit.id : null;
+}
+
+function percent(ratio: number): string {
+  return `${Math.round(ratio * 100)}%`;
+}
+
+/** Phase 10H — the assignment engine. Pure. See the section comment. */
+export function assignArchitecture(input: ArchitectureAssignmentInput): ArchitectureAssignment {
+  const { products, heroMedia } = input;
+  const nicheId = resolveStudioNicheId(input.niche);
+  const freeText = `${input.niche ?? ''} ${input.dominantCategory ?? ''}`.toLowerCase();
+  const forced = input.forcedTemplate ?? null;
+
+  // ── Signals ────────────────────────────────────────────────────────────
+  const productCount = products.length;
+  const pricedCount = products.filter((p) => p.price != null).length;
+  const picturedCount = products.filter(isPicturedProduct).length;
+  const picturedRatio = productCount === 0 ? 0 : Math.round((picturedCount / productCount) * 100) / 100;
+  const categoryCount = normalizedCategoryCount(products);
+  const adStudioAssets = products.filter((p) => Boolean(p.ad_hero_image_url || p.ad_video_url)).length;
+  const signals: ArchitectureSignals = {
+    niche: nicheId,
+    productCount,
+    pricedCount,
+    picturedRatio,
+    categoryCount,
+    heroMedia: Boolean(heroMedia),
+    adStudioAssets,
+  };
+
+  // ── Hard rejections (Phase 10G §3) ─────────────────────────────────────
+  const culinary = nicheId === 'food' || CULINARY_CATEGORY_KEYWORDS.some((k) => freeText.includes(k));
+  const serviceLike = !nicheId && SERVICE_CATEGORY_KEYWORDS.some((k) => freeText.includes(k));
+
+  // ── Eligibility — the existing 10B.1 rules, verbatim ───────────────────
+  const storefrontFamily: StorefrontFamily | null = culinary ? 'menu-occasion' : null;
+  const counterRaw = ritualRecipeEligibility('product-first', { products, heroMedia, storefrontFamily });
+  const galleryRaw = ritualRecipeEligibility('gallery-led', { products, heroMedia, storefrontFamily });
+  // Engine-side additions the render rules do not carry (Phase 10G §3):
+  // a total-product floor for Counter and the menu-occasion rejection for
+  // Counter (the render rule only rejects Gallery for menu-occasion).
+  const counterReasons = [...counterRaw.reasons];
+  if (productCount < ARCHITECTURE_ASSIGNMENT_RULES.counterMinProducts) {
+    counterReasons.push(`needs ${ARCHITECTURE_ASSIGNMENT_RULES.counterMinProducts} products (has ${productCount})`);
+  }
+  if (culinary) counterReasons.push('menu-occasion merchants are not counter merchants');
+  if (serviceLike) counterReasons.push('service merchants have no catalog to wall');
+  const galleryReasons = [...galleryRaw.reasons];
+  if (serviceLike) galleryReasons.push('service merchants have no pieces to exhibit');
+  const eligibility = {
+    counter: { eligible: counterReasons.length === 0, reasons: counterReasons },
+    gallery: { eligible: galleryReasons.length === 0, reasons: galleryReasons },
+  };
+
+  // ── Preference ─────────────────────────────────────────────────────────
+  let preference: Exclude<Architecture, 'classic'> | null = null;
+  if (nicheId) {
+    preference = NICHE_ARCHITECTURE_PREFERENCE[nicheId] ?? null;
+  } else if (!culinary && !serviceLike) {
+    if (GALLERY_CATEGORY_KEYWORDS.some((k) => freeText.includes(k))) preference = 'gallery';
+    else if (COUNTER_CATEGORY_KEYWORDS.some((k) => freeText.includes(k))) preference = 'counter';
+  }
+
+  const exhibits = selectGalleryExhibits(products).length;
+  const counterStrong =
+    pricedCount >= ARCHITECTURE_ASSIGNMENT_RULES.counterStrong.minPriced &&
+    categoryCount >= ARCHITECTURE_ASSIGNMENT_RULES.counterStrong.minCategories &&
+    picturedRatio >= ARCHITECTURE_ASSIGNMENT_RULES.counterStrong.minPicturedRatio;
+  const galleryStrong =
+    exhibits >= ARCHITECTURE_ASSIGNMENT_RULES.galleryStrong.minExhibits &&
+    adStudioAssets >= ARCHITECTURE_ASSIGNMENT_RULES.galleryStrong.minAdStudioAssets;
+
+  const counterFacts = `${pricedCount} priced products across ${categoryCount} ${categoryCount === 1 ? 'category' : 'categories'}, ${percent(picturedRatio)} photographed`;
+  const galleryFacts = `${exhibits} photographed ${exhibits === 1 ? 'piece' : 'pieces'} and ${adStudioAssets > 0 ? 'an Ad Studio hero' : heroMedia ? 'a shop banner' : 'no hero image'}`;
+
+  // ── Assignment (Phase 10G §1 step 3 + §2 tie-breaks) ───────────────────
+  let architecture: Architecture = 'classic';
+  let confidence: AssignmentConfidence = 'medium';
+  let reason: string;
+
+  if (culinary) {
+    confidence = 'high';
+    reason = 'Menu-occasion merchants open with the occasion, then the menu. Classic carries that rhythm.';
+  } else if (serviceLike) {
+    confidence = 'low';
+    reason = 'Service merchants have no catalog to wall or pieces to exhibit. Classic is the holding layout.';
+  } else if (preference === 'counter' && eligibility.counter.eligible) {
+    architecture = 'counter';
+    confidence = counterStrong ? 'high' : 'medium';
+    reason = `${counterFacts}. Buyers in this niche compare and scan, so the catalog is the page.`;
+  } else if (preference === 'gallery' && eligibility.gallery.eligible) {
+    architecture = 'gallery';
+    confidence = galleryStrong ? 'high' : 'medium';
+    reason = `${galleryFacts}. Pieces in this niche sell on the image, so each gets a full plate.`;
+  } else if (eligibility.counter.eligible && pricedCount >= ARCHITECTURE_ASSIGNMENT_RULES.counterPricedTieBreak) {
+    architecture = 'counter';
+    confidence = 'medium';
+    reason = `${counterFacts}. A catalog this deep reads as a counter.`;
+  } else if (
+    eligibility.gallery.eligible &&
+    pricedCount < ARCHITECTURE_ASSIGNMENT_RULES.galleryPricedTieBreak
+  ) {
+    architecture = 'gallery';
+    confidence = 'medium';
+    reason = `${galleryFacts}. A small photographed edit reads as a vitrine.`;
+  } else if (preference) {
+    confidence = 'low';
+    const missed = preference === 'counter' ? eligibility.counter.reasons : eligibility.gallery.reasons;
+    reason = `${preference === 'counter' ? 'Counter' : 'Gallery'} fits this niche but is not yet unlocked: ${missed.join('; ')}.`;
+  } else {
+    confidence = 'medium';
+    reason = `${counterFacts}. Neither a counter nor a vitrine is clearly stronger, so the story leads.`;
+  }
+
+  // ── Template routing recommendation + forced-template degradation ──────
+  // Classic keeps the route's own heuristic input (effectiveCategory: the
+  // studio label when a niche id resolved, else the raw niche text, else the
+  // dominant inventory category) so the recommendation equals today's hint.
+  const nicheLabel = nicheId ? STUDIO_NICHES.find((n) => n.id === nicheId)?.label ?? null : null;
+  const effectiveCategory = nicheLabel ?? (input.niche?.trim() || null) ?? input.dominantCategory ?? null;
+  let template: TemplateKey =
+    architecture === 'classic' ? templateFromCategory(effectiveCategory) : SUBTRACTION_TEMPLATE_KEY;
+  let overriddenBy: AssignmentOverride = null;
+  if (forced) {
+    overriddenBy = forced.source;
+    template = forced.template;
+    if (architecture !== 'classic' && forced.template !== SUBTRACTION_TEMPLATE_KEY) {
+      reason = `${architecture === 'counter' ? 'Counter' : 'Gallery'} fits (${architecture === 'counter' ? counterFacts : galleryFacts}) but the ${forced.source === 'seller-template' ? 'seller chose' : forced.source === 'concept' ? 'approved concept uses' : 'chosen archetype uses'} the "${forced.template}" template, which has no recipes.`;
+      architecture = 'classic';
+      confidence = 'low';
+    }
+  }
+
+  return { architecture, template, confidence, reason, eligibility, signals, overriddenBy };
+}
+
+/** Merchant-facing explanation (Phase 10G §6) — three terse lines composed
+ *  ONLY from the assignment object. Pure; the dashboard renders the strings. */
+export function describeArchitectureAssignment(a: ArchitectureAssignment): {
+  title: string;
+  why: string;
+  change: string;
+  unlock: string | null;
+} {
+  const label = a.architecture === 'counter' ? 'Counter' : a.architecture === 'gallery' ? 'Gallery' : 'Classic';
+  const change =
+    a.architecture === 'counter'
+      ? 'Buyers land in the full catalog with a sticky category strip.'
+      : a.architecture === 'gallery'
+        ? 'Each piece gets a full-screen plate before the catalog.'
+        : 'The story opens, the collection follows, trust closes.';
+  let unlock: string | null = null;
+  if (a.architecture === 'classic' && a.overriddenBy === null) {
+    const hints: string[] = [];
+    if (!a.eligibility.gallery.eligible) hints.push(`Unlock Gallery: ${a.eligibility.gallery.reasons.join('; ')}.`);
+    if (!a.eligibility.counter.eligible) hints.push(`Unlock Counter: ${a.eligibility.counter.reasons.join('; ')}.`);
+    unlock = hints.length ? hints.join(' ') : null;
+  }
+  return { title: `Recommended architecture: ${label}`, why: a.reason, change, unlock };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MERCHANT STRATEGY RESOLVER — a PURE, deterministic mapping from what the
 // merchant sells (studio niche id and/or the inventory-derived primary
 // category) to a visual archetype + a palette. No UI, no rendering, no I/O:

@@ -21,6 +21,7 @@ MatrixWebsiteGenerationSchema,
   ARCHETYPE_KEYS,
   ARCHETYPES,
   ConceptPairSchema,
+  RITUAL_RECIPE_GENERATION_ENABLED,
   SITE_TEMPLATES,
   STUDIO_NICHES,
   SiteConceptSchema,
@@ -29,6 +30,8 @@ MatrixWebsiteGenerationSchema,
   applyArchetype,
   applyGenerationLayout,
   archetypeLayoutBounds,
+  assignArchitecture,
+  resolveHeroMedia,
   buildPreviousDesign,
   classicLayoutBounds,
   cleanStoreContent,
@@ -606,6 +609,60 @@ ${COPY_INTEGRITY_DIRECTIVES}`;
     // the bundle is the contract the seller approved.
     const chosenTemplate: TemplateKey | undefined =
       archetype?.template_key ?? concept?.template_key ?? (templateOverride as TemplateKey | undefined);
+
+    // ── Phase 10H — architecture assignment (INFORMATIONAL) ───────────────
+    // One pure call over the full inventory slice, the seller's niche and the
+    // same hero-media resolution the renderer uses. While the recipe
+    // generation gate is closed this object is LOGGED and nothing else: it
+    // does not touch chosenTemplate, the prompt, the layout guard or the
+    // persisted config. Phase 10I wires it into routing + the constraint.
+    // Failures are swallowed — a recommendation must never block a build.
+    try {
+      const assignmentProducts = products.map((p) => ({
+        id: p.id,
+        name: p.name,
+        price: typeof p.price === 'number' ? p.price : typeof p.price === 'string' && p.price.trim() !== '' && Number.isFinite(Number(p.price)) ? Number(p.price) : null,
+        description: p.description,
+        image_url: p.image_url,
+        ad_video_url: p.ad_video_url,
+        ad_hero_image_url: p.ad_hero_image_url,
+        category: p.category,
+      }));
+      const forcedTemplate =
+        archetype && concept?.archetype_key
+          ? { template: archetype.template_key, source: 'concept' as const }
+          : archetype
+            ? { template: archetype.template_key, source: 'seller-archetype' as const }
+            : concept?.template_key
+              ? { template: concept.template_key, source: 'concept' as const }
+              : chosenTemplate
+                ? { template: chosenTemplate, source: 'seller-template' as const }
+                : null;
+      const assignment = assignArchitecture({
+        niche: nicheKey,
+        dominantCategory,
+        products: assignmentProducts,
+        heroMedia: resolveHeroMedia(
+          { id: shop.id, shop_name: shop.shop_name, shop_slug: shop.shop_slug, logo_url: shop.logo_url, banner_url: shop.banner_url, bio: shop.bio },
+          null,
+        ),
+        forcedTemplate,
+      });
+      console.log(
+        `[generate-website] Architecture assignment for shop ${shop.id} (gate ${RITUAL_RECIPE_GENERATION_ENABLED ? 'open' : 'closed'}, informational): ` +
+          JSON.stringify({
+            architecture: assignment.architecture,
+            confidence: assignment.confidence,
+            reason: assignment.reason,
+            signals: assignment.signals,
+            recommendedTemplate: assignment.template,
+            overriddenBy: assignment.overriddenBy,
+            eligibility: assignment.eligibility,
+          }),
+      );
+    } catch (assignmentError) {
+      console.warn('[generate-website] Architecture assignment skipped:', assignmentError);
+    }
 
     const archetypeDirection = archetype
       ? `\n\nARCHETYPE DIRECTION — the approved bundle is "${archetype.name}". ${archetype.vibe}\nVOICE: ${archetype.copyDirection}\nWrite the split_cta object for this site (see the field spec) — it renders as the two-panel conversion spread this archetype composes.`
