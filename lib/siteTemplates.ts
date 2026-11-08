@@ -2555,6 +2555,59 @@ function percent(ratio: number): string {
   return `${Math.round(ratio * 100)}%`;
 }
 
+/** Phase 10I — the fixed sentences the engine writes into `reason`, one per
+ *  decision path. The engine composes from these (strings byte-identical to
+ *  Phase 10H) and the log formatter reads the decision path back from them,
+ *  so observation needs no second ruleset and no new assignment field. */
+export const ASSIGNMENT_REASON_MARKERS = Object.freeze({
+  menuOccasion: 'Menu-occasion merchants open with the occasion, then the menu. Classic carries that rhythm.',
+  service: 'Service merchants have no catalog to wall or pieces to exhibit. Classic is the holding layout.',
+  preferredCounter: 'Buyers in this niche compare and scan, so the catalog is the page.',
+  preferredGallery: 'Pieces in this niche sell on the image, so each gets a full plate.',
+  tieBreakCounter: 'A catalog this deep reads as a counter.',
+  tieBreakGallery: 'A small photographed edit reads as a vitrine.',
+  preferredLocked: 'fits this niche but is not yet unlocked:',
+  tieBreakClassic: 'Neither a counter nor a vitrine is clearly stronger, so the story leads.',
+  overrideDegraded: 'which has no recipes.',
+});
+
+/** How an assignment was decided — read back from the reason the engine
+ *  wrote (Phase 10I §3). 'seller-override' = a forced non-Ritual template
+ *  degraded a recipe; 'niche-preference' = the niche's lean was eligible;
+ *  'tie-break' = catalog size decided (Classic included); 'fallback' = a hard
+ *  rejection (menu-occasion, service) or a locked preferred recipe. */
+export type AssignmentDecisionSource = 'niche-preference' | 'tie-break' | 'fallback' | 'seller-override';
+
+export function assignmentDecisionSource(a: Pick<ArchitectureAssignment, 'reason'>): AssignmentDecisionSource {
+  const M = ASSIGNMENT_REASON_MARKERS;
+  const r = a.reason;
+  if (r.endsWith(M.overrideDegraded)) return 'seller-override';
+  if (r.endsWith(M.preferredCounter) || r.endsWith(M.preferredGallery)) return 'niche-preference';
+  if (r.endsWith(M.tieBreakCounter) || r.endsWith(M.tieBreakGallery) || r.endsWith(M.tieBreakClassic)) return 'tie-break';
+  return 'fallback';
+}
+
+/** Phase 10I — the generation log block. Pure, deterministic, stable key
+ *  order; one line per fact so a week of logs greps by prefix. Consumes the
+ *  assignment object exactly — no thresholds, no rules, no recomputation. */
+export function formatArchitectureAssignment(
+  a: ArchitectureAssignment,
+  context: { shopId: string; gateOpen: boolean }
+): string {
+  const s = a.signals;
+  const elig = (e: RecipeEligibility): string =>
+    e.eligible ? 'eligible' : `not eligible — ${e.reasons.join('; ')}`;
+  return [
+    `[architecture-assignment] shop=${context.shopId} gate=${context.gateOpen ? 'open' : 'closed'} mode=observational`,
+    `  architecture : ${a.architecture} (confidence ${a.confidence}, decided by ${assignmentDecisionSource(a)})`,
+    `  template     : ${a.template} (recommended; overriddenBy ${a.overriddenBy ?? 'none'})`,
+    `  reason       : ${a.reason}`,
+    `  signals      : niche=${s.niche ?? 'none'} products=${s.productCount} priced=${s.pricedCount} pictured=${percent(s.picturedRatio)} categories=${s.categoryCount} heroMedia=${s.heroMedia ? 'yes' : 'no'} adStudio=${s.adStudioAssets}`,
+    `  counter      : ${elig(a.eligibility.counter)}`,
+    `  gallery      : ${elig(a.eligibility.gallery)}`,
+  ].join('\n');
+}
+
 /** Phase 10H — the assignment engine. Pure. See the section comment. */
 export function assignArchitecture(input: ArchitectureAssignmentInput): ArchitectureAssignment {
   const { products, heroMedia } = input;
@@ -2629,38 +2682,42 @@ export function assignArchitecture(input: ArchitectureAssignmentInput): Architec
   let confidence: AssignmentConfidence = 'medium';
   let reason: string;
 
+  // Phase 10I: every fixed sentence comes from ASSIGNMENT_REASON_MARKERS so
+  // the log formatter can name the decision path from the reason the engine
+  // ALREADY writes — strings are byte-identical to Phase 10H.
+  const M = ASSIGNMENT_REASON_MARKERS;
   if (culinary) {
     confidence = 'high';
-    reason = 'Menu-occasion merchants open with the occasion, then the menu. Classic carries that rhythm.';
+    reason = M.menuOccasion;
   } else if (serviceLike) {
     confidence = 'low';
-    reason = 'Service merchants have no catalog to wall or pieces to exhibit. Classic is the holding layout.';
+    reason = M.service;
   } else if (preference === 'counter' && eligibility.counter.eligible) {
     architecture = 'counter';
     confidence = counterStrong ? 'high' : 'medium';
-    reason = `${counterFacts}. Buyers in this niche compare and scan, so the catalog is the page.`;
+    reason = `${counterFacts}. ${M.preferredCounter}`;
   } else if (preference === 'gallery' && eligibility.gallery.eligible) {
     architecture = 'gallery';
     confidence = galleryStrong ? 'high' : 'medium';
-    reason = `${galleryFacts}. Pieces in this niche sell on the image, so each gets a full plate.`;
+    reason = `${galleryFacts}. ${M.preferredGallery}`;
   } else if (eligibility.counter.eligible && pricedCount >= ARCHITECTURE_ASSIGNMENT_RULES.counterPricedTieBreak) {
     architecture = 'counter';
     confidence = 'medium';
-    reason = `${counterFacts}. A catalog this deep reads as a counter.`;
+    reason = `${counterFacts}. ${M.tieBreakCounter}`;
   } else if (
     eligibility.gallery.eligible &&
     pricedCount < ARCHITECTURE_ASSIGNMENT_RULES.galleryPricedTieBreak
   ) {
     architecture = 'gallery';
     confidence = 'medium';
-    reason = `${galleryFacts}. A small photographed edit reads as a vitrine.`;
+    reason = `${galleryFacts}. ${M.tieBreakGallery}`;
   } else if (preference) {
     confidence = 'low';
     const missed = preference === 'counter' ? eligibility.counter.reasons : eligibility.gallery.reasons;
-    reason = `${preference === 'counter' ? 'Counter' : 'Gallery'} fits this niche but is not yet unlocked: ${missed.join('; ')}.`;
+    reason = `${preference === 'counter' ? 'Counter' : 'Gallery'} ${M.preferredLocked} ${missed.join('; ')}.`;
   } else {
     confidence = 'medium';
-    reason = `${counterFacts}. Neither a counter nor a vitrine is clearly stronger, so the story leads.`;
+    reason = `${counterFacts}. ${M.tieBreakClassic}`;
   }
 
   // ── Template routing recommendation + forced-template degradation ──────
@@ -2676,7 +2733,7 @@ export function assignArchitecture(input: ArchitectureAssignmentInput): Architec
     overriddenBy = forced.source;
     template = forced.template;
     if (architecture !== 'classic' && forced.template !== SUBTRACTION_TEMPLATE_KEY) {
-      reason = `${architecture === 'counter' ? 'Counter' : 'Gallery'} fits (${architecture === 'counter' ? counterFacts : galleryFacts}) but the ${forced.source === 'seller-template' ? 'seller chose' : forced.source === 'concept' ? 'approved concept uses' : 'chosen archetype uses'} the "${forced.template}" template, which has no recipes.`;
+      reason = `${architecture === 'counter' ? 'Counter' : 'Gallery'} fits (${architecture === 'counter' ? counterFacts : galleryFacts}) but the ${forced.source === 'seller-template' ? 'seller chose' : forced.source === 'concept' ? 'approved concept uses' : 'chosen archetype uses'} the "${forced.template}" template, ${M.overrideDegraded}`;
       architecture = 'classic';
       confidence = 'low';
     }

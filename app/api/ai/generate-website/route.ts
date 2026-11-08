@@ -31,6 +31,7 @@ MatrixWebsiteGenerationSchema,
   applyGenerationLayout,
   archetypeLayoutBounds,
   assignArchitecture,
+  formatArchitectureAssignment,
   resolveHeroMedia,
   buildPreviousDesign,
   classicLayoutBounds,
@@ -648,17 +649,14 @@ ${COPY_INTEGRITY_DIRECTIVES}`;
         ),
         forcedTemplate,
       });
+      // Phase 10I: structured, human-readable block (one fact per line) built
+      // ONLY from the assignment object — architecture, template, confidence,
+      // decision source, reason, signals, Counter/Gallery eligibility.
       console.log(
-        `[generate-website] Architecture assignment for shop ${shop.id} (gate ${RITUAL_RECIPE_GENERATION_ENABLED ? 'open' : 'closed'}, informational): ` +
-          JSON.stringify({
-            architecture: assignment.architecture,
-            confidence: assignment.confidence,
-            reason: assignment.reason,
-            signals: assignment.signals,
-            recommendedTemplate: assignment.template,
-            overriddenBy: assignment.overriddenBy,
-            eligibility: assignment.eligibility,
-          }),
+        formatArchitectureAssignment(assignment, {
+          shopId: shop.id,
+          gateOpen: RITUAL_RECIPE_GENERATION_ENABLED,
+        }),
       );
     } catch (assignmentError) {
       console.warn('[generate-website] Architecture assignment skipped:', assignmentError);

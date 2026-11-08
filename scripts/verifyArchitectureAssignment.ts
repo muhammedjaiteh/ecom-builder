@@ -16,7 +16,9 @@
 import {
   RITUAL_RECIPE_GENERATION_ENABLED,
   assignArchitecture,
+  assignmentDecisionSource,
   describeArchitectureAssignment,
+  formatArchitectureAssignment,
   guardRecipeGridPick,
   normalizeCategoryForAssignment,
   resolveRitualComposition,
@@ -160,6 +162,62 @@ console.log('\n[4] Zero effect while the gate is closed');
   check('legacy ritual row resolves classic', resolveRitualRecipe(legacy) === 'classic');
   const comp = resolveRitualComposition({ config: legacy, products: inventory(12), heroMedia: banner });
   check('legacy composition returns raw hero + grid', comp.recipe === 'classic' && comp.hero === 'split' && comp.grid === 'masonry' && comp.fallback === null, comp);
+}
+
+console.log('\n[5] Phase 10I — assignment object unchanged (Phase 10H snapshots)');
+{
+  // Exact JSON the engine produced at the end of Phase 10H for three inputs.
+  // Any drift in thresholds, confidence, wording or field order fails here.
+  const snap = (input: ArchitectureAssignmentInput, expected: unknown) =>
+    JSON.stringify(run(input)) === JSON.stringify(expected);
+  check('electronics snapshot', snap(
+    { niche: 'tech', products: inventory(20, {}, (i) => ({ category: ['Phones', 'Laptops', 'Audio'][i % 3] })), heroMedia: banner },
+    { architecture: 'counter', template: 'ritual', confidence: 'high', reason: '20 priced products across 3 categories, 100% photographed. Buyers in this niche compare and scan, so the catalog is the page.', eligibility: { counter: { eligible: true, reasons: [] }, gallery: { eligible: true, reasons: [] } }, signals: { niche: 'tech', productCount: 20, pricedCount: 20, picturedRatio: 1, categoryCount: 3, heroMedia: true, adStudioAssets: 0 }, overriddenBy: null },
+  ));
+  check('jewellery snapshot', snap(
+    { niche: 'jewelry', products: inventory(5, { category: 'Rings' }), heroMedia: banner },
+    { architecture: 'gallery', template: 'ritual', confidence: 'medium', reason: '5 photographed pieces and a shop banner. Pieces in this niche sell on the image, so each gets a full plate.', eligibility: { counter: { eligible: false, reasons: ['needs 6 priced products or 2 categories (has 5 priced, 1 categories)'] }, gallery: { eligible: true, reasons: [] } }, signals: { niche: 'jewelry', productCount: 5, pricedCount: 5, picturedRatio: 1, categoryCount: 1, heroMedia: true, adStudioAssets: 0 }, overriddenBy: null },
+  ));
+  check('fragrance snapshot', snap(
+    { niche: 'home', dominantCategory: 'Attars', products: inventory(5, { category: 'Attars' }), heroMedia: null },
+    { architecture: 'classic', template: 'ritual', confidence: 'medium', reason: '5 priced products across 1 category, 100% photographed. Neither a counter nor a vitrine is clearly stronger, so the story leads.', eligibility: { counter: { eligible: false, reasons: ['needs 6 priced products or 2 categories (has 5 priced, 1 categories)'] }, gallery: { eligible: false, reasons: ['needs hero media (site hero image or shop banner)'] } }, signals: { niche: 'home', productCount: 5, pricedCount: 5, picturedRatio: 1, categoryCount: 1, heroMedia: false, adStudioAssets: 0 }, overriddenBy: null },
+  ));
+  const override = run({ niche: 'fashion', products: inventory(5, { category: 'Abayas' }), heroMedia: banner, forcedTemplate: { template: 'editorial', source: 'seller-template' } });
+  check('override reason wording unchanged', override.reason === 'Gallery fits (5 photographed pieces and a shop banner) but the seller chose the "editorial" template, which has no recipes.', override.reason);
+  const locked = run({ niche: 'jewelry', products: inventory(5, { category: 'Rings' }), heroMedia: null });
+  check('locked-preference reason wording unchanged', locked.reason === 'Gallery fits this niche but is not yet unlocked: needs hero media (site hero image or shop banner).', locked.reason);
+}
+
+console.log('\n[6] Phase 10I — decision source + log formatter');
+{
+  const src = (input: ArchitectureAssignmentInput) => assignmentDecisionSource(run(input));
+  check('niche preference → niche-preference', src({ niche: 'tech', products: inventory(20, {}, (i) => ({ category: ['A', 'B', 'C'][i % 3] })), heroMedia: banner }) === 'niche-preference');
+  check('gallery preference → niche-preference', src({ niche: 'jewelry', products: inventory(5, { category: 'Rings' }), heroMedia: banner }) === 'niche-preference');
+  check('counter tie-break → tie-break', src({ niche: 'cosmetics', products: inventory(12, {}, (i) => ({ pictured: i < 10, category: 'Soaps' })), heroMedia: null }) === 'tie-break');
+  check('gallery tie-break → tie-break', src({ niche: 'cosmetics', products: inventory(4, { category: 'Serum' }), heroMedia: banner }) === 'tie-break');
+  check('classic tie-break → tie-break', src({ niche: 'cosmetics', products: inventory(8, { category: 'Serum' }), heroMedia: banner }) === 'tie-break');
+  check('menu-occasion → fallback', src({ niche: 'food', products: inventory(10), heroMedia: banner }) === 'fallback');
+  check('service → fallback', src({ niche: 'Event services', products: inventory(3), heroMedia: banner }) === 'fallback');
+  check('locked preference → fallback', src({ niche: 'jewelry', products: inventory(5, { category: 'Rings' }), heroMedia: null }) === 'fallback');
+  check('forced editorial → seller-override', src({ niche: 'fashion', products: inventory(5, { category: 'Abayas' }), heroMedia: banner, forcedTemplate: { template: 'editorial', source: 'seller-template' } }) === 'seller-override');
+  check('forced ritual keeps niche-preference', src({ niche: 'fashion', products: inventory(5, { category: 'Abayas' }), heroMedia: banner, forcedTemplate: { template: 'ritual', source: 'seller-archetype' } }) === 'niche-preference');
+
+  const a = run({ niche: 'jewelry', products: inventory(5, { category: 'Rings' }), heroMedia: null });
+  const block = formatArchitectureAssignment(a, { shopId: 'shop-1', gateOpen: RITUAL_RECIPE_GENERATION_ENABLED });
+  const lines = block.split('\n');
+  check('formatter is deterministic', block === formatArchitectureAssignment(a, { shopId: 'shop-1', gateOpen: RITUAL_RECIPE_GENERATION_ENABLED }));
+  check('formatter: 7 lines, stable prefix', lines.length === 7 && lines[0] === '[architecture-assignment] shop=shop-1 gate=closed mode=observational', lines);
+  check('formatter: architecture line carries confidence + decision source', lines[1] === '  architecture : classic (confidence low, decided by fallback)', lines[1]);
+  // Classic on a jewellery niche recommends the existing keyword heuristic's
+  // template (editorial) — the engine never re-routes Classic.
+  check('formatter: template line carries overriddenBy', lines[2] === '  template     : editorial (recommended; overriddenBy none)', lines[2]);
+  check('formatter: reason is the object reason verbatim', lines[3] === `  reason       : ${a.reason}`);
+  check('formatter: signals line', lines[4] === '  signals      : niche=jewelry products=5 priced=5 pictured=100% categories=1 heroMedia=no adStudio=0', lines[4]);
+  check('formatter: counter eligibility reuses engine wording', lines[5] === '  counter      : not eligible — needs 6 priced products or 2 categories (has 5 priced, 1 categories)', lines[5]);
+  check('formatter: gallery eligibility reuses engine wording', lines[6] === '  gallery      : not eligible — needs hero media (site hero image or shop banner)', lines[6]);
+  const eligibleBlock = formatArchitectureAssignment(run({ niche: 'tech', products: inventory(20, {}, (i) => ({ category: ['A', 'B', 'C'][i % 3] })), heroMedia: banner }), { shopId: 's', gateOpen: false });
+  check('formatter: eligible recipes print "eligible"', eligibleBlock.includes('  counter      : eligible\n') && eligibleBlock.endsWith('  gallery      : eligible'));
+  check('formatter: object fields untouched (7 keys, same order)', Object.keys(a).join(',') === 'architecture,template,confidence,reason,eligibility,signals,overriddenBy', Object.keys(a));
 }
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) FAILED.`);
