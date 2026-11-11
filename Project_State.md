@@ -4,15 +4,7 @@
 
 Sanndikaa generates premium, mobile-first storefronts for African merchants. The objective is storefronts that feel intentionally designed for the merchant's niche, inventory, and customers, never storefronts that look AI-generated.
 
-| | |
-|---|---|
-| Current phase | Phase 10 — Storefront Architecture Engine |
-| Current step | Phase 10G complete (assignment engine specified) |
-| Current bottleneck | Architecture assignment |
-| Current architectures | Classic, Counter, Gallery (Ritual-only), plus the Subtraction family |
-| Assignment status | Not implemented. No merchant can reach Counter or Gallery today |
-| Generation gate | `RITUAL_RECIPE_GENERATION_ENABLED = false` (closed) |
-| Next milestone | Phase 10H — Assignment Engine Implementation |
+| | | |---|---| | Current step | Phase 10J complete (gate readiness audit) | | Current bottleneck | Deployment readiness | | Current architectures | Classic, Counter, Gallery (Ritual-only), plus the Subtraction family | | Assignment status | Implemented and logging. Informational only while the gate remains closed | | Generation gate | `RITUAL_RECIPE_GENERATION_ENABLED = false` (closed) | | Next milestone | Observation review before Phase 10K |
 
 ## Phase 10 Current State
 
@@ -22,11 +14,7 @@ Sanndikaa generates premium, mobile-first storefronts for African merchants. The
 
 **Gallery = Desire Commerce.** Entrance hero → full-plate exhibits (2 to 6) → quiet bridge → notes → closing split CTA → quiet chrome. Requires hero media and 2 pictured exhibits. Rejected for menu-occasion merchants.
 
-Status: Architectures implemented. Assignment engine not yet implemented. Generation gate remains closed.
-
-Current bottleneck: Architecture assignment.
-
-Next milestone: Phase 10H — Assignment Engine Implementation.
+Status: - Architectures implemented. - Assignment engine implemented. - Assignment logging implemented. - Generation gate remains closed. Current bottleneck: Deployment readiness. The platform can now determine architecture recommendations, but assignment does not yet influence routing or generation. Next milestone: Observation review and evidence collection before Phase 10K.
 
 ### How assignment works today
 
@@ -43,7 +31,7 @@ Next milestone: Phase 10H — Assignment Engine Implementation.
 - Routing conflicts: Electronics prefers Counter but routes to Vitality. Jewellery prefers Gallery but routes to Editorial. Subtraction family silently overrides any assigned grid value in `resolveRitualRecipe`.
 
 ### Phase 10G specification (Assignment Engine)
-
+| Phase 10H — Assignment Engine | Pure assignment engine, category normalisation, assignment object, generation-time evaluation behind the closed gate | | Phase 10I — Assignment Logging | Structured assignment logging, formatter, decision-source visibility, observation tooling | | Phase 10J — Gate Readiness Audit | Deployment-readiness criteria, Classic-collapse thresholds, routing analysis, gate-opening requirements |
 - Flow: signals → eligibility (existing `ritualRecipeEligibility`) → assignment (new pure function in `lib/siteTemplates.ts`) → template routing (Ritual when Counter or Gallery is assigned and no seller override, archetype pick, or concept exists) → one fixed-grid sentence in the template constraint → generation, with the grid written before `applyGenerationLayout`.
 - Signal order: seller overrides, niche, hero media, pictured ratio, priced count, product count, category count (soft bonus only, normalised before counting).
 - Tie-breaks: 12+ priced → Counter; under 7 priced with hero media → Gallery; otherwise Classic.
@@ -60,16 +48,10 @@ Next milestone: Phase 10H — Assignment Engine Implementation.
 4. Every generation logs recipe, eligibility, and reason.
 5. Category normalisation before counting.
 6. Dev-harness run covering one merchant per category, greyscale screenshot-compared per the anti-clone rule.
+### Observation Findings (Phase 10J) Current founder-reviewed observations. #### The Gambia Mall Architecture: Counter Confidence: Very High Reason: Multiple skincare products, multiple routines, comparison-heavy buying behaviour. Observation: Counter remains the preferred architecture regardless of theme. Deep Luxury and Pastel Minimalist both retained Counter behaviour. Evidence: Architecture remained recognisable despite major theme changes. --- #### Ceesay's Creation Architecture: Classic Confidence: High Reason: Routine-driven skincare with strong narrative support. Observation: Cross-category merchandising opportunity exists. After the skincare collection flow, jewellery, abayas, and accessories would likely create more value than repeating skincare inventory. Classic remains the strongest architecture. --- #### Devine Perfume Architecture: Gallery Confidence: Very High Secondary: Classic Reason: Fragrance products sell through desire, identity, atmosphere, and imagery more than comparison. Observation: Gallery amplifies product desirability. Counter reduces fragrance into inventory. Classic remains an acceptable secondary architecture. --- #### Jambaba Boutique Architecture: Counter Confidence: Very High Reason: Utility electronics encourage browsing, comparison, and purchase. Observation: Utility electronics strongly favour Counter. Additional distinction: - Utility Electronics → Counter - Aspirational Electronics → Gallery Examples of aspirational electronics: - premium audio - high-end cameras - luxury devices - design-led hardware --- #### Najat Cakes Current Fit: No strong fit. Observation: Buying behaviour is occasion-driven and does not fully align with Narrative, Catalog, or Desire Commerce. Supports future Occasion Commerce research but does not justify implementation before assignment maturity. --- Strongest Observation So Far Theme no longer determines how the store sells. Architecture determines how the store sells. Theme determines how the architecture is presented. This behaviour matches the original Phase 10 objective.
+### Phase 10 roadmap 1. Observation review and evidence gathering. 2. Phase 10K — Routing Override. 3. Phase 10K — Prompt Constraint. 4. Phase 10K — Subtraction Precedence. 5. Generation Gate. 6. Merchant recommendations in the dashboard. 7. Occasion Commerce. 8. Lookbook Commerce. 9. Service Commerce.
 
-### Phase 10 roadmap
-
-1. Phase 10H — Assignment engine implementation (pure, tested).
-2. Routing update so assignments can reach Ritual.
-3. Generation gate opened behind the engine.
-4. Merchant recommendations in the dashboard from the same reason strings.
-5. Occasion commerce (bakery, catering).
-6. Lookbook commerce (fashion and abayas at scale).
-7. Service commerce (event and booking merchants).
+| Phase 10H — Assignment Engine | Pure assignment engine, category normalisation, assignment object, generation-time evaluation behind the closed gate | | Phase 10I — Assignment Logging | Structured assignment logging, formatter, decision-source visibility, observation tooling | | Phase 10J — Gate Readiness Audit | Deployment-readiness criteria, Classic-collapse thresholds, routing analysis, gate-opening requirements |
 
 ### Platform gaps (future architecture justified)
 
