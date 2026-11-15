@@ -998,6 +998,20 @@ export function buildPreviousDesign(prior: unknown): PreviousDesign | null {
 // it) validate unchanged and the renderer falls back to 'standard'.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Expression families (Phase 10K.3 spec, Phase 10L.2 schema support).
+ *  An expression is a distinct cut WITHIN a Ritual recipe:
+ *    'routine' | 'item'      — Counter (product-first) expressions
+ *    'atmosphere' | 'scale'  — Gallery (gallery-led) expressions
+ *  SCHEMA SUPPORT ONLY: nothing selects, persists or renders an expression
+ *  yet — applyGenerationLayout does not carry it and no resolver reads it. */
+export const LAYOUT_EXPRESSIONS = ['routine', 'item', 'atmosphere', 'scale'] as const;
+export type LayoutExpression = (typeof LAYOUT_EXPRESSIONS)[number];
+
+/** Type guard for an untrusted value — true only for a known expression. */
+export function isLayoutExpression(value: unknown): value is LayoutExpression {
+  return typeof value === 'string' && (LAYOUT_EXPRESSIONS as readonly string[]).includes(value);
+}
+
 export const LayoutStrategySchema = z.object({
   /** Hero composition — 'split' editorial two-panel, 'text-centric' type-led
    *  (service/minimal), 'standard' full-bleed visual (the absent default). */
@@ -1011,6 +1025,10 @@ export const LayoutStrategySchema = z.object({
    *  byte-identically. Until the recipe cuts land (Phase 10D) the templates'
    *  fall-through ternaries draw both as the standard grid. */
   grid: z.enum(['standard', 'masonry', 'featured-first', 'counter', 'gallery']).optional(),
+  /** Expression family (Phase 10L.2) — see LAYOUT_EXPRESSIONS. STRICTLY
+   *  optional and currently inert: no stored row carries it, no writer sets
+   *  it and no renderer reads it, so every legacy storefront is unchanged. */
+  expression: z.enum(LAYOUT_EXPRESSIONS).optional(),
 });
 
 export type LayoutStrategy = z.infer<typeof LayoutStrategySchema>;

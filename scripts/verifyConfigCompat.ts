@@ -15,6 +15,7 @@ import {
   ACCENT_PRESET_SLOTS,
   ARCHETYPES,
   ARCHETYPE_KEYS,
+  LAYOUT_EXPRESSIONS,
   TEMPLATE_KEYS,
   WebsiteConfigSchema,
   WebsiteGenerationSchema,
@@ -26,6 +27,7 @@ import {
   buildTestimonialsFromReviews,
   classicLayoutBounds,
   generationToConfig,
+  isLayoutExpression,
   legacySiteToBlocks,
   pickConceptArchetypes,
   resolveBlocks,
@@ -870,6 +872,73 @@ if (genWithLayoutParse.success) {
   check('product_grid.catalog is optional (legacy rows unchanged)', WebsiteConfigSchema.safeParse(legacyConfig).success);
   check('product_grid.catalog rejects values outside showcase|full',
     !WebsiteConfigSchema.safeParse({ ...subRitual, blocks: (subRitual.blocks ?? []).map((b) => (b.type === 'product_grid' ? { ...b, catalog: 'all' } : b)) }).success);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 10L.2 — Expression family SCHEMA SUPPORT (Commit 1). The optional
+// layout_strategy.expression enum must be a strict superset change: legacy
+// rows parse unchanged, the four expressions round-trip, anything else is
+// rejected, and no writer carries the key yet (selection/persistence land in
+// later commits).
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\nExpression family schema support (Phase 10L.2)');
+{
+  check('expression: constant lists exactly routine|item|atmosphere|scale',
+    JSON.stringify(LAYOUT_EXPRESSIONS) === JSON.stringify(['routine', 'item', 'atmosphere', 'scale']));
+
+  // Legacy rows: parse unchanged, and the parse never invents the key.
+  const legacyParsed = WebsiteConfigSchema.safeParse(legacyConfig);
+  check('expression: legacy config (no layout_strategy) parses unchanged',
+    legacyParsed.success && JSON.stringify(legacyParsed.data) === JSON.stringify(WebsiteConfigSchema.parse(legacyParsed.data)) &&
+    legacyParsed.data.layout_strategy === undefined);
+  const legacyStrategy = { ...legacyConfig, layout_strategy: { hero: 'split', grid: 'masonry' } };
+  const legacyStrategyParsed = WebsiteConfigSchema.safeParse(legacyStrategy);
+  check('expression: legacy layout_strategy (hero + grid only) parses unchanged, expression stays absent',
+    legacyStrategyParsed.success &&
+    JSON.stringify(legacyStrategyParsed.data.layout_strategy) === JSON.stringify({ hero: 'split', grid: 'masonry' }) &&
+    !('expression' in (legacyStrategyParsed.data.layout_strategy ?? {})));
+  check('expression: optional — empty layout_strategy object validates',
+    WebsiteConfigSchema.safeParse({ ...legacyConfig, layout_strategy: {} }).success);
+
+  // Valid expressions: accepted and round-trip through parse → JSON → parse.
+  for (const expression of LAYOUT_EXPRESSIONS) {
+    const grid = expression === 'routine' || expression === 'item' ? 'counter' : 'gallery';
+    const first = WebsiteConfigSchema.safeParse({ ...legacyConfig, layout_strategy: { grid, expression } });
+    const second = first.success ? WebsiteConfigSchema.safeParse(JSON.parse(JSON.stringify(first.data))) : first;
+    check(`expression: '${expression}' accepted and round-trips`,
+      first.success && second.success &&
+      second.data.layout_strategy?.expression === expression &&
+      second.data.layout_strategy?.grid === grid &&
+      JSON.stringify(second.data) === JSON.stringify(first.data));
+    check(`expression: isLayoutExpression('${expression}')`, isLayoutExpression(expression));
+  }
+  check('expression: accepted without hero/grid (expression-only strategy)',
+    WebsiteConfigSchema.safeParse({ ...legacyConfig, layout_strategy: { expression: 'item' } }).success);
+
+  // Invalid expressions: rejected by the schema and by the guard.
+  for (const bad of ['Routine', 'classic', 'counter', '', 7, null, ['item']] as const) {
+    check(`expression: ${JSON.stringify(bad)} rejected`,
+      !WebsiteConfigSchema.safeParse({ ...legacyConfig, layout_strategy: { grid: 'counter', expression: bad } }).success &&
+      !isLayoutExpression(bad));
+  }
+  check('expression: isLayoutExpression(undefined) is false', !isLayoutExpression(undefined));
+
+  // Snapshot round-trip: previous_design copies layout_strategy verbatim.
+  const snapshot = buildPreviousDesign({ ...legacyConfig, layout_strategy: { grid: 'gallery', expression: 'scale' } });
+  check('expression: survives the previous_design snapshot',
+    JSON.stringify(snapshot?.layout_strategy) === JSON.stringify({ grid: 'gallery', expression: 'scale' }));
+
+  // No persistence yet: a generation-supplied expression never reaches the
+  // config (applyGenerationLayout carries hero/grid only — Commit 1 scope).
+  const exprGen = WebsiteGenerationSchema.parse({
+    ...generationSampleRaw,
+    template_key: 'ritual',
+    layout: { layout_strategy: { hero: 'split', grid: 'masonry', expression: 'routine' } },
+  });
+  const exprApplied = applyGenerationLayout(generationToConfig(exprGen), exprGen.layout, classicLayoutBounds('ritual'));
+  check('expression: NOT persisted by applyGenerationLayout (schema support only)',
+    exprApplied.layout_strategy?.hero === 'split' && exprApplied.layout_strategy?.grid === 'masonry' &&
+    !('expression' in (exprApplied.layout_strategy ?? {})));
 }
 
 if (failures > 0) {
