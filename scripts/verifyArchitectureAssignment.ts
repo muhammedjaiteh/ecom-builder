@@ -15,19 +15,25 @@
 
 import {
   RITUAL_RECIPE_GENERATION_ENABLED,
+  applyExpressionSelection,
   assignArchitecture,
   assignmentDecisionSource,
   describeArchitectureAssignment,
   formatArchitectureAssignment,
+  formatExpressionSelection,
   guardRecipeGridPick,
+  isExpressionForArchitecture,
   normalizeCategoryForAssignment,
   resolveRitualComposition,
   resolveRitualRecipe,
   selectExpression,
+  selectGalleryExhibits,
   type ArchitectureAssignment,
   type ArchitectureAssignmentInput,
+  type ExpressionSignals,
   type HeroMedia,
   type SiteProduct,
+  type WebsiteConfig,
 } from '../lib/siteTemplates';
 
 let failures = 0;
@@ -364,6 +370,157 @@ console.log('\n[8] Phase 10L.3 — resolver expression support + render-time deg
   check('legacy row: same five fields as before, expression absent', strip(legacyComp) === '{"requested":"classic","recipe":"classic","hero":"split","grid":"masonry","fallback":null}' && legacyComp.expression === undefined, legacyComp);
   check('resolver is deterministic', JSON.stringify(counter('routine', aisles(3))) === JSON.stringify(routine) && JSON.stringify(gallery('scale', inventory(2))) === JSON.stringify(scaleShort));
   check('gate still closed — no stored row can reach an expression branch', RITUAL_RECIPE_GENERATION_ENABLED === false && guardRecipeGridPick('counter', 'ritual') === undefined && guardRecipeGridPick('gallery', 'ritual') === undefined);
+}
+
+console.log('\n[9] Phase 10L.4 — expression persistence, write-time validation + log (10K.3 §2)');
+{
+  // applyExpressionSelection reads template_key / storefront_family /
+  // layout_strategy and carries every other key through by reference, so a
+  // minimal shell is enough here (scripts/verifyConfigCompat.ts runs the same
+  // write over schema-valid configs and the editor / restore round-trips).
+  const shell = (template_key: string, layout_strategy?: Record<string, unknown>, storefront_family?: string): WebsiteConfig =>
+    ({
+      template_key,
+      niche_reasoning: 'fixture',
+      site: { marker: 'untouched' },
+      ...(layout_strategy ? { layout_strategy } : {}),
+      ...(storefront_family ? { storefront_family } : {}),
+    }) as unknown as WebsiteConfig;
+  const routineSignals: ExpressionSignals = { niche: 'cosmetics', dominantCategory: 'serums', categoryCount: 4, exhibits: 5 };
+  const itemSignals: ExpressionSignals = { niche: 'tech', dominantCategory: 'phones', categoryCount: 4, exhibits: 5 };
+  const scaleSignals: ExpressionSignals = { niche: 'jewelry', dominantCategory: 'rings', categoryCount: 1, exhibits: 5 };
+  const atmosphereSignals: ExpressionSignals = { niche: 'home', dominantCategory: 'oud', categoryCount: 1, exhibits: 5 };
+  const open = (config: WebsiteConfig, signals: ExpressionSignals | null) => applyExpressionSelection(config, { gridSurvivedGuard: true, signals });
+  // The route's exact call: the guard is re-evaluated on the config's own values.
+  const asRoute = (config: WebsiteConfig, signals: ExpressionSignals | null) =>
+    applyExpressionSelection(config, {
+      gridSurvivedGuard: guardRecipeGridPick(config.layout_strategy?.grid, config.template_key) === config.layout_strategy?.grid,
+      signals,
+    });
+  const hasKey = (config: WebsiteConfig) => 'expression' in ((config.layout_strategy ?? {}) as Record<string, unknown>);
+
+  // ── Writes: the four valid pairs ───────────────────────────────────────
+  const counterCfg = shell('ritual', { hero: 'text-centric', grid: 'counter' }, 'lifestyle-story');
+  const galleryCfg = shell('ritual', { hero: 'standard', grid: 'gallery' }, 'lifestyle-story');
+  const routine = open(counterCfg, routineSignals);
+  check('Routine Counter writes layout_strategy.expression = routine', routine.architecture === 'counter' && routine.expression === 'routine' && routine.config.layout_strategy?.expression === 'routine' && routine.reason === 'Routine Counter: cosmetics, 4 aisles', routine);
+  const item = open(counterCfg, itemSignals);
+  check('Item Counter writes layout_strategy.expression = item', item.architecture === 'counter' && item.expression === 'item' && item.config.layout_strategy?.expression === 'item' && item.reason === 'Item Counter: tech, 4 aisles', item);
+  const scale = open(galleryCfg, scaleSignals);
+  check('Scale Gallery writes layout_strategy.expression = scale', scale.architecture === 'gallery' && scale.expression === 'scale' && scale.config.layout_strategy?.expression === 'scale' && scale.reason === 'Scale Gallery: jewelry, 5 photographed pieces', scale);
+  const atmosphere = open(galleryCfg, atmosphereSignals);
+  check('Atmosphere Gallery writes layout_strategy.expression = atmosphere', atmosphere.architecture === 'gallery' && atmosphere.expression === 'atmosphere' && atmosphere.config.layout_strategy?.expression === 'atmosphere' && atmosphere.reason === 'Atmosphere Gallery: home, 5 photographed pieces', atmosphere);
+  check('write adds ONLY the expression key (hero + grid kept, every other key by reference)',
+    JSON.stringify(routine.config.layout_strategy) === '{"hero":"text-centric","grid":"counter","expression":"routine"}' &&
+    routine.config.site === counterCfg.site && routine.config.template_key === 'ritual' && routine.config.storefront_family === 'lifestyle-story' &&
+    Object.keys(routine.config).join(',') === Object.keys(counterCfg).join(','), routine.config);
+  check('write never mutates the input config', routine.config !== counterCfg && JSON.stringify(counterCfg.layout_strategy) === '{"hero":"text-centric","grid":"counter"}');
+  check('write is deterministic', JSON.stringify(open(counterCfg, routineSignals)) === JSON.stringify(routine) && JSON.stringify(open(galleryCfg, scaleSignals)) === JSON.stringify(scale));
+  check('a stale expression on a recipe row is replaced by the selection, never kept',
+    open(shell('ritual', { grid: 'counter', expression: 'scale' }), itemSignals).config.layout_strategy?.expression === 'item');
+
+  // ── No write: classic / subtraction / editorial / vitality ─────────────
+  const untouched = (name: string, config: WebsiteConfig, architecture: string, reason: string) => {
+    for (const [label, result] of [['guard true', open(config, routineSignals)], ['route call', asRoute(config, routineSignals)]] as const) {
+      check(`${name} writes nothing (${label}) — same object back`,
+        result.config === config && result.expression === undefined && !hasKey(result.config) && result.architecture === architecture && result.reason === reason, { architecture: result.architecture, expression: result.expression, reason: result.reason });
+    }
+  };
+  untouched('classic ritual (masonry)', shell('ritual', { hero: 'split', grid: 'masonry' }, 'lifestyle-story'), 'classic', 'classic has no expressions');
+  untouched('classic ritual (no layout_strategy)', shell('ritual'), 'classic', 'classic has no expressions');
+  untouched('subtraction', shell('ritual', { hero: 'text-centric', grid: 'masonry' }, 'subtraction'), 'subtraction', 'subtraction has no expressions');
+  untouched('subtraction carrying a counter grid', shell('ritual', { grid: 'counter' }, 'subtraction'), 'subtraction', 'subtraction has no expressions');
+  untouched('editorial', shell('editorial', { hero: 'split', grid: 'featured-first' }), 'classic', 'classic has no expressions');
+  untouched('editorial carrying a gallery grid', shell('editorial', { grid: 'gallery' }), 'classic', 'classic has no expressions');
+  untouched('vitality', shell('vitality', { grid: 'standard' }), 'classic', 'classic has no expressions');
+  untouched('vitality carrying a counter grid', shell('vitality', { grid: 'counter' }), 'classic', 'classic has no expressions');
+
+  // ── No write: guard failed / no signals ────────────────────────────────
+  const gated = asRoute(counterCfg, routineSignals);
+  check('gate closed: the route call writes nothing on a counter grid', RITUAL_RECIPE_GENERATION_ENABLED === false && gated.config === counterCfg && gated.expression === undefined && gated.reason === 'counter grid did not survive the generation guard', gated);
+  const gatedGallery = asRoute(galleryCfg, scaleSignals);
+  check('gate closed: the route call writes nothing on a gallery grid', gatedGallery.config === galleryCfg && gatedGallery.expression === undefined && gatedGallery.reason === 'gallery grid did not survive the generation guard', gatedGallery);
+  const noSignals = open(counterCfg, null);
+  check('no assignment signals → nothing written (base expression renders)', noSignals.config === counterCfg && noSignals.expression === undefined && noSignals.reason === 'assignment signals unavailable, the base expression renders', noSignals);
+
+  // ── Write-time validation: only valid architecture/expression pairs ────
+  const pairs: Array<[Parameters<typeof isExpressionForArchitecture>[0], unknown, boolean]> = [
+    ['counter', 'routine', true], ['counter', 'item', true], ['counter', 'scale', false], ['counter', 'atmosphere', false],
+    ['gallery', 'atmosphere', true], ['gallery', 'scale', true], ['gallery', 'routine', false], ['gallery', 'item', false],
+    ['classic', 'routine', false], ['classic', 'item', false], ['classic', 'atmosphere', false], ['classic', 'scale', false],
+    ['subtraction', 'routine', false], ['subtraction', 'item', false], ['subtraction', 'atmosphere', false], ['subtraction', 'scale', false],
+    ['counter', undefined, false], ['gallery', undefined, false], ['counter', 'banded', false], ['gallery', 42, false],
+  ];
+  check('isExpressionForArchitecture: full truth table', pairs.every(([a, e, expected]) => isExpressionForArchitecture(a, e) === expected), pairs.filter(([a, e, expected]) => isExpressionForArchitecture(a, e) !== expected));
+  // Sweep every signal shape over both recipe grids: the written value always
+  // belongs to the grid's architecture and undefined is never written.
+  const niches = [null, 'cosmetics', 'fashion', 'jewelry', 'home', 'food', 'wellness', 'tech', 'general'] as const;
+  let onlyValidPairs = true;
+  let neverUndefined = true;
+  let writes = 0;
+  for (const [cfg, architecture] of [[counterCfg, 'counter'], [galleryCfg, 'gallery']] as const) {
+    for (const niche of niches) {
+      for (const dominantCategory of [null, 'skin care', 'gold rings', 'phones']) {
+        for (const n of [0, 2, 3, 8]) {
+          const result = open(cfg, { niche, dominantCategory, categoryCount: n, exhibits: n });
+          writes += 1;
+          const stored = (result.config.layout_strategy as Record<string, unknown> | undefined)?.expression;
+          if (!isExpressionForArchitecture(architecture, stored) || stored !== result.expression) onlyValidPairs = false;
+          if (hasKey(result.config) && stored === undefined) neverUndefined = false;
+        }
+      }
+    }
+  }
+  check(`sweep (${writes} writes): counter rows only ever store routine|item, gallery rows only atmosphere|scale`, onlyValidPairs);
+  check('sweep: an expression key is never stored as undefined', neverUndefined);
+
+  // ── Chained exactly as the route builds it ─────────────────────────────
+  const chain = (input: ArchitectureAssignmentInput, cfg: WebsiteConfig) => {
+    const a = run(input);
+    const signals: ExpressionSignals = {
+      niche: a.signals.niche,
+      dominantCategory: input.dominantCategory ?? null,
+      categoryCount: a.signals.categoryCount,
+      exhibits: selectGalleryExhibits(input.products).length,
+    };
+    return { a, write: open(cfg, signals) };
+  };
+  const skincare = inventory(12, {}, (i) => ({ category: ['Serums', 'Creams', 'Oils'][i % 3] }));
+  const gambia = chain({ niche: 'wellness', dominantCategory: 'serums', products: skincare, heroMedia: banner }, counterCfg);
+  check('route chain: wellness counter, 3 aisles → routine written', gambia.a.architecture === 'counter' && gambia.write.expression === 'routine' && gambia.write.reason === 'Routine Counter: wellness, 3 aisles', gambia.write);
+  const gambiaRender = resolveRitualComposition({ config: gambia.write.config, products: skincare, heroMedia: banner });
+  check('route chain: the resolver draws the written routine back', gambiaRender.recipe === 'product-first' && gambiaRender.expression === 'routine' && gambiaRender.expressionFallback === null, gambiaRender);
+  const electronics = inventory(20, {}, (i) => ({ category: ['Phones', 'Audio', 'Laptops'][i % 3] }));
+  const jambaba = chain({ niche: 'tech', dominantCategory: 'phones', products: electronics, heroMedia: banner }, counterCfg);
+  check('route chain: tech counter → item written', jambaba.a.architecture === 'counter' && jambaba.write.expression === 'item' && jambaba.write.reason === 'Item Counter: tech, 3 aisles', jambaba.write);
+  const rings = inventory(5, { category: 'Rings' });
+  const subora = chain({ niche: 'jewelry', dominantCategory: 'rings', products: rings, heroMedia: banner }, galleryCfg);
+  check('route chain: jewelry gallery, 5 exhibits → scale written', subora.a.architecture === 'gallery' && subora.write.expression === 'scale' && subora.write.reason === 'Scale Gallery: jewelry, 5 photographed pieces', subora.write);
+  const suboraRender = resolveRitualComposition({ config: subora.write.config, products: rings, heroMedia: banner });
+  check('route chain: the resolver draws the written scale back', suboraRender.recipe === 'gallery-led' && suboraRender.expression === 'scale', suboraRender);
+  const devine = chain({ niche: 'home', dominantCategory: 'oud', products: inventory(5, { category: 'Oud' }), heroMedia: banner }, galleryCfg);
+  check('route chain: fragrance gallery → atmosphere written', devine.write.expression === 'atmosphere' && devine.write.reason === 'Atmosphere Gallery: home, 5 photographed pieces', devine.write);
+  // The expression follows the GRID the row carries, never the assignment:
+  // a jewelry shop assigned Gallery whose row carries a counter grid can only
+  // receive a Counter expression.
+  const diverged = chain({ niche: 'jewelry', dominantCategory: 'rings', products: rings, heroMedia: banner }, counterCfg);
+  check('assigned gallery + counter grid → item (never scale)', diverged.a.architecture === 'gallery' && diverged.write.architecture === 'counter' && diverged.write.expression === 'item', diverged.write);
+  const divergedBack = chain({ niche: 'wellness', dominantCategory: 'serums', products: skincare, heroMedia: banner }, galleryCfg);
+  check('assigned counter + gallery grid → atmosphere (never routine)', divergedBack.a.architecture === 'counter' && divergedBack.write.architecture === 'gallery' && divergedBack.write.expression === 'atmosphere', divergedBack.write);
+
+  // ── Log block (appended; the Phase 10I block is asserted unchanged in [6]) ─
+  const written = formatExpressionSelection(routine, { shopId: 'shop-1', gateOpen: true, assigned: 'counter' }).split('\n');
+  check('log: 4 lines, assignment prefix, stage=expression', written.length === 4 && written[0] === '[architecture-assignment] shop=shop-1 gate=open stage=expression', written);
+  check('log: architecture line', written[1] === '  architecture : counter (assigned counter)', written[1]);
+  check('log: expression line', written[2] === '  expression   : routine', written[2]);
+  check('log: expression reason line', written[3] === '  expr reason  : Routine Counter: cosmetics, 4 aisles', written[3]);
+  const classicLog = formatExpressionSelection(asRoute(shell('ritual', { grid: 'masonry' }), routineSignals), { shopId: 's', gateOpen: RITUAL_RECIPE_GENERATION_ENABLED, assigned: 'counter' });
+  check('log: classic row prints expression none + why', classicLog === '[architecture-assignment] shop=s gate=closed stage=expression\n  architecture : classic (assigned counter)\n  expression   : none\n  expr reason  : classic has no expressions', classicLog);
+  const skippedLog = formatExpressionSelection(noSignals, { shopId: 's', gateOpen: false, assigned: null });
+  check('log: skipped assignment prints "assigned unavailable"', skippedLog.split('\n')[1] === '  architecture : counter (assigned unavailable)' && skippedLog.split('\n')[2] === '  expression   : none', skippedLog);
+  check('log: formatter is deterministic', formatExpressionSelection(routine, { shopId: 'shop-1', gateOpen: true, assigned: 'counter' }) === written.join('\n'));
+  const tenI = formatArchitectureAssignment(run({ niche: 'jewelry', products: rings, heroMedia: null }), { shopId: 'shop-1', gateOpen: false }).split('\n');
+  check('log: the Phase 10I block is still 7 lines with its own header', tenI.length === 7 && tenI[0] === '[architecture-assignment] shop=shop-1 gate=closed mode=observational', tenI[0]);
 }
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) FAILED.`);

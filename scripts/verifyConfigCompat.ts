@@ -19,6 +19,7 @@ import {
   TEMPLATE_KEYS,
   WebsiteConfigSchema,
   WebsiteGenerationSchema,
+  applyExpressionSelection,
   applyArchetype,
   applyGenerationLayout,
   archetypeLayoutBounds,
@@ -26,13 +27,16 @@ import {
   buildPreviousDesign,
   buildTestimonialsFromReviews,
   classicLayoutBounds,
+  cleanStoreContent,
   generationToConfig,
+  guardRecipeGridPick,
   isLayoutExpression,
   legacySiteToBlocks,
   pickConceptArchetypes,
   resolveBlocks,
   resolveLayoutBlockOrder,
   resolveVisibleBlocks,
+  type ExpressionSignals,
   type SiteBlock,
   type WebsiteConfig,
 } from '../lib/siteTemplates';
@@ -939,6 +943,150 @@ console.log('\nExpression family schema support (Phase 10L.2)');
   check('expression: NOT persisted by applyGenerationLayout (schema support only)',
     exprApplied.layout_strategy?.hero === 'split' && exprApplied.layout_strategy?.grid === 'masonry' &&
     !('expression' in (exprApplied.layout_strategy ?? {})));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 10L.4 — Expression PERSISTENCE (Commit 3). The route writes
+// layout_strategy.expression after generationToConfig + applyGenerationLayout
+// and before cleanStoreContent / the dry-run return / the persist RPC. These
+// checks run that exact sequence over schema-valid configs and then push the
+// written key through every later writer: the jsonb round-trip, the cleanup
+// pass, the Site Editor save and the Restore swap. While the generation gate
+// is closed the real pipeline can never produce a recipe grid, so the recipe
+// rows below are built the way applyGenerationLayout builds them when open
+// ({ hero, grid }) and written with the guard result supplied explicitly.
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\nExpression persistence (Phase 10L.4)');
+{
+  const signals: ExpressionSignals = { niche: 'cosmetics', dominantCategory: 'serums', categoryCount: 4, exhibits: 5 };
+  const hasKey = (config: WebsiteConfig) => 'expression' in ((config.layout_strategy ?? {}) as Record<string, unknown>);
+  // The route's sequence, verbatim: assemble, then the guarded write.
+  const routeWrite = (config: WebsiteConfig) =>
+    applyExpressionSelection(config, {
+      gridSurvivedGuard: guardRecipeGridPick(config.layout_strategy?.grid, config.template_key) === config.layout_strategy?.grid,
+      signals,
+    });
+  const assemble = (templateKey: 'ritual' | 'editorial' | 'vitality', layout: Record<string, unknown>) => {
+    const gen = WebsiteGenerationSchema.parse({ ...generationSampleRaw, template_key: templateKey, layout });
+    return applyGenerationLayout(generationToConfig(gen), gen.layout, classicLayoutBounds(templateKey));
+  };
+
+  // ── Today's pipeline (gate closed): nothing is ever written ─────────────
+  const cases: Array<[string, WebsiteConfig, string]> = [
+    ['classic ritual (masonry)', assemble('ritual', { layout_strategy: { hero: 'split', grid: 'masonry' } }), 'classic'],
+    ['ritual, model picked counter (guard strips it)', assemble('ritual', { layout_strategy: { hero: 'split', grid: 'counter' } }), 'classic'],
+    ['ritual, model picked gallery (guard strips it)', assemble('ritual', { layout_strategy: { grid: 'gallery' } }), 'classic'],
+    ['ritual, model emitted an expression (assembler drops it)', assemble('ritual', { layout_strategy: { grid: 'masonry', expression: 'routine' } }), 'classic'],
+    ['subtraction', assemble('ritual', { storefront_family: 'subtraction' }), 'subtraction'],
+    ['editorial', assemble('editorial', { layout_strategy: { hero: 'split', grid: 'featured-first' } }), 'classic'],
+    ['editorial, model picked gallery', assemble('editorial', { layout_strategy: { grid: 'gallery' } }), 'classic'],
+    ['vitality', assemble('vitality', { layout_strategy: { grid: 'standard' } }), 'classic'],
+    ['vitality, model picked counter', assemble('vitality', { layout_strategy: { grid: 'counter' } }), 'classic'],
+    ['legacy stored row', WebsiteConfigSchema.parse(legacyConfig), 'classic'],
+  ];
+  for (const [name, config, architecture] of cases) {
+    const before = JSON.stringify(config);
+    const result = routeWrite(config);
+    check(`expression-persist: ${name} writes nothing, config byte-identical`,
+      result.config === config && JSON.stringify(result.config) === before && !hasKey(result.config) &&
+      result.expression === undefined && result.architecture === architecture && result.reason === `${architecture} has no expressions`,
+      `${result.architecture} / ${String(result.expression)} / ${result.reason}`);
+  }
+
+  // ── Recipe rows (what applyGenerationLayout emits once the gate opens) ──
+  const classicRitual = assemble('ritual', { layout_strategy: { hero: 'split', grid: 'masonry' } });
+  const counterRow: WebsiteConfig = { ...classicRitual, layout_strategy: { hero: 'text-centric', grid: 'counter' } };
+  const galleryRow: WebsiteConfig = { ...classicRitual, layout_strategy: { hero: 'standard', grid: 'gallery' } };
+  const gatedCounter = routeWrite(counterRow);
+  check('expression-persist: gate closed — the route call writes nothing even on a counter grid',
+    gatedCounter.config === counterRow && gatedCounter.expression === undefined && gatedCounter.reason === 'counter grid did not survive the generation guard',
+    gatedCounter.reason);
+
+  const open = (config: WebsiteConfig, s: ExpressionSignals) => applyExpressionSelection(config, { gridSurvivedGuard: true, signals: s });
+  const writes: Array<[string, WebsiteConfig, ExpressionSignals, string]> = [
+    ['Routine Counter', counterRow, signals, 'routine'],
+    ['Item Counter', counterRow, { niche: 'tech', dominantCategory: 'phones', categoryCount: 4, exhibits: 5 }, 'item'],
+    ['Scale Gallery', galleryRow, { niche: 'jewelry', dominantCategory: 'rings', categoryCount: 1, exhibits: 5 }, 'scale'],
+    ['Atmosphere Gallery', galleryRow, { niche: 'home', dominantCategory: 'oud', categoryCount: 1, exhibits: 5 }, 'atmosphere'],
+  ];
+  // The Site Editor save, simulated exactly (app/api/websites/content): the
+  // stored config is re-parsed, spread, and blocks + mirror are replaced.
+  const editorSave = (stored: unknown): WebsiteConfig => {
+    const parsed = WebsiteConfigSchema.parse(stored);
+    const blocks = resolveBlocks(parsed).map((b) => (b.type === 'hero_banner' ? { ...b, headline: 'Edited In The Rail' } : b));
+    return { ...parsed, site: blocksToLegacySite(blocks, parsed.site), blocks };
+  };
+  // The Restore swap, simulated exactly (app/api/websites/restore).
+  const restoreSwap = (stored: unknown): WebsiteConfig => {
+    const parsed = WebsiteConfigSchema.parse(stored);
+    const candidate = { ...(parsed.previous as Record<string, unknown>) };
+    delete candidate.previous;
+    const restored = WebsiteConfigSchema.parse(candidate);
+    const outgoing = buildPreviousDesign(parsed)!;
+    return { ...restored, previous: outgoing };
+  };
+  const jsonb = (config: WebsiteConfig): unknown => JSON.parse(JSON.stringify(config));
+
+  for (const [name, row, s, expected] of writes) {
+    const result = open(row, s);
+    const grid = row.layout_strategy!.grid;
+    check(`expression-persist: ${name} writes layout_strategy.expression = ${expected}`,
+      result.expression === expected && result.config.layout_strategy?.expression === expected &&
+      JSON.stringify(result.config.layout_strategy) === JSON.stringify({ ...row.layout_strategy, expression: expected }),
+      JSON.stringify(result.config.layout_strategy));
+    const { layout_strategy: _written, ...restWritten } = result.config;
+    const { layout_strategy: _input, ...restInput } = row;
+    void _written; void _input;
+    check(`expression-persist: ${name} — every other config key byte-identical, input not mutated`,
+      JSON.stringify(restWritten) === JSON.stringify(restInput) && !hasKey(row));
+    check(`expression-persist: ${name} — written config validates strictly`, WebsiteConfigSchema.safeParse(result.config).success);
+
+    // Cleanup pass → dry-run payload / persist RPC argument.
+    const cleaned = cleanStoreContent(result.config, { primaryCategory: 'Serums', shopName: 'Fixture House' });
+    check(`expression-persist: ${name} — survives cleanStoreContent (the dry-run + persisted config)`,
+      cleaned.layout_strategy?.expression === expected && cleaned.layout_strategy?.grid === grid);
+    // jsonb column → next read (siteData / content / restore all re-parse).
+    const stored = WebsiteConfigSchema.safeParse(jsonb(cleaned));
+    check(`expression-persist: ${name} — survives the jsonb round-trip + strict re-parse`,
+      stored.success && stored.data.layout_strategy?.expression === expected && stored.data.layout_strategy?.grid === grid);
+
+    // Editor round-trip.
+    const saved = editorSave(jsonb(cleaned));
+    const savedAgain = editorSave(jsonb(saved));
+    check(`expression-persist: ${name} — editor save preserves the expression (twice)`,
+      saved.layout_strategy?.expression === expected && savedAgain.layout_strategy?.expression === expected &&
+      savedAgain.layout_strategy?.grid === grid &&
+      resolveBlocks(savedAgain).some((b) => b.type === 'hero_banner' && b.headline === 'Edited In The Rail'));
+
+    // Regenerate over it (a classic design replaces it, snapshot keeps it),
+    // then Restore, then Restore again.
+    const regenerated: WebsiteConfig = { ...classicRitual, previous: buildPreviousDesign(jsonb(saved))! };
+    check(`expression-persist: ${name} — the regenerated classic row carries no expression of its own`,
+      !hasKey(regenerated) && (regenerated.previous as { layout_strategy?: { expression?: string } }).layout_strategy?.expression === expected);
+    const restored = restoreSwap(jsonb(regenerated));
+    check(`expression-persist: ${name} — restore brings the expression back with its grid`,
+      restored.layout_strategy?.expression === expected && restored.layout_strategy?.grid === grid &&
+      WebsiteConfigSchema.safeParse(restored).success &&
+      !('expression' in (((restored.previous as { layout_strategy?: Record<string, unknown> }).layout_strategy) ?? {})));
+    const restoredBack = restoreSwap(jsonb(restored));
+    check(`expression-persist: ${name} — restore ↔ restore round-trips (classic back, expression kept in the snapshot)`,
+      !hasKey(restoredBack) && restoredBack.layout_strategy?.grid === 'masonry' &&
+      (restoredBack.previous as { layout_strategy?: { expression?: string } }).layout_strategy?.expression === expected);
+  }
+
+  // ── Recipe rows that must still write nothing ───────────────────────────
+  const subtractionRow: WebsiteConfig = { ...counterRow, storefront_family: 'subtraction' };
+  const subWrite = open(subtractionRow, signals);
+  check('expression-persist: subtraction writes nothing even with a counter grid and the guard passed',
+    subWrite.config === subtractionRow && subWrite.expression === undefined && subWrite.reason === 'subtraction has no expressions');
+  for (const templateKey of ['editorial', 'vitality'] as const) {
+    const foreign: WebsiteConfig = { ...galleryRow, template_key: templateKey };
+    const foreignWrite = open(foreign, signals);
+    check(`expression-persist: ${templateKey} writes nothing even with a gallery grid and the guard passed`,
+      foreignWrite.config === foreign && foreignWrite.expression === undefined && foreignWrite.reason === 'classic has no expressions');
+  }
+  const noSignals = applyExpressionSelection(counterRow, { gridSurvivedGuard: true, signals: null });
+  check('expression-persist: no assignment signals → nothing written', noSignals.config === counterRow && noSignals.expression === undefined && !hasKey(noSignals.config));
 }
 
 if (failures > 0) {

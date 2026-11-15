@@ -28,10 +28,14 @@ MatrixWebsiteGenerationSchema,
   TEMPLATE_KEYS,
   WebsiteGenerationSchema,
   applyArchetype,
+  applyExpressionSelection,
   applyGenerationLayout,
   archetypeLayoutBounds,
   assignArchitecture,
   formatArchitectureAssignment,
+  formatExpressionSelection,
+  guardRecipeGridPick,
+  selectGalleryExhibits,
   resolveHeroMedia,
   buildPreviousDesign,
   classicLayoutBounds,
@@ -40,6 +44,8 @@ MatrixWebsiteGenerationSchema,
   pickConceptArchetypes,
   templateFromCategory,
   type ArchetypeKey,
+  type Architecture,
+  type ExpressionSignals,
   type LayoutBounds,
   type SiteArchetype,
   type SiteConcept,
@@ -618,6 +624,12 @@ ${COPY_INTEGRITY_DIRECTIVES}`;
     // does not touch chosenTemplate, the prompt, the layout guard or the
     // persisted config. Phase 10I wires it into routing + the constraint.
     // Failures are swallowed — a recommendation must never block a build.
+    // Phase 10L.4: two facts are carried OUT of this block for the expression
+    // write that runs after the layout is applied — the assigned architecture
+    // (log only) and the signals selectExpression reads. Both stay null when
+    // the assignment is skipped, and a null signal set writes nothing.
+    let assignedArchitecture: Architecture | null = null;
+    let expressionSignals: ExpressionSignals | null = null;
     try {
       const assignmentProducts = products.map((p) => ({
         id: p.id,
@@ -658,6 +670,16 @@ ${COPY_INTEGRITY_DIRECTIVES}`;
           gateOpen: RITUAL_RECIPE_GENERATION_ENABLED,
         }),
       );
+      // Phase 10L.4: the 10K.3 §2 selection inputs — the engine's own niche
+      // and normalised category count, the same dominantCategory it was
+      // given, and the exhibit count over the same inventory slice.
+      assignedArchitecture = assignment.architecture;
+      expressionSignals = {
+        niche: assignment.signals.niche,
+        dominantCategory,
+        categoryCount: assignment.signals.categoryCount,
+        exhibits: selectGalleryExhibits(assignmentProducts).length,
+      };
     } catch (assignmentError) {
       console.warn('[generate-website] Architecture assignment skipped:', assignmentError);
     }
@@ -877,6 +899,34 @@ ${COPY_INTEGRITY_DIRECTIVES}${entropyEngine}`;
         `[generate-website] Layout levers for shop ${shop.id} (${archetype ? archetype.key : `classic/${config.template_key}`}): ` +
         `${JSON.stringify(legacyGeneration.layout)} → blocks=[${(config.blocks ?? []).map((b) => `${b.type}${b.hidden ? '(hidden)' : ''}`).join(', ')}] theme=${JSON.stringify(config.theme ?? null)}`
       );
+    }
+
+    // ── Phase 10L.4 — expression persistence (10K.3 §2) ───────────────────
+    // Runs AFTER generationToConfig and applyArchetype / applyGenerationLayout
+    // (so the grid on the config is the one guardRecipeGridPick let through)
+    // and BEFORE the cleanup pass, the dry-run return and the persist RPC.
+    // layout_strategy.expression is written only for a Ritual, non-subtraction
+    // row whose grid is 'counter' or 'gallery' and survives the guard; every
+    // other row comes back as the same object, untouched. While the recipe
+    // generation gate is closed no row carries a recipe grid, so this writes
+    // nothing and only appends the expression block to the assignment log.
+    // Failures are swallowed — an absent key renders the base expression.
+    try {
+      const survivingGrid = config.layout_strategy?.grid;
+      const expressionWrite = applyExpressionSelection(config, {
+        gridSurvivedGuard: guardRecipeGridPick(survivingGrid, config.template_key) === survivingGrid,
+        signals: expressionSignals,
+      });
+      config = expressionWrite.config;
+      console.log(
+        formatExpressionSelection(expressionWrite, {
+          shopId: shop.id,
+          gateOpen: RITUAL_RECIPE_GENERATION_ENABLED,
+          assigned: assignedArchitecture,
+        }),
+      );
+    } catch (expressionError) {
+      console.warn('[generate-website] Expression selection skipped:', expressionError);
     }
 
     // ── Content cleanup (pure — clone-then-clean, original never mutated) ──

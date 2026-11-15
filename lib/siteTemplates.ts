@@ -2953,6 +2953,119 @@ function resolveRenderExpression(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// EXPRESSION PERSISTENCE (Phase 10L.4 — Commit 3 of 10L.1; spec: Phase 10K.3
+// §2 "persistence"). The generation route calls applyExpressionSelection ONCE,
+// after generationToConfig + applyArchetype / applyGenerationLayout (the only
+// writers of layout_strategy.grid — both run guardRecipeGridPick) and before
+// the dry-run return and the persist RPC.
+//
+// Laws:
+//   · The key is written ONLY for a row that asks the renderer for a recipe:
+//     Ritual template, storefront_family not 'subtraction', grid 'counter' or
+//     'gallery' — read through resolveRitualRecipe, so the writer and the
+//     resolver can never disagree — AND only when that grid survived
+//     guardRecipeGridPick. Classic, Subtraction, Editorial and Vitality rows
+//     come back as THE SAME OBJECT REFERENCE: nothing written, nothing cloned.
+//   · The expression is chosen for the architecture the row will RENDER (its
+//     surviving grid), never for an architecture it does not carry — so a
+//     Counter row can only receive routine | item and a Gallery row only
+//     atmosphere | scale. isExpressionForArchitecture re-checks the pair at
+//     write time; a mismatch writes nothing (absence renders the base).
+//   · undefined is never written: no selection, no key.
+//   · Inert while RITUAL_RECIPE_GENERATION_ENABLED is false — the guard strips
+//     every recipe grid, so no row reaches the write.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const ARCHITECTURE_EXPRESSIONS = Object.freeze({
+  counter: ['routine', 'item'],
+  gallery: ['atmosphere', 'scale'],
+} as const satisfies Record<Exclude<Architecture, 'classic'>, ReadonlyArray<LayoutExpression>>);
+
+/** True only for a pair the 10K.3 contracts allow: Counter with routine|item,
+ *  Gallery with atmosphere|scale. Classic and Subtraction allow none. */
+export function isExpressionForArchitecture(
+  architecture: Architecture | 'subtraction',
+  expression: unknown
+): expression is LayoutExpression {
+  if (architecture !== 'counter' && architecture !== 'gallery') return false;
+  return (ARCHITECTURE_EXPRESSIONS[architecture] as ReadonlyArray<unknown>).includes(expression);
+}
+
+/** The generation-time facts selectExpression reads, minus the architecture —
+ *  that is read from the config being written, never supplied by the caller. */
+export type ExpressionSignals = Omit<ExpressionSelectionInput, 'architecture'>;
+
+export type ExpressionPersistence = {
+  /** The config to persist. The SAME reference as the input when nothing was
+   *  written; a shallow copy carrying layout_strategy.expression otherwise. */
+  config: WebsiteConfig;
+  /** The architecture the config asks the renderer for (resolveRitualRecipe
+   *  read back as an architecture). */
+  architecture: Architecture | 'subtraction';
+  /** The value written to layout_strategy.expression — undefined when nothing
+   *  was written. */
+  expression: LayoutExpression | undefined;
+  /** selectExpression's reason when a value was written; otherwise the fixed
+   *  sentence saying why nothing was. Never model text. */
+  reason: string;
+};
+
+/** Phase 10L.4 — write the selected expression onto a generated config. Pure;
+ *  the input config is never mutated. See the section comment for the laws. */
+export function applyExpressionSelection(
+  config: WebsiteConfig,
+  input: {
+    /** guardRecipeGridPick(grid, template_key) === grid, evaluated by the
+     *  caller on the config's own values. False → nothing is written. */
+    gridSurvivedGuard: boolean;
+    /** null when the assignment engine did not produce signals (its failures
+     *  are swallowed by the route) → nothing is written. */
+    signals: ExpressionSignals | null;
+  }
+): ExpressionPersistence {
+  const recipe = resolveRitualRecipe(config);
+  const architecture: Architecture | 'subtraction' =
+    recipe === 'product-first' ? 'counter' : recipe === 'gallery-led' ? 'gallery' : recipe;
+  const unwritten = (reason: string): ExpressionPersistence => ({ config, architecture, expression: undefined, reason });
+  if (architecture !== 'counter' && architecture !== 'gallery') {
+    return unwritten(`${architecture} has no expressions`);
+  }
+  if (!input.gridSurvivedGuard) {
+    return unwritten(`${architecture} grid did not survive the generation guard`);
+  }
+  if (!input.signals) {
+    return unwritten('assignment signals unavailable, the base expression renders');
+  }
+  const selection = selectExpression({ ...input.signals, architecture });
+  if (!isExpressionForArchitecture(architecture, selection.expression) || !selection.reason) {
+    return unwritten(`no valid ${architecture} expression selected, the base expression renders`);
+  }
+  return {
+    config: { ...config, layout_strategy: { ...config.layout_strategy, expression: selection.expression } },
+    architecture,
+    expression: selection.expression,
+    reason: selection.reason,
+  };
+}
+
+/** Phase 10L.4 — the expression block appended to the assignment log. Printed
+ *  AFTER the layout is applied (the expression follows the surviving grid, so
+ *  it cannot be known when the Phase 10I block prints). Same prefix as
+ *  formatArchitectureAssignment so one grep returns both; that block is
+ *  untouched. Pure, deterministic, one fact per line. */
+export function formatExpressionSelection(
+  p: Pick<ExpressionPersistence, 'architecture' | 'expression' | 'reason'>,
+  context: { shopId: string; gateOpen: boolean; assigned: Architecture | null }
+): string {
+  return [
+    `[architecture-assignment] shop=${context.shopId} gate=${context.gateOpen ? 'open' : 'closed'} stage=expression`,
+    `  architecture : ${p.architecture} (assigned ${context.assigned ?? 'unavailable'})`,
+    `  expression   : ${p.expression ?? 'none'}`,
+    `  expr reason  : ${p.reason}`,
+  ].join('\n');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MERCHANT STRATEGY RESOLVER — a PURE, deterministic mapping from what the
 // merchant sells (studio niche id and/or the inventory-derived primary
 // category) to a visual archetype + a palette. No UI, no rendering, no I/O:
