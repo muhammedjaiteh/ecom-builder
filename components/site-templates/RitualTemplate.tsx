@@ -138,6 +138,10 @@ const PAD_GALLERY: Record<PadKey, string> = {
 };
 // Each plate is 100vw on phones (edge-to-edge) and half the row from md.
 const GALLERY_PLATE_SIZES = '(min-width: 768px) 50vw, 100vw';
+// Phase 10L.6 — Scale Gallery (10K.3 §1): every plate runs the FULL content
+// width at every breakpoint (the section's max-w-7xl box less its gutters —
+// 1200px from xl, the viewport less the gutters below it).
+const SCALE_PLATE_SIZES = '(min-width: 1280px) 1200px, 100vw';
 
 // Counter grid: the dense uniform wall — 2 / 3 / 4 / 5 columns with tight
 // gaps, every tile the same 3:4 frame. Bounded, utilitarian, no air.
@@ -186,7 +190,7 @@ function RitualCounterStrip({ categories, collectionsPath, stickyNav }: {
   );
 }
 
-function RitualHero({ block, shop, heroMedia, signal, variant, cut, aisles }: {
+function RitualHero({ block, shop, heroMedia, signal, variant, cut, aisles, scale }: {
   block: HeroBlock;
   shop: SiteShop;
   heroMedia: HeroMedia;
@@ -200,6 +204,10 @@ function RitualHero({ block, shop, heroMedia, signal, variant, cut, aisles }: {
    *  band order). Absent ≡ the Item Counter opener, byte-identical. Read only
    *  by the counter shelf header. */
   aisles?: string[];
+  /** Phase 10L.6 — Scale Gallery entrance: tagline and headline ONLY (no
+   *  subheadline, no CTA). Absent/false ≡ the Atmosphere Gallery entrance,
+   *  byte-identical. Read only by the gallery entrance. */
+  scale?: boolean;
 }) {
   if (cut === 'counter' && (variant === undefined || variant === 'text-centric')) {
     // Product-First "Counter" opener — the SHELF HEADER. Type-led like the
@@ -317,9 +325,19 @@ function RitualHero({ block, shop, heroMedia, signal, variant, cut, aisles }: {
           >
             {block.headline}
           </EditableText>
+          {/* Scale Gallery (10L.6, 10K.3 §1): the entrance carries the tagline
+              and the headline ONLY — the subheadline and the CTA are forbidden
+              there, so the first exhibit is the first conversion surface. The
+              subheadline stays in the block and editable from the rail; it is
+              simply not drawn. Atmosphere renders both, exactly as before:
+              two SEPARATE guards (never one Fragment) so both nodes stay
+              direct children and the serialised tree keeps its exact shape. */}
+          {!scale && (
           <EditableText as="p" blockId={block.id} field="subheadline" className="mt-5 max-w-md text-sm leading-relaxed text-white/75">
             {block.subheadline}
           </EditableText>
+          )}
+          {!scale && (
           <div className="mt-8 md:mt-10">
             <a
               href="#collection"
@@ -328,6 +346,7 @@ function RitualHero({ block, shop, heroMedia, signal, variant, cut, aisles }: {
               Shop The Collection
             </a>
           </div>
+          )}
         </div>
       </header>
     );
@@ -571,7 +590,7 @@ function ritualMasonryRatio(i: number): RitualCardRatio {
   return i % 2 === 0 ? 'portrait' : 'square';
 }
 
-function RitualProductGrid({ block, shop, products, catalog, variant, hideCategories, cut, banded }: {
+function RitualProductGrid({ block, shop, products, catalog, variant, hideCategories, cut, banded, scale }: {
   block: ProductGridBlock;
   shop: SiteShop;
   /** The showcase selection (selectFeaturedProducts) — capped again here so a
@@ -589,6 +608,11 @@ function RitualProductGrid({ block, shop, products, catalog, variant, hideCatego
    *  aisle. Absent/false ≡ the Item Counter flat wall, byte-identical. Read
    *  only by the counter grid branch. */
   banded?: boolean;
+  /** Phase 10L.6 — Scale Gallery: draw the exhibits as ONE column of
+   *  full-content-width plates. Absent/false ≡ the Atmosphere Gallery
+   *  staggered exhibit flow, byte-identical. Read only by the gallery grid
+   *  branch. */
+  scale?: boolean;
 }) {
   const counter = cut === 'counter';
   const gallery = cut === 'gallery';
@@ -714,6 +738,21 @@ function RitualProductGrid({ block, shop, products, catalog, variant, hideCatego
               </div>
             );
           })}
+        </div>
+      ) : variant === 'gallery' && scale ? (
+        // Phase 10L.6 Scale Gallery exhibits (10K.3 §1): ONE tall column of
+        // large rectangles. Every plate runs the full content width at every
+        // breakpoint — no bleed on phones, no second column from md, no
+        // stagger — so no two plates ever share a row. Plates are separated
+        // by half a viewport of empty surface (the contract's floor). Same
+        // exhibits (selectGalleryExhibits), same plate anatomy, same snap
+        // opt-in as the Atmosphere flow below; only the container differs.
+        <div data-site-snap="y" className="mt-14 flex flex-col gap-[50vh] md:mt-24">
+          {featured.map((p, i) => (
+            <div key={p.id} className="snap-start scroll-mt-16 md:scroll-mt-20">
+              <RitualProductCard product={p} index={i} href={ritualProductHref(shop, p.id)} sizes={SCALE_PLATE_SIZES} anatomy="plate" />
+            </div>
+          ))}
         </div>
       ) : variant === 'gallery' ? (
         // Phase 10D.2 exhibit flow. Phones: one plate per viewport — each
@@ -1140,7 +1179,19 @@ export default function RitualTemplate({ shop, products, config, heroMedia }: Si
   const routineAisles = routine
     ? groupCounterAisles(products).flatMap((aisle) => (aisle.label ? [aisle.label] : []))
     : undefined;
-  const galleryNotes = gallery ? (findBlock(blocks, 'value_props')?.items ?? []) : [];
+  // Phase 10L.6 — Gallery EXPRESSIONS (10K.3 §1). 'atmosphere' or 'scale' on
+  // a gallery after the resolver's render-time degrade, undefined everywhere
+  // else. Atmosphere (and an absent key) is the existing gallery render,
+  // untouched. Scale changes four surfaces and nothing else: the entrance
+  // carries tagline + headline only; the exhibits run as one column of
+  // full-content-width plates; the wall text is drawn WITHOUT the Notes list
+  // (an empty list — RitualStory already draws no list for one); and the
+  // split-CTA spread is not drawn, which leaves the exhibit section's quiet
+  // text-link bridge as the page's closing call to action. Plate anatomy,
+  // exhibit selection, the bridge, the wall text and the quiet chrome are
+  // shared by both expressions.
+  const scale = gallery && composition.expression === 'scale';
+  const galleryNotes = gallery && !scale ? (findBlock(blocks, 'value_props')?.items ?? []) : [];
 
   return (
     <RitualChrome shop={shop} config={config} active="home" quiet={gallery}>
@@ -1151,11 +1202,11 @@ export default function RitualTemplate({ shop, products, config, heroMedia }: Si
         const section = (() => {
           switch (block.type) {
             case 'hero_banner':
-              return <RitualHero block={block} shop={shop} heroMedia={heroMedia} signal={subtraction || gallery ? null : heroSignal} variant={heroVariant} cut={cut} aisles={routineAisles} />;
+              return <RitualHero block={block} shop={shop} heroMedia={heroMedia} signal={subtraction || gallery ? null : heroSignal} variant={heroVariant} cut={cut} aisles={routineAisles} scale={scale} />;
             // value_props: no body section (Fix 2) — the block renders as the
             // SiteMarquee ribbon after the hero (gallery: as the story Notes).
             case 'product_grid':
-              return <RitualProductGrid block={block} shop={shop} products={featured} catalog={products} variant={gridVariant} hideCategories={subtraction || counter || gallery} cut={cut} banded={routine} />;
+              return <RitualProductGrid block={block} shop={shop} products={featured} catalog={products} variant={gridVariant} hideCategories={subtraction || counter || gallery} cut={cut} banded={routine} scale={scale} />;
             case 'story_text':
               return <RitualStory block={block} shopName={shop.shop_name} cut={cut} notes={galleryNotes} />;
             case 'cta_banner':
@@ -1169,7 +1220,10 @@ export default function RitualTemplate({ shop, products, config, heroMedia }: Si
             case 'testimonials':
               return <RitualTestimonials block={block} />;
             case 'split_cta':
-              return <RitualSplitCta block={block} shop={shop} products={featured} collectionsHref={collectionsHref} />;
+              // Scale Gallery (10L.6): the split spread is never drawn — the
+              // exhibit section's bridge closes the page. The block stays in
+              // the config/rail (same law as the gallery's dark banner above).
+              return scale ? null : <RitualSplitCta block={block} shop={shop} products={featured} collectionsHref={collectionsHref} />;
             default:
               return null;
           }
