@@ -11,10 +11,12 @@ Pastel Minimalist
 
 Observed Architecture:
 Classic (current)
-Preferred: Routine Counter
+
+Preferred Architecture:
+Counter
 
 Founder Verdict:
-Strongly Agree with Counter as the long-term architecture.
+Strongly Agree
 
 Confidence:
 Very High
@@ -28,7 +30,7 @@ What Worked:
 
 What Felt Wrong:
 
-- The products arrive too late in the flow.
+- Products arrive too late in the flow.
 - Comparison shopping is not supported early enough.
 - Routine-led shopping behaviour is flattened into a narrative structure.
 
@@ -36,8 +38,7 @@ Clone Risk Observation:
 
 The storefront currently differentiates itself primarily through theme rather than architecture.
 
-If another skincare merchant received the same rhythm,
-the two stores would feel too similar.
+If another skincare merchant received the same rhythm, the two stores would feel too similar.
 
 Architecture Conclusion:
 
@@ -45,18 +46,32 @@ Counter remains the most natural architecture.
 
 Expression Conclusion:
 
-Routine Counter is justified.
+Routine Counter remains conceptually justified.
 
-Reason:
+Implementation Observation:
 
-The merchant sells through routines:
+The live merchant does not qualify for Routine Counter under the frozen rules.
 
-- Kojic Cream
-- Kojic Serum
-- Gluta-VC Lotion
-- Glow Oil
+Live inventory contains:
 
-The current flat catalog structure does not express this behaviour.
+- 11 products in "Beauty & Wellness"
+- 1 product in "Beauty"
+
+Result:
+
+Two normalized categories.
+
+Routine Counter requires three.
+
+Therefore the merchant correctly degrades to:
+
+Item Counter
+
+Finding:
+
+Routine buying behaviour does not necessarily align with category structure.
+
+This is a signal-quality observation, not an implementation defect.
 
 ---
 
@@ -70,10 +85,12 @@ High-Contrast Street
 
 Observed Architecture:
 Classic (current)
-Preferred: Item Counter
+
+Preferred Architecture:
+Counter
 
 Founder Verdict:
-Strongly Agree with Counter as the long-term architecture.
+Strongly Agree
 
 Confidence:
 Very High
@@ -92,11 +109,9 @@ What Felt Wrong:
 
 Clone Risk Observation:
 
-The storefront feels different primarily because of theme
-rather than commerce structure.
+The storefront feels different primarily because of theme rather than commerce structure.
 
-Without theme treatment,
-the underlying rhythm converges toward other Classic storefronts.
+Without theme treatment, the underlying rhythm converges toward other Classic storefronts.
 
 Architecture Conclusion:
 
@@ -104,11 +119,30 @@ Counter remains correct.
 
 Expression Conclusion:
 
-Item Counter is justified.
+Item Counter remains justified.
 
-Reason:
+Implementation Observation:
 
-Electronics are comparison-led rather than routine-led.
+The live merchant is currently Counter-ineligible.
+
+Inventory:
+
+- 4 products
+- 1 category
+
+Current Counter eligibility requires:
+
+- 6 priced products
+
+OR
+
+- 2 categories
+
+Finding:
+
+The implementation is correct.
+
+The merchant simply does not satisfy the current Counter thresholds.
 
 ---
 
@@ -124,7 +158,7 @@ Observed Architecture:
 Gallery
 
 Founder Verdict:
-Strongly Agree.
+Strongly Agree
 
 Confidence:
 Very High
@@ -132,17 +166,17 @@ Very High
 What Worked:
 
 - Atmosphere is strong.
-- Products feel desirable.
-- Imagery drives the experience.
-- Gallery supports identity-based buying.
+- Desire and identity are communicated effectively.
+- Gallery supports image-driven buying behaviour.
+- Fragrance feels aspirational rather than inventory-driven.
 
 What Felt Wrong:
 
-- Nothing significant within the current Gallery expression.
+Nothing significant within the current Atmosphere Gallery expression.
 
 Clone Risk Observation:
 
-The current Gallery rhythm works extremely well for fragrance.
+The original Gallery expression worked extremely well for fragrance but was later observed to converge with jewellery merchants.
 
 Architecture Conclusion:
 
@@ -150,7 +184,7 @@ Gallery remains correct.
 
 Expression Conclusion:
 
-Atmosphere Gallery is justified.
+Atmosphere Gallery remains justified.
 
 Reason:
 
@@ -162,8 +196,6 @@ The merchant sells through:
 - atmosphere
 
 rather than comparison.
-
-Atmosphere Gallery serves these behaviours naturally.
 
 ---
 
@@ -188,11 +220,11 @@ What Worked:
 
 - Premium presentation.
 - Jewellery feels luxurious.
-- Gallery remains a better fit than Counter or Classic.
+- Gallery remains a stronger fit than Counter or Classic.
 
 What Felt Wrong:
 
-The storefront feels closer to a fragrance storefront than a jewellery storefront.
+The storefront felt closer to a fragrance storefront than a jewellery storefront.
 
 Atmosphere Gallery's:
 
@@ -201,7 +233,7 @@ Atmosphere Gallery's:
 - closing structure
 - overall geometry
 
-remain largely unchanged despite a radically different product type.
+remained largely unchanged despite a radically different product type.
 
 The products changed.
 
@@ -209,8 +241,7 @@ The expression did not.
 
 Clone Risk Observation:
 
-If another jewellery merchant received this same Gallery rhythm,
-the two storefronts would feel extremely similar.
+If another jewellery merchant received this same Gallery rhythm, the two storefronts would feel extremely similar.
 
 Architecture Conclusion:
 
@@ -232,8 +263,7 @@ more than atmosphere-driven sequencing.
 
 Conclusion:
 
-This is the strongest real-world evidence supporting
-a second Gallery expression.
+This became the strongest real-world evidence supporting a second Gallery expression.
 
 ---
 
@@ -248,7 +278,7 @@ Result:
 
 FAIL
 
-Clone risk visible.
+Clone risk clearly visible.
 
 Reason:
 
@@ -257,7 +287,7 @@ The two merchants belong to different niches:
 - Fragrance
 - Jewellery
 
-but still share the same Gallery expression.
+but were still receiving the same Gallery expression.
 
 After removing:
 
@@ -265,12 +295,13 @@ After removing:
 - names
 - product context
 
-the storefront rhythm remains largely unchanged.
+the storefront rhythm remained largely unchanged.
 
 Finding:
 
-Atmosphere Gallery currently behaves as a
-single Gallery expression.
+Atmosphere Gallery behaved as a single Gallery expression.
+
+This finding directly justified Scale Gallery.
 
 ---
 
@@ -287,7 +318,7 @@ PARTIAL FAIL
 
 Reason:
 
-The perceived differences come primarily from:
+The perceived differences came primarily from:
 
 - theme
 - palette
@@ -297,18 +328,177 @@ rather than commerce structure.
 
 Finding:
 
-Both merchants appear to require different Counter expressions:
+Both merchants wanted Counter, but for different reasons:
 
-- The Gambia Mall → Routine Counter
-- Jambaba Boutique → Item Counter
-
-Clone risk is expected if the gate opens before
-expression families exist.
+- The Gambia Mall → Routine-led browsing
+- Jambaba Boutique → Item-led comparison
 
 Conclusion:
 
-Counter remains directionally correct,
-but internal expression diversity is required.
+Counter remained directionally correct.
+
+Internal expression diversity was still required.
+
+---
+
+## Counter Expression Validation (Phase 10L.5)
+
+Expressions:
+
+- Routine Counter
+- Item Counter
+
+Validation Pair:
+
+Mock Routine Counter Merchant
+vs
+Mock Item Counter Merchant
+
+Result:
+
+PASS
+
+Tests:
+
+- Thumbnail
+- Greyscale
+- Blur
+- Hidden Name
+
+Structural Differences:
+
+Routine Counter:
+
+- aisle index opener
+- banded wall
+- grouped shelves
+- visible whitespace breaks
+
+Item Counter:
+
+- hook + signal pill
+- continuous inventory wall
+- unbroken comparison surface
+
+Finding:
+
+Routine Counter and Item Counter remain visibly different after:
+
+- copy removal
+- colour removal
+- merchant identity removal
+
+This is the first successful anti-clone validation inside a single architecture.
+
+Blind Review Outcome:
+
+Distinct.
+
+Clone risk materially reduced for merchants receiving different Counter expressions.
+
+---
+
+## Gallery Expression Validation (Phase 10L.6)
+
+Expressions:
+
+- Atmosphere Gallery
+- Scale Gallery
+
+Validation Pair:
+
+Mock Atmosphere Gallery Merchant
+vs
+Mock Scale Gallery Merchant
+
+Result:
+
+PASS
+
+Tests:
+
+- Thumbnail
+- Greyscale
+- Blur
+- Hidden Name
+
+Structural Differences:
+
+Atmosphere Gallery:
+
+- staggered two-column rhythm
+- Notes section
+- Split CTA spread
+- atmospheric sequencing
+
+Scale Gallery:
+
+- single-column rhythm
+- large object emphasis
+- no Notes section
+- no Split CTA spread
+- bridge as closer
+
+Blind Anti-Clone Review:
+
+Before:
+
+Atmosphere vs Atmosphere
+
+Phone:
+CLONE (3/3)
+
+Desktop:
+CLONE (3/3)
+
+After:
+
+Atmosphere vs Scale
+
+Phone:
+DISTINCT (3/3)
+
+Desktop:
+DISTINCT (3/3)
+
+Finding:
+
+Atmosphere Gallery and Scale Gallery are structurally distinguishable under:
+
+- thumbnail review
+- greyscale review
+- blurred-copy review
+- hidden-name review
+
+This is the strongest anti-clone evidence produced during Expression Family implementation.
+
+---
+
+## Expression Family Implementation Findings
+
+Counter:
+
+Routine Counter
+≠
+Item Counter
+
+Gallery:
+
+Atmosphere Gallery
+≠
+Scale Gallery
+
+Observation:
+
+Expression Families materially reduce clone risk between merchants sharing the same architecture.
+
+Expression Families are now implemented and validated.
+
+Finding:
+
+Architecture assignment alone was insufficient.
+
+Expression differentiation proved necessary.
 
 ---
 
@@ -316,8 +506,7 @@ but internal expression diversity is required.
 
 Question:
 
-If another merchant in the same category joined tomorrow,
-would I be happy if they received the same storefront rhythm?
+If another merchant in the same category joined tomorrow, would I be happy if they received the same storefront rhythm?
 
 Answer:
 
@@ -325,11 +514,9 @@ No.
 
 Reason:
 
-The whole purpose of owning an independent website is
-to feel unique.
+The whole purpose of owning an independent website is to feel unique.
 
-A merchant may sell similar products to another merchant,
-but should not feel like a copy of that merchant.
+A merchant may sell similar products to another merchant, but should not feel like a copy of that merchant.
 
 Merchants perceive uniqueness through:
 
@@ -349,17 +536,15 @@ not through:
 
 Observation:
 
-Two merchants sharing the same architecture should still
-feel like two different businesses.
+Two merchants sharing the same architecture should still feel like two different businesses.
 
 Architecture assignment solves:
 
 "How should this merchant sell?"
 
-Expression families must solve:
+Expression families solve:
 
-"How should this merchant feel different from another merchant
-selling in the same way?"
+"How should this merchant feel different from another merchant selling in the same way?"
 
 Conclusion:
 
