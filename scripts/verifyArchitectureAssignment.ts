@@ -23,6 +23,7 @@ import {
   normalizeCategoryForAssignment,
   resolveRitualComposition,
   resolveRitualRecipe,
+  selectExpression,
   type ArchitectureAssignment,
   type ArchitectureAssignmentInput,
   type HeroMedia,
@@ -218,6 +219,151 @@ console.log('\n[6] Phase 10I — decision source + log formatter');
   const eligibleBlock = formatArchitectureAssignment(run({ niche: 'tech', products: inventory(20, {}, (i) => ({ category: ['A', 'B', 'C'][i % 3] })), heroMedia: banner }), { shopId: 's', gateOpen: false });
   check('formatter: eligible recipes print "eligible"', eligibleBlock.includes('  counter      : eligible\n') && eligibleBlock.endsWith('  gallery      : eligible'));
   check('formatter: object fields untouched (7 keys, same order)', Object.keys(a).join(',') === 'architecture,template,confidence,reason,eligibility,signals,overriddenBy', Object.keys(a));
+}
+
+console.log('\n[7] Phase 10L.3 — expression selection (10K.3 §2)');
+{
+  const pick = (i: Parameters<typeof selectExpression>[0]) => selectExpression(i);
+  const base = { dominantCategory: null, categoryCount: 0, exhibits: 0 };
+
+  // Counter
+  const c1 = pick({ ...base, architecture: 'counter', niche: 'cosmetics', categoryCount: 4 });
+  check('C1 routine by niche (cosmetics)', c1.expression === 'routine' && c1.reason === 'Routine Counter: cosmetics, 4 aisles', c1);
+  check('C1 routine by niche (wellness)', pick({ ...base, architecture: 'counter', niche: 'wellness', categoryCount: 3 }).expression === 'routine');
+  const c1short = pick({ ...base, architecture: 'counter', niche: 'cosmetics', categoryCount: 2 });
+  check('C1 needs 3 categories — 2 falls to item', c1short.expression === 'item' && c1short.reason === 'Item Counter: cosmetics, 2 aisles', c1short);
+  const c2 = pick({ ...base, architecture: 'counter', niche: null, dominantCategory: 'Skin Care', categoryCount: 3 });
+  check('C2 routine by vocabulary fallback', c2.expression === 'routine' && c2.reason === 'Routine Counter: Skin Care, 3 aisles', c2);
+  check('C2 needs 3 categories', pick({ ...base, architecture: 'counter', niche: null, dominantCategory: 'Skin Care', categoryCount: 2 }).expression === 'item');
+  check('C2 never fires when a niche resolved (niche wins)', pick({ ...base, architecture: 'counter', niche: 'tech', dominantCategory: 'Skin Care', categoryCount: 5 }).expression === 'item');
+  const c3 = pick({ ...base, architecture: 'counter', niche: 'tech', dominantCategory: 'Phones', categoryCount: 5 });
+  check('C3 item default (tech)', c3.expression === 'item' && c3.reason === 'Item Counter: tech, 5 aisles', c3);
+  check('C3 item default (no niche, non-routine category)', pick({ ...base, architecture: 'counter', niche: null, dominantCategory: 'Phones', categoryCount: 5 }).expression === 'item');
+  const c3bare = pick({ ...base, architecture: 'counter', niche: null, categoryCount: 1 });
+  check('C3 item default (no niche, no category)', c3bare.expression === 'item' && c3bare.reason === 'Item Counter: no niche, 1 aisle', c3bare);
+
+  // Gallery
+  const g1 = pick({ ...base, architecture: 'gallery', niche: 'jewelry', exhibits: 4 });
+  check('G1 scale by niche (jewelry)', g1.expression === 'scale' && g1.reason === 'Scale Gallery: jewelry, 4 photographed pieces', g1);
+  check('G1 scale by niche (fashion)', pick({ ...base, architecture: 'gallery', niche: 'fashion', exhibits: 3 }).expression === 'scale');
+  const g1short = pick({ ...base, architecture: 'gallery', niche: 'jewelry', exhibits: 2 });
+  check('G1 needs 3 exhibits — 2 falls to atmosphere', g1short.expression === 'atmosphere' && g1short.reason === 'Atmosphere Gallery: jewelry, 2 photographed pieces', g1short);
+  const g2 = pick({ ...base, architecture: 'gallery', niche: null, dominantCategory: 'Gold Rings', exhibits: 3 });
+  check('G2 scale by vocabulary fallback', g2.expression === 'scale' && g2.reason === 'Scale Gallery: Gold Rings, 3 photographed pieces', g2);
+  check('G2 needs 3 exhibits', pick({ ...base, architecture: 'gallery', niche: null, dominantCategory: 'Gold Rings', exhibits: 2 }).expression === 'atmosphere');
+  check('G2 never fires when a niche resolved (niche wins)', pick({ ...base, architecture: 'gallery', niche: 'home', dominantCategory: 'Gold Rings', exhibits: 6 }).expression === 'atmosphere');
+  const g3 = pick({ ...base, architecture: 'gallery', niche: 'home', dominantCategory: 'Oud', exhibits: 6 });
+  check('G3 atmosphere default (home)', g3.expression === 'atmosphere' && g3.reason === 'Atmosphere Gallery: home, 6 photographed pieces', g3);
+  check('G3 atmosphere default (no niche, non-scale category)', pick({ ...base, architecture: 'gallery', niche: null, dominantCategory: 'Oud', exhibits: 6 }).expression === 'atmosphere');
+
+  // No expression outside Counter / Gallery
+  const classic = pick({ architecture: 'classic', niche: 'cosmetics', dominantCategory: 'Skin Care', categoryCount: 9, exhibits: 9 });
+  check('classic → no expression, no reason', classic.expression === undefined && classic.reason === null, classic);
+  const sub = pick({ architecture: 'subtraction', niche: 'jewelry', dominantCategory: 'Gold', categoryCount: 9, exhibits: 9 });
+  check('subtraction → no expression, no reason', sub.expression === undefined && sub.reason === null, sub);
+
+  // Determinism + no cross-architecture output, swept over every input shape.
+  const niches = [null, 'cosmetics', 'fashion', 'jewelry', 'home', 'food', 'wellness', 'tech', 'general'] as const;
+  let deterministic = true;
+  let inFamily = true;
+  for (const architecture of ['counter', 'gallery'] as const) {
+    for (const niche of niches) {
+      for (const dominantCategory of [null, 'Skin Care', 'Gold Rings', 'Phones']) {
+        for (const n of [0, 2, 3, 8]) {
+          const input = { architecture, niche, dominantCategory, categoryCount: n, exhibits: n };
+          const a = pick(input);
+          if (JSON.stringify(a) !== JSON.stringify(pick({ ...input }))) deterministic = false;
+          const allowed = architecture === 'counter' ? ['routine', 'item'] : ['atmosphere', 'scale'];
+          if (!a.expression || !allowed.includes(a.expression) || !a.reason) inFamily = false;
+        }
+      }
+    }
+  }
+  check('selection is deterministic across the full sweep', deterministic);
+  check('counter only yields routine|item, gallery only atmosphere|scale, always with a reason', inFamily);
+
+  // Chained from the real assignment object (signals only, no new rules).
+  const routineShop = run({ niche: 'wellness', products: inventory(12, {}, (i) => ({ category: ['Serums', 'Creams', 'Oils'][i % 3] })), heroMedia: banner });
+  const chained = pick({ architecture: routineShop.architecture, niche: routineShop.signals.niche, dominantCategory: 'Serums', categoryCount: routineShop.signals.categoryCount, exhibits: 0 });
+  check('assignment → selection: wellness counter with 3 aisles is Routine', routineShop.architecture === 'counter' && chained.expression === 'routine', { a: routineShop.architecture, chained });
+}
+
+console.log('\n[8] Phase 10L.3 — resolver expression support + render-time degrade (10K.3 §3)');
+{
+  type Cfg = Parameters<typeof resolveRitualComposition>[0]['config'];
+  const aisles = (n: number) => inventory(12, {}, (i) => ({ category: ['Serums', 'Creams', 'Oils', 'Soaps'][i % n] }));
+  // `expression` is deliberately untyped here: the resolver must validate a
+  // value it did not parse (unknown strings, another architecture's value).
+  const cfg = (grid: 'counter' | 'gallery', expression?: unknown): Cfg =>
+    ({
+      template_key: 'ritual',
+      storefront_family: 'lifestyle-story',
+      layout_strategy: expression === undefined ? { grid } : { grid, expression },
+    }) as Cfg;
+  const counter = (expression: unknown, products: SiteProduct[]) => resolveRitualComposition({ config: cfg('counter', expression), products, heroMedia: banner });
+  const gallery = (expression: unknown, products: SiteProduct[]) => resolveRitualComposition({ config: cfg('gallery', expression), products, heroMedia: banner });
+  const unpicturedAisles = () => inventory(12, { pictured: false }, (i) => ({ category: ['A', 'B', 'C'][i % 3] }));
+
+  // Accept + validate against the architecture
+  const routine = counter('routine', aisles(3));
+  check('counter + routine + 3 categories → routine', routine.recipe === 'product-first' && routine.expression === 'routine' && routine.expressionFallback === null, routine);
+  const item = counter('item', aisles(1));
+  check('counter + item → item', item.recipe === 'product-first' && item.expression === 'item' && item.expressionFallback === null, item);
+  const scale = gallery('scale', inventory(3));
+  check('gallery + scale + 3 exhibits → scale', scale.recipe === 'gallery-led' && scale.expression === 'scale' && scale.expressionFallback === null, scale);
+  const atmosphere = gallery('atmosphere', inventory(6));
+  check('gallery + atmosphere → atmosphere', atmosphere.expression === 'atmosphere' && atmosphere.expressionFallback === null, atmosphere);
+
+  // Required degrades
+  const routineShort = counter('routine', aisles(2));
+  check('routine with fewer than 3 categories → item', routineShort.recipe === 'product-first' && routineShort.expression === 'item' && routineShort.expressionFallback === 'routine needs 3 categories (has 2)', routineShort);
+  const routinePlural = counter('routine', inventory(12, {}, (i) => ({ category: ['Serum', 'Serums', ' serums ', 'Cream'][i % 4] })));
+  check('routine counts NORMALISED categories (Serum/Serums/ serums = 1)', routinePlural.expression === 'item' && routinePlural.expressionFallback === 'routine needs 3 categories (has 2)', routinePlural);
+  const scaleShort = gallery('scale', inventory(2));
+  check('scale with fewer than 3 exhibits → atmosphere', scaleShort.recipe === 'gallery-led' && scaleShort.expression === 'atmosphere' && scaleShort.expressionFallback === 'scale needs 3 exhibits (has 2)', scaleShort);
+  const scaleUnpictured = gallery('scale', inventory(6, {}, (i) => ({ pictured: i < 2 })));
+  check('scale counts EXHIBITS, not products (6 products, 2 pictured)', scaleUnpictured.expression === 'atmosphere', scaleUnpictured);
+
+  // Absent / unknown / cross-architecture → base expression
+  const absentC = counter(undefined, aisles(4));
+  check('counter, no expression → item (current render), no reason', absentC.expression === 'item' && absentC.expressionFallback === null, absentC);
+  const absentG = gallery(undefined, inventory(6));
+  check('gallery, no expression → atmosphere (current render), no reason', absentG.expression === 'atmosphere' && absentG.expressionFallback === null, absentG);
+  const unknownC = counter('banded', aisles(4));
+  check('counter, unknown expression → item', unknownC.expression === 'item' && unknownC.expressionFallback === 'unknown expression is not a Counter expression', unknownC);
+  const unknownG = gallery(42, inventory(6));
+  check('gallery, unknown expression → atmosphere', unknownG.expression === 'atmosphere' && unknownG.expressionFallback === 'unknown expression is not a Gallery expression', unknownG);
+  const crossC = counter('scale', aisles(4));
+  check('counter + scale → item (no cross-architecture)', crossC.recipe === 'product-first' && crossC.expression === 'item' && crossC.expressionFallback === "'scale' is not a Counter expression", crossC);
+  const crossG = gallery('routine', inventory(6));
+  check('gallery + routine → atmosphere (no cross-architecture)', crossG.recipe === 'gallery-led' && crossG.expression === 'atmosphere' && crossG.expressionFallback === "'routine' is not a Gallery expression", crossG);
+  check('counter + atmosphere → item', counter('atmosphere', aisles(4)).expression === 'item');
+  check('gallery + item → atmosphere', gallery('item', inventory(6)).expression === 'atmosphere');
+
+  // Classic / Subtraction / non-ritual → no expression, even when one is written
+  const classic = resolveRitualComposition({ config: { template_key: 'ritual', storefront_family: 'lifestyle-story', layout_strategy: { hero: 'split', grid: 'masonry', expression: 'routine' } }, products: aisles(4), heroMedia: banner });
+  check('classic → no expression', classic.recipe === 'classic' && classic.expression === undefined && classic.expressionFallback === null, classic);
+  const sub = resolveRitualComposition({ config: { template_key: 'ritual', storefront_family: 'subtraction', layout_strategy: { grid: 'counter', expression: 'routine' } }, products: aisles(4), heroMedia: banner });
+  check('subtraction → no expression', sub.recipe === 'subtraction' && sub.expression === undefined && sub.expressionFallback === null, sub);
+  const editorial = resolveRitualComposition({ config: { template_key: 'editorial', storefront_family: 'lifestyle-story', layout_strategy: { grid: 'gallery', expression: 'scale' } }, products: inventory(6), heroMedia: banner });
+  check('non-ritual template → no expression', editorial.recipe === 'classic' && editorial.expression === undefined, editorial);
+
+  // Architecture degrade runs first and wins: a recipe that fell to classic carries no expression.
+  const counterFell = counter('routine', unpicturedAisles());
+  check('counter ineligible → classic, no expression', counterFell.requested === 'product-first' && counterFell.recipe === 'classic' && counterFell.expression === undefined && counterFell.expressionFallback === null && counterFell.fallback !== null, counterFell);
+  const galleryFell = resolveRitualComposition({ config: cfg('gallery', 'scale'), products: inventory(6), heroMedia: null });
+  check('gallery ineligible → classic, no expression', galleryFell.requested === 'gallery-led' && galleryFell.recipe === 'classic' && galleryFell.expression === undefined && galleryFell.expressionFallback === null, galleryFell);
+
+  // Existing resolver output is untouched by the expression key.
+  const strip = (c: ReturnType<typeof resolveRitualComposition>) => JSON.stringify({ requested: c.requested, recipe: c.recipe, hero: c.hero, grid: c.grid, fallback: c.fallback });
+  check('counter: requested/recipe/hero/grid/fallback identical with and without expression',
+    strip(routine) === strip(counter(undefined, aisles(3))) && strip(routineShort) === strip(counter(undefined, aisles(2))) && strip(counterFell) === strip(counter(undefined, unpicturedAisles())));
+  check('gallery: requested/recipe/hero/grid/fallback identical with and without expression',
+    strip(scale) === strip(gallery(undefined, inventory(3))) && strip(scaleShort) === strip(gallery(undefined, inventory(2))) && strip(galleryFell) === strip(resolveRitualComposition({ config: cfg('gallery'), products: inventory(6), heroMedia: null })));
+  const legacyComp = resolveRitualComposition({ config: { template_key: 'ritual', storefront_family: 'lifestyle-story', layout_strategy: { hero: 'split', grid: 'masonry' } }, products: inventory(12), heroMedia: banner });
+  check('legacy row: same five fields as before, expression absent', strip(legacyComp) === '{"requested":"classic","recipe":"classic","hero":"split","grid":"masonry","fallback":null}' && legacyComp.expression === undefined, legacyComp);
+  check('resolver is deterministic', JSON.stringify(counter('routine', aisles(3))) === JSON.stringify(routine) && JSON.stringify(gallery('scale', inventory(2))) === JSON.stringify(scaleShort));
+  check('gate still closed — no stored row can reach an expression branch', RITUAL_RECIPE_GENERATION_ENABLED === false && guardRecipeGridPick('counter', 'ritual') === undefined && guardRecipeGridPick('gallery', 'ritual') === undefined);
 }
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) FAILED.`);

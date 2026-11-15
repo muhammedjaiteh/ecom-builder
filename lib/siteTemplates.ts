@@ -2369,6 +2369,15 @@ export type RitualComposition = {
   grid: LayoutStrategy['grid'];
   /** Why a requested recipe degraded — null when it did not. */
   fallback: string | null;
+  /** Phase 10L.3 — the expression actually drawn after the render-time
+   *  degrade (10K.3 §3). ALWAYS undefined for 'classic' and 'subtraction'
+   *  (including a recipe that degraded to classic); 'routine' | 'item' for
+   *  product-first; 'atmosphere' | 'scale' for gallery-led. No renderer reads
+   *  it yet — the expression cuts land in later commits. */
+  expression: LayoutExpression | undefined;
+  /** Why a written expression degraded to its base — null when it did not
+   *  (an absent key resolving to the base is not a degrade). */
+  expressionFallback: string | null;
 };
 
 /** RENDER-TIME fallback rules (10B.1 §4) — one step down, deterministic,
@@ -2392,7 +2401,7 @@ export function resolveRitualComposition(input: {
   const rawHero = config.layout_strategy?.hero;
   const rawGrid = config.layout_strategy?.grid;
   if (requested === 'classic' || requested === 'subtraction') {
-    return { requested, recipe: requested, hero: rawHero, grid: rawGrid, fallback: null };
+    return { requested, recipe: requested, hero: rawHero, grid: rawGrid, fallback: null, expression: undefined, expressionFallback: null };
   }
   const eligibility = ritualRecipeEligibility(requested, {
     products,
@@ -2400,23 +2409,28 @@ export function resolveRitualComposition(input: {
     storefrontFamily: config.storefront_family ?? null,
   });
   if (eligibility.eligible) {
+    // Phase 10L.3: the expression is resolved ONLY once the recipe itself
+    // survived eligibility — architecture degrade runs first and wins.
+    const drawn = resolveRenderExpression(requested, config.layout_strategy?.expression, products);
     return {
       requested,
       recipe: requested,
       hero: rawHero ?? (requested === 'product-first' ? 'text-centric' : 'standard'),
       grid: requested === 'product-first' ? 'counter' : 'gallery',
       fallback: null,
+      expression: drawn.expression,
+      expressionFallback: drawn.reason,
     };
   }
   const fallback = eligibility.reasons.join('; ');
   if (requested === 'gallery-led') {
     const exhibits = selectGalleryExhibits(products).length;
     if (!heroMedia && exhibits >= RITUAL_RECIPE_RULES.galleryLed.minExhibits) {
-      return { requested, recipe: 'classic', hero: 'standard', grid: 'featured-first', fallback };
+      return { requested, recipe: 'classic', hero: 'standard', grid: 'featured-first', fallback, expression: undefined, expressionFallback: null };
     }
-    return { requested, recipe: 'classic', hero: rawHero, grid: 'standard', fallback };
+    return { requested, recipe: 'classic', hero: rawHero, grid: 'standard', fallback, expression: undefined, expressionFallback: null };
   }
-  return { requested, recipe: 'classic', hero: rawHero, grid: 'standard', fallback };
+  return { requested, recipe: 'classic', hero: rawHero, grid: 'standard', fallback, expression: undefined, expressionFallback: null };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2783,6 +2797,159 @@ export function describeArchitectureAssignment(a: ArchitectureAssignment): {
     unlock = hints.length ? hints.join(' ') : null;
   }
   return { title: `Recommended architecture: ${label}`, why: a.reason, change, unlock };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EXPRESSION SELECTION (Phase 10L.3 — Commit 2 of 10L.1; spec: Phase 10K.3 §2
+// and §3). An expression is the cut WITHIN an architecture: Routine | Item for
+// Counter, Atmosphere | Scale for Gallery. Classic and Subtraction have none.
+//
+// Laws:
+//   · selectExpression is PURE and runs AFTER assignArchitecture — it never
+//     changes the architecture and is never consulted for Classic.
+//   · Rules are ordered and the last is unconditional: there are no ties, and
+//     niche beats vocabulary because it is evaluated first.
+//   · NOTHING calls selectExpression yet and nothing writes the key: the route
+//     wiring and persistence are a later commit. The only live consumer of
+//     this section is resolveRitualComposition's render-time degrade, which is
+//     unreachable for every stored row (none carries a recipe grid value).
+//   · Render-time degrade is one step, inside the same architecture, to the
+//     expression that renders today (item / atmosphere). Never cross-architecture.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Product-signal floors shared by generation-time selection and the
+ *  render-time degrade (10K.3 §2 rules C1/C2/G1/G2 and §3). */
+export const EXPRESSION_RULES = Object.freeze({
+  /** Routine needs this many normalised categories — bands need aisles. */
+  routineMinCategories: 3,
+  /** Scale needs this many exhibits — a single column needs a sequence. */
+  scaleMinExhibits: 3,
+});
+
+/** Niche → expression (10K.3 §2, rules C1 and G1). */
+const ROUTINE_NICHES: ReadonlyArray<StudioNicheId> = ['cosmetics', 'wellness'];
+const SCALE_NICHES: ReadonlyArray<StudioNicheId> = ['fashion', 'jewelry'];
+
+/** No-niche vocabulary fallbacks (10K.3 §2, rules C2 and G2) — matched the
+ *  same way as the assignment keyword lists (lowercased substring). */
+const ROUTINE_VOCABULARY: ReadonlyArray<string> = [
+  'skin', 'hair', 'body', 'serum', 'cream', 'oil', 'routine', 'beauty', 'cosmetic', 'wellness', 'spa',
+];
+const SCALE_VOCABULARY: ReadonlyArray<string> = [
+  'abaya', 'dress', 'couture', 'fashion', 'wear', 'jewel', 'gold', 'watch', 'ring', 'necklace', 'bracelet',
+];
+
+/** The expression each recipe draws when none is written, and the one a
+ *  written expression degrades to (10K.3 §3). */
+const BASE_EXPRESSION = Object.freeze({
+  'product-first': 'item',
+  'gallery-led': 'atmosphere',
+} as const satisfies Record<'product-first' | 'gallery-led', LayoutExpression>);
+
+const EXPRESSION_LABEL: Readonly<Record<LayoutExpression, string>> = Object.freeze({
+  routine: 'Routine',
+  item: 'Item',
+  atmosphere: 'Atmosphere',
+  scale: 'Scale',
+});
+
+export type ExpressionSelectionInput = {
+  /** What assignArchitecture returned. 'subtraction' is accepted so a caller
+   *  holding a resolved family can pass it straight through — it, like
+   *  'classic', never carries an expression. */
+  architecture: Architecture | 'subtraction';
+  /** Resolved studio niche id (ArchitectureSignals.niche) — null when the
+   *  niche is free text or absent. */
+  niche: StudioNicheId | null;
+  /** Inventory-derived dominant category — consulted ONLY when niche is null. */
+  dominantCategory?: string | null;
+  /** Distinct categories after normalizeCategoryForAssignment. */
+  categoryCount: number;
+  /** selectGalleryExhibits(products).length. */
+  exhibits: number;
+};
+
+export type ExpressionSelection = {
+  /** undefined for Classic and Subtraction — they have no expressions. */
+  expression: LayoutExpression | undefined;
+  /** One terse line composed from the same facts the rule read, never from
+   *  model text (10K.3 §2 reason_format). null when there is no expression. */
+  reason: string | null;
+};
+
+/** Phase 10L.3 — the expression selector (10K.3 §2). Pure, deterministic.
+ *    Counter  C1 niche ∈ {cosmetics, wellness} ∧ categories ≥ 3      → routine
+ *             C2 no niche ∧ dominantCategory ∈ routine vocabulary
+ *                ∧ categories ≥ 3                                    → routine
+ *             C3 otherwise                                           → item
+ *    Gallery  G1 niche ∈ {fashion, jewelry} ∧ exhibits ≥ 3           → scale
+ *             G2 no niche ∧ dominantCategory ∈ scale vocabulary
+ *                ∧ exhibits ≥ 3                                      → scale
+ *             G3 otherwise                                           → atmosphere
+ *    Classic / Subtraction                                           → undefined */
+export function selectExpression(input: ExpressionSelectionInput): ExpressionSelection {
+  const { architecture, niche, categoryCount, exhibits } = input;
+  if (architecture !== 'counter' && architecture !== 'gallery') {
+    return { expression: undefined, reason: null };
+  }
+  const dominant = (input.dominantCategory ?? '').trim();
+  const vocabularyHit = (vocabulary: ReadonlyArray<string>): boolean =>
+    niche === null && vocabulary.some((k) => dominant.toLowerCase().includes(k));
+  const subject = niche ?? (dominant || 'no niche');
+
+  if (architecture === 'counter') {
+    const routine =
+      categoryCount >= EXPRESSION_RULES.routineMinCategories &&
+      ((niche !== null && ROUTINE_NICHES.includes(niche)) || vocabularyHit(ROUTINE_VOCABULARY));
+    const expression: LayoutExpression = routine ? 'routine' : 'item';
+    return {
+      expression,
+      reason: `${EXPRESSION_LABEL[expression]} Counter: ${subject}, ${categoryCount} ${categoryCount === 1 ? 'aisle' : 'aisles'}`,
+    };
+  }
+  const scale =
+    exhibits >= EXPRESSION_RULES.scaleMinExhibits &&
+    ((niche !== null && SCALE_NICHES.includes(niche)) || vocabularyHit(SCALE_VOCABULARY));
+  const expression: LayoutExpression = scale ? 'scale' : 'atmosphere';
+  return {
+    expression,
+    reason: `${EXPRESSION_LABEL[expression]} Gallery: ${subject}, ${exhibits} photographed ${exhibits === 1 ? 'piece' : 'pieces'}`,
+  };
+}
+
+/** Render-time expression for a recipe that SURVIVED eligibility (10K.3 §3).
+ *  The renderer has no niche, so only the product-signal half of each rule is
+ *  re-checked, against whatever slice the caller holds:
+ *    routine → needs categories ≥ 3, else item
+ *    scale   → needs exhibits ≥ 3, else atmosphere
+ *    absent  → the base expression (today's render), no reason
+ *    unknown or another architecture's expression → the base expression
+ *  `written` is typed unknown on purpose: it validates the value against the
+ *  recipe instead of trusting the caller's parse. Pure. */
+function resolveRenderExpression(
+  recipe: 'product-first' | 'gallery-led',
+  written: unknown,
+  products: SiteProduct[]
+): { expression: LayoutExpression; reason: string | null } {
+  const base = BASE_EXPRESSION[recipe];
+  if (written === undefined || written === null || written === base) {
+    return { expression: base, reason: null };
+  }
+  const architectureLabel = recipe === 'product-first' ? 'Counter' : 'Gallery';
+  if (recipe === 'product-first' && written === 'routine') {
+    const categories = normalizedCategoryCount(products);
+    if (categories >= EXPRESSION_RULES.routineMinCategories) return { expression: 'routine', reason: null };
+    return { expression: base, reason: `routine needs ${EXPRESSION_RULES.routineMinCategories} categories (has ${categories})` };
+  }
+  if (recipe === 'gallery-led' && written === 'scale') {
+    const exhibits = selectGalleryExhibits(products).length;
+    if (exhibits >= EXPRESSION_RULES.scaleMinExhibits) return { expression: 'scale', reason: null };
+    return { expression: base, reason: `scale needs ${EXPRESSION_RULES.scaleMinExhibits} exhibits (has ${exhibits})` };
+  }
+  return {
+    expression: base,
+    reason: `${isLayoutExpression(written) ? `'${written}'` : 'unknown expression'} is not a ${architectureLabel} expression`,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
