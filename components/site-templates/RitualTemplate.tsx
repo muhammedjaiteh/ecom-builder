@@ -4,12 +4,14 @@ import SmartImage from '@/components/SmartImage';
 import {
   FEATURED_MAX,
   findBlock,
+  groupCounterAisles,
   resolveHeroSignal,
   resolveRitualComposition,
   resolveVisibleBlocks,
   selectFeaturedProducts,
   selectGalleryExhibits,
   siteCollectionsPath,
+  type CounterAisle,
   type HeroMedia,
   type HeroSignal,
   type LayoutStrategy,
@@ -143,6 +145,13 @@ const COUNTER_GRID =
   'grid grid-cols-2 gap-x-3 gap-y-8 md:grid-cols-3 md:gap-x-5 md:gap-y-10 lg:grid-cols-4 xl:grid-cols-5';
 const COUNTER_CARD_SIZES =
   '(min-width: 1280px) 20vw, (min-width: 1024px) 25vw, (min-width: 768px) 33vw, 50vw';
+// Routine Counter (10L.5) band label: the mono metadata voice at full ink, a
+// 44px row so the label is a real tap target and the break above each shelf
+// is never shorter than one grid gutter plus the label (10K.3 §1D).
+const COUNTER_BAND_LABEL =
+  'inline-flex min-h-11 items-center gap-3 font-mono text-[11px] font-bold uppercase tracking-[0.3em] text-[var(--site-text,oklch(21.6%_0.006_56.043))]';
+// The uncategorised remainder's label — the /collections page's own wording.
+const COUNTER_REMAINDER_LABEL = 'More pieces';
 // Counter section rhythm: one notch tighter than the grid's compact map.
 const PAD_COUNTER: Record<PadKey, string> = {
   compact: 'py-6 md:py-10',
@@ -177,7 +186,7 @@ function RitualCounterStrip({ categories, collectionsPath, stickyNav }: {
   );
 }
 
-function RitualHero({ block, shop, heroMedia, signal, variant, cut }: {
+function RitualHero({ block, shop, heroMedia, signal, variant, cut, aisles }: {
   block: HeroBlock;
   shop: SiteShop;
   heroMedia: HeroMedia;
@@ -187,6 +196,10 @@ function RitualHero({ block, shop, heroMedia, signal, variant, cut }: {
   variant?: HeroVariant;
   /** Phase 10D.1 recipe cut — absent ≡ the historical variants. */
   cut?: RitualCut;
+  /** Phase 10L.5 — Routine Counter aisle index (the banded wall's labels, in
+   *  band order). Absent ≡ the Item Counter opener, byte-identical. Read only
+   *  by the counter shelf header. */
+  aisles?: string[];
 }) {
   if (cut === 'counter' && (variant === undefined || variant === 'text-centric')) {
     // Product-First "Counter" opener — the SHELF HEADER. Type-led like the
@@ -213,6 +226,26 @@ function RitualHero({ block, shop, heroMedia, signal, variant, cut }: {
               {block.headline}
             </EditableText>
           </div>
+          {aisles ? (
+            // Routine Counter (10L.5, 10K.3 §1): the right column is the AISLE
+            // INDEX — the banded wall's labels as a numbered vertical list, in
+            // band order. No hook, no signal pill (both forbidden here; the
+            // subheadline stays in the block and editable from the rail, it
+            // is simply not drawn). A list silhouette where the Item opener
+            // carries a paragraph with a pill beneath.
+            <ol aria-label="Aisles" className={`w-full max-w-md border-b ${RITUAL_HAIRLINE}`}>
+              {aisles.map((label, i) => (
+                <li key={label} className={`flex items-baseline gap-4 border-t ${RITUAL_HAIRLINE} py-2`}>
+                  <span aria-hidden className="font-mono text-[10px] tabular-nums tracking-[0.2em] text-[var(--site-muted,oklch(44.4%_0.011_73.639))]">
+                    {String(i + 1).padStart(2, '0')}
+                  </span>
+                  <span className="min-w-0 truncate font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-[var(--site-text,oklch(21.6%_0.006_56.043))]">
+                    {label}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          ) : (
           <div className="flex flex-col items-start gap-4">
             <EditableText as="p" blockId={block.id} field="subheadline" className="max-w-md text-sm leading-relaxed text-[var(--site-muted,oklch(55.3%_0.013_58.071))] md:text-base">
               {block.subheadline}
@@ -224,6 +257,7 @@ function RitualHero({ block, shop, heroMedia, signal, variant, cut }: {
               </span>
             )}
           </div>
+          )}
         </div>
       </header>
     );
@@ -537,7 +571,7 @@ function ritualMasonryRatio(i: number): RitualCardRatio {
   return i % 2 === 0 ? 'portrait' : 'square';
 }
 
-function RitualProductGrid({ block, shop, products, catalog, variant, hideCategories, cut }: {
+function RitualProductGrid({ block, shop, products, catalog, variant, hideCategories, cut, banded }: {
   block: ProductGridBlock;
   shop: SiteShop;
   /** The showcase selection (selectFeaturedProducts) — capped again here so a
@@ -551,6 +585,10 @@ function RitualProductGrid({ block, shop, products, catalog, variant, hideCatego
   hideCategories?: boolean;
   /** Phase 10D.1 recipe cut — absent ≡ the historical section. */
   cut?: RitualCut;
+  /** Phase 10L.5 — Routine Counter: draw the counter wall as one band per
+   *  aisle. Absent/false ≡ the Item Counter flat wall, byte-identical. Read
+   *  only by the counter grid branch. */
+  banded?: boolean;
 }) {
   const counter = cut === 'counter';
   const gallery = cut === 'gallery';
@@ -582,6 +620,17 @@ function RitualProductGrid({ block, shop, products, catalog, variant, hideCatego
   // deep-linking to its group on /collections. CategoryNav renders nothing
   // below two categories or without a real collections path.
   const categories = collectionsPath ? distinctCategories(catalog) : [];
+  // Routine Counter (10L.5): the wall's bands, each carrying its running
+  // offset into the wall so fallback-tile variety follows display order.
+  // Empty for every other render — nothing below reads it then.
+  const bands: Array<CounterAisle & { offset: number }> = [];
+  if (variant === 'counter' && banded) {
+    let offset = 0;
+    for (const aisle of groupCounterAisles(featured)) {
+      bands.push({ ...aisle, offset });
+      offset += aisle.products.length;
+    }
+  }
   return (
     // padding/align consumption (Pillar 4): grid section spacing + header alignment.
     <section id="collection" data-block-section={block.id} className={`mx-auto max-w-7xl px-5 md:px-10 ${ritualPad(block.padding, gallery ? PAD_GALLERY : counter ? PAD_COUNTER : PAD_20_28)}`}>
@@ -682,6 +731,48 @@ function RitualProductGrid({ block, shop, products, catalog, variant, hideCatego
           {featured.map((p, i) => (
             <div key={p.id} className="snap-start scroll-mt-16 md:scroll-mt-20">
               <RitualProductCard product={p} index={i} href={ritualProductHref(shop, p.id)} sizes={GALLERY_PLATE_SIZES} anatomy="plate" />
+            </div>
+          ))}
+        </div>
+      ) : variant === 'counter' && banded ? (
+        // Phase 10L.5 Routine Counter wall (10K.3 §1): the SAME counter tiles
+        // on the SAME counter grid, shelved — one band per aisle
+        // (groupCounterAisles: normalised category, first-seen order, pieces
+        // in slice order, uncategorised last). Each band is led by a mono
+        // label that is the aisle's exit to its group on /collections. The
+        // break between bands is EMPTY surface (no tint, no rule): band
+        // margin + label row + label gap, always taller than one grid gutter
+        // plus the label, so the shelves survive greyscale, blurred copy and
+        // a thumbnail. No Reveal — the caller renders the counter wall bare.
+        <div className="mt-6 md:mt-10">
+          {bands.map((band, b) => (
+            <div key={band.key ?? 'more-pieces'} className={b === 0 ? undefined : 'mt-12 md:mt-16'}>
+              <h3>
+                {collectionsPath ? (
+                  <a
+                    href={band.label ? `${collectionsPath}#${categoryAnchorId(band.label)}` : collectionsPath}
+                    className={`group ${COUNTER_BAND_LABEL} transition hover:opacity-70`}
+                  >
+                    {band.label ?? COUNTER_REMAINDER_LABEL}
+                    <span aria-hidden className="transition-transform duration-300 group-hover:translate-x-1 motion-reduce:transition-none">&rarr;</span>
+                  </a>
+                ) : (
+                  <span className={COUNTER_BAND_LABEL}>{band.label ?? COUNTER_REMAINDER_LABEL}</span>
+                )}
+              </h3>
+              <div className={`mt-3 md:mt-4 ${COUNTER_GRID}`}>
+                {band.products.map((p, i) => (
+                  <RitualProductCard
+                    key={p.id}
+                    product={p}
+                    index={band.offset + i}
+                    href={ritualProductHref(shop, p.id)}
+                    sizes={COUNTER_CARD_SIZES}
+                    anatomy="counter"
+                    notifyHref={notifyHrefFor(p)}
+                  />
+                ))}
+              </div>
             </div>
           ))}
         </div>
@@ -1037,6 +1128,18 @@ export default function RitualTemplate({ shop, products, config, heroMedia }: Si
   const cut: RitualCut | undefined = counter ? 'counter' : gallery ? 'gallery' : undefined;
   const counterCollectionsPath = counter ? siteCollectionsPath(shop) : null;
   const counterCategories = counterCollectionsPath ? distinctCategories(products) : [];
+  // Phase 10L.5 — Counter EXPRESSIONS (10K.3 §1). The resolver hands back the
+  // expression actually drawn after its render-time degrade: 'routine' or
+  // 'item' on a counter, undefined everywhere else. Item (and an absent key)
+  // is the existing counter render, untouched. Routine swaps two surfaces and
+  // nothing else: the opener's right column becomes the aisle index, and the
+  // wall is shelved into one band per aisle. Sticky strip, card anatomy,
+  // order rows, the bare (un-revealed) wall and the trust marquee beneath it
+  // are shared by both expressions.
+  const routine = counter && composition.expression === 'routine';
+  const routineAisles = routine
+    ? groupCounterAisles(products).flatMap((aisle) => (aisle.label ? [aisle.label] : []))
+    : undefined;
   const galleryNotes = gallery ? (findBlock(blocks, 'value_props')?.items ?? []) : [];
 
   return (
@@ -1048,11 +1151,11 @@ export default function RitualTemplate({ shop, products, config, heroMedia }: Si
         const section = (() => {
           switch (block.type) {
             case 'hero_banner':
-              return <RitualHero block={block} shop={shop} heroMedia={heroMedia} signal={subtraction || gallery ? null : heroSignal} variant={heroVariant} cut={cut} />;
+              return <RitualHero block={block} shop={shop} heroMedia={heroMedia} signal={subtraction || gallery ? null : heroSignal} variant={heroVariant} cut={cut} aisles={routineAisles} />;
             // value_props: no body section (Fix 2) — the block renders as the
             // SiteMarquee ribbon after the hero (gallery: as the story Notes).
             case 'product_grid':
-              return <RitualProductGrid block={block} shop={shop} products={featured} catalog={products} variant={gridVariant} hideCategories={subtraction || counter || gallery} cut={cut} />;
+              return <RitualProductGrid block={block} shop={shop} products={featured} catalog={products} variant={gridVariant} hideCategories={subtraction || counter || gallery} cut={cut} banded={routine} />;
             case 'story_text':
               return <RitualStory block={block} shopName={shop.shop_name} cut={cut} notes={galleryNotes} />;
             case 'cta_banner':

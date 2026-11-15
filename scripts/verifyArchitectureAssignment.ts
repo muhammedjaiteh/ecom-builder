@@ -21,6 +21,7 @@ import {
   describeArchitectureAssignment,
   formatArchitectureAssignment,
   formatExpressionSelection,
+  groupCounterAisles,
   guardRecipeGridPick,
   isExpressionForArchitecture,
   normalizeCategoryForAssignment,
@@ -521,6 +522,70 @@ console.log('\n[9] Phase 10L.4 — expression persistence, write-time validation
   check('log: formatter is deterministic', formatExpressionSelection(routine, { shopId: 'shop-1', gateOpen: true, assigned: 'counter' }) === written.join('\n'));
   const tenI = formatArchitectureAssignment(run({ niche: 'jewelry', products: rings, heroMedia: null }), { shopId: 'shop-1', gateOpen: false }).split('\n');
   check('log: the Phase 10I block is still 7 lines with its own header', tenI.length === 7 && tenI[0] === '[architecture-assignment] shop=shop-1 gate=closed mode=observational', tenI[0]);
+}
+
+console.log('\n[10] Phase 10L.5 — Routine Counter aisle grouping (10K.3 §1)');
+{
+  const cat = (categories: Array<string | null>) => inventory(categories.length, {}, (i) => ({ category: categories[i] }));
+  const shape = (aisles: ReturnType<typeof groupCounterAisles<SiteProduct>>) => aisles.map((a) => `${a.label ?? '∅'}:${a.products.map((p) => p.id).join('+')}`).join(' | ');
+
+  // Interleaved inventory (the order a newest-first home slice arrives in).
+  const mixed = cat(['Creams', 'Serums', 'Oils', 'Lotions', 'Creams', 'Oils', 'Lotions', 'Oils', 'Creams', 'Creams', 'Serums', 'Serums']);
+  const grouped = groupCounterAisles(mixed);
+  check('one band per category, in FIRST-SEEN order', grouped.map((a) => a.label).join(',') === 'Creams,Serums,Oils,Lotions', grouped.map((a) => a.label));
+  check('pieces keep their slice order inside a band', shape(grouped) === 'Creams:p1+p5+p9+p10 | Serums:p2+p11+p12 | Oils:p3+p6+p8 | Lotions:p4+p7', shape(grouped));
+  // First-seen, not frequency: the smallest aisle leads when it arrives first.
+  const smallFirst = groupCounterAisles(cat(['Lotions', 'Creams', 'Creams', 'Creams', 'Serums', 'Serums']));
+  check('first-seen order holds even when a later aisle is larger', smallFirst.map((a) => `${a.label}:${a.products.length}`).join(',') === 'Lotions:1,Creams:3,Serums:2', smallFirst.map((a) => a.label));
+  const ids = grouped.flatMap((a) => a.products.map((p) => p.id));
+  check('nothing dropped, nothing duplicated', ids.length === mixed.length && new Set(ids).size === mixed.length && mixed.every((p) => ids.includes(p.id)));
+  check('bands carry the SAME product objects (no clones)', grouped.every((a) => a.products.every((p) => mixed.includes(p))));
+
+  // Normalised grouping key, raw label.
+  const variants = groupCounterAisles(cat(['  Serums ', 'serum', 'SERUMS', 'Body  Oils', 'body oil', 'Accessories', 'Accessory']));
+  check('normalised categories merge into one band', variants.length === 3 && variants.map((a) => a.products.length).join(',') === '3,2,2', shape(variants));
+  check('label is the first-seen RAW category, trimmed (never the normalised key)', variants.map((a) => a.label).join('|') === 'Serums|Body  Oils|Accessories' && variants.map((a) => a.key).join('|') === 'serum|body oil|accessory', variants.map((a) => `${a.label}/${a.key}`));
+
+  // Uncategorised remainder.
+  const withBlank = groupCounterAisles(cat([null, 'Creams', '', 'Serums', '   ', 'Creams']));
+  check('uncategorised pieces form ONE trailing band with a null key + label', withBlank.length === 3 && withBlank[2].key === null && withBlank[2].label === null && shape(withBlank) === 'Creams:p2+p6 | Serums:p4 | ∅:p1+p3+p5', shape(withBlank));
+  const allBlank = groupCounterAisles(cat([null, '', null]));
+  check('all-uncategorised inventory → the remainder band only', allBlank.length === 1 && allBlank[0].label === null && allBlank[0].products.length === 3);
+  check('no remainder band when every piece is categorised', grouped.every((a) => a.key !== null && a.label !== null));
+  check('empty inventory → no bands', groupCounterAisles([]).length === 0);
+
+  // Purity.
+  const before = JSON.stringify(mixed);
+  const again = groupCounterAisles(mixed);
+  check('deterministic, input not mutated', JSON.stringify(again) === JSON.stringify(grouped) && JSON.stringify(mixed) === before && again !== grouped);
+
+  // Agreement with the resolver: whenever it draws 'routine', the wall has at
+  // least three labelled bands — and when it degrades, the reason's count is
+  // the band count.
+  const counterCfg = (expression: 'routine' | 'item') => ({ template_key: 'ritual' as const, storefront_family: 'lifestyle-story' as const, layout_strategy: { grid: 'counter' as const, expression } });
+  const labelled = (products: SiteProduct[]) => groupCounterAisles(products).filter((a) => a.label !== null).length;
+  let agrees = true;
+  let routineSeen = 0;
+  let degradedSeen = 0;
+  const pools = [['Creams', 'Serums', 'Oils', 'Lotions'], ['Serum', 'Serums', ' serums ', 'Cream'], ['Body', 'Face'], ['A', 'B', 'C'], ['Only'], ['Creams', null, 'Serums', '', 'Oils']];
+  for (const pool of pools) {
+    for (const size of [6, 9, 12]) {
+      const products = inventory(size, {}, (i) => ({ category: pool[i % pool.length] }));
+      const comp = resolveRitualComposition({ config: counterCfg('routine'), products, heroMedia: banner });
+      if (comp.recipe !== 'product-first') continue;
+      const bands = labelled(products);
+      if (comp.expression === 'routine') {
+        routineSeen += 1;
+        if (bands < 3) agrees = false;
+      } else {
+        degradedSeen += 1;
+        if (comp.expressionFallback !== `routine needs 3 categories (has ${bands})`) agrees = false;
+      }
+    }
+  }
+  check(`resolver ↔ grouping agree (${routineSeen} routine renders all ≥ 3 bands, ${degradedSeen} degrades name the band count)`, agrees && routineSeen > 0 && degradedSeen > 0);
+  const itemComp = resolveRitualComposition({ config: counterCfg('item'), products: mixed, heroMedia: banner });
+  check('item stays item on an inventory that could band (no upgrade at render)', itemComp.recipe === 'product-first' && itemComp.expression === 'item');
 }
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) FAILED.`);

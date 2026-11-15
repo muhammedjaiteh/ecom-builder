@@ -3066,6 +3066,55 @@ export function formatExpressionSelection(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// COUNTER AISLES (Phase 10L.5 — Commit 4 of 10L.1; spec: Phase 10K.3 §1
+// "Routine Counter"). The grouping the Routine Counter cut draws: its opener's
+// aisle index and its banded wall read the SAME list, so the index can never
+// name an aisle the wall does not carry.
+//
+// Laws:
+//   · One aisle per NORMALISED category (normalizeCategoryForAssignment — the
+//     key the resolver's routine floor counts, so "routine" at render time
+//     always yields at least EXPRESSION_RULES.routineMinCategories aisles on
+//     the slice it was resolved against).
+//   · Aisles in FIRST-SEEN inventory order; pieces keep their slice order
+//     inside an aisle. Nothing is dropped and nothing is duplicated.
+//   · The normalised key is a grouping key ONLY. The label is the first-seen
+//     RAW category, trimmed — the only string a renderer may draw.
+//   · Uncategorised pieces form ONE trailing aisle with a null key and label
+//     (the /collections "More pieces" remainder, in the same last position).
+//   · Pure. Used only by the Routine Counter cut; no stored row reaches it
+//     while the generation gate is closed.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type CounterAisle<P extends Pick<SiteProduct, 'category'> = SiteProduct> = {
+  /** Normalised grouping key — null for the uncategorised remainder. */
+  key: string | null;
+  /** First-seen raw category, trimmed — null for the uncategorised remainder. */
+  label: string | null;
+  products: P[];
+};
+
+export function groupCounterAisles<P extends Pick<SiteProduct, 'category'>>(
+  products: ReadonlyArray<P>
+): CounterAisle<P>[] {
+  const aisles = new Map<string, CounterAisle<P>>();
+  const remainder: P[] = [];
+  for (const product of products) {
+    const key = normalizeCategoryForAssignment(product.category);
+    if (key === null) {
+      remainder.push(product);
+      continue;
+    }
+    const aisle = aisles.get(key);
+    if (aisle) aisle.products.push(product);
+    else aisles.set(key, { key, label: (product.category as string).trim(), products: [product] });
+  }
+  const ordered = [...aisles.values()];
+  if (remainder.length > 0) ordered.push({ key: null, label: null, products: remainder });
+  return ordered;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MERCHANT STRATEGY RESOLVER — a PURE, deterministic mapping from what the
 // merchant sells (studio niche id and/or the inventory-derived primary
 // category) to a visual archetype + a palette. No UI, no rendering, no I/O:
