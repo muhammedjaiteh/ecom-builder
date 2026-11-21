@@ -566,3 +566,361 @@ Expression changes merchant identity.
 A merchant does not buy a website.
 
 A merchant buys a feeling of uniqueness.
+
+---
+
+# Phase 11A — Architecture Reachability Audit
+
+Summary:
+
+Phase 11A investigated why architectures and
+expressions validated during Phase 10 were not
+appearing in live storefront generation.
+
+
+Status:
+Completed (Read-Only Audit)
+
+Purpose:
+
+Determine whether merchants are naturally reaching
+the architecture and expression implied by the
+dashboard preview.
+
+---
+
+## Key Finding
+
+The architecture system is correctly implemented
+but currently disconnected from production storefront generation.
+
+Counter, Gallery and Expression Families exist,
+have been implemented, and have been validated.
+
+However:
+
+No live merchant currently reaches Counter,
+Gallery, Routine Counter, Item Counter,
+Atmosphere Gallery or Scale Gallery through
+the standard production generation path.
+
+Result:
+
+Live storefronts continue to render Classic
+or Subtraction structures.
+
+---
+
+## Architecture Reachability Summary
+
+Current production flow:
+
+Theme
+↓
+Template
+↓
+Storefront Family
+↓
+Storefront
+
+Observed flow is NOT:
+
+Theme
+↓
+Architecture
+↓
+Expression
+↓
+Storefront
+
+because architecture and expression remain
+unreachable in production.
+
+---
+
+## Confirmed Findings
+
+### Architecture Assignment
+
+Architecture assignment is operating correctly.
+
+Counter, Gallery and Classic continue to be:
+
+- assigned
+- logged
+- validated
+
+However:
+
+Assignment currently does not influence
+generation output.
+
+Observation:
+
+Architecture is presently an observational
+system rather than a production-routing system.
+
+---
+
+### Counter Reachability
+
+Counter requires:
+
+- Ritual template
+- non-Subtraction family
+- grid = counter
+- eligibility success
+
+Current state:
+
+No production write path exists for:
+
+layout_strategy.grid = counter
+
+Result:
+
+Counter is unreachable through standard generation.
+
+Observation:
+
+Merchants may appear Counter-like due to:
+
+- Subtraction
+- product-first family
+- inventory-heavy storefronts
+
+but are not actually rendering Counter.
+
+---
+
+### Gallery Reachability
+
+Gallery requires:
+
+- Ritual template
+- non-Subtraction family
+- grid = gallery
+- hero media
+- exhibit eligibility
+
+Current state:
+
+No production write path exists for:
+
+layout_strategy.grid = gallery
+
+Result:
+
+Gallery is unreachable through standard generation.
+
+Observation:
+
+Merchants may appear Gallery-like in preview
+but do not actually render Gallery.
+
+---
+
+## Theme Influence Findings
+
+Confirmed:
+
+Themes are not architecture-neutral.
+
+Theme selection determines:
+
+- template
+- available storefront structures
+
+Examples:
+
+Deep Luxury
+→ Ritual
+
+Pastel Minimalist
+→ Ritual
+
+Warm Editorial
+→ Editorial
+
+High-Contrast Street
+→ Vitality
+
+Observation:
+
+Because Counter and Gallery are Ritual-only,
+theme choice currently has more practical
+influence on storefront structure than
+architecture assignment.
+
+---
+
+## Preview Findings
+
+Four preview surfaces exist.
+
+Only one reflects the actual storefront:
+
+Preview Draft
+(/site/[slug]?preview=1)
+
+Other previews:
+
+- theme cards
+- concept cards
+- themes hub thumbnails
+
+do not consistently represent architecture.
+
+---
+
+### Hero Substitution Finding
+
+Miniature previews substitute
+the lead product image when no banner exists.
+
+The live storefront does not.
+
+Result:
+
+A merchant may see an image-led entrance
+in previews but receive a plate-style hero
+on the storefront.
+
+Observation:
+
+This creates a preview-to-storefront
+expectation gap.
+
+---
+
+## Merchant Findings
+
+### The Gambia Mall
+
+Preview suggests:
+
+Catalog-heavy experience.
+
+Stored row:
+
+Subtraction on Ritual.
+
+Finding:
+
+Observed Counter-like behaviour is more likely
+Subtraction than Counter.
+
+---
+
+### Jambaba Boutique
+
+Stored row:
+
+Classic on Vitality.
+
+Finding:
+
+Counter cannot render because Vitality
+does not support recipes.
+
+---
+
+### Devine Cosmetics
+
+Preview suggests:
+
+Image-led / Gallery-like experience.
+
+Stored row:
+
+Subtraction on Ritual.
+
+Additional issue:
+
+No hero media.
+
+Finding:
+
+Gallery cannot be reached.
+
+---
+
+### Subora
+
+Preview suggests:
+
+Gallery-like jewellery experience.
+
+Stored row:
+
+Editorial template.
+
+Additional issue:
+
+No hero media.
+
+Finding:
+
+Gallery cannot be reached.
+
+---
+
+## Architecture Reality Verdict
+
+Confirmed:
+
+The architecture system behaves exactly
+as implemented.
+
+Confirmed:
+
+Counter, Gallery and Expression Families
+are functional.
+
+Confirmed:
+
+No production storefront currently reaches
+those architectures through the normal
+generation path.
+
+Primary conclusion:
+
+The dominant problem is no longer:
+
+"Architecture Design"
+
+The dominant problem is:
+
+"Architecture Reachability"
+
+---
+
+## Phase 11A Conclusion
+
+Before Phase 11A:
+
+Question:
+
+"Why do live storefronts continue to
+feel Classic?"
+
+After Phase 11A:
+
+Answer:
+
+Because nothing in production currently writes:
+
+- layout_strategy.grid = counter
+- layout_strategy.grid = gallery
+
+and the generation gate remains closed.
+
+Result:
+
+Architecture assignment, Counter, Gallery,
+and Expression Families are implemented
+but remain disconnected from live generation.
+
+Architecture Reachability is now the primary
+validated bottleneck.
+
