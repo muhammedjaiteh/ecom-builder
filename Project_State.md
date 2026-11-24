@@ -165,3 +165,26 @@ Phase 8B (Subtraction Family Rendering) was superseded by Phase 10 scope; its in
 - Studio and onboarding inputs remain unequal
 - Eligibility parity remains unresolved
 - Production validation remains outstanding
+
+## Phase 13 Specification Summary
+
+- Architectural truth is carried by:
+  - template_key
+  - storefront_family
+  - layout_strategy.grid
+  - layout_strategy.expression
+- Resolver already consumes all four keys
+- Assignment is the intended source of all four keys
+- Studio and Onboarding currently differ on:
+  - niche
+  - template origin
+- Assignment and Resolver parity remains outstanding
+
+### Subtraction Rule
+
+- Subtraction is a Storefront Family
+- Subtraction is selected when:
+  1. Merchant fits desire-commerce profile
+  2. Gallery is unavailable because hero media is absent
+  3. Product photography is sufficient for the catalogue wall to become the primary storytelling surface
+- Gallery remains preferred when hero media exists

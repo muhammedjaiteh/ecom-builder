@@ -955,3 +955,14 @@ Status:
 - Gate role established
 - Governance completed
 - Remaining work is activation specification and implementation
+
+---
+
+# Phase 13 Conclusions
+
+- Four-key architectural truth contract established
+- Resolver contract established
+- Storefront Family contract established
+- Studio and Onboarding parity requirements identified
+- Subtraction rule defined
+- Remaining work is implementation specification and authority wiring
