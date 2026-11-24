@@ -924,3 +924,34 @@ but remain disconnected from live generation.
 Architecture Reachability is now the primary
 validated bottleneck.
 
+
+---
+
+# Phase 11 Conclusions
+
+Phase 11 investigation is complete. Durable findings only.
+
+- **Reachability gap confirmed.** Counter, Gallery and the expression families are built and render, but live generation does not reach them.
+- **Assignment influences no production output.** It runs and is logged; nothing downstream consumes it.
+- **Grid survival is the activation bottleneck.** Until a Counter or Gallery grid value survives generation into the saved storefront, every live storefront resolves to Classic.
+- **Activation affects multiple systems.** Opening the path is not a single switch; it spans routing, assignment, the prompt, layout application, the gate, persistence and rendering.
+- **Studio and Onboarding differ materially.** Studio sends a niche and forces the template through an archetype or concept. Onboarding sends neither: the model picks the template and assignment receives no niche. Any activation strategy must treat them as two paths.
+- **Most remaining uncertainty sits outside the repository.** The open questions concern what the model emits and what merchants receive in production.
+- **Additional repository auditing offers limited value.** The next evidence must come from production generations.
+
+Status:
+
+- Repository Discovery = Complete
+- Decision Readiness = Sufficient for strategy selection
+
+---
+
+# Phase 12 Conclusions
+
+- Architecture authority selected
+- Authority hierarchy established
+- Routing authority boundary established
+- Subtraction ownership established
+- Gate role established
+- Governance completed
+- Remaining work is activation specification and implementation

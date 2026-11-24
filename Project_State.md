@@ -62,6 +62,26 @@ Status: - Architectures implemented. - Assignment engine implemented. - Assignme
 - Fashion and Abayas above roughly 30 pieces with sizes: Gallery caps at 6, Counter has no variant anatomy. Medium priority.
 - General Retail above roughly 60 SKUs: Counter's single sticky strip cannot carry department-store depth. Not yet justified.
 
+## Phase 11 Summary (Investigation Complete)
+
+Decision Readiness = Sufficient for strategy selection
+
+Repository Discovery = Complete
+
+What is established:
+
+- ✅ The architecture system exists (Classic, Counter, Gallery, Subtraction).
+- ✅ Counter and Gallery render paths exist.
+- ✅ Expression families render.
+- ✅ Architecture assignment exists.
+- ✅ Assignment is currently observational: it is logged and changes no production output.
+- ✅ The activation bottleneck is identified: a Counter or Gallery grid value does not survive generation into the saved storefront, and the generation gate is closed.
+- ✅ Studio and Onboarding are materially different generation paths. Studio sends a niche and forces the template through an archetype or concept; Onboarding sends neither, so the model picks the template and assignment receives no niche.
+- ✅ Repository-side investigation is complete.
+- ✅ The remaining critical unknowns require production evidence, not additional repository audits.
+
+Next step: select an activation strategy. Do not commission further repository audits for Phase 11.
+
 ## Governing Rules
 
 - Same-Theme Anti-Clone Rule (CLAUDE.md): two merchants selecting the same theme must not receive the same storefront skeleton by default. Palette, copy, spacing, and block-order changes do not count. A storefront fails if it stays recognisably identical in greyscale, with copy blurred, names hidden, at thumbnail size.
@@ -126,3 +146,22 @@ Phase 8B (Subtraction Family Rendering) was superseded by Phase 10 scope; its in
 - Better bakery hero imagery and food-specific CTA language (folded into occasion commerce)
 - Conversion analytics and merchant intelligence
 - Learning loops from storefront performance
+
+## Phase 12 Summary (Governance Complete)
+
+- Assignment selected as architectural authority
+- Routing classified as a constraint
+- Persistence classified as a carrier
+- Resolver classified as a validator
+- Subtraction classified as a Storefront Family
+- Gate classified as a temporary rollout mechanism
+- Assignment wins over theme when determining architecture
+- Governance phase complete
+
+### Remaining Conditions
+
+- Assignment does not yet reach persistence
+- Assignment does not yet reach resolver
+- Studio and onboarding inputs remain unequal
+- Eligibility parity remains unresolved
+- Production validation remains outstanding
