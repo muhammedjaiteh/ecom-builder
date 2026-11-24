@@ -188,3 +188,15 @@ Phase 8B (Subtraction Family Rendering) was superseded by Phase 10 scope; its in
   2. Gallery is unavailable because hero media is absent
   3. Product photography is sufficient for the catalogue wall to become the primary storytelling surface
 - Gallery remains preferred when hero media exists
+
+## Phase 13 Specification Closure
+
+- Undeclared niche = No Niche
+- "Oud, Fragrance & Home" classified as desire commerce
+- Assignment owns all rhythm families
+- Subtraction thresholds accepted:
+  - minimum 6 photographed pieces
+  - minimum 90% photographed products
+- Visual system inheritance defined
+- Hero media definition established
+- Specification phase complete
