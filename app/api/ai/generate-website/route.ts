@@ -20,10 +20,14 @@ MatrixWebsiteGenerationSchema,
   ACCENT_PRESET_SLOTS,
   ARCHETYPE_KEYS,
   ARCHETYPES,
+  ARCHITECTURES,
   ConceptPairSchema,
+  DEFAULT_STOREFRONT_FAMILY,
   RITUAL_RECIPE_GENERATION_ENABLED,
   SITE_TEMPLATES,
+  STOREFRONT_FAMILIES,
   STUDIO_NICHES,
+  SUBTRACTION_TEMPLATE_KEY,
   SiteConceptSchema,
   TEMPLATE_KEYS,
   WebsiteGenerationSchema,
@@ -32,9 +36,15 @@ MatrixWebsiteGenerationSchema,
   applyGenerationLayout,
   archetypeLayoutBounds,
   assignArchitecture,
+  assignedRecipeGrid,
+  alignAssignmentInputs,
+  carryStorefrontDecision,
+  composeVisualSystem,
+  expressionFloorSignals,
   formatArchitectureAssignment,
   formatExpressionSelection,
   guardRecipeGridPick,
+  isStorefrontDecision,
   selectGalleryExhibits,
   resolveHeroMedia,
   buildPreviousDesign,
@@ -45,12 +55,17 @@ MatrixWebsiteGenerationSchema,
   templateFromCategory,
   type ArchetypeKey,
   type Architecture,
+  type ArchitectureAssignment,
   type ExpressionSignals,
   type LayoutBounds,
   type SiteArchetype,
   type SiteConcept,
+  type StorefrontDecision,
   type TemplateKey,
   type TestimonialSourceReview,
+  type WebsiteConfig,
+  type WebsiteGeneration,
+  type WebsiteLayout,
 } from '@/lib/siteTemplates';
 
 // AI Website Generator — Advanced tier only. Two-step premium flow:
@@ -143,6 +158,141 @@ STORY ↔ FEATURED-PRODUCT CONSISTENCY (BINDING):
 - story (body), product_grid.intro, hero copy and the concept "vibe" may name or describe ONLY products from that FEATURED list. Never build the narrative around a product that is in the wider inventory but absent from the FEATURED list — the customer cannot see it.
 - Category-level language ("Kojic soaps", "Oud attars") is fine when it describes the FEATURED pieces; a named product must be one of them.
 </copy_integrity>`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 14 WP4 — ROUTE INTEGRATION (A3). How POST consumes the WP1–WP3
+// authority model: four pure, module-private steps. POST calls them and
+// originates none of template_key, storefront_family or layout_strategy.grid.
+//   · Gate CLOSED (RITUAL_RECIPE_GENERATION_ENABLED is false — production
+//     today): routeAuthority returns null, and under a null authority every
+//     other step hands back what it was given — the SAME generation reference,
+//     no composition, no log line. The route is the pre-WP4 route.
+//   · Gate OPEN: the decision assignArchitecture returned owns all three keys.
+//     Its template is the one pinned. Its family and recipe grid are stamped
+//     onto the generation's layout by the WP3 carrier BEFORE any existing
+//     carrier reads that layout, whatever the model named. An archetype whose
+//     template the decision changed keeps only its surviving look (the WP3
+//     visual-system composition) under the assigned template.
+//   · CLASSIC FLOOR (gate open, no usable decision — the engine threw, the
+//     object is not a coherent StorefrontDecision, or reading it failed): the
+//     seller's own template when one was chosen, else the route's category
+//     heuristic, never the model's; the default family; no recipe grid; no
+//     Subtraction.
+// Nothing here changes a decision, a rule, the prompt, the resolver, the
+// renderer or the persist call, and nothing here opens the gate.
+// scripts/verifyArchitectureAssignment.ts lifts the code between the two WP4
+// markers out of this file and RUNS it in both gate states, so the block must
+// stay self-contained: the only outside names it may use are imports from
+// '@/lib/siteTemplates'.
+// ─────────────────────────────────────────────────────────────────────────────
+// [WP4:BEGIN]
+/** What the build follows when the gate is open. `decision` null = the
+ *  Classic floor; `floor` then says why no decision could be used. */
+type RouteAuthority = {
+  decision: StorefrontDecision | null;
+  /** The template the build is pinned to — the decision's, or the floor's. */
+  template: TemplateKey;
+  floor: 'missing' | 'invalid' | 'unreadable' | null;
+};
+
+/** WP4 step 1 — obtain the authority, BEFORE the template is pinned. Pure.
+ *  Gate closed → null (nothing downstream changes). Gate open → the decision
+ *  when it is usable, else the Classic floor on `floorTemplate` — the seller's
+ *  chosen template, else the route's own category heuristic (the pre-WP4
+ *  prompt hint). That heuristic is the one value the route still supplies
+ *  itself, and only when Assignment gave it nothing to follow.
+ *  A decision is usable only when it honours the StorefrontDecision contract:
+ *  family, architecture and template are known values; Subtraction pairs with
+ *  architecture 'classic'; and the template can render what is asked (Counter,
+ *  Gallery and Subtraction are Ritual-only). This is a shape check on the
+ *  object — no threshold, niche or eligibility rule is restated here.
+ *  The three values are read once, inside the try: never throws. */
+function routeAuthority(
+  gateOpen: boolean,
+  assignment: ArchitectureAssignment | null | undefined,
+  floorTemplate: TemplateKey
+): RouteAuthority | null {
+  if (!gateOpen) return null;
+  let decision: StorefrontDecision | null = null;
+  let assignedTemplate: TemplateKey | null = null;
+  let floor: RouteAuthority['floor'] = 'missing';
+  if (assignment) {
+    try {
+      floor = 'invalid';
+      if (typeof assignment === 'object' && isStorefrontDecision(assignment)) {
+        const { family, architecture, template } = assignment;
+        const ritualOnly = family === 'subtraction' || architecture !== 'classic';
+        if (
+          (STOREFRONT_FAMILIES as readonly string[]).includes(family) &&
+          (ARCHITECTURES as readonly string[]).includes(architecture) &&
+          (TEMPLATE_KEYS as readonly string[]).includes(template) &&
+          (family !== 'subtraction' || architecture === 'classic') &&
+          (!ritualOnly || template === SUBTRACTION_TEMPLATE_KEY)
+        ) {
+          decision = assignment;
+          assignedTemplate = template;
+          floor = null;
+        }
+      }
+    } catch {
+      decision = null;
+      assignedTemplate = null;
+      floor = 'unreadable';
+    }
+  }
+  return decision && assignedTemplate
+    ? { decision, template: assignedTemplate, floor: null }
+    : { decision: null, template: floorTemplate, floor: floor ?? 'invalid' };
+}
+
+/** WP4 step 2 — carry the authority onto the model's generation. Pure.
+ *  No authority (gate closed) → the SAME generation object back. Otherwise a
+ *  copy whose template_key is the assigned template and whose layout went
+ *  through the WP3 carrier: storefront_family and the recipe grid are the
+ *  decision's (the Classic floor's when there is none), every other lever is
+ *  the model's. The existing carriers then read this object unchanged. */
+function carryAuthority<G extends Pick<WebsiteGeneration, 'template_key' | 'layout'>>(
+  generation: G,
+  authority: RouteAuthority | null
+): G {
+  if (!authority) return generation;
+  return {
+    ...generation,
+    template_key: authority.template,
+    layout: carryStorefrontDecision(generation.layout, authority.decision, { gateOpen: true }) ?? undefined,
+  };
+}
+
+/** WP4 step 3 — an archetype under a template the decision changed. Pure.
+ *  Returns null when there is nothing to recompose (no authority, no
+ *  archetype, or the assigned template is the archetype's own — the existing
+ *  applyArchetype path stands). Otherwise seats the archetype's SURVIVING look
+ *  (WP3 composeVisualSystem) on the assigned template and runs the existing
+ *  layout carrier under the composition's bounds: the assigned template's own
+ *  section mix, the archetype's accents and faces only where they survive. */
+function applyAssignedLook(
+  config: WebsiteConfig,
+  archetype: SiteArchetype | null,
+  layout: WebsiteLayout | null | undefined,
+  authority: RouteAuthority | null
+): WebsiteConfig | null {
+  if (!authority || !archetype || archetype.template_key === authority.template) return null;
+  const look = composeVisualSystem(archetype, authority.template);
+  const seated: WebsiteConfig = { ...config, template_key: look.templateKey };
+  if (Object.keys(look.theme).length > 0) seated.theme = { ...look.theme };
+  return applyGenerationLayout(seated, layout, look.bounds);
+}
+
+/** WP4 — the authority line an open gate logs: what the build was told to
+ *  follow, composed from the authority alone. Pure. (POST adds one more line
+ *  of its own when an archetype's look is carried under a changed template.) */
+function describeRouteAuthority(authority: RouteAuthority, shopId: string): string {
+  const d = authority.decision;
+  return d
+    ? `[generate-website] Assignment authority for shop ${shopId}: architecture=${d.architecture} template=${authority.template} family=${d.family} grid=${assignedRecipeGrid(d) ?? 'none'}`
+    : `[generate-website] Assignment authority for shop ${shopId}: CLASSIC FLOOR (decision ${authority.floor}) template=${authority.template} family=${DEFAULT_STOREFRONT_FAMILY} grid=none`;
+}
+// [WP4:END]
 
 export async function POST(req: Request) {
   try {
@@ -352,6 +502,10 @@ export async function POST(req: Request) {
       image_url: string | null;
       ad_video_url: string | null;
       ad_hero_image_url: string | null;
+      // Phase 14 WP2 (validator parity): read so the assignment's render
+      // window carries the same stock the resolver's home read carries.
+      // Optional — harness rows have none (unknown stock counts as in stock).
+      stock_quantity?: number | null;
     };
     let products: InventoryRow[] | null = null;
     if (devHarness) {
@@ -372,7 +526,7 @@ export async function POST(req: Request) {
     } else {
       const { data } = await supabase
         .from('products')
-        .select('id, name, description, category, price, image_url, ad_video_url, ad_hero_image_url')
+        .select('id, name, description, category, price, image_url, ad_video_url, ad_hero_image_url, stock_quantity')
         .eq('user_id', user!.id)
         .order('created_at', { ascending: false })
         .limit(30);
@@ -630,6 +784,11 @@ ${COPY_INTEGRITY_DIRECTIVES}`;
     // the assignment is skipped, and a null signal set writes nothing.
     let assignedArchitecture: Architecture | null = null;
     let expressionSignals: ExpressionSignals | null = null;
+    // Phase 14 WP4 (A3): the assignment object itself is carried out of this
+    // block too — set the moment the engine answers, left null when it throws
+    // or never runs. Read by routeAuthority below and by nothing else; with
+    // the gate closed that step returns null, so this stays a log-only block.
+    let obtainedAssignment: ArchitectureAssignment | null = null;
     try {
       const assignmentProducts = products.map((p) => ({
         id: p.id,
@@ -651,16 +810,31 @@ ${COPY_INTEGRITY_DIRECTIVES}`;
               : chosenTemplate
                 ? { template: chosenTemplate, source: 'seller-template' as const }
                 : null;
-      const assignment = assignArchitecture({
+      // Phase 14 WP2 — input + validator parity (inputs only). With the gate
+      // CLOSED this hands back `nicheKey` untouched and no render window, so
+      // the call below is the Phase 10H call byte for byte. With it OPEN an
+      // undeclared niche (absent, or the Studio's preselected catch-all)
+      // reaches the engine as no niche — the same input Studio and Onboarding
+      // — and the engine judges the recipe verdicts on the slice the resolver
+      // will hold: the newest rows, carrying stock. `assignmentProducts`
+      // itself stays stock-less, so everything else the engine reads is
+      // unchanged.
+      const aligned = alignAssignmentInputs({
         niche: nicheKey,
+        products: assignmentProducts.map((p, i) => ({ ...p, stock_quantity: products[i]?.stock_quantity ?? null })),
+      });
+      const assignment = assignArchitecture({
+        niche: aligned.niche,
         dominantCategory,
         products: assignmentProducts,
+        renderProducts: aligned.renderProducts,
         heroMedia: resolveHeroMedia(
           { id: shop.id, shop_name: shop.shop_name, shop_slug: shop.shop_slug, logo_url: shop.logo_url, banner_url: shop.banner_url, bio: shop.bio },
           null,
         ),
         forcedTemplate,
       });
+      obtainedAssignment = assignment;
       // Phase 10I: structured, human-readable block (one fact per line) built
       // ONLY from the assignment object — architecture, template, confidence,
       // decision source, reason, signals, Counter/Gallery eligibility.
@@ -680,8 +854,38 @@ ${COPY_INTEGRITY_DIRECTIVES}`;
         categoryCount: assignment.signals.categoryCount,
         exhibits: selectGalleryExhibits(assignmentProducts).length,
       };
+      // Phase 14 WP2 (validator parity): with the gate OPEN the two floor
+      // inputs are re-counted on the render window, the way the resolver
+      // re-counts them — so a selected expression cannot degrade on first
+      // render. Gate closed → no window → the Phase 10L.4 values above stand.
+      if (aligned.renderProducts) {
+        expressionSignals = {
+          ...expressionSignals,
+          ...expressionFloorSignals({
+            signals: assignment.signals,
+            products: assignmentProducts,
+            renderProducts: aligned.renderProducts,
+          }),
+        };
+      }
     } catch (assignmentError) {
       console.warn('[generate-website] Architecture assignment skipped:', assignmentError);
+    }
+
+    // ── Phase 14 WP4 (A3) — the authority, obtained BEFORE the template is
+    // pinned (and before anything is generated). Gate closed → null: every
+    // WP4 step below is then a no-op and this request runs the pre-WP4 route.
+    // Gate open → the decision above owns template_key, storefront_family and
+    // the recipe grid; with no usable decision the Classic floor stands on the
+    // seller's own template, else the category heuristic — never the model's.
+    const authority = routeAuthority(
+      RITUAL_RECIPE_GENERATION_ENABLED,
+      obtainedAssignment,
+      chosenTemplate ?? heuristicTemplate,
+    );
+    if (authority) {
+      if (authority.decision) console.log(describeRouteAuthority(authority, shop.id));
+      else console.warn(describeRouteAuthority(authority, shop.id));
     }
 
     const archetypeDirection = archetype
@@ -847,16 +1051,39 @@ ${COPY_INTEGRITY_DIRECTIVES}${entropyEngine}`;
     });
 
     // Explicit destructuring isolates Matrix tokens from the WebsiteConfig blob
-    const { brand_tokens, matrix_theme, ...legacyGeneration } = generation;
+    const { brand_tokens, matrix_theme, ...modelGeneration } = generation;
+    // Phase 14 WP4 (A3): `legacyGeneration` is what every carrier below reads.
+    // Gate closed (authority null) it IS the model's generation — the same
+    // object the destructuring above produced, as before WP4. Gate open it is
+    // that generation with the assigned template and a layout that went
+    // through the WP3 carrier, so the model's own template_key,
+    // storefront_family and recipe grid never reach a carrier.
+    const legacyGeneration = carryAuthority(modelGeneration, authority);
     let config = generationToConfig(legacyGeneration);
 
     // Belt-and-suspenders: enforce the chosen template even if the model drifted.
     if (chosenTemplate) {
       config.template_key = chosenTemplate;
     }
+    // Phase 14 WP4 (A3): with the gate open the pinned template is
+    // Assignment's — Ritual for Counter, Gallery and Subtraction whatever the
+    // seller chose, the seller's own template when the decision is Classic.
+    // Gate closed → authority is null and the pin above stands alone.
+    if (authority) {
+      config.template_key = authority.template;
+    }
 
     // ── Archetype application (Pillar 3) + entropy engine ─────────────────
-    if (archetype) {
+    // Phase 14 WP4 (A3): an archetype whose template the decision changed
+    // cannot run applyArchetype (it would pin the archetype's own template and
+    // strip the recipe under its bounds) — its surviving look is seated under
+    // the assigned template instead. Null with the gate closed, with no
+    // archetype, and whenever the assigned template is the archetype's own.
+    const assignedLook = applyAssignedLook(config, archetype, legacyGeneration.layout, authority);
+    if (assignedLook) {
+      config = assignedLook;
+      console.log(`[generate-website] Archetype "${archetype?.key}" look carried under assigned template "${config.template_key}" for shop ${shop.id}: blocks=[${(config.blocks ?? []).map((b) => b.type).join(', ')}]`);
+    } else if (archetype) {
       let reviewRows: TestimonialSourceReview[] | null = null;
       if (devHarness) {
         const raw = Array.isArray(harnessSeller?.reviews) ? (harnessSeller!.reviews as unknown[]) : [];

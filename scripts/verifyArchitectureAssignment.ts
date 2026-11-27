@@ -11,30 +11,106 @@
 //   node .verify-assign/scripts/verifyArchitectureAssignment.js
 //
 // Exits non-zero on any failure.
+//
+// Phase 14 WP1 (sections [11]–[20]) — the authority foundation. The engine
+// takes the gate state as an input: CLOSED it returns the Phase 10H object
+// unchanged (sections [1]–[10] above run untouched and prove it); OPEN it
+// returns the full decision — family (Subtraction included), architecture,
+// template, verdicts, fixed-marker reasons. Both states are proven here, and
+// section [20] reads the source tree to prove only the generation route
+// consumes the new fields (since WP4 — before it, nothing did). Run from the
+// repo root (section [20] resolves paths from cwd).
+//
+// Phase 14 WP2 (sections [21]–[26]) — input + validator parity. An
+// undeclared niche reaches the engine as no niche from Studio and Onboarding
+// alike, and the recipe verdicts and expression floors are judged on the
+// slice the resolver will hold (the newest rows, with stock). Inputs only:
+// no rule changes, nothing wired, and inert while the gate is closed.
+//
+// Phase 14 WP3 (sections [27]–[32]) — the authority carriers. One pure step
+// stamps the decision's family and recipe grid onto a layout whatever the
+// model named; one pure step says what of an archetype's look survives under
+// the assigned template. Since WP4 the generation route calls both; section
+// [32] proves nothing else does.
+//
+// Phase 14 WP4 (sections [33]–[39]) — route integration (A3). The generation
+// route now obtains the decision before it pins the template, hands the
+// existing carriers a generation that went through the WP3 carrier, and falls
+// to the Classic floor when no usable decision exists — all of it dormant
+// while the gate is closed. The route's WP4 steps are LIFTED from its source
+// and run here in both gate states (the script needs the `typescript` package
+// at run time for that — the same one that compiles it). Sections [20] and
+// [32] no longer say "nothing consumes" the WP1 / WP3 surface: they assert the
+// generation route is its ONLY consumer. Sections [34]–[37] run the lifted
+// steps inside a script-side mirror of POST's tail; section [39] is what ties
+// that mirror to the real file — the route with WP4's edits reversed must be
+// byte-identical (sha256) to the pre-WP4 route, so POST is the pre-WP4 POST
+// plus exactly WP4's statements and nothing else.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as ts from 'typescript';
+import { TEMPLATE_THEMES, contrastRatio, judgeAccent } from '../lib/siteTheme';
 import {
+  ARCHETYPES,
+  ARCHETYPE_KEYS,
+  ARCHITECTURES,
+  ASSIGNMENT_REASON_MARKERS,
+  ASSIGNMENT_RENDER_WINDOW,
+  CLASSIC_BLOCK_MIX,
+  DEFAULT_STOREFRONT_FAMILY,
+  STUDIO_NICHES,
+  SUBTRACTION_TEMPLATE_KEY,
+  SiteThemeSchema,
+  TEMPLATE_KEYS,
+  WebsiteConfigSchema,
+  WebsiteGenerationSchema,
+  applyArchetype,
+  applyGenerationLayout,
+  archetypeLayoutBounds,
+  assignedRecipeGrid,
+  carryStorefrontDecision,
+  classicLayoutBounds,
+  composeVisualSystem,
+  generationToConfig,
   RITUAL_RECIPE_GENERATION_ENABLED,
+  STOREFRONT_FAMILIES,
+  STOREFRONT_FAMILY_REASON_MARKERS,
+  SUBTRACTION_ASSIGNMENT_RULES,
+  alignAssignmentInputs,
   applyExpressionSelection,
   assignArchitecture,
+  assignArchitectureOrFloor,
   assignmentDecisionSource,
   describeArchitectureAssignment,
+  expressionFloorSignals,
   formatArchitectureAssignment,
   formatExpressionSelection,
   groupCounterAisles,
   guardRecipeGridPick,
   isExpressionForArchitecture,
+  isStorefrontDecision,
   normalizeCategoryForAssignment,
+  resolveHeroMedia,
   resolveRitualComposition,
   resolveRitualRecipe,
+  ritualRecipeEligibility,
   selectExpression,
   selectGalleryExhibits,
+  templateFromCategory,
   type ArchitectureAssignment,
   type ArchitectureAssignmentInput,
   type ExpressionSignals,
   type HeroMedia,
+  type SiteArchetype,
   type SiteProduct,
+  type StorefrontDecision,
+  type TemplateKey,
   type WebsiteConfig,
+  type WebsiteGeneration,
+  type WebsiteLayout,
 } from '../lib/siteTemplates';
 
 let failures = 0;
@@ -586,6 +662,2304 @@ console.log('\n[10] Phase 10L.5 — Routine Counter aisle grouping (10K.3 §1)')
   check(`resolver ↔ grouping agree (${routineSeen} routine renders all ≥ 3 bands, ${degradedSeen} degrades name the band count)`, agrees && routineSeen > 0 && degradedSeen > 0);
   const itemComp = resolveRitualComposition({ config: counterCfg('item'), products: mixed, heroMedia: banner });
   check('item stays item on an inventory that could band (no upgrade at render)', itemComp.recipe === 'product-first' && itemComp.expression === 'item');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 14 WP1 — AUTHORITY FOUNDATION. Shared fixtures for sections [11]–[20].
+// ─────────────────────────────────────────────────────────────────────────────
+
+const MARK = ASSIGNMENT_REASON_MARKERS;
+const CLOSED_KEYS = 'architecture,template,confidence,reason,eligibility,signals,overriddenBy';
+const OPEN_KEYS = `${CLOSED_KEYS},family,familyReason,commercePreference,sellerTemplate`;
+
+/** The engine with the gate supplied as OPEN — fails loudly if the object it
+ *  returns is not the full decision. */
+function open(input: ArchitectureAssignmentInput): StorefrontDecision {
+  const a = assignArchitecture(input, { gateOpen: true });
+  if (!isStorefrontDecision(a)) throw new Error('gate open did not return a StorefrontDecision');
+  return a;
+}
+const closed = (input: ArchitectureAssignmentInput): ArchitectureAssignment => assignArchitecture(input, { gateOpen: false });
+
+/** n products of which `pictured` carry a photo — one category unless given. */
+const photographed = (n: number, pictured: number, category: string | string[] = 'Rings'): SiteProduct[] =>
+  inventory(n, {}, (i) => ({ pictured: i < pictured, category: Array.isArray(category) ? category[i % category.length] : category }));
+
+type Forced = ArchitectureAssignmentInput['forcedTemplate'];
+const archetypeForced: Forced[] = ARCHETYPE_KEYS.map((key) => ({ template: ARCHETYPES[key].template_key, source: 'seller-archetype' as const }));
+const forcedVariants: Forced[] = [
+  null,
+  ...archetypeForced,
+  { template: 'editorial', source: 'seller-template' },
+  { template: 'vitality', source: 'concept' },
+  { template: 'ritual', source: 'concept' },
+];
+
+/** Every niche shape × catalog size × photography share × hero state. */
+function sweepInputs(): ArchitectureAssignmentInput[] {
+  const niches: Array<string | null> = [null, 'cosmetics', 'fashion', 'jewelry', 'home', 'Oud, Fragrance & Home', 'food', 'wellness', 'tech', 'general', 'Artisan crafts', 'Event services', 'Najat Cakes bakery'];
+  const dominants: Array<string | null> = [null, 'perfume', 'electronics'];
+  const out: ArchitectureAssignmentInput[] = [];
+  for (const niche of niches) {
+    for (const dominantCategory of dominants) {
+      for (const size of [0, 1, 5, 6, 10, 12, 20]) {
+        for (const share of [1, 0.9, 0.5]) {
+          for (const heroMedia of [null, banner] as HeroMedia[]) {
+            out.push({ niche, dominantCategory, products: photographed(size, Math.round(size * share), ['A', 'B', 'C']), heroMedia });
+          }
+        }
+      }
+    }
+  }
+  return out;
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === 'object') {
+    for (const v of Object.values(value as Record<string, unknown>)) deepFreeze(v);
+    Object.freeze(value);
+  }
+  return value;
+}
+
+console.log('\n[11] Phase 14 WP1 — gate CLOSED: the Phase 10H object, unchanged');
+{
+  let defaultIsClosed = true;
+  let sevenKeys = true;
+  let noDecision = true;
+  let noNewMarkers = true;
+  let cases = 0;
+  for (const input of sweepInputs()) {
+    for (const forcedTemplate of forcedVariants) {
+      const withForced = { ...input, forcedTemplate };
+      const byDefault = run(withForced);
+      const explicit = closed(withForced);
+      cases += 1;
+      if (JSON.stringify(byDefault) !== JSON.stringify(explicit)) defaultIsClosed = false;
+      if (Object.keys(explicit).join(',') !== CLOSED_KEYS || Object.keys(explicit.eligibility).join(',') !== 'counter,gallery') sevenKeys = false;
+      if (isStorefrontDecision(explicit) || isStorefrontDecision(byDefault)) noDecision = false;
+      if (explicit.reason.endsWith(MARK.subtraction) || explicit.reason === MARK.floor) noNewMarkers = false;
+    }
+  }
+  check(`no gate argument ≡ gate closed while the constant is false (${cases} cases)`, RITUAL_RECIPE_GENERATION_ENABLED === false && defaultIsClosed);
+  check('closed: exactly the seven Phase 10H keys, eligibility is counter + gallery only', sevenKeys);
+  check('closed: no family, no commerce preference, no seller-template record is returned', noDecision);
+  check('closed: no reason carries the subtraction or floor marker', noNewMarkers);
+
+  // The three behaviours WP1 changes are gate-open ONLY — closed keeps each.
+  const homeClosed = closed({ niche: 'home', products: photographed(5, 5, 'Attars'), heroMedia: banner });
+  check('closed: "Oud, Fragrance & Home" keeps no lean (gallery only by tie-break)', homeClosed.architecture === 'gallery' && assignmentDecisionSource(homeClosed) === 'tie-break', homeClosed);
+  const degradedClosed = closed({ niche: 'fashion', products: photographed(5, 5, 'Abayas'), heroMedia: banner, forcedTemplate: { template: 'editorial', source: 'seller-template' } });
+  check('closed: a forced non-Ritual template still degrades the recipe to Classic', degradedClosed.architecture === 'classic' && degradedClosed.template === 'editorial' && degradedClosed.reason.endsWith(MARK.overrideDegraded) && assignmentDecisionSource(degradedClosed) === 'seller-override', degradedClosed);
+  const wallClosed = closed({ niche: 'jewelry', products: photographed(20, 20, ['Rings', 'Chains', 'Watches']), heroMedia: null });
+  check('closed: a desire merchant with no hero and a deep catalog still falls to Counter', wallClosed.architecture === 'counter' && wallClosed.reason.endsWith(MARK.tieBreakCounter), wallClosed);
+}
+
+console.log('\n[12] Phase 14 WP1 — gate OPEN: the full decision is returned');
+{
+  const tech: ArchitectureAssignmentInput = { niche: 'tech', products: photographed(20, 20, ['Phones', 'Laptops', 'Audio']), heroMedia: banner };
+  const d = open(tech);
+  const c = closed(tech);
+  check('open: the seven keys keep their order, then the four decision fields', Object.keys(d).join(',') === OPEN_KEYS, Object.keys(d));
+  check('open: eligibility carries counter, gallery and subtraction', Object.keys(d.eligibility).join(',') === 'counter,gallery,subtraction', Object.keys(d.eligibility));
+  check('open: where no open-gate rule applies the seven fields equal the closed object',
+    d.architecture === c.architecture && d.template === c.template && d.confidence === c.confidence && d.reason === c.reason && d.overriddenBy === c.overriddenBy &&
+    JSON.stringify(d.signals) === JSON.stringify(c.signals) && JSON.stringify(d.eligibility.counter) === JSON.stringify(c.eligibility.counter) && JSON.stringify(d.eligibility.gallery) === JSON.stringify(c.eligibility.gallery), { d, c });
+  check('open: decision fields are populated', d.family === 'product-first' && d.commercePreference === 'counter' && d.sellerTemplate === null && d.familyReason === STOREFRONT_FAMILY_REASON_MARKERS['product-first'], d);
+
+  // A2 — a forced template never degrades the architecture with the gate open.
+  const abayas: ArchitectureAssignmentInput = { niche: 'fashion', products: photographed(5, 5, 'Abayas'), heroMedia: banner, forcedTemplate: { template: 'editorial', source: 'seller-template' } };
+  const stands = open(abayas);
+  check('open: forced editorial does NOT degrade — Gallery stands on Ritual',
+    stands.architecture === 'gallery' && stands.template === 'ritual' && stands.reason.endsWith(MARK.preferredGallery) && !stands.reason.endsWith(MARK.overrideDegraded) && assignmentDecisionSource(stands) === 'niche-preference', stands);
+  check('open: the seller template is recorded as set aside, overriddenBy cleared',
+    stands.overriddenBy === null && JSON.stringify(stands.sellerTemplate) === '{"template":"editorial","source":"seller-template","honoured":false}', stands.sellerTemplate);
+  const ritualPick = open({ ...abayas, forcedTemplate: { template: 'ritual', source: 'seller-archetype' } });
+  check('open: forced Ritual is honoured and recorded', ritualPick.architecture === 'gallery' && ritualPick.template === 'ritual' && ritualPick.overriddenBy === 'seller-archetype' && ritualPick.sellerTemplate?.honoured === true, ritualPick);
+  const classicForced = open({ niche: 'cosmetics', products: photographed(8, 8, 'Serum'), heroMedia: banner, forcedTemplate: { template: 'vitality', source: 'seller-archetype' } });
+  check('open: Classic keeps the seller template', classicForced.architecture === 'classic' && classicForced.template === 'vitality' && classicForced.overriddenBy === 'seller-archetype' && classicForced.sellerTemplate?.honoured === true, classicForced);
+  const classicFree = { niche: 'cosmetics', products: photographed(8, 8, 'Serum'), heroMedia: banner };
+  check('open: Classic with nothing forced keeps the category template', open(classicFree).template === closed(classicFree).template && open(classicFree).sellerTemplate === null);
+}
+
+console.log('\n[13] Phase 14 WP1 — Subtraction rule boundaries (gate open)');
+{
+  const jewel = (n: number, pictured: number, heroMedia: HeroMedia, category: string | string[] = 'Rings') =>
+    open({ niche: 'jewelry', products: photographed(n, pictured, category), heroMedia });
+  check('thresholds are the ratified ones', SUBTRACTION_ASSIGNMENT_RULES.minPicturedProducts === 6 && SUBTRACTION_ASSIGNMENT_RULES.minPicturedRatio === 0.9);
+
+  // Photographed-piece floor.
+  const five = jewel(5, 5, null);
+  check('5 photographed pieces → not Subtraction, names the 6-piece rule', five.family !== 'subtraction' && !five.eligibility.subtraction.eligible && JSON.stringify(five.eligibility.subtraction.reasons) === '["needs 6 photographed pieces (has 5)"]', five);
+  const six = jewel(6, 6, null);
+  check('6 photographed pieces → Subtraction', six.family === 'subtraction' && six.eligibility.subtraction.eligible && six.eligibility.subtraction.reasons.length === 0, six);
+  check('Subtraction pairs with Classic on Ritual at high confidence', six.architecture === 'classic' && six.template === 'ritual' && six.confidence === 'high', six);
+
+  // Photography share.
+  const p89 = jewel(100, 89, null);
+  check('89% photographed → not Subtraction, names the 90% rule', p89.family !== 'subtraction' && JSON.stringify(p89.eligibility.subtraction.reasons) === '["needs 90% photographed products (has 89%)"]', p89);
+  const p90 = jewel(100, 90, null);
+  check('90% photographed → Subtraction', p90.family === 'subtraction' && p90.architecture === 'classic' && p90.template === 'ritual', p90);
+  check('9 of 10 → Subtraction; 8 of 9 (88.9%) → not', jewel(10, 9, null).family === 'subtraction' && jewel(9, 8, null).family !== 'subtraction');
+  const p895 = jewel(200, 179, null);
+  check('89.5% is NOT rounded up to the bar (reported as 89%)', p895.family !== 'subtraction' && p895.eligibility.subtraction.reasons.join() === 'needs 90% photographed products (has 89%)', p895.eligibility.subtraction);
+  check('6 photographed of 7 (85.7%) fails on share alone', JSON.stringify(jewel(7, 6, null).eligibility.subtraction.reasons) === '["needs 90% photographed products (has 85%)"]', jewel(7, 6, null).eligibility.subtraction);
+
+  // Hero media.
+  const withBanner = jewel(6, 6, banner);
+  check('banner present → not Subtraction; Gallery is preferred and assigned', withBanner.family !== 'subtraction' && withBanner.architecture === 'gallery' && JSON.stringify(withBanner.eligibility.subtraction.reasons) === '["has hero media, so Gallery is preferred"]', withBanner);
+  check('banner absent → Subtraction (same catalog)', jewel(6, 6, null).family === 'subtraction');
+
+  // Desire commerce only.
+  const tech = open({ niche: 'tech', products: photographed(6, 6), heroMedia: null });
+  check('catalog-commerce merchant → never Subtraction', tech.family === 'product-first' && tech.eligibility.subtraction.reasons.includes('needs a desire-commerce niche (fashion, jewellery, fragrance, artisan)'), tech);
+  const noLean = open({ niche: 'cosmetics', products: photographed(6, 6), heroMedia: null });
+  check('unleaned niche (cosmetics) → never Subtraction', noLean.family === 'lifestyle-story' && !noLean.eligibility.subtraction.eligible, noLean);
+  const bakery = open({ niche: 'food', products: photographed(6, 6), heroMedia: null });
+  check('culinary merchant → never Subtraction', bakery.family === 'menu-occasion' && bakery.eligibility.subtraction.reasons.includes('menu-occasion merchants are not subtraction merchants'), bakery);
+  const service = open({ niche: 'Event services', products: photographed(6, 6), heroMedia: null });
+  check('service merchant → never Subtraction', service.family !== 'subtraction' && service.eligibility.subtraction.reasons.includes('service merchants have no catalog to wall'), service);
+  check('undeclared desire keyword (perfume) qualifies like a declared niche', open({ niche: null, dominantCategory: 'perfume', products: photographed(6, 6), heroMedia: null }).family === 'subtraction');
+  check('empty inventory → not Subtraction, no throw', open({ niche: 'jewelry', products: [], heroMedia: null }).family !== 'subtraction');
+
+  // Family first: Subtraction pre-empts the architecture the chain would give.
+  const deep = jewel(20, 20, null, ['Rings', 'Chains', 'Watches']);
+  check('Subtraction pre-empts Counter on a deep desire catalog (Counter stays eligible, is not assigned)', deep.family === 'subtraction' && deep.architecture === 'classic' && deep.eligibility.counter.eligible && !deep.eligibility.gallery.eligible, deep);
+  let exclusive = true;
+  let consistent = true;
+  for (const input of sweepInputs()) {
+    const s = open(input);
+    if (s.eligibility.subtraction.eligible && s.eligibility.gallery.eligible) exclusive = false;
+    if ((s.family === 'subtraction') !== s.eligibility.subtraction.eligible) consistent = false;
+    if (s.family === 'subtraction' && (s.architecture !== 'classic' || s.template !== 'ritual' || s.signals.heroMedia || s.commercePreference !== 'gallery')) consistent = false;
+  }
+  check('Subtraction and Gallery are never both open to one merchant', exclusive);
+  check('family is subtraction exactly when the verdict is eligible — always Classic, Ritual, no hero, desire lean', consistent);
+}
+
+console.log('\n[14] Phase 14 WP1 — "Oud, Fragrance & Home" is desire commerce (gate open)');
+{
+  const attars = (n: number) => photographed(n, n, 'Attars');
+  const shapes: Array<[string, Pick<ArchitectureAssignmentInput, 'niche' | 'dominantCategory'>]> = [
+    ['declared id', { niche: 'home' }],
+    ['declared label', { niche: 'Oud, Fragrance & Home' }],
+    ['undeclared "perfume"', { niche: null, dominantCategory: 'perfume' }],
+    ['undeclared "attars"', { niche: null, dominantCategory: 'attars' }],
+    ['undeclared "oud"', { niche: null, dominantCategory: 'oud' }],
+    ['undeclared "fragrance"', { niche: null, dominantCategory: 'Fragrance' }],
+  ];
+  const withBanner = shapes.map(([, s]) => open({ ...s, products: attars(5), heroMedia: banner }));
+  const noBanner = shapes.map(([, s]) => open({ ...s, products: attars(6), heroMedia: null }));
+  check('declared and undeclared fragrance carry the SAME desire-commerce preference', withBanner.every((d) => d.commercePreference === 'gallery') && noBanner.every((d) => d.commercePreference === 'gallery'), withBanner.map((d) => d.commercePreference));
+  check('with a banner: every shape is Gallery by niche preference, same reason, same family',
+    withBanner.every((d) => d.architecture === 'gallery' && assignmentDecisionSource(d) === 'niche-preference' && d.reason === withBanner[0].reason && d.family === 'lifestyle-story' && d.template === 'ritual'), withBanner.map((d) => `${d.architecture}/${d.family}`));
+  check('without a banner: every shape is Subtraction, same reason', noBanner.every((d) => d.family === 'subtraction' && d.reason === noBanner[0].reason), noBanner.map((d) => d.family));
+  check('fragrance classification reason is a fixed marker', withBanner[0].reason === `5 photographed pieces and a shop banner. ${MARK.preferredGallery}`, withBanner[0].reason);
+  const lockedSmall = open({ niche: 'home', products: attars(5), heroMedia: null });
+  check('declared fragrance, no banner, under the wall floor → Classic with Gallery named as locked', lockedSmall.architecture === 'classic' && lockedSmall.family === 'lifestyle-story' && lockedSmall.reason === 'Gallery fits this niche but is not yet unlocked: needs hero media (site hero image or shop banner).', lockedSmall);
+  check('the classification is per niche: declared home + decor category leans gallery too', open({ niche: 'home', dominantCategory: 'Decor', products: attars(5), heroMedia: banner }).commercePreference === 'gallery');
+
+  // Gate-only: closed still shows the Phase 10H gap between the two shapes.
+  const declaredClosed = closed({ niche: 'home', products: attars(5), heroMedia: banner });
+  const undeclaredClosed = closed({ niche: null, dominantCategory: 'perfume', products: attars(5), heroMedia: banner });
+  check('closed: declared home stays unleaned, undeclared perfume stays leaned (unchanged)', assignmentDecisionSource(declaredClosed) === 'tie-break' && assignmentDecisionSource(undeclaredClosed) === 'niche-preference');
+  // Scope: the other niches keep their Phase 10F lean with the gate open.
+  const lean = (niche: string) => open({ niche, products: photographed(8, 8), heroMedia: banner }).commercePreference;
+  check('open: other niche leans are untouched (general stays counter — the undeclared-niche rule is WP2)',
+    lean('cosmetics') === null && lean('fashion') === 'gallery' && lean('jewelry') === 'gallery' && lean('wellness') === 'counter' && lean('tech') === 'counter' && lean('general') === 'counter' && lean('food') === null);
+}
+
+console.log('\n[15] Phase 14 WP1 — rhythm ownership: every family is decided by the engine (gate open)');
+{
+  const FAM = STOREFRONT_FAMILY_REASON_MARKERS;
+  const story = open({ niche: 'jewelry', products: photographed(5, 5), heroMedia: banner });
+  check('lifestyle-story: desire commerce', story.family === 'lifestyle-story' && story.familyReason === FAM['lifestyle-story'], story);
+  const storyDefault = open({ niche: 'cosmetics', products: photographed(8, 8, 'Serum'), heroMedia: banner });
+  check('lifestyle-story: the default when there is no lean', storyDefault.family === 'lifestyle-story' && storyDefault.commercePreference === null, storyDefault);
+  const catalog = open({ niche: 'tech', products: photographed(20, 20, ['Phones', 'Laptops', 'Audio']), heroMedia: banner });
+  check('product-first: catalog-commerce lean', catalog.family === 'product-first' && catalog.familyReason === FAM['product-first'], catalog);
+  const catalogLocked = open({ niche: 'tech', products: photographed(2, 2, ['A', 'B']), heroMedia: null });
+  check('product-first: follows the lean even when Counter is not yet unlocked', catalogLocked.architecture === 'classic' && catalogLocked.family === 'product-first', catalogLocked);
+  const menu = open({ niche: 'food', products: photographed(10, 10, ['Cakes', 'Cupcakes']), heroMedia: banner });
+  check('menu-occasion: culinary niche', menu.family === 'menu-occasion' && menu.familyReason === FAM['menu-occasion'] && menu.architecture === 'classic', menu);
+  check('menu-occasion: free-text bakery', open({ niche: 'Najat Cakes bakery', products: photographed(10, 10), heroMedia: banner }).family === 'menu-occasion');
+  const wall = open({ niche: 'jewelry', products: photographed(6, 6), heroMedia: null });
+  check('subtraction: the Subtraction rule', wall.family === 'subtraction' && wall.familyReason === FAM.subtraction, wall);
+
+  // The rhythm follows the commerce PREFERENCE (ratified 13D), not the
+  // architecture a tie-break lands on — pinned so a later change is visible.
+  const tieCounter = open({ niche: 'cosmetics', products: inventory(12, {}, (i) => ({ pictured: i < 10, category: 'Soaps' })), heroMedia: null });
+  check('tie-break Counter with no lean keeps lifestyle-story', tieCounter.architecture === 'counter' && tieCounter.commercePreference === null && tieCounter.family === 'lifestyle-story', tieCounter);
+  const tieGallery = open({ niche: 'tech', products: photographed(5, 5, 'Phones'), heroMedia: banner });
+  check('tie-break Gallery under a catalog lean keeps product-first', tieGallery.architecture === 'gallery' && tieGallery.commercePreference === 'counter' && tieGallery.family === 'product-first', tieGallery);
+
+  let known = true;
+  let reasoned = true;
+  let leanRule = true;
+  let menuRule = true;
+  const seen = new Set<string>();
+  for (const input of sweepInputs()) {
+    const d = open(input);
+    seen.add(d.family);
+    if (!(STOREFRONT_FAMILIES as readonly string[]).includes(d.family)) known = false;
+    if (d.familyReason !== FAM[d.family]) reasoned = false;
+    if (d.family !== 'menu-occasion' && (d.commercePreference === 'counter') !== (d.family === 'product-first')) leanRule = false;
+    if (d.family === 'menu-occasion' && (d.architecture !== 'classic' || d.eligibility.counter.eligible || d.eligibility.gallery.eligible)) menuRule = false;
+  }
+  check('every decision names one of the four families', known && STOREFRONT_FAMILIES.every((f) => seen.has(f)), [...seen]);
+  check('every familyReason is that family\'s fixed marker', reasoned);
+  check('product-first exactly when the lean is catalog commerce (outside menu-occasion)', leanRule);
+  const culinaryWins = open({ niche: 'tech', dominantCategory: 'bakery', products: photographed(10, 10), heroMedia: banner });
+  check('culinary is decided first: a catalog lean with a culinary category is menu-occasion', culinaryWins.family === 'menu-occasion' && culinaryWins.architecture === 'classic', culinaryWins);
+  check('menu-occasion is always Classic with both recipes rejected', menuRule);
+}
+
+console.log('\n[16] Phase 14 WP1 — determinism + purity (both gate states)');
+{
+  let deterministic = true;
+  let pure = true;
+  let cases = 0;
+  for (const input of sweepInputs()) {
+    for (const forcedTemplate of [null, archetypeForced[1], archetypeForced[2]] as Forced[]) {
+      for (const gateOpen of [false, true]) {
+        const frozen = deepFreeze({ ...input, forcedTemplate, products: input.products.map((p) => ({ ...p })) });
+        const before = JSON.stringify(frozen);
+        let first = '';
+        let second = '';
+        try {
+          first = JSON.stringify(assignArchitecture(frozen, { gateOpen }));
+          second = JSON.stringify(assignArchitecture(JSON.parse(before) as ArchitectureAssignmentInput, { gateOpen }));
+        } catch {
+          pure = false;
+        }
+        cases += 1;
+        if (first !== second || first === '') deterministic = false;
+        if (JSON.stringify(frozen) !== before) pure = false;
+      }
+    }
+  }
+  check(`same inputs → identical object, closed and open (${cases} cases)`, deterministic);
+  check('a deep-frozen input is never written to', pure);
+  const a = open({ niche: 'jewelry', products: photographed(6, 6), heroMedia: null });
+  const b = open({ niche: 'jewelry', products: photographed(6, 6), heroMedia: null });
+  check('two calls return separate objects (no shared state)', a !== b && a.eligibility !== b.eligibility && a.eligibility.subtraction !== b.eligibility.subtraction && JSON.stringify(a) === JSON.stringify(b));
+}
+
+console.log('\n[17] Phase 14 WP1 — theme independence (gate open)');
+{
+  let sameDecision = true;
+  let ritualWhenRequired = true;
+  let classicKeepsSeller = true;
+  let recordHonest = true;
+  let sameExpression = true;
+  let closedDegrades = 0;
+  let cases = 0;
+  for (const input of sweepInputs()) {
+    const free = open(input);
+    const ritualRequired = free.family === 'subtraction' || free.architecture !== 'classic';
+    const exhibits = selectGalleryExhibits(input.products).length;
+    const expressionOf = (d: StorefrontDecision) => JSON.stringify(selectExpression({
+      architecture: d.family === 'subtraction' ? 'subtraction' : d.architecture,
+      niche: d.signals.niche,
+      dominantCategory: input.dominantCategory,
+      categoryCount: d.signals.categoryCount,
+      exhibits,
+    }));
+    for (const forcedTemplate of forcedVariants) {
+      if (!forcedTemplate) continue;
+      const forced = open({ ...input, forcedTemplate });
+      cases += 1;
+      if (
+        forced.family !== free.family || forced.architecture !== free.architecture || forced.commercePreference !== free.commercePreference ||
+        forced.confidence !== free.confidence || forced.reason !== free.reason || forced.familyReason !== free.familyReason ||
+        JSON.stringify(forced.eligibility) !== JSON.stringify(free.eligibility) || JSON.stringify(forced.signals) !== JSON.stringify(free.signals)
+      ) sameDecision = false;
+      if (ritualRequired && forced.template !== 'ritual') ritualWhenRequired = false;
+      if (!ritualRequired && forced.template !== forcedTemplate.template) classicKeepsSeller = false;
+      const honoured = !ritualRequired || forcedTemplate.template === 'ritual';
+      if (forced.sellerTemplate?.template !== forcedTemplate.template || forced.sellerTemplate?.source !== forcedTemplate.source || forced.sellerTemplate?.honoured !== honoured || forced.overriddenBy !== (honoured ? forcedTemplate.source : null)) recordHonest = false;
+      if (expressionOf(forced) !== expressionOf(free)) sameExpression = false;
+      if (closed({ ...input, forcedTemplate }).architecture !== closed(input).architecture) closedDegrades += 1;
+    }
+  }
+  check(`family, architecture, lean, confidence, reasons, verdicts and signals are identical under every archetype and forced template (${cases} cases)`, sameDecision);
+  check('Counter, Gallery and Subtraction return Ritual whatever was forced', ritualWhenRequired);
+  check('Classic returns the seller template', classicKeepsSeller);
+  check('sellerTemplate + overriddenBy record exactly what happened to the forced template', recordHonest);
+  check('the expression selected from the decision is identical under every archetype', sameExpression);
+  check(`contrast: with the gate closed a forced template DOES change the architecture (${closedDegrades} cases) — the gate-closed law, intact`, closedDegrades > 0);
+  const perArchetype = ARCHETYPE_KEYS.map((key) => open({ niche: 'jewelry', products: photographed(6, 6), heroMedia: null, forcedTemplate: { template: ARCHETYPES[key].template_key, source: 'seller-archetype' } }));
+  check('one Subtraction merchant under all four archetypes: subtraction / classic / ritual each time', perArchetype.every((d) => d.family === 'subtraction' && d.architecture === 'classic' && d.template === 'ritual'), perArchetype.map((d) => `${d.family}/${d.template}`));
+}
+
+console.log('\n[18] Phase 14 WP1 — fixed-marker reasons only (both gate states)');
+{
+  const counterFacts = String.raw`\d+ priced products across \d+ (category|categories), \d+% photographed\. `;
+  const galleryFacts = String.raw`\d+ photographed (piece|pieces) and (an Ad Studio hero|a shop banner|no hero image)\. `;
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const shapes: RegExp[] = [
+    new RegExp(`^${esc(MARK.menuOccasion)}$`),
+    new RegExp(`^${esc(MARK.service)}$`),
+    new RegExp(`^${counterFacts}(${esc(MARK.preferredCounter)}|${esc(MARK.tieBreakCounter)}|${esc(MARK.tieBreakClassic)})$`),
+    new RegExp(`^${galleryFacts}(${esc(MARK.preferredGallery)}|${esc(MARK.tieBreakGallery)})$`),
+    new RegExp(String.raw`^(Counter|Gallery) fits \(.+\) but the (seller chose|approved concept uses|chosen archetype uses) the "(ritual|editorial|vitality)" template, ${esc(MARK.overrideDegraded)}$`),
+    new RegExp(String.raw`^\d+ photographed (piece|pieces) \(\d+% of the catalog\) and no hero image\. ${esc(MARK.subtraction)}$`),
+  ];
+  const lockedOk = (a: ArchitectureAssignment): boolean => {
+    for (const [label, verdict] of [['Counter', a.eligibility.counter], ['Gallery', a.eligibility.gallery]] as const) {
+      if (a.reason === `${label} ${MARK.preferredLocked} ${verdict.reasons.join('; ')}.`) return true;
+    }
+    return false;
+  };
+  const fixed = (a: ArchitectureAssignment): boolean => shapes.some((re) => re.test(a.reason)) || lockedOk(a);
+  let allFixed = true;
+  let noOpenDegrade = true;
+  let noFreeText = true;
+  let familyFixed = true;
+  let offender: unknown;
+  const familyMarkers = Object.values(STOREFRONT_FAMILY_REASON_MARKERS);
+  for (const input of sweepInputs()) {
+    for (const forcedTemplate of [null, archetypeForced[1], archetypeForced[2]] as Forced[]) {
+      const c = closed({ ...input, forcedTemplate });
+      const d = open({ ...input, forcedTemplate });
+      for (const a of [c, d]) {
+        if (!fixed(a)) { allFixed = false; offender = offender ?? a.reason; }
+      }
+      if (!familyMarkers.includes(d.familyReason)) familyFixed = false;
+      if (d.reason.endsWith(MARK.overrideDegraded)) noOpenDegrade = false;
+    }
+  }
+  // Merchant free text never reaches a reason: niche text, category text and
+  // product names are all distinctive here.
+  for (const gateOpen of [false, true]) {
+    for (const heroMedia of [null, banner] as HeroMedia[]) {
+      const a = assignArchitecture({ niche: 'ZZNICHE perfume atelier', dominantCategory: 'QQCATEGORY oud', products: inventory(8, { category: 'XXSHELF' }).map((p) => ({ ...p, name: 'WWPRODUCT' })), heroMedia }, { gateOpen });
+      const text = JSON.stringify([a.reason, isStorefrontDecision(a) ? a.familyReason : '', a.eligibility]);
+      if (/ZZNICHE|QQCATEGORY|XXSHELF|WWPRODUCT/.test(text)) noFreeText = false;
+    }
+  }
+  check('every reason, closed and open, is counted facts + one fixed marker', allFixed, offender);
+  check('no open-gate reason carries the closed-gate degradation marker', noOpenDegrade);
+  check('every familyReason is one of the four fixed family sentences', familyFixed);
+  check('no merchant free text (niche, category, product name) reaches a reason or a verdict', noFreeText);
+
+  const sub = open({ niche: 'jewelry', products: photographed(6, 6), heroMedia: null });
+  check('Subtraction reason: fixed marker, exact wording', sub.reason === '6 photographed pieces (100% of the catalog) and no hero image. Pieces in this niche sell on the image, so the wall is the page.' && sub.reason.endsWith(MARK.subtraction), sub.reason);
+  check('Subtraction reads back as family-rule', assignmentDecisionSource(sub) === 'family-rule');
+  const gal = open({ niche: 'jewelry', products: photographed(5, 5), heroMedia: banner });
+  check('Gallery preference reason: fixed marker, exact wording', gal.reason === '5 photographed pieces and a shop banner. Pieces in this niche sell on the image, so each gets a full plate.' && assignmentDecisionSource(gal) === 'niche-preference', gal.reason);
+  const frag = open({ niche: 'home', products: photographed(5, 5, 'Attars'), heroMedia: banner });
+  check('Fragrance classification reason: the same fixed Gallery marker', frag.reason === gal.reason && assignmentDecisionSource(frag) === 'niche-preference', frag.reason);
+  check('family sentences, exact wording',
+    STOREFRONT_FAMILY_REASON_MARKERS['lifestyle-story'] === 'The story opens, then the collection.' &&
+    STOREFRONT_FAMILY_REASON_MARKERS['product-first'] === 'Buyers in this niche compare and scan, so the collection opens.' &&
+    STOREFRONT_FAMILY_REASON_MARKERS['menu-occasion'] === 'The occasion opens, then the menu.' &&
+    STOREFRONT_FAMILY_REASON_MARKERS.subtraction === 'The opener and the wall are the page. Nothing else is drawn.');
+  check('Phase 10H markers are byte-identical (new keys only appended)',
+    Object.keys(MARK).join(',') === 'menuOccasion,service,preferredCounter,preferredGallery,tieBreakCounter,tieBreakGallery,preferredLocked,tieBreakClassic,overrideDegraded,subtraction,floor' &&
+    MARK.preferredGallery === 'Pieces in this niche sell on the image, so each gets a full plate.' && MARK.overrideDegraded === 'which has no recipes.');
+}
+
+console.log('\n[19] Phase 14 WP1 — the Classic floor (assignment failure path)');
+{
+  const good = (): ArchitectureAssignmentInput => ({ niche: 'jewelry', dominantCategory: 'Rings', products: photographed(6, 6), heroMedia: null });
+  const broken: Array<[string, unknown]> = [
+    ['null input', null],
+    ['undefined input', undefined],
+    ['products missing', { niche: 'jewelry', heroMedia: null }],
+    ['products null', { ...good(), products: null }],
+    ['a null product row', { ...good(), products: [null, null, null, null, null, null] }],
+    ['a product that throws when read', { ...good(), products: [new Proxy({}, { get() { throw new Error('unreadable row'); } })] }],
+  ];
+  const asInput = (v: unknown) => v as ArchitectureAssignmentInput;
+
+  let engineThrows = true;
+  for (const [, input] of broken) {
+    for (const gateOpen of [false, true]) {
+      let threw = false;
+      try { assignArchitecture(asInput(input), { gateOpen }); } catch { threw = true; }
+      if (!threw) engineThrows = false;
+    }
+  }
+  check('the fixtures really are failures: the bare engine throws on each', engineThrows);
+
+  let neverThrows = true;
+  let classic = true;
+  let noRecipe = true;
+  let noSubtraction = true;
+  let floorReason = true;
+  let closedShape = true;
+  let openShape = true;
+  for (const [, input] of broken) {
+    for (const gateOpen of [false, true]) {
+      let a: ArchitectureAssignment | null = null;
+      try { a = assignArchitectureOrFloor(asInput(input), { gateOpen }); } catch { neverThrows = false; }
+      if (!a) continue;
+      if (a.architecture !== 'classic' || a.confidence !== 'low') classic = false;
+      if (a.eligibility.counter.eligible || a.eligibility.gallery.eligible) noRecipe = false;
+      if (a.reason !== MARK.floor || assignmentDecisionSource(a) !== 'fallback') floorReason = false;
+      if (a.reason.endsWith(MARK.subtraction)) noSubtraction = false;
+      if (gateOpen) {
+        if (!isStorefrontDecision(a)) { openShape = false; continue; }
+        if (Object.keys(a).join(',') !== OPEN_KEYS) openShape = false;
+        if (a.family !== 'lifestyle-story' || a.familyReason !== STOREFRONT_FAMILY_REASON_MARKERS['lifestyle-story'] || a.commercePreference !== null) noRecipe = false;
+        if (a.family === 'subtraction' || a.eligibility.subtraction.eligible) noSubtraction = false;
+      } else {
+        if (isStorefrontDecision(a) || Object.keys(a).join(',') !== CLOSED_KEYS || Object.keys(a.eligibility).join(',') !== 'counter,gallery') closedShape = false;
+      }
+    }
+  }
+  check('assignArchitectureOrFloor never throws', neverThrows);
+  check('failure → Classic at low confidence', classic);
+  check('failure → no recipe verdict is eligible and the family is the default', noRecipe);
+  check('failure → no Subtraction (family, verdict or reason)', noSubtraction);
+  check('failure → the fixed floor reason, read back as fallback', floorReason);
+  check('failure, gate closed → the seven-key object only', closedShape);
+  check('failure, gate open → a full decision in the same key order', openShape);
+
+  // A merchant who WOULD be Subtraction gets the floor, not Subtraction, when the engine cannot read the catalog.
+  const wouldBe = open(good());
+  const failed = assignArchitectureOrFloor(asInput({ ...good(), products: null }), { gateOpen: true });
+  check('a would-be Subtraction merchant falls to the floor on failure', wouldBe.family === 'subtraction' && isStorefrontDecision(failed) && failed.family === 'lifestyle-story' && failed.architecture === 'classic', failed);
+  const forcedFloor = assignArchitectureOrFloor(asInput({ ...good(), products: null, forcedTemplate: { template: 'editorial', source: 'seller-archetype' } }), { gateOpen: true });
+  check('floor: a forced template still stands (Classic never overrides it)', forcedFloor.template === 'editorial' && forcedFloor.overriddenBy === 'seller-archetype' && isStorefrontDecision(forcedFloor) && forcedFloor.sellerTemplate?.honoured === true, forcedFloor);
+  const junkForced = assignArchitectureOrFloor(asInput({ ...good(), products: null, forcedTemplate: { template: 'not-a-template', source: 'nobody' } }), { gateOpen: true });
+  check('floor: an unreadable forced template is ignored, category heuristic answers', junkForced.overriddenBy === null && ['ritual', 'editorial', 'vitality'].includes(junkForced.template) && isStorefrontDecision(junkForced) && junkForced.sellerTemplate === null, junkForced);
+
+  // When the engine answers, the wrapper is transparent — in both states.
+  let transparent = true;
+  for (const input of sweepInputs()) {
+    for (const gateOpen of [false, true]) {
+      if (JSON.stringify(assignArchitectureOrFloor(input, { gateOpen })) !== JSON.stringify(assignArchitecture(input, { gateOpen }))) transparent = false;
+    }
+    if (JSON.stringify(assignArchitectureOrFloor(input)) !== JSON.stringify(run(input))) transparent = false;
+  }
+  check('when the engine answers, the floor wrapper returns the identical object', transparent);
+}
+
+console.log('\n[20] Phase 14 WP1 — gate matrix: only the generation route consumes the decision (WP4)');
+{
+  const root = process.cwd();
+  const read = (rel: string): string | null => {
+    try { return fs.readFileSync(path.join(root, rel), 'utf8'); } catch { return null; }
+  };
+  const walk = (rel: string, out: string[] = []): string[] => {
+    let entries: fs.Dirent[] = [];
+    try { entries = fs.readdirSync(path.join(root, rel), { withFileTypes: true }); } catch { return out; }
+    for (const e of entries) {
+      if (e.name === 'node_modules' || e.name.startsWith('.')) continue;
+      const child = `${rel}/${e.name}`;
+      if (e.isDirectory()) walk(child, out);
+      else if (/\.(ts|tsx|mts|js|jsx|mjs)$/.test(e.name)) out.push(child);
+    }
+    return out;
+  };
+
+  // Everything WP1 added to the engine's public or returned surface.
+  const NEW_SURFACE = /assignArchitectureOrFloor|isStorefrontDecision|StorefrontDecision|ArchitectureAssignmentOptions|SUBTRACTION_ASSIGNMENT_RULES|STOREFRONT_FAMILY_REASON_MARKERS|DESIRE_COMMERCE_NICHES|classicFloorAssignment|familyReason|commercePreference|sellerTemplate/;
+  const ENGINE_FILE = 'lib/siteTemplates.ts';
+  const ROUTE_FILE = 'app/api/ai/generate-website/route.ts';
+
+  const sources = [...walk('app'), ...walk('components'), ...walk('lib')].filter((f) => f !== ENGINE_FILE);
+  const consumers = sources.filter((f) => NEW_SURFACE.test(read(f) ?? ''));
+  check(`repo root resolved (${sources.length} source files under app/, components/, lib/)`, sources.length > 50 && sources.includes(ROUTE_FILE), sources.length);
+  // Phase 14 WP4: the generation route is now the decision's ONE consumer
+  // (sections [33]–[38] prove how, and that it is dormant with the gate
+  // closed). Every other file is held to the WP1 rule: no reference at all.
+  check('only the generation route (WP4) references a WP1 decision field or export — no other route, API handler, component, page or library file', consumers.join() === ROUTE_FILE, consumers);
+
+  // The route still calls the engine with ONE argument — no gate, so the constant decides.
+  const route = read(ROUTE_FILE) ?? '';
+  // WP4's steps sit above POST and take the gate as an input; inside POST the
+  // gate is still only ever the constant.
+  const post = route.slice(route.indexOf('export async function POST'));
+  const calls = route.split('assignArchitecture(').length - 1;
+  let args = '';
+  const at = route.indexOf('assignArchitecture(');
+  if (at !== -1) {
+    let depth = 0;
+    for (let i = at + 'assignArchitecture'.length; i < route.length; i += 1) {
+      if (route[i] === '(') depth += 1;
+      if (route[i] === ')') { depth -= 1; if (depth === 0) { args = route.slice(at + 'assignArchitecture('.length, i); break; } }
+    }
+  }
+  let depth = 0;
+  let topLevelCommas = 0;
+  for (const ch of args) {
+    if (ch === '(' || ch === '{' || ch === '[') depth += 1;
+    else if (ch === ')' || ch === '}' || ch === ']') depth -= 1;
+    else if (ch === ',' && depth === 0) topLevelCommas += 1;
+  }
+  check('route: exactly one assignArchitecture call', calls === 1, calls);
+  check('route: that call passes the input object only — no gate option', args.trim().startsWith('{') && args.trim().endsWith('}') && topLevelCommas === 0 && !args.includes('gateOpen'), args.slice(0, 80));
+  check('route: inside POST, gateOpen appears only where the two log formatters are told the constant', route.includes('export async function POST') && post.split('gateOpen').length - 1 === 2 && post.split('gateOpen: RITUAL_RECIPE_GENERATION_ENABLED').length - 1 === 2);
+
+  // Inside the engine file: the new surface lives in the assignment-engine
+  // section only — no carrier, resolver, schema or expression code reads it.
+  const engine = read(ENGINE_FILE) ?? '';
+  const start = engine.indexOf('// ARCHITECTURE ASSIGNMENT ENGINE (Phase 10H');
+  const end = engine.indexOf('// EXPRESSION SELECTION (Phase 10L.3');
+  const outside = engine.slice(0, start) + engine.slice(end);
+  const inside = engine.slice(start, end);
+  check('engine file: section bounds found', start > 0 && end > start);
+  check('engine file: no WP1 field or export is referenced outside the assignment-engine section (carriers, resolver, expression write untouched)', start > 0 && end > start && !NEW_SURFACE.test(outside), outside.match(NEW_SURFACE)?.[0]);
+  check('engine file: the assignment-engine section calls no carrier, resolver or persistence function',
+    !/\b(generationToConfig|applyArchetype|applyGenerationLayout|applyExpressionSelection|guardRecipeGridPick|resolveRitualRecipe|resolveRitualComposition|cleanStoreContent|buildPreviousDesign)\s*\(/.test(inside));
+
+  // The decision is a plain data object: no config, no layout, no functions.
+  const d = open({ niche: 'jewelry', products: photographed(6, 6), heroMedia: null });
+  const flat = JSON.stringify(d);
+  check('the decision carries no config, layout or block keys', !/"(config|layout|layout_strategy|blocks|storefront_family|template_key|grid|expression)"/.test(flat), flat.slice(0, 120));
+  check('the decision survives JSON round-trip unchanged (data only)', JSON.stringify(JSON.parse(flat)) === flat);
+
+  // Gate state itself, and the carriers / resolver, exactly as before.
+  check('the generation gate constant is still false', RITUAL_RECIPE_GENERATION_ENABLED === false);
+  check('guard still strips both recipe grids', guardRecipeGridPick('counter', 'ritual') === undefined && guardRecipeGridPick('gallery', 'ritual') === undefined);
+  const stored = { template_key: 'ritual' as const, storefront_family: 'lifestyle-story' as const, layout_strategy: { hero: 'split' as const, grid: 'masonry' as const } };
+  const comp = resolveRitualComposition({ config: stored, products: photographed(12, 12), heroMedia: null });
+  check('resolver: a stored row a WP1 decision would call Subtraction still resolves classic (nothing was written)', resolveRitualRecipe(stored) === 'classic' && comp.recipe === 'classic' && comp.grid === 'masonry' && comp.hero === 'split');
+  const shell = { ...stored, niche_reasoning: 'x' } as unknown as WebsiteConfig;
+  const write = applyExpressionSelection(shell, { gridSurvivedGuard: true, signals: { niche: 'jewelry', dominantCategory: null, categoryCount: 1, exhibits: 6 } });
+  check('expression write: still returns the SAME config object for a classic row', write.config === shell && write.expression === undefined);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 14 WP2 — INPUT + VALIDATOR PARITY. Shared fixtures for [21]–[26].
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A merchant as the database holds it: products newest first (the order
+ *  both the generation route and the home read use), with stock. */
+type Merchant = { products: SiteProduct[]; dominantCategory: string | null; bannerUrl: string | null };
+/** What a generation request carries that the assignment block reads. */
+type RequestShape = { bodyNiche?: unknown; forcedTemplate?: Forced };
+
+function merchant(spec: {
+  size: number;
+  pictured?: (i: number) => boolean;
+  priced?: (i: number) => boolean;
+  category?: (i: number) => string | null;
+  stock?: (i: number) => number | null | undefined;
+  dominantCategory?: string | null;
+  banner?: boolean;
+}): Merchant {
+  const rows = inventory(spec.size, {}, (i) => ({
+    pictured: spec.pictured ? spec.pictured(i) : true,
+    priced: spec.priced ? spec.priced(i) : true,
+    category: spec.category ? spec.category(i) : 'Rings',
+  }));
+  const products = rows.map((p, i) => {
+    const stock = spec.stock ? spec.stock(i) : undefined;
+    return stock === undefined ? p : { ...p, stock_quantity: stock };
+  });
+  return { products, dominantCategory: spec.dominantCategory ?? null, bannerUrl: spec.banner ? 'https://banner.jpg' : null };
+}
+
+/** The route's own niche parse ("Pre-generation selections"): absent → null;
+ *  a string is cleaned and an empty result is null. */
+function routeNicheKey(bodyNiche: unknown): string | null {
+  if (typeof bodyNiche !== 'string') return null;
+  const cleaned = bodyNiche.replace(/[\r\n\t<>]/g, ' ').replace(/\s+/g, ' ').trim();
+  return cleaned || null;
+}
+const shopOf = (bannerUrl: string | null) => ({ id: 'shop-1', shop_name: 'Shop', shop_slug: 'shop', logo_url: null, banner_url: bannerUrl, bio: null });
+/** The route's assignmentProducts mapping — the same eight fields, NO stock. */
+const stockless = (rows: SiteProduct[]): SiteProduct[] =>
+  rows.map((p) => ({ id: p.id, name: p.name, price: p.price, description: p.description, image_url: p.image_url, ad_video_url: p.ad_video_url, ad_hero_image_url: p.ad_hero_image_url, category: p.category }));
+
+/** The route's assignment block after WP2, step for step: parse the niche,
+ *  align the inputs, call the engine with the same object literal, build the
+ *  expression signals. Section [26] pins the route source to this shape. */
+function viaRoute(m: Merchant, request: RequestShape, gateOpen: boolean) {
+  const nicheKey = routeNicheKey(request.bodyNiche);
+  const assignmentProducts = stockless(m.products);
+  const aligned = alignAssignmentInputs(
+    { niche: nicheKey, products: assignmentProducts.map((p, i) => ({ ...p, stock_quantity: m.products[i]?.stock_quantity ?? null })) },
+    { gateOpen },
+  );
+  const heroMedia = resolveHeroMedia(shopOf(m.bannerUrl), null);
+  const input: ArchitectureAssignmentInput = {
+    niche: aligned.niche,
+    dominantCategory: m.dominantCategory,
+    products: assignmentProducts,
+    renderProducts: aligned.renderProducts,
+    heroMedia,
+    forcedTemplate: request.forcedTemplate ?? null,
+  };
+  const assignment = assignArchitecture(input, { gateOpen });
+  let signals: ExpressionSignals = {
+    niche: assignment.signals.niche,
+    dominantCategory: m.dominantCategory,
+    categoryCount: assignment.signals.categoryCount,
+    exhibits: selectGalleryExhibits(assignmentProducts).length,
+  };
+  if (aligned.renderProducts) {
+    signals = { ...signals, ...expressionFloorSignals({ signals: assignment.signals, products: assignmentProducts, renderProducts: aligned.renderProducts }) };
+  }
+  return { nicheKey, aligned, input, assignment, signals, heroMedia };
+}
+
+/** The route's assignment block BEFORE WP2 — the Phase 10H / 10L.4 literals. */
+function legacyRoute(m: Merchant, request: RequestShape, gateOpen: boolean) {
+  const nicheKey = routeNicheKey(request.bodyNiche);
+  const assignmentProducts = stockless(m.products);
+  const heroMedia = resolveHeroMedia(shopOf(m.bannerUrl), null);
+  const assignment = assignArchitecture({ niche: nicheKey, dominantCategory: m.dominantCategory, products: assignmentProducts, heroMedia, forcedTemplate: request.forcedTemplate ?? null }, { gateOpen });
+  const signals: ExpressionSignals = {
+    niche: assignment.signals.niche,
+    dominantCategory: m.dominantCategory,
+    categoryCount: assignment.signals.categoryCount,
+    exhibits: selectGalleryExhibits(assignmentProducts).length,
+  };
+  return { assignment, signals, heroMedia };
+}
+
+/** What the resolver holds on the first render: the home read — the 12
+ *  newest rows, WITH stock (readHomeProducts, `.limit(12)`). Deliberately a
+ *  literal here, not ASSIGNMENT_RENDER_WINDOW: [24] proves the two agree. */
+const HOME_READ = 12;
+const resolverSees = (m: Merchant): SiteProduct[] => m.products.slice(0, HOME_READ);
+
+/** The storefront a decision asks for, drawn by the real resolver on the
+ *  first render. `degraded` is true when the resolver did not draw exactly
+ *  the requested recipe and expression, or gave any fallback reason. */
+function firstRender(m: Merchant, d: StorefrontDecision, signals: ExpressionSignals, heroMedia: HeroMedia) {
+  const subtraction = d.family === 'subtraction';
+  const expression = selectExpression({ ...signals, architecture: subtraction ? 'subtraction' : d.architecture }).expression;
+  const grid = subtraction ? undefined : d.architecture === 'counter' ? ('counter' as const) : d.architecture === 'gallery' ? ('gallery' as const) : undefined;
+  const config: Parameters<typeof resolveRitualComposition>[0]['config'] = {
+    template_key: d.template,
+    storefront_family: d.family,
+    layout_strategy: grid ? (expression ? { grid, expression } : { grid }) : {},
+  };
+  const expected = subtraction ? 'subtraction' : d.architecture === 'counter' ? 'product-first' : d.architecture === 'gallery' ? 'gallery-led' : 'classic';
+  const comp = resolveRitualComposition({ config, products: resolverSees(m), heroMedia });
+  const degraded =
+    comp.requested !== expected || comp.recipe !== expected || comp.fallback !== null || comp.expressionFallback !== null ||
+    (grid !== undefined && comp.expression !== expression);
+  return { comp, expected, expression, degraded };
+}
+const decisionOf = (a: ArchitectureAssignment): StorefrontDecision => {
+  if (!isStorefrontDecision(a)) throw new Error('gate open did not return a StorefrontDecision');
+  return a;
+};
+/** Everything a decision decides except the template (which a seller's
+ *  forced template may set on Classic) and the forced-template record. */
+const decisionCore = (d: StorefrontDecision): string =>
+  JSON.stringify({ family: d.family, familyReason: d.familyReason, architecture: d.architecture, confidence: d.confidence, reason: d.reason, commercePreference: d.commercePreference, eligibility: d.eligibility, signals: d.signals });
+
+/** Catalog size × where the photographs, categories, prices and stock sit
+ *  relative to the 12-row window × category lean × banner. */
+function wp2Merchants(): Merchant[] {
+  const pictures: Array<(i: number) => boolean> = [() => true, () => false, (i) => i < 12, (i) => i >= 12, (i) => i % 10 !== 0, (i) => i < 4];
+  const categories: Array<(i: number) => string | null> = [() => 'Rings', (i) => (i < 12 ? ['Serums', 'Creams'][i % 2] : 'Oils'), (i) => ['Serums', 'Creams', 'Oils'][i % 3]];
+  const stocks: Array<(i: number) => number | null | undefined> = [() => undefined, () => 5, (i) => (i < 2 ? 5 : 0), () => 0];
+  const prices: Array<(i: number) => boolean> = [() => true, (i) => i % 2 === 0];
+  const out: Merchant[] = [];
+  for (const size of [0, 1, 5, 6, 12, 13, 20, 30]) {
+    for (const pictured of pictures) {
+      for (const category of categories) {
+        for (const stock of stocks) {
+          for (const priced of prices) {
+            for (const dominantCategory of [null, 'perfume', 'electronics']) {
+              for (const withBanner of [false, true]) {
+                out.push(merchant({ size, pictured, category, stock, priced, dominantCategory, banner: withBanner }));
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return out;
+}
+const WP2_BODY_NICHES: unknown[] = [undefined, 'general', 'cosmetics', 'fashion', 'jewelry', 'home', 'wellness', 'tech', 'food'];
+
+console.log('\n[21] Phase 14 WP2 — B1: an undeclared niche reaches Assignment as no niche (gate open)');
+{
+  // A perfume house: 8 photographed attars, a banner, inventory-derived dominant category.
+  const house = merchant({ size: 8, category: () => 'Attars', dominantCategory: 'attars', banner: true });
+  const undeclared: Array<[string, RequestShape]> = [
+    ['Studio default general (untouched preselection)', { bodyNiche: 'general' }],
+    ['Studio explicit general (same wire value)', { bodyNiche: 'general' }],
+    ['Studio general by label', { bodyNiche: 'General / Multi-Category' }],
+    ['Studio general, other casing / padding', { bodyNiche: '  GENERAL ' }],
+    ['Onboarding — no niche field', {}],
+    ['Onboarding — null', { bodyNiche: null }],
+    ['Onboarding — blank', { bodyNiche: '' }],
+    ['Onboarding — whitespace', { bodyNiche: '   ' }],
+  ];
+  const runs = undeclared.map(([, shape]) => viaRoute(house, shape, true));
+  check('every undeclared shape reaches the engine as niche = null', runs.every((r) => r.aligned.niche === null && r.input.niche === null), runs.map((r) => r.input.niche));
+  check('Studio general and Onboarding undeclared produce IDENTICAL Assignment inputs', runs.every((r) => JSON.stringify(r.input) === JSON.stringify(runs[0].input)));
+  check('…and identical Assignment decisions', runs.every((r) => JSON.stringify(r.assignment) === JSON.stringify(runs[0].assignment)));
+  check('…and identical expression signals', runs.every((r) => JSON.stringify(r.signals) === JSON.stringify(runs[0].signals)));
+  const d = decisionOf(runs[0].assignment);
+  check('undeclared → the inventory decides: this perfume house leans gallery, no niche recorded', d.signals.niche === null && d.commercePreference === 'gallery' && d.architecture === 'gallery', d);
+  const handedGeneral = open({ niche: 'general', dominantCategory: 'attars', products: stockless(house.products), heroMedia: banner });
+  check('contrast: handed "general" directly the engine still leans counter — B1 is an INPUT rule, the niche table is untouched', handedGeneral.commercePreference === 'counter' && handedGeneral.signals.niche === 'general', handedGeneral);
+
+  // Declarations are never touched.
+  const declared = ['cosmetics', 'fashion', 'jewelry', 'home', 'Oud, Fragrance & Home', 'food', 'wellness', 'tech', 'Artisan crafts', 'General store of electronics'];
+  const kept = declared.map((n) => viaRoute(house, { bodyNiche: n }, true));
+  check('a declared niche (Studio id, Studio label, or free text) is handed to the engine exactly as given', kept.every((r, i) => r.aligned.niche === declared[i] && r.input.niche === declared[i]), kept.map((r) => r.input.niche));
+  check('only the catch-all niche is undeclared: free text that merely contains "general" stays declared', viaRoute(house, { bodyNiche: 'General store of electronics' }, true).aligned.niche === 'General store of electronics');
+
+  // Gate closed: untouched, by reference.
+  const closedGeneral = alignAssignmentInputs({ niche: 'general', products: stockless(house.products) }, { gateOpen: false });
+  const byDefault = alignAssignmentInputs({ niche: 'general', products: stockless(house.products) });
+  check('closed: the niche is handed back untouched and there is no render window', closedGeneral.niche === 'general' && closedGeneral.renderProducts === undefined);
+  check('no gate argument ≡ closed while the constant is false', RITUAL_RECIPE_GENERATION_ENABLED === false && byDefault.niche === 'general' && byDefault.renderProducts === undefined);
+  check('closed: null / undefined / blank are handed back as given, not normalised',
+    alignAssignmentInputs({ niche: undefined, products: [] }, { gateOpen: false }).niche === undefined &&
+    alignAssignmentInputs({ niche: null, products: [] }, { gateOpen: false }).niche === null &&
+    alignAssignmentInputs({ niche: '  ', products: [] }, { gateOpen: false }).niche === '  ');
+}
+
+console.log('\n[22] Phase 14 WP2 — fragrance parity across paths (gate open)');
+{
+  // ONE merchant per case; the route derives the same dominant category on every path.
+  const withBanner = merchant({ size: 5, category: () => 'Attars', dominantCategory: 'attars', banner: true });
+  const noBanner = merchant({ size: 6, category: () => 'Attars', dominantCategory: 'attars', banner: false });
+  const shapes: Array<[string, RequestShape]> = [
+    ['Studio — declared "home" id', { bodyNiche: 'home' }],
+    ['Studio — declared label', { bodyNiche: 'Oud, Fragrance & Home' }],
+    ['Onboarding — nothing declared', {}],
+    ['Studio — default general', { bodyNiche: 'general' }],
+  ];
+  const outcome = (m: Merchant, shape: RequestShape) => {
+    const r = viaRoute(m, shape, true);
+    const d = decisionOf(r.assignment);
+    return JSON.stringify({ family: d.family, architecture: d.architecture, template: d.template, confidence: d.confidence, reason: d.reason, lean: d.commercePreference, eligibility: d.eligibility, expression: firstRender(m, d, r.signals, r.heroMedia).expression });
+  };
+  const a = shapes.map(([, s]) => outcome(withBanner, s));
+  const b = shapes.map(([, s]) => outcome(noBanner, s));
+  check('declared "Oud, Fragrance & Home" and undeclared fragrance keywords produce the SAME outcome (with a banner)', a.every((x) => x === a[0]), a);
+  check('…and the same outcome without one', b.every((x) => x === b[0]), b);
+  const g = decisionOf(viaRoute(withBanner, {}, true).assignment);
+  check('with a banner that outcome is Gallery on Ritual, Atmosphere', g.architecture === 'gallery' && g.template === 'ritual' && g.family === 'lifestyle-story' && JSON.parse(a[0]).expression === 'atmosphere', a[0]);
+  const s = decisionOf(viaRoute(noBanner, { bodyNiche: 'general' }, true).assignment);
+  check('without a banner it is Subtraction on Ritual, no expression', s.family === 'subtraction' && s.architecture === 'classic' && s.template === 'ritual' && JSON.parse(b[0]).expression === undefined, b[0]);
+  // Before WP2 the Studio default broke this parity: "general" leaned counter.
+  const before = decisionOf(legacyRoute(withBanner, { bodyNiche: 'general' }, true).assignment);
+  check('contrast: without B1 the Studio default leans counter for the same perfume house', before.commercePreference === 'counter' && g.commercePreference === 'gallery', before.commercePreference);
+}
+
+console.log('\n[23] Phase 14 WP2 — path parity: Studio and Onboarding, same merchant (gate open)');
+{
+  const merchants = wp2Merchants().filter((_, i) => i % 5 === 0);
+  const onboarding: RequestShape = {};
+  const studioShapes: RequestShape[] = [
+    ...archetypeForced.map((forcedTemplate) => ({ bodyNiche: 'general', forcedTemplate })),
+    { bodyNiche: 'general', forcedTemplate: { template: 'vitality', source: 'concept' } },
+    { bodyNiche: 'general', forcedTemplate: { template: 'ritual', source: 'concept' } },
+  ];
+  let sameInputs = true;
+  let sameCore = true;
+  let sameExpression = true;
+  let templateRule = true;
+  let cases = 0;
+  for (const m of merchants) {
+    const o = viaRoute(m, onboarding, true);
+    const od = decisionOf(o.assignment);
+    // Same merchant, same inputs: the Studio's default niche with nothing forced IS the Onboarding request.
+    const same = viaRoute(m, { bodyNiche: 'general' }, true);
+    if (JSON.stringify(same.input) !== JSON.stringify(o.input) || JSON.stringify(same.assignment) !== JSON.stringify(o.assignment) || JSON.stringify(same.signals) !== JSON.stringify(o.signals)) sameInputs = false;
+    const ritualRequired = od.family === 'subtraction' || od.architecture !== 'classic';
+    for (const shape of studioShapes) {
+      const s = viaRoute(m, shape, true);
+      const sd = decisionOf(s.assignment);
+      cases += 1;
+      if (decisionCore(sd) !== decisionCore(od)) sameCore = false;
+      if (JSON.stringify(s.signals) !== JSON.stringify(o.signals) || firstRender(m, sd, s.signals, s.heroMedia).expression !== firstRender(m, od, o.signals, o.heroMedia).expression) sameExpression = false;
+      if (ritualRequired ? sd.template !== 'ritual' || od.template !== 'ritual' : sd.template !== shape.forcedTemplate?.template) templateRule = false;
+    }
+  }
+  check(`same merchant, same inputs → identical Assignment input, decision and expression signals (${merchants.length} merchants)`, sameInputs);
+  check(`Studio (every archetype, both concept templates) and Onboarding decide the same family, architecture, lean, reasons and verdicts (${cases} cases)`, sameCore);
+  check('…and the same expression', sameExpression);
+  check('the only path difference is the one the constitution allows: on Classic the Studio seller\'s template stands; Counter, Gallery and Subtraction are Ritual on both', templateRule);
+}
+
+console.log('\n[24] Phase 14 WP2 — C1: Assignment and Resolver judge the same effective data (gate open)');
+{
+  // Same product window.
+  check('the render window is the home read: 12 newest rows', ASSIGNMENT_RENDER_WINDOW === HOME_READ);
+  let windowOk = true;
+  let stockOk = true;
+  for (const size of [0, 1, 11, 12, 13, 30]) {
+    const m = merchant({ size, stock: (i) => (i % 3 === 0 ? 0 : 4) });
+    const r = viaRoute(m, {}, true);
+    const w = r.aligned.renderProducts ?? [];
+    const sees = resolverSees(m);
+    if (w.length !== Math.min(size, 12) || w.map((p) => p.id).join() !== sees.map((p) => p.id).join()) windowOk = false;
+    if (w.length !== sees.length || w.some((p, i) => p.stock_quantity !== sees[i]?.stock_quantity)) stockOk = false;
+    if (r.input.products.some((p) => 'stock_quantity' in p) || r.input.products.length !== size) stockOk = false;
+  }
+  check('the window is exactly the rows the resolver reads, in the same order', windowOk);
+  check('the window carries the resolver\'s stock; the full list the engine also reads stays stock-less (as before)', stockOk);
+  const unknownStock = viaRoute(merchant({ size: 3 }), {}, true).aligned.renderProducts ?? [];
+  check('unknown stock stays unknown (null) — counted as in stock, as the resolver counts it', unknownStock.every((p) => p.stock_quantity === null) && selectGalleryExhibits(unknownStock).length === 3);
+
+  // Same verdicts: the engine's recipe verdicts ARE the resolver's own rule on the resolver's slice.
+  let galleryVerdict = true;
+  let counterVerdict = true;
+  let floors = true;
+  let compared = 0;
+  for (const m of wp2Merchants().filter((_, i) => i % 3 === 0)) {
+    for (const bodyNiche of WP2_BODY_NICHES) {
+      const r = viaRoute(m, { bodyNiche }, true);
+      const d = decisionOf(r.assignment);
+      const family = d.family === 'menu-occasion' ? ('menu-occasion' as const) : null;
+      const resolverGallery = ritualRecipeEligibility('gallery-led', { products: resolverSees(m), heroMedia: r.heroMedia, storefrontFamily: family });
+      const resolverCounter = ritualRecipeEligibility('product-first', { products: resolverSees(m), heroMedia: r.heroMedia, storefrontFamily: family });
+      compared += 1;
+      if (JSON.stringify(d.eligibility.gallery.reasons.filter((x) => !x.startsWith('service merchants'))) !== JSON.stringify(resolverGallery.reasons)) galleryVerdict = false;
+      // Counter: the resolver's reasons first, then only the engine-side additions (product floor, culinary, service).
+      const engineOnly = d.eligibility.counter.reasons.slice(resolverCounter.reasons.length);
+      if (JSON.stringify(d.eligibility.counter.reasons.slice(0, resolverCounter.reasons.length)) !== JSON.stringify(resolverCounter.reasons)) counterVerdict = false;
+      if (engineOnly.some((x) => !/^needs 4 products|^menu-occasion merchants|^service merchants/.test(x))) counterVerdict = false;
+      if ((d.eligibility.counter.eligible && !resolverCounter.eligible) || (d.eligibility.gallery.eligible && !resolverGallery.eligible)) counterVerdict = false;
+      // Expression floors: counted on the resolver's slice, with the resolver's stock.
+      if (r.signals.exhibits !== selectGalleryExhibits(resolverSees(m)).length) floors = false;
+      const normalised = new Set(resolverSees(m).map((p) => normalizeCategoryForAssignment(p.category)).filter((k): k is string => k !== null)).size;
+      if (r.signals.categoryCount !== normalised) floors = false;
+    }
+  }
+  check(`Gallery verdict = the resolver's own rule on the resolver's slice, reason for reason (${compared} cases)`, galleryVerdict);
+  check('Counter verdict = the resolver\'s reasons first, plus only the engine\'s stricter additions — never eligible where the resolver is not', counterVerdict);
+  check('expression floors (categories, exhibits) are the resolver\'s counts on the resolver\'s slice', floors);
+
+  // Three contrasts: each is a first-render degradation WITHOUT WP2 and none WITH it.
+  const contrast = (m: Merchant, shape: RequestShape) => {
+    const before = legacyRoute(m, shape, true);
+    const after = viaRoute(m, shape, true);
+    return {
+      before: firstRender(m, decisionOf(before.assignment), before.signals, before.heroMedia),
+      after: firstRender(m, decisionOf(after.assignment), after.signals, after.heroMedia),
+      beforeDecision: decisionOf(before.assignment),
+      afterDecision: decisionOf(after.assignment),
+    };
+  };
+  // (1) Window: 30 products, 73% photographed overall but only 4 of the 12 newest.
+  const stale = contrast(merchant({ size: 30, pictured: (i) => i < 4 || i >= 12, category: (i) => ['Phones', 'Laptops', 'Audio'][i % 3] }), { bodyNiche: 'tech' });
+  check('window — before: Counter assigned on the full catalog, resolver degrades it to Classic on the home slice',
+    stale.beforeDecision.architecture === 'counter' && stale.before.degraded && stale.before.comp.recipe === 'classic' && stale.before.comp.fallback === 'needs 70% pictured products (has 33%)', stale.before.comp);
+  check('window — after: Counter is not assigned (named as locked on the same rule), nothing degrades',
+    stale.afterDecision.architecture === 'classic' && stale.afterDecision.reason === 'Counter fits this niche but is not yet unlocked: needs 70% pictured products (has 33%).' && !stale.after.degraded, stale.afterDecision);
+  // (2) Stock: six photographed rings, a banner, only two in stock.
+  const soldOut = contrast(merchant({ size: 6, stock: (i) => (i < 2 ? 5 : 0), banner: true }), { bodyNiche: 'jewelry' });
+  check('stock — before: Scale selected from six pieces, resolver (which sees stock) degrades it to Atmosphere',
+    soldOut.before.expression === 'scale' && soldOut.before.degraded && soldOut.before.comp.expressionFallback === 'scale needs 3 exhibits (has 2)', soldOut.before.comp);
+  check('stock — after: Atmosphere selected from the two in-stock exhibits, nothing degrades',
+    soldOut.afterDecision.architecture === 'gallery' && soldOut.after.expression === 'atmosphere' && !soldOut.after.degraded && soldOut.afterDecision.reason.startsWith('2 photographed pieces and a shop banner.'), soldOut.afterDecision.reason);
+  // (3) Categories: three aisles overall, two among the 12 newest.
+  const thin = contrast(merchant({ size: 20, category: (i) => (i < 12 ? ['Serums', 'Creams'][i % 2] : 'Oils') }), { bodyNiche: 'wellness' });
+  check('categories — before: Routine selected from three aisles, resolver degrades it to Item on the home slice',
+    thin.beforeDecision.architecture === 'counter' && thin.before.expression === 'routine' && thin.before.degraded && thin.before.comp.expressionFallback === 'routine needs 3 categories (has 2)', thin.before.comp);
+  check('categories — after: Item selected, nothing degrades', thin.afterDecision.architecture === 'counter' && thin.after.expression === 'item' && !thin.after.degraded, thin.after.comp);
+
+  // Hero media: the two never disagree in a way that breaks a decision.
+  const generatedHero = { assets: { hero_image_url: 'https://generated-hero.jpg' } };
+  check('whatever Assignment counts as hero media (the banner) the resolver also holds — with or without a site hero on top',
+    resolveHeroMedia(shopOf('https://banner.jpg'), null) !== null && resolveHeroMedia(shopOf('https://banner.jpg'), generatedHero) !== null && resolveHeroMedia(shopOf(null), null) === null);
+  const bannerless = merchant({ size: 5, banner: false });
+  const bl = viaRoute(bannerless, { bodyNiche: 'jewelry' }, true);
+  const resolverWithGenerated = ritualRecipeEligibility('gallery-led', { products: resolverSees(bannerless), heroMedia: resolveHeroMedia(shopOf(null), generatedHero), storefrontFamily: null });
+  check('no banner → Assignment never assigns Gallery, even though a later generated hero would satisfy the resolver (Assignment is the stricter side)',
+    bl.assignment.architecture !== 'gallery' && !bl.assignment.eligibility.gallery.eligible && resolverWithGenerated.eligible, bl.assignment.eligibility.gallery);
+  const wall = merchant({ size: 6, banner: false });
+  const wl = viaRoute(wall, { bodyNiche: 'jewelry' }, true);
+  const wallRender = firstRender(wall, decisionOf(wl.assignment), wl.signals, resolveHeroMedia(shopOf(null), generatedHero));
+  check('a Subtraction storefront still resolves as Subtraction once a generated hero exists', decisionOf(wl.assignment).family === 'subtraction' && wallRender.comp.recipe === 'subtraction' && !wallRender.degraded, wallRender.comp);
+}
+
+console.log('\n[25] Phase 14 WP2 — no first-render degradation (gate open)');
+{
+  const generatedHero = { assets: { hero_image_url: 'https://generated-hero.jpg' } };
+  let degraded = 0;
+  let degradedBefore = 0;
+  let cases = 0;
+  const drawn: Record<string, number> = {};
+  const expressions: Record<string, number> = {};
+  let firstOffender: unknown;
+  for (const m of wp2Merchants()) {
+    for (const bodyNiche of WP2_BODY_NICHES) {
+      const r = viaRoute(m, { bodyNiche }, true);
+      const d = decisionOf(r.assignment);
+      // The resolver's hero on first render: the banner alone, and the banner under a generated site hero.
+      const heroes: HeroMedia[] = [resolveHeroMedia(shopOf(m.bannerUrl), null), resolveHeroMedia(shopOf(m.bannerUrl), generatedHero)];
+      for (const heroMedia of heroes) {
+        const fr = firstRender(m, d, r.signals, heroMedia);
+        cases += 1;
+        if (fr.degraded) { degraded += 1; firstOffender = firstOffender ?? { bodyNiche, decision: d, comp: fr.comp }; }
+      }
+      const fr = firstRender(m, d, r.signals, r.heroMedia);
+      drawn[fr.expected] = (drawn[fr.expected] ?? 0) + 1;
+      if (fr.expression) expressions[fr.expression] = (expressions[fr.expression] ?? 0) + 1;
+      const before = legacyRoute(m, { bodyNiche }, true);
+      if (firstRender(m, decisionOf(before.assignment), before.signals, before.heroMedia).degraded) degradedBefore += 1;
+    }
+  }
+  check(`the resolver draws exactly the requested recipe, with no fallback reason (${cases} first renders)`, degraded === 0, firstOffender);
+  check('…and exactly the requested expression, with no expression fallback', degraded === 0);
+  check('coverage: every recipe was requested and drawn', ['classic', 'product-first', 'gallery-led', 'subtraction'].every((k) => (drawn[k] ?? 0) > 0), drawn);
+  check('coverage: every expression was requested and drawn', ['routine', 'item', 'atmosphere', 'scale'].every((k) => (expressions[k] ?? 0) > 0), expressions);
+  check(`contrast: without WP2 the same merchants degrade on first render (${degradedBefore} cases)`, degradedBefore > 0);
+}
+
+console.log('\n[26] Phase 14 WP2 — gate matrix');
+{
+  // ── Gate CLOSED: the route's assignment block is the Phase 10H / 10L.4 block.
+  let sameAssignment = true;
+  let sameSignals = true;
+  let untouchedInputs = true;
+  let cases = 0;
+  for (const m of wp2Merchants().filter((_, i) => i % 4 === 0)) {
+    for (const bodyNiche of [undefined, 'general', 'home', 'tech', 'jewelry'] as unknown[]) {
+      for (const forcedTemplate of [null, archetypeForced[1], archetypeForced[2]] as Forced[]) {
+        const now = viaRoute(m, { bodyNiche, forcedTemplate }, false);
+        const was = legacyRoute(m, { bodyNiche, forcedTemplate }, false);
+        cases += 1;
+        if (JSON.stringify(now.assignment) !== JSON.stringify(was.assignment)) sameAssignment = false;
+        if (JSON.stringify(now.signals) !== JSON.stringify(was.signals)) sameSignals = false;
+        if (now.aligned.niche !== now.nicheKey || now.aligned.renderProducts !== undefined || now.input.renderProducts !== undefined) untouchedInputs = false;
+      }
+    }
+  }
+  check(`closed: the assignment object is identical to the pre-WP2 route's (${cases} cases)`, sameAssignment);
+  check('closed: the expression signals are identical to the pre-WP2 route\'s', sameSignals);
+  check('closed: the niche is passed through untouched and no render window is built or passed', untouchedInputs);
+  const sample: ArchitectureAssignmentInput = { niche: 'jewelry', products: photographed(20, 20, ['Rings', 'Chains', 'Watches']), heroMedia: banner };
+  check('closed: the engine ignores a render window even if one is handed to it', JSON.stringify(closed({ ...sample, renderProducts: [] })) === JSON.stringify(closed(sample)) && JSON.stringify(run({ ...sample, renderProducts: [] })) === JSON.stringify(run(sample)));
+  check('closed: expressionFloorSignals with no window returns the Phase 10L.4 values',
+    JSON.stringify(expressionFloorSignals({ signals: { categoryCount: 7 }, products: sample.products })) === JSON.stringify({ categoryCount: 7, exhibits: selectGalleryExhibits(sample.products).length }));
+  const stored = { template_key: 'ritual' as const, storefront_family: 'lifestyle-story' as const, layout_strategy: { hero: 'split' as const, grid: 'masonry' as const }, niche_reasoning: 'x' } as unknown as WebsiteConfig;
+  const closedSignals = viaRoute(merchant({ size: 12, banner: true }), { bodyNiche: 'general' }, false).signals;
+  check('closed: existing configs unchanged — the expression write returns the SAME config object', applyExpressionSelection(stored, { gridSurvivedGuard: true, signals: closedSignals }).config === stored);
+  check('the generation gate constant is still false', RITUAL_RECIPE_GENERATION_ENABLED === false);
+
+  // ── Gate OPEN: inputs changed, authority rules did not.
+  let rulesUnchanged = true;
+  for (const input of sweepInputs()) {
+    // The whole list handed as the window is the same judged data → the same decision as WP1.
+    if (JSON.stringify(open({ ...input, renderProducts: input.products })) !== JSON.stringify({ ...open(input) })) rulesUnchanged = false;
+  }
+  check('open: the engine\'s rules are unchanged — judged on the same data it returns the WP1 decision exactly', rulesUnchanged);
+  check('open: Subtraction thresholds unchanged', SUBTRACTION_ASSIGNMENT_RULES.minPicturedProducts === 6 && SUBTRACTION_ASSIGNMENT_RULES.minPicturedRatio === 0.9);
+  const partialWall = viaRoute(merchant({ size: 30, pictured: (i) => i < 12, banner: false }), { bodyNiche: 'jewelry' }, true);
+  check('open: the Subtraction rule still reads the whole catalog (12 newest photographed, 40% overall → not Subtraction)',
+    decisionOf(partialWall.assignment).family !== 'subtraction' && decisionOf(partialWall.assignment).eligibility.subtraction.reasons.join() === 'needs 90% photographed products (has 40%)', decisionOf(partialWall.assignment).eligibility.subtraction);
+  const deep = viaRoute(merchant({ size: 30, priced: (i) => i % 2 === 1, category: () => 'Soaps' }), { bodyNiche: 'cosmetics' }, true);
+  check('open: catalog-depth signals still read the whole catalog (15 priced overall, 6 in the window → Counter by depth)',
+    deep.assignment.architecture === 'counter' && deep.assignment.signals.pricedCount === 15 && deep.assignment.signals.productCount === 30 && deep.assignment.reason.endsWith(MARK.tieBreakCounter), deep.assignment);
+  const openRun = viaRoute(merchant({ size: 20, category: (i) => ['Serums', 'Creams', 'Oils'][i % 3], banner: true }), { bodyNiche: 'general' }, true);
+  check('open: Assignment decisions reflect the WP2 inputs (no niche, 12-row window)', openRun.input.niche === null && openRun.input.renderProducts?.length === 12 && openRun.assignment.signals.niche === null && openRun.assignment.signals.productCount === 20);
+  check('open: the decision keeps the WP1 key order — no field added', Object.keys(openRun.assignment).join(',') === OPEN_KEYS);
+
+  // ── Source: what the route does, and what nothing else does.
+  const root = process.cwd();
+  const read = (rel: string): string => {
+    try { return fs.readFileSync(path.join(root, rel), 'utf8'); } catch { return ''; }
+  };
+  const walk = (rel: string, out: string[] = []): string[] => {
+    let entries: fs.Dirent[] = [];
+    try { entries = fs.readdirSync(path.join(root, rel), { withFileTypes: true }); } catch { return out; }
+    for (const e of entries) {
+      if (e.name === 'node_modules' || e.name.startsWith('.')) continue;
+      const child = `${rel}/${e.name}`;
+      if (e.isDirectory()) walk(child, out);
+      else if (/\.(ts|tsx|mts|js|jsx|mjs)$/.test(e.name)) out.push(child);
+    }
+    return out;
+  };
+  const argsOf = (source: string, callee: string): string => {
+    const at = source.indexOf(`${callee}(`);
+    if (at === -1) return '';
+    let depth = 0;
+    for (let i = at + callee.length; i < source.length; i += 1) {
+      if (source[i] === '(') depth += 1;
+      if (source[i] === ')') { depth -= 1; if (depth === 0) return source.slice(at + callee.length + 1, i); }
+    }
+    return '';
+  };
+  const topLevelCommas = (args: string): number => {
+    let depth = 0;
+    let commas = 0;
+    const trimmed = args.trim().replace(/,\s*$/, '');
+    for (const ch of trimmed) {
+      if (ch === '(' || ch === '{' || ch === '[') depth += 1;
+      else if (ch === ')' || ch === '}' || ch === ']') depth -= 1;
+      else if (ch === ',' && depth === 0) commas += 1;
+    }
+    return commas;
+  };
+  const ROUTE_FILE = 'app/api/ai/generate-website/route.ts';
+  const ENGINE_FILE = 'lib/siteTemplates.ts';
+  const LOADER_FILE = 'app/site/[slug]/siteData.ts';
+  const route = read(ROUTE_FILE);
+  const count = (source: string, needle: string): number => source.split(needle).length - 1;
+
+  const alignArgs = argsOf(route, 'alignAssignmentInputs');
+  check('route: one alignAssignmentInputs call, given the parsed niche and the stock-carrying rows, with NO gate option (the constant decides)',
+    count(route, 'alignAssignmentInputs(') === 1 && topLevelCommas(alignArgs) === 0 && /niche:\s*nicheKey,/.test(alignArgs) && /stock_quantity:\s*products\[i\]\?\.stock_quantity \?\? null/.test(alignArgs) && !alignArgs.includes('gateOpen'), alignArgs.slice(0, 120));
+  const engineArgs = argsOf(route, 'assignArchitecture');
+  check('route: the engine call takes its niche and render window from the alignment, and the full stock-less list as before',
+    /niche:\s*aligned\.niche,/.test(engineArgs) && /renderProducts:\s*aligned\.renderProducts,/.test(engineArgs) && /products:\s*assignmentProducts,/.test(engineArgs) && /dominantCategory,/.test(engineArgs) && !/niche:\s*nicheKey/.test(engineArgs), engineArgs.slice(0, 160));
+  check('route: one expressionFloorSignals call, behind the render-window guard', count(route, 'expressionFloorSignals(') === 1 && /if \(aligned\.renderProducts\) \{\s*expressionSignals = \{\s*\.\.\.expressionSignals,\s*\.\.\.expressionFloorSignals\(/.test(route));
+  check('route: the Phase 10L.4 expression-signals literal is still there, untouched',
+    /expressionSignals = \{\s*niche: assignment\.signals\.niche,\s*dominantCategory,\s*categoryCount: assignment\.signals\.categoryCount,\s*exhibits: selectGalleryExhibits\(assignmentProducts\)\.length,\s*\};/.test(route));
+  check('route: the inventory read now carries stock_quantity', route.includes(".select('id, name, description, category, price, image_url, ad_video_url, ad_hero_image_url, stock_quantity')"));
+  const blockStart = route.indexOf('const assignmentProducts = products.map(');
+  const blockEnd = route.indexOf("console.warn('[generate-website] Architecture assignment skipped:'");
+  const outsideBlock = route.slice(0, blockStart) + route.slice(blockEnd);
+  check('route: `aligned` is read only inside the assignment block — not by the prompt, the template pin, the carriers or the persist call',
+    blockStart > 0 && blockEnd > blockStart && !/\baligned\b/.test(outsideBlock) && count(outsideBlock, 'alignAssignmentInputs') === 1 && count(outsideBlock, 'expressionFloorSignals') === 1);
+  check('route: persistence is untouched — the RPC still stores the config and nothing from the assignment', /p_config: config,/.test(route) && !/p_[a-z_]+:\s*(aligned|assignment)\b/.test(route));
+  check('route: the template pin is untouched', /if \(chosenTemplate\) \{\s*config\.template_key = chosenTemplate;\s*\}/.test(route));
+
+  // The resolver's read is what the window claims it is.
+  const loader = read(LOADER_FILE);
+  const homeRead = loader.slice(loader.indexOf('async function readHomeProducts'), loader.indexOf('async function readHomeProducts') + 900);
+  check('loader: the home read is still the 12 newest rows, with stock — the window\'s premise',
+    homeRead.includes(`.limit(${ASSIGNMENT_RENDER_WINDOW})`) && homeRead.includes("order('created_at', { ascending: false })") && homeRead.includes('stock_quantity'), homeRead.slice(0, 80));
+  check('route: the inventory read uses the same order (newest first)', /\.eq\('user_id', user!\.id\)\s*\.order\('created_at', \{ ascending: false \}\)\s*\.limit\(30\)/.test(route));
+
+  // Nothing else consumes WP2 — no carrier, no renderer, no other route.
+  const WP2_SURFACE = /alignAssignmentInputs|expressionFloorSignals|ASSIGNMENT_RENDER_WINDOW|AssignmentInputAlignment|UNDECLARED_STUDIO_NICHE|renderProducts/;
+  const others = [...walk('app'), ...walk('components'), ...walk('lib')].filter((f) => f !== ENGINE_FILE && f !== ROUTE_FILE);
+  const consumers = others.filter((f) => WP2_SURFACE.test(read(f)));
+  check(`no component, page, loader, library or other route references WP2 (${others.length} files)`, others.length > 50 && consumers.length === 0, consumers);
+  const engine = read(ENGINE_FILE);
+  const start = engine.indexOf('// ARCHITECTURE ASSIGNMENT ENGINE (Phase 10H');
+  const end = engine.indexOf('// EXPRESSION SELECTION (Phase 10L.3');
+  check('engine file: WP2 lives in the assignment-engine section only — carriers, resolver and expression write untouched',
+    start > 0 && end > start && !WP2_SURFACE.test(engine.slice(0, start) + engine.slice(end)), (engine.slice(0, start) + engine.slice(end)).match(WP2_SURFACE)?.[0]);
+  const legacyRow = { template_key: 'ritual' as const, storefront_family: 'lifestyle-story' as const, layout_strategy: { hero: 'split' as const, grid: 'masonry' as const } };
+  check('resolver: a legacy row still resolves classic with its raw hero and grid', resolveRitualRecipe(legacyRow) === 'classic' && JSON.stringify(resolveRitualComposition({ config: legacyRow, products: photographed(12, 12), heroMedia: banner })) === '{"requested":"classic","recipe":"classic","hero":"split","grid":"masonry","fallback":null,"expressionFallback":null}');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 14 WP3 — AUTHORITY CARRIERS. Shared fixtures for [27]–[32].
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A complete model generation (the compat gate's sample) — split_cta
+ *  included, so a section mix that wrongly survived would show. */
+const GENERATION = WebsiteGenerationSchema.parse({
+  template_key: 'ritual',
+  niche_reasoning: 'Beauty oils suit the minimal ritual anatomy.',
+  hero: { tagline: 'Skin Rituals, Perfected', headline: 'Skin Drinks Golden Light', subheadline: 'Cold-pressed oils for skin that keeps its glow.' },
+  value_props: [
+    { title: 'Cold-Pressed', body: 'Pressed within days of harvest.' },
+    { title: 'Small Batches', body: 'Blended weekly, never warehoused.' },
+  ],
+  product_grid: { title: 'The Ritual Edit', intro: 'Nine oils and serums, one calm routine.' },
+  story: { body: 'We started at a kitchen table with one bottle of marula oil and a belief: skincare should be food for the skin.' },
+  cta: { headline: 'Your Skin Remembers Ritual', subtext: 'Order before noon and it ships the same day.', button_label: 'Begin The Ritual' },
+  seo: { title: 'Golden Ritual Oils', description: 'Cold-pressed marula and baobab skincare, blended in small batches.' },
+  split_cta: { headline: 'Kept In Amber Glass', body: 'Light-proof bottles keep every active potent to the last drop.', button_label: 'See The Oils' },
+});
+
+/** Every family and grid value a model can name — plus none, plus junk. */
+const MODEL_FAMILIES: unknown[] = [undefined, ...STOREFRONT_FAMILIES, 'not-a-family'];
+const MODEL_GRIDS: unknown[] = [undefined, 'standard', 'masonry', 'featured-first', 'counter', 'gallery'];
+
+/** A layout as the model returns it, with every OTHER lever set so that what
+ *  the carrier leaves alone is visible. */
+function modelLayout(family: unknown, grid: unknown): WebsiteLayout {
+  const layout: Record<string, unknown> = {
+    block_order: ['hero_banner', 'product_grid', 'value_props', 'story_text', 'cta_banner'],
+    product_grid_display: 'carousel',
+    theme_preset_index: 2,
+    display_font: 'playfair',
+    layout_strategy: grid === undefined ? { hero: 'split' } : { hero: 'split', grid },
+  };
+  if (family !== undefined) layout.storefront_family = family;
+  return layout as WebsiteLayout;
+}
+
+/** One decision per outcome the engine can return, from the engine itself. */
+const WP3_DECISIONS: Array<[string, StorefrontDecision]> = [
+  ['counter', open({ niche: 'tech', products: photographed(20, 20, ['Phones', 'Laptops', 'Audio']), heroMedia: banner })],
+  ['gallery', open({ niche: 'jewelry', products: photographed(5, 5), heroMedia: banner })],
+  ['subtraction', open({ niche: 'jewelry', products: photographed(6, 6), heroMedia: null })],
+  ['classic / lifestyle-story', open({ niche: 'cosmetics', products: photographed(8, 8, 'Serum'), heroMedia: banner })],
+  ['classic / product-first', open({ niche: 'tech', products: photographed(2, 2, ['A', 'B']), heroMedia: null })],
+  ['classic / menu-occasion', open({ niche: 'food', products: photographed(10, 10, ['Cakes', 'Cupcakes']), heroMedia: banner })],
+  ['classic floor', decisionOf(assignArchitectureOrFloor(null as unknown as ArchitectureAssignmentInput, { gateOpen: true }))],
+];
+const carry = (layout: WebsiteLayout | null | undefined, d: ArchitectureAssignment | null | undefined): WebsiteLayout => {
+  const out = carryStorefrontDecision(layout, d, { gateOpen: true });
+  if (!out) throw new Error('gate open returned no layout');
+  return out;
+};
+const isRecipeGrid = (g: unknown): boolean => g === 'counter' || g === 'gallery';
+/** The recipe the RESOLVER would be asked for by a carried layout. */
+const requestedBy = (d: StorefrontDecision, carried: WebsiteLayout) =>
+  resolveRitualRecipe({ template_key: d.template, storefront_family: carried.storefront_family, layout_strategy: carried.layout_strategy });
+/** The existing carriers, fed a carried layout on the decision's template. */
+function assemble(d: StorefrontDecision, carried: WebsiteLayout): WebsiteConfig {
+  const gen = { ...GENERATION, template_key: d.template, layout: carried };
+  return applyGenerationLayout(generationToConfig(gen), carried, classicLayoutBounds(d.template));
+}
+const canon = (o: object): string => JSON.stringify(Object.entries(o).sort(([a], [b]) => a.localeCompare(b)));
+
+console.log('\n[27] Phase 14 WP3 — single origin: the carried family and grid are Assignment\'s (gate open)');
+{
+  check('fixtures: one decision per outcome',
+    WP3_DECISIONS.map(([, d]) => `${d.architecture}/${d.family}`).join() === 'counter/product-first,gallery/lifestyle-story,classic/subtraction,classic/lifestyle-story,classic/product-first,classic/menu-occasion,classic/lifestyle-story',
+    WP3_DECISIONS.map(([, d]) => `${d.architecture}/${d.family}`));
+  check('the recipe grid a decision owns: counter, gallery, none for Classic and Subtraction',
+    WP3_DECISIONS.map(([, d]) => assignedRecipeGrid(d)).join() === 'counter,gallery,,,,,');
+
+  let familyOk = true;
+  let gridOk = true;
+  let cases = 0;
+  let offender: unknown;
+  for (const [name, d] of WP3_DECISIONS) {
+    const owned = assignedRecipeGrid(d);
+    for (const family of MODEL_FAMILIES) {
+      for (const grid of MODEL_GRIDS) {
+        const c = carry(modelLayout(family, grid), d);
+        cases += 1;
+        if (c.storefront_family !== d.family) { familyOk = false; offender = offender ?? { name, family, got: c.storefront_family }; }
+        const got = c.layout_strategy?.grid;
+        const want = owned ?? (isRecipeGrid(grid) ? undefined : grid);
+        if (got !== want) { gridOk = false; offender = offender ?? { name, grid, got }; }
+      }
+    }
+  }
+  check(`carried family = the decision's family for every model family value (${cases} cases)`, familyOk, offender);
+  check('carried grid = the decision\'s recipe grid for every model grid value; with no recipe owned, a model recipe grid is removed and a presentation grid passes through', gridOk, offender);
+
+  // No model layout at all — the decision is still carried.
+  const bare = WP3_DECISIONS.map(([, d]) => JSON.stringify(carry(null, d)));
+  check('no model layout (null) → a layout holding exactly the decision',
+    bare.join('|') === [
+      '{"storefront_family":"product-first","layout_strategy":{"grid":"counter"}}',
+      '{"storefront_family":"lifestyle-story","layout_strategy":{"grid":"gallery"}}',
+      '{"storefront_family":"subtraction"}',
+      '{"storefront_family":"lifestyle-story"}',
+      '{"storefront_family":"product-first"}',
+      '{"storefront_family":"menu-occasion"}',
+      '{"storefront_family":"lifestyle-story"}',
+    ].join('|'), bare);
+  check('…and undefined behaves the same', WP3_DECISIONS.every(([, d], i) => JSON.stringify(carry(undefined, d)) === bare[i]));
+
+  // Through the EXISTING carriers: the family arrives on the config.
+  let arrives = true;
+  let valid = true;
+  let guardStillStrips = true;
+  for (const [, d] of WP3_DECISIONS) {
+    for (const family of MODEL_FAMILIES) {
+      for (const grid of MODEL_GRIDS) {
+        const config = assemble(d, carry(modelLayout(family, grid), d));
+        if (config.storefront_family !== d.family) arrives = false;
+        if (!WebsiteConfigSchema.safeParse(config).success) valid = false;
+        // Production gate: a stamped recipe grid still cannot reach a config while the constant is false.
+        if (isRecipeGrid(config.layout_strategy?.grid)) guardStillStrips = false;
+      }
+    }
+  }
+  check('through the untouched carriers the decision\'s family is the config\'s family, for every model input', arrives);
+  check('every assembled config validates strictly', valid);
+  check('the generation guard still strips a stamped recipe grid while the gate constant is false (activation is not WP3)', RITUAL_RECIPE_GENERATION_ENABLED === false && guardStillStrips);
+  const subtractionConfig = assemble(WP3_DECISIONS[2][1], carry(modelLayout('lifestyle-story', 'counter'), WP3_DECISIONS[2][1]));
+  const visible = (c: WebsiteConfig) => (c.blocks ?? []).filter((b) => !b.hidden).map((b) => b.type).join();
+  check('a Subtraction decision arrives as Subtraction even when the model named another family and a recipe grid (the wall takes the family\'s own masonry default, never the model\'s recipe grid)',
+    subtractionConfig.storefront_family === 'subtraction' && visible(subtractionConfig) === 'hero_banner,product_grid' && subtractionConfig.layout_strategy?.grid === 'masonry', subtractionConfig.layout_strategy);
+  const storyConfig = assemble(WP3_DECISIONS[3][1], carry(modelLayout('subtraction', 'masonry'), WP3_DECISIONS[3][1]));
+  check('a model-named Subtraction does NOT arrive under a Classic decision', storyConfig.storefront_family === 'lifestyle-story' && (storyConfig.blocks ?? []).filter((b) => !b.hidden).length === 5 && storyConfig.layout_strategy?.grid === 'masonry', visible(storyConfig));
+}
+
+console.log('\n[28] Phase 14 WP3 — carrier independence: the model\'s family and grid do not decide (gate open)');
+{
+  let oneFamily = true;
+  let oneRecipe = true;
+  let oneRequest = true;
+  const expectedRecipe = ['product-first', 'gallery-led', 'subtraction', 'classic', 'classic', 'classic', 'classic'];
+  WP3_DECISIONS.forEach(([, d], index) => {
+    const families = new Set<unknown>();
+    const recipes = new Set<unknown>();
+    const requests = new Set<string>();
+    for (const family of MODEL_FAMILIES) {
+      for (const grid of MODEL_GRIDS) {
+        const c = carry(modelLayout(family, grid), d);
+        families.add(c.storefront_family);
+        recipes.add(isRecipeGrid(c.layout_strategy?.grid) ? c.layout_strategy?.grid : null);
+        requests.add(requestedBy(d, c));
+      }
+    }
+    if (families.size !== 1 || !families.has(d.family)) oneFamily = false;
+    if (recipes.size !== 1 || !recipes.has(assignedRecipeGrid(d))) oneRecipe = false;
+    if (requests.size !== 1 || !requests.has(expectedRecipe[index])) oneRequest = false;
+  });
+  check('for each decision, ONE carried family across all model family inputs', oneFamily);
+  check('for each decision, ONE carried recipe grid (or none) across all model grid inputs', oneRecipe);
+  check('what the resolver would be asked for depends on the decision alone: counter, gallery, subtraction, classic ×4', oneRequest);
+  const counterD = WP3_DECISIONS[0][1];
+  const classicD = WP3_DECISIONS[3][1];
+  check('model said gallery + subtraction, decision says Counter → counter / product-first', JSON.stringify([carry(modelLayout('subtraction', 'gallery'), counterD).storefront_family, carry(modelLayout('subtraction', 'gallery'), counterD).layout_strategy?.grid]) === '["product-first","counter"]');
+  check('model said counter, decision says Classic → no recipe grid', carry(modelLayout('product-first', 'counter'), classicD).layout_strategy?.grid === undefined && carry(modelLayout('product-first', 'counter'), classicD).storefront_family === 'lifestyle-story');
+  check('model said featured-first, decision says Classic → the presentation pick passes through', carry(modelLayout(undefined, 'featured-first'), classicD).layout_strategy?.grid === 'featured-first');
+
+  // Everything that is NOT the engine's is carried through unchanged.
+  const model = modelLayout('menu-occasion', 'gallery');
+  const c = carry(model, counterD);
+  check('block order, display, accent index, face and the hero variant are carried through unchanged',
+    JSON.stringify(c.block_order) === JSON.stringify(model.block_order) && c.product_grid_display === 'carousel' && c.theme_preset_index === 2 && c.display_font === 'playfair' && c.layout_strategy?.hero === 'split');
+  check('only two keys can differ from the model layout: storefront_family and layout_strategy.grid',
+    Object.keys(c).sort().join() === Object.keys(model).sort().join() && Object.keys(c.layout_strategy ?? {}).sort().join() === 'grid,hero');
+
+  // Purity.
+  const frozenLayout = deepFreeze(modelLayout('subtraction', 'gallery'));
+  const frozenDecision = deepFreeze(open({ niche: 'tech', products: photographed(20, 20, ['Phones', 'Laptops', 'Audio']), heroMedia: null }));
+  const beforeLayout = JSON.stringify(frozenLayout);
+  let pure = true;
+  let out: WebsiteLayout | null = null;
+  try { out = carry(frozenLayout, frozenDecision); } catch { pure = false; }
+  check('pure: deep-frozen layout and decision are never written to, a new layout is returned', pure && out !== null && out !== frozenLayout && out.layout_strategy !== frozenLayout.layout_strategy && JSON.stringify(frozenLayout) === beforeLayout);
+  check('deterministic', JSON.stringify(carry(modelLayout('subtraction', 'gallery'), counterD)) === JSON.stringify(carry(modelLayout('subtraction', 'gallery'), counterD)));
+
+  // No decision with the gate open → the Classic floor, never the model's recipe or Subtraction.
+  const closedObject = closed({ niche: 'tech', products: photographed(20, 20, ['Phones', 'Laptops', 'Audio']), heroMedia: banner });
+  const junkFamily = { ...counterD, family: 'not-a-family' } as unknown as ArchitectureAssignment;
+  let floored = true;
+  for (const missing of [null, undefined, closedObject, junkFamily]) {
+    for (const family of MODEL_FAMILIES) {
+      for (const grid of MODEL_GRIDS) {
+        const f = carry(modelLayout(family, grid), missing);
+        if (f.storefront_family !== 'lifestyle-story' || isRecipeGrid(f.layout_strategy?.grid)) floored = false;
+      }
+    }
+  }
+  check('gate open, no usable decision (null, undefined, a closed-gate object, an unknown family) → the Classic floor is stamped', floored);
+}
+
+console.log('\n[29] Phase 14 WP3 — visual-system preservation (ratified 13D, F4)');
+{
+  const ritualClassic = classicLayoutBounds('ritual');
+  const under = (key: (typeof ARCHETYPE_KEYS)[number]) => composeVisualSystem(ARCHETYPES[key], 'ritual');
+
+  const warm = under('warm-editorial');
+  check('Warm Editorial → Ritual: the template changed; voice, typography, palette and accents survive, the section mix does not',
+    warm.templateKey === 'ritual' && warm.templateChanged && JSON.stringify(warm.survives) === '{"copyVoice":true,"typography":true,"palette":true,"accents":true,"sectionMix":false}', warm.survives);
+  check('Warm Editorial: its own accent, face, paper and ink are seated', canon(warm.theme) === canon({ accent: '#8a3412', display_font: 'fraunces', background: '#f4ede2', text: '#2b2015' }), warm.theme);
+  check('Warm Editorial: its own accent presets and faces bound the build', warm.bounds.accentPresets === ARCHETYPES['warm-editorial'].accentPresets && warm.bounds.displayFonts === ARCHETYPES['warm-editorial'].displayFonts);
+
+  const luxury = under('deep-luxury');
+  check('Deep Luxury → Ritual: its own template; everything archetype-owned survives, the section mix does not',
+    !luxury.templateChanged && JSON.stringify(luxury.survives) === '{"copyVoice":true,"typography":true,"palette":true,"accents":true,"sectionMix":false}', luxury.survives);
+  check('Deep Luxury: the seated theme is its own theme, key for key (panels and corners included)', canon(luxury.theme) === canon(ARCHETYPES['deep-luxury'].theme), luxury.theme);
+  check('Deep Luxury: its own accent presets and faces bound the build', luxury.bounds.accentPresets === ARCHETYPES['deep-luxury'].accentPresets && luxury.bounds.displayFonts === ARCHETYPES['deep-luxury'].displayFonts);
+
+  const pastel = under('pastel-minimalist');
+  check('Pastel Minimalist → Ritual: its own template; everything archetype-owned survives, the section mix does not',
+    !pastel.templateChanged && JSON.stringify(pastel.survives) === '{"copyVoice":true,"typography":true,"palette":true,"accents":true,"sectionMix":false}', pastel.survives);
+  check('Pastel Minimalist: the seated theme is its own theme, key for key', canon(pastel.theme) === canon(ARCHETYPES['pastel-minimalist'].theme), pastel.theme);
+  check('Pastel Minimalist: its own accent presets and faces bound the build', pastel.bounds.accentPresets === ARCHETYPES['pastel-minimalist'].accentPresets && pastel.bounds.displayFonts === ARCHETYPES['pastel-minimalist'].displayFonts);
+
+  const street = under('high-contrast-street');
+  check('High-Contrast Street → Ritual: the template changed; ONLY the copy voice survives',
+    street.templateChanged && JSON.stringify(street.survives) === '{"copyVoice":true,"typography":false,"palette":false,"accents":false,"sectionMix":false}', street.survives);
+  check('High-Contrast Street: nothing of its theme is seated — not even its volt accent, which was only ever checked against Vitality\'s black canvas', JSON.stringify(street.theme) === '{}', street.theme);
+  check('High-Contrast Street: Ritual\'s own swatches and faces bound the build', street.bounds.accentPresets === ritualClassic.accentPresets && street.bounds.accentPresets === TEMPLATE_THEMES.ritual.swatches && street.bounds.displayFonts === ritualClassic.displayFonts);
+
+  // The five rules, for every archetype under every template.
+  let voice = true;
+  let typography = true;
+  let palette = true;
+  let accents = true;
+  let mix = true;
+  let template = true;
+  let validTheme = true;
+  for (const key of ARCHETYPE_KEYS) {
+    const a = ARCHETYPES[key];
+    // Ownership, stated independently of the implementation.
+    const ownsFace = a.displayFonts.length > 0;
+    const ownsPaper = 'background' in a.theme && 'text' in a.theme;
+    for (const t of TEMPLATE_KEYS) {
+      const comp = composeVisualSystem(a, t);
+      const own = classicLayoutBounds(t);
+      if (comp.copyDirection !== a.copyDirection || comp.vibe !== a.vibe || comp.survives.copyVoice !== true) voice = false;
+      // (Vitality's fixed face is a fresh empty list per call — compare by value.)
+      if (comp.survives.typography !== ownsFace || comp.theme.display_font !== (ownsFace ? a.theme.display_font : undefined) || JSON.stringify(comp.bounds.displayFonts) !== JSON.stringify(ownsFace ? a.displayFonts : own.displayFonts)) typography = false;
+      if (ownsFace && comp.bounds.displayFonts !== a.displayFonts) typography = false;
+      if (comp.survives.palette !== ownsPaper || comp.theme.background !== (ownsPaper ? a.theme.background : undefined) || comp.theme.text !== (ownsPaper ? a.theme.text : undefined) || comp.theme.primary !== (ownsPaper ? a.theme.primary : undefined)) palette = false;
+      if (comp.survives.accents !== ownsPaper || comp.theme.accent !== (ownsPaper ? a.theme.accent : undefined) || comp.bounds.accentPresets !== (ownsPaper ? a.accentPresets : own.accentPresets)) accents = false;
+      if (comp.survives.sectionMix !== false || comp.bounds.blockMix !== CLASSIC_BLOCK_MIX || comp.bounds.blockMix === a.blockMix || comp.bounds.serverGated.length !== 0) mix = false;
+      if (comp.templateKey !== t || comp.bounds.templateKey !== t || comp.templateChanged !== (t !== a.template_key) || comp.bounds.orderHonored !== own.orderHonored || comp.bounds.carouselHonored !== own.carouselHonored) template = false;
+      if (!SiteThemeSchema.safeParse(comp.theme).success) validTheme = false;
+    }
+  }
+  check('copy voice: survives, always — every archetype under every template', voice);
+  check('typography: survives only when archetype-owned; otherwise the assigned template\'s faces', typography);
+  check('palette: survives only when archetype-owned (its own paper and ink); otherwise the assigned template\'s', palette);
+  check('accents: survive only when archetype-owned (they travel with their own paper); otherwise the assigned template\'s swatches', accents);
+  check('section mix: never survives — always the assigned template\'s mix, no archetype extras, no server-gated slot', mix);
+  check('the build is bounded by the ASSIGNED template\'s facts', template);
+  check('every seated theme is a valid site theme', validTheme);
+
+  // Readability on the two template changes Assignment can cause.
+  let readable = true;
+  let offender: unknown;
+  for (const comp of [warm, street]) {
+    const paper = comp.theme.background ?? TEMPLATE_THEMES.ritual.paper;
+    const ink = comp.theme.text ?? TEMPLATE_THEMES.ritual.ink;
+    const body = contrastRatio(ink, paper);
+    if (body === null || body < 4.5) { readable = false; offender = offender ?? { paper, ink, body }; }
+    for (const p of comp.bounds.accentPresets) {
+      const verdict = judgeAccent('ritual', p.hex);
+      const surface = contrastRatio(p.hex, paper);
+      if (verdict === null || verdict.blocked || surface === null || surface < 3) { readable = false; offender = offender ?? { preset: p.name, label: verdict?.vsLabel, surface }; }
+    }
+  }
+  check('Warm Editorial and Street on Ritual: body copy clears 4.5:1 and every accent preset clears the 4.5:1 label guard and 3:1 against its paper', readable, offender);
+
+  // Usable with the EXISTING carriers, unchanged.
+  const counterD = WP3_DECISIONS[0][1];
+  const carried = carry(modelLayout('lifestyle-story', 'masonry'), counterD);
+  const seated = (comp: ReturnType<typeof composeVisualSystem>) => applyGenerationLayout({ ...generationToConfig({ ...GENERATION, template_key: comp.templateKey, layout: carried }), theme: comp.theme }, carried, comp.bounds);
+  const warmBuild = seated(warm);
+  check('seated through the untouched layout carrier — Warm Editorial on Ritual keeps its paper, ink and face lever, and the model\'s accent index picks from ITS presets',
+    warmBuild.template_key === 'ritual' && warmBuild.theme?.background === '#f4ede2' && warmBuild.theme?.text === '#2b2015' && warmBuild.theme?.accent === ARCHETYPES['warm-editorial'].accentPresets[2].hex && warmBuild.theme?.display_font === 'playfair' && WebsiteConfigSchema.safeParse(warmBuild).success, warmBuild.theme);
+  const streetBuild = seated(street);
+  check('…Street on Ritual takes Ritual\'s paper and the model\'s accent index picks from RITUAL\'s swatches',
+    streetBuild.template_key === 'ritual' && streetBuild.theme?.background === undefined && streetBuild.theme?.accent === TEMPLATE_THEMES.ritual.swatches[2].hex && WebsiteConfigSchema.safeParse(streetBuild).success, streetBuild.theme);
+  check('…and neither build carries an archetype section (no split spread, no testimonials) although the generation offered one',
+    GENERATION.split_cta !== undefined && [warmBuild, streetBuild].every((b) => (b.blocks ?? []).every((x) => (CLASSIC_BLOCK_MIX as readonly string[]).includes(x.type))), (warmBuild.blocks ?? []).map((b) => b.type));
+
+  // Purity.
+  const before = JSON.stringify(ARCHETYPES);
+  for (const key of ARCHETYPE_KEYS) for (const t of TEMPLATE_KEYS) composeVisualSystem(ARCHETYPES[key], t);
+  check('pure and deterministic: the archetype bundles are never written to', JSON.stringify(ARCHETYPES) === before && JSON.stringify(under('warm-editorial')) === JSON.stringify(warm) && under('warm-editorial').theme !== warm.theme);
+}
+
+console.log('\n[30] Phase 14 WP3 — theme independence: one merchant, every archetype (gate open)');
+{
+  const merchants: Array<[string, Merchant]> = [
+    ['counter', merchant({ size: 20, category: (i) => ['Phones', 'Laptops', 'Audio'][i % 3], dominantCategory: 'electronics', banner: true })],
+    ['gallery', merchant({ size: 5, dominantCategory: 'perfume', banner: true })],
+    ['subtraction', merchant({ size: 6, dominantCategory: 'perfume', banner: false })],
+    ['classic', merchant({ size: 8, category: () => 'Serum', banner: true })],
+  ];
+  const expectations = ['counter/product-first', 'gallery/lifestyle-story', 'classic/subtraction', 'classic/lifestyle-story'];
+  merchants.forEach(([name, m], index) => {
+    const builds = ARCHETYPE_KEYS.map((key, k) => {
+      const archetype = ARCHETYPES[key];
+      const r = viaRoute(m, { bodyNiche: 'general', forcedTemplate: { template: archetype.template_key, source: 'seller-archetype' } }, true);
+      const d = decisionOf(r.assignment);
+      // A DIFFERENT model layout under each archetype — the model must not matter either.
+      const carried = carry(modelLayout(MODEL_FAMILIES[(k + index) % MODEL_FAMILIES.length], MODEL_GRIDS[(k * 2 + 1) % MODEL_GRIDS.length]), d);
+      const comp = composeVisualSystem(archetype, d.template);
+      const config = applyGenerationLayout({ ...generationToConfig({ ...GENERATION, template_key: d.template, layout: carried }), theme: comp.theme }, carried, comp.bounds);
+      return {
+        outcome: `${d.architecture}/${config.storefront_family}`,
+        recipeGrid: assignedRecipeGrid(d) ?? 'none',
+        carriedRecipe: isRecipeGrid(carried.layout_strategy?.grid) ? String(carried.layout_strategy?.grid) : 'none',
+        expression: firstRender(m, d, r.signals, r.heroMedia).expression ?? 'none',
+        template: config.template_key,
+        look: JSON.stringify(config.theme ?? {}),
+        valid: WebsiteConfigSchema.safeParse(config).success,
+      };
+    });
+    const same = (pick: (b: (typeof builds)[number]) => string) => builds.every((b) => pick(b) === pick(builds[0]));
+    check(`${name} merchant: same family and architecture under all four archetypes`, same((b) => b.outcome) && builds[0].outcome === expectations[index], builds.map((b) => b.outcome));
+    check(`${name} merchant: same carried recipe grid — the decision's — under all four`, same((b) => b.carriedRecipe) && builds.every((b) => b.carriedRecipe === b.recipeGrid), builds.map((b) => b.carriedRecipe));
+    check(`${name} merchant: same expression under all four`, same((b) => b.expression), builds.map((b) => b.expression));
+    check(`${name} merchant: only the LOOK differs between archetypes, and every build validates`, new Set(builds.map((b) => b.look)).size > 1 && builds.every((b) => b.valid), builds.map((b) => b.look));
+    if (name !== 'classic') check(`${name} merchant: Ritual under all four`, builds.every((b) => b.template === 'ritual'), builds.map((b) => b.template));
+    else check('classic merchant: each seller\'s own template stands', builds.map((b) => b.template).join() === ARCHETYPE_KEYS.map((k) => ARCHETYPES[k].template_key).join(), builds.map((b) => b.template));
+  });
+}
+
+console.log('\n[31] Phase 14 WP3 — legacy compatibility');
+{
+  // Gate closed: the carrier hands the SAME layout back, so the existing carriers see exactly what they saw.
+  let identity = true;
+  let sameConfig = true;
+  let cases = 0;
+  for (const [, d] of WP3_DECISIONS) {
+    for (const family of MODEL_FAMILIES) {
+      for (const grid of MODEL_GRIDS) {
+        const layout = modelLayout(family, grid);
+        const closedCarry = carryStorefrontDecision(layout, d, { gateOpen: false });
+        const defaultCarry = carryStorefrontDecision(layout, d);
+        cases += 1;
+        if (closedCarry !== layout || defaultCarry !== layout) identity = false;
+        for (const key of ARCHETYPE_KEYS) {
+          const archetype = ARCHETYPES[key];
+          const gen = { ...GENERATION, template_key: archetype.template_key, layout };
+          const was = applyArchetype(generationToConfig(gen), archetype, gen, null);
+          const now = applyArchetype(generationToConfig({ ...gen, layout: closedCarry ?? undefined }), archetype, { ...gen, layout: closedCarry ?? undefined }, null);
+          if (JSON.stringify(was) !== JSON.stringify(now)) sameConfig = false;
+        }
+      }
+    }
+  }
+  check(`closed (and with no gate argument): the carrier returns the SAME layout reference, whatever the decision (${cases} layouts)`, RITUAL_RECIPE_GENERATION_ENABLED === false && identity);
+  check('closed: every archetype build through the existing carriers is byte-identical with and without the carrier', sameConfig);
+  check('closed: an absent layout stays absent', carryStorefrontDecision(null, WP3_DECISIONS[0][1], { gateOpen: false }) === null && carryStorefrontDecision(undefined, WP3_DECISIONS[0][1], { gateOpen: false }) === undefined);
+
+  // The existing bounds are what they were.
+  check('the archetype bounds and the classic bounds are untouched by the composition',
+    ARCHETYPE_KEYS.every((key) => archetypeLayoutBounds(ARCHETYPES[key]).blockMix === ARCHETYPES[key].blockMix && archetypeLayoutBounds(ARCHETYPES[key]).templateKey === ARCHETYPES[key].template_key && archetypeLayoutBounds(ARCHETYPES[key]).serverGated.join() === 'testimonials') &&
+    TEMPLATE_KEYS.every((t) => classicLayoutBounds(t).blockMix === CLASSIC_BLOCK_MIX && classicLayoutBounds(t).accentPresets === TEMPLATE_THEMES[t].swatches));
+  // Legacy rows.
+  const legacy = { template_key: 'ritual' as const, storefront_family: 'lifestyle-story' as const, layout_strategy: { hero: 'split' as const, grid: 'masonry' as const } };
+  check('a legacy ritual row still resolves classic with its raw hero and grid', resolveRitualRecipe(legacy) === 'classic' && JSON.stringify(resolveRitualComposition({ config: legacy, products: photographed(12, 12), heroMedia: banner })) === '{"requested":"classic","recipe":"classic","hero":"split","grid":"masonry","fallback":null,"expressionFallback":null}');
+  check('a row with no family and no strategy still resolves classic', resolveRitualRecipe({ template_key: 'ritual' }) === 'classic' && resolveRitualRecipe({ template_key: 'editorial', layout_strategy: { grid: 'gallery' } }) === 'classic');
+  const legacyGen = { ...GENERATION, layout: undefined };
+  check('a generation with no layout assembles exactly as before (the same config object back from the layout carrier)', applyGenerationLayout(generationToConfig(legacyGen), undefined, classicLayoutBounds('ritual')).storefront_family === undefined && generationToConfig(legacyGen).blocks?.map((b) => b.type).join() === 'hero_banner,story_text,product_grid,value_props,cta_banner');
+}
+
+console.log('\n[32] Phase 14 WP3 — gate matrix: the generation route is the carriers\' only caller (WP4)');
+{
+  const root = process.cwd();
+  const read = (rel: string): string => {
+    try { return fs.readFileSync(path.join(root, rel), 'utf8'); } catch { return ''; }
+  };
+  const walk = (rel: string, out: string[] = []): string[] => {
+    let entries: fs.Dirent[] = [];
+    try { entries = fs.readdirSync(path.join(root, rel), { withFileTypes: true }); } catch { return out; }
+    for (const e of entries) {
+      if (e.name === 'node_modules' || e.name.startsWith('.')) continue;
+      const child = `${rel}/${e.name}`;
+      if (e.isDirectory()) walk(child, out);
+      else if (/\.(ts|tsx|mts|js|jsx|mjs)$/.test(e.name)) out.push(child);
+    }
+    return out;
+  };
+  const WP3_SURFACE = /carryStorefrontDecision|composeVisualSystem|assignedRecipeGrid|VisualSystemComposition/;
+  const ENGINE_FILE = 'lib/siteTemplates.ts';
+  const ROUTE_FILE = 'app/api/ai/generate-website/route.ts';
+
+  const sources = [...walk('app'), ...walk('components'), ...walk('lib')].filter((f) => f !== ENGINE_FILE);
+  const consumers = sources.filter((f) => WP3_SURFACE.test(read(f)));
+  // Phase 14 WP4: the generation route calls both steps now — and only it.
+  check(`only the generation route (WP4) references the carrier or the composition — no other route, API handler, component, page, loader or library file (${sources.length} files)`, sources.length > 50 && sources.includes(ROUTE_FILE) && consumers.join() === ROUTE_FILE, consumers);
+
+  const engine = read(ENGINE_FILE);
+  const start = engine.indexOf('// ARCHITECTURE ASSIGNMENT ENGINE (Phase 10H');
+  const end = engine.indexOf('// EXPRESSION SELECTION (Phase 10L.3');
+  const outside = engine.slice(0, start) + engine.slice(end);
+  check('engine file: nothing outside the assignment-engine section references them — the layout carriers, the resolver and the expression write do not call them',
+    start > 0 && end > start && !WP3_SURFACE.test(outside), outside.match(WP3_SURFACE)?.[0]);
+  const body = (name: string): string => {
+    // From the declaration to the function's own closing brace (the first
+    // brace at column 0) — never into the comments or code that follow it.
+    const at = engine.indexOf(`export function ${name}(`);
+    const close = engine.indexOf('\n}', at + 1);
+    return at === -1 || close === -1 ? '' : engine.slice(at, close + 2);
+  };
+  check('engine file: the existing carriers and the resolver are not edited to read a decision',
+    ['generationToConfig', 'applyArchetype', 'applyGenerationLayout', 'applyExpressionSelection', 'guardRecipeGridPick', 'resolveRitualRecipe', 'resolveRitualComposition'].every((name) => body(name).length > 0 && !/StorefrontDecision|isStorefrontDecision|carryStorefrontDecision|composeVisualSystem|gateOpen/.test(body(name))));
+
+  // The three existing carrier calls are the same statements as before WP4.
+  // They read `legacyGeneration`, which WP4 leaves as the MODEL's own
+  // generation — the same object — whenever the gate is closed ([37]).
+  const route = read(ROUTE_FILE);
+  const post = route.slice(route.indexOf('export async function POST'));
+  check('route: the three existing carrier calls are untouched — they still read `legacyGeneration` (the model\'s own generation while the gate is closed, [37])',
+    route.includes('let config = generationToConfig(legacyGeneration);') &&
+    route.includes('config = applyArchetype(config, archetype, legacyGeneration, reviewRows);') &&
+    route.includes('config = applyGenerationLayout(config, legacyGeneration.layout, classicLayoutBounds(config.template_key));'));
+  check('route: the template pin and the persist call are untouched', /if \(chosenTemplate\) \{\s*config\.template_key = chosenTemplate;\s*\}/.test(route) && /p_config: config,/.test(route));
+  check('route: still exactly one engine call, with no gate option', route.split('assignArchitecture(').length - 1 === 1 && route.includes('export async function POST') && post.split('gateOpen').length - 1 === 2);
+
+  // Gate state.
+  check('the generation gate constant is still false', RITUAL_RECIPE_GENERATION_ENABLED === false);
+  check('guard still strips both recipe grids', guardRecipeGridPick('counter', 'ritual') === undefined && guardRecipeGridPick('gallery', 'ritual') === undefined);
+  // Gate open, in one line each.
+  const d = WP3_DECISIONS[1][1];
+  const c = carry(modelLayout('product-first', 'counter'), d);
+  check('gate open: the carrier returns the Assignment-owned values (Gallery decision over a model that said Counter)', c.storefront_family === d.family && c.layout_strategy?.grid === 'gallery' && assignedRecipeGrid(d) === 'gallery');
+  check('gate open: what it returns is plain layout data — no config, no template, no decision object', Object.keys(c).sort().join() === 'block_order,display_font,layout_strategy,product_grid_display,storefront_family,theme_preset_index' && JSON.stringify(JSON.parse(JSON.stringify(c))) === JSON.stringify(c));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 14 WP4 — ROUTE INTEGRATION (A3). Shared fixtures for [33]–[38].
+// The route's four WP4 steps are module-private and a route module cannot be
+// imported here, so they are LIFTED: the text between the route's two WP4
+// markers is read from disk, its types are stripped by typescript's own
+// transpiler, and it is evaluated against this script's lib imports. What
+// runs below is the route's code, not a copy of it — in BOTH gate states,
+// because each step takes the gate (or the authority it produced) as an input.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const WP4_ROUTE_FILE = 'app/api/ai/generate-website/route.ts';
+const WP4_ROUTE_SOURCE = ((): string => {
+  try { return fs.readFileSync(path.join(process.cwd(), WP4_ROUTE_FILE), 'utf8').replace(/\r\n/g, '\n'); } catch { return ''; }
+})();
+const WP4_BEGIN = '// [WP4:BEGIN]';
+const WP4_END = '// [WP4:END]';
+const WP4_BLOCK = ((): string => {
+  const a = WP4_ROUTE_SOURCE.indexOf(WP4_BEGIN);
+  const b = WP4_ROUTE_SOURCE.indexOf(WP4_END);
+  return a === -1 || b <= a ? '' : WP4_ROUTE_SOURCE.slice(a + WP4_BEGIN.length, b);
+})();
+/** POST, from its declaration to the end of the file. */
+const WP4_POST = WP4_ROUTE_SOURCE.includes('export async function POST') ? WP4_ROUTE_SOURCE.slice(WP4_ROUTE_SOURCE.indexOf('export async function POST')) : '';
+
+/** Every outside name the lifted block may use — all of them lib exports.
+ *  The block runs in strict mode with ONLY these in scope, so a reference to
+ *  anything else (a route local, a client, the gate constant) throws. */
+const WP4_SCOPE: Record<string, unknown> = {
+  ARCHITECTURES,
+  DEFAULT_STOREFRONT_FAMILY,
+  STOREFRONT_FAMILIES,
+  SUBTRACTION_TEMPLATE_KEY,
+  TEMPLATE_KEYS,
+  applyGenerationLayout,
+  assignedRecipeGrid,
+  carryStorefrontDecision,
+  composeVisualSystem,
+  isStorefrontDecision,
+};
+
+type RouteAuthority = { decision: StorefrontDecision | null; template: TemplateKey; floor: 'missing' | 'invalid' | 'unreadable' | null };
+type RouteSteps = {
+  routeAuthority: (gateOpen: boolean, assignment: ArchitectureAssignment | null | undefined, floorTemplate: TemplateKey) => RouteAuthority | null;
+  carryAuthority: <G extends Pick<WebsiteGeneration, 'template_key' | 'layout'>>(generation: G, authority: RouteAuthority | null) => G;
+  applyAssignedLook: (config: WebsiteConfig, archetype: SiteArchetype | null, layout: WebsiteLayout | null | undefined, authority: RouteAuthority | null) => WebsiteConfig | null;
+  describeRouteAuthority: (authority: RouteAuthority, shopId: string) => string;
+};
+let wp4LiftError: string | null = null;
+const ROUTE_STEPS: RouteSteps | null = ((): RouteSteps | null => {
+  if (!WP4_BLOCK) { wp4LiftError = 'WP4 markers not found in the route'; return null; }
+  try {
+    const js = ts.transpileModule(WP4_BLOCK, { compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.ESNext } }).outputText;
+    const names = Object.keys(WP4_SCOPE);
+    const factory = new Function(...names, `'use strict';\n${js}\nreturn { routeAuthority, carryAuthority, applyAssignedLook, describeRouteAuthority };`);
+    return factory(...names.map((n) => WP4_SCOPE[n])) as RouteSteps;
+  } catch (error) {
+    wp4LiftError = String(error);
+    return null;
+  }
+})();
+
+/** How a request reaches the execute step: what the route's own resolution
+ *  leaves in `archetype`, `chosenTemplate` and `forcedTemplate`. */
+type RoutePath = { name: string; archetype: SiteArchetype | null; chosenTemplate: TemplateKey | undefined; forcedTemplate: Forced };
+const WP4_PATHS: RoutePath[] = [
+  // Onboarding: nothing chosen — before WP4 the MODEL picked the template.
+  { name: 'onboarding', archetype: null, chosenTemplate: undefined, forcedTemplate: null },
+  // Studio Step 1B: the seller's archetype pick, one path per archetype.
+  ...ARCHETYPE_KEYS.map((key): RoutePath => ({ name: `studio/${key}`, archetype: ARCHETYPES[key], chosenTemplate: ARCHETYPES[key].template_key, forcedTemplate: { template: ARCHETYPES[key].template_key, source: 'seller-archetype' } })),
+  // An approved concept carrying an archetype (same bundle, 'concept' source).
+  { name: 'concept/warm-editorial', archetype: ARCHETYPES['warm-editorial'], chosenTemplate: ARCHETYPES['warm-editorial'].template_key, forcedTemplate: { template: ARCHETYPES['warm-editorial'].template_key, source: 'concept' } },
+  // A pre-archetype concept and the manual templateOverride: a template, no bundle.
+  { name: 'concept-template/editorial', archetype: null, chosenTemplate: 'editorial', forcedTemplate: { template: 'editorial', source: 'concept' } },
+  { name: 'override/vitality', archetype: null, chosenTemplate: 'vitality', forcedTemplate: { template: 'vitality', source: 'seller-template' } },
+  { name: 'override/ritual', archetype: null, chosenTemplate: 'ritual', forcedTemplate: { template: 'ritual', source: 'seller-template' } },
+];
+
+/** Everything a model can return that touches authority: each template, with
+ *  no layout at all and with every family × grid it can name (111 shapes). */
+const MODEL_GENERATIONS: WebsiteGeneration[] = [];
+for (const template_key of TEMPLATE_KEYS) {
+  MODEL_GENERATIONS.push({ ...GENERATION, template_key, layout: undefined });
+  for (const family of MODEL_FAMILIES) {
+    for (const grid of MODEL_GRIDS) MODEL_GENERATIONS.push({ ...GENERATION, template_key, layout: modelLayout(family, grid) });
+  }
+}
+
+/** One merchant per outcome the engine can return for an undeclared niche. */
+const WP4_MERCHANTS: Array<[string, Merchant, string]> = [
+  ['counter', merchant({ size: 20, category: (i) => ['Phones', 'Laptops', 'Audio'][i % 3], dominantCategory: 'electronics', banner: true }), 'counter/product-first/ritual'],
+  ['gallery', merchant({ size: 5, dominantCategory: 'perfume', banner: true }), 'gallery/lifestyle-story/ritual'],
+  ['subtraction', merchant({ size: 6, dominantCategory: 'perfume', banner: false }), 'classic/subtraction/ritual'],
+  ['classic story', merchant({ size: 8, category: () => 'Serum', banner: true }), 'classic/lifestyle-story/*'],
+  ['classic product-first', merchant({ size: 2, category: (i) => ['Phones', 'Audio'][i % 2], dominantCategory: 'electronics' }), 'classic/product-first/*'],
+  ['classic menu', merchant({ size: 10, category: (i) => ['Cakes', 'Cupcakes'][i % 2], dominantCategory: 'cakes', banner: true }), 'classic/menu-occasion/*'],
+];
+
+/** What the route knows before the model is called: the assignment block
+ *  (viaRoute — pinned to the route source by [26]) and the route's own
+ *  category heuristic (`nicheLabel ?? dominantCategory`). */
+function routeFacts(m: Merchant, p: RoutePath, bodyNiche: unknown, gateOpen: boolean) {
+  const r = viaRoute(m, { bodyNiche, forcedTemplate: p.forcedTemplate }, gateOpen);
+  const key = r.nicheKey;
+  const nicheLabel = key ? STUDIO_NICHES.find((n) => n.id === key.toLowerCase())?.label ?? key : null;
+  return { ...r, heuristicTemplate: templateFromCategory(nicheLabel ?? m.dominantCategory) };
+}
+type RouteFacts = ReturnType<typeof routeFacts>;
+
+/** The route's expression write, as it runs after the carriers. */
+function expressionWrite(config: WebsiteConfig, signals: ExpressionSignals): WebsiteConfig {
+  const survivingGrid = config.layout_strategy?.grid;
+  return applyExpressionSelection(config, { gridSurvivedGuard: guardRecipeGridPick(survivingGrid, config.template_key) === survivingGrid, signals }).config;
+}
+
+/** POST's execute tail AFTER WP4, statement for statement, with the WP4 steps
+ *  being the LIFTED ones. Section [33] pins the route source to this order.
+ *  `floorCase` replaces what the assignment block left in `obtainedAssignment`. */
+function routeTail(R: RouteSteps, facts: RouteFacts, p: RoutePath, model: WebsiteGeneration, gateOpen: boolean, floorCase?: { obtained: ArchitectureAssignment | null | undefined }) {
+  const obtainedAssignment = floorCase ? floorCase.obtained : facts.assignment;
+  const authority = R.routeAuthority(gateOpen, obtainedAssignment, p.chosenTemplate ?? facts.heuristicTemplate);
+  const legacyGeneration = R.carryAuthority(model, authority);
+  let config = generationToConfig(legacyGeneration);
+  if (p.chosenTemplate) config.template_key = p.chosenTemplate;
+  if (authority) config.template_key = authority.template;
+  const assignedLook = R.applyAssignedLook(config, p.archetype, legacyGeneration.layout, authority);
+  if (assignedLook) config = assignedLook;
+  else if (p.archetype) config = applyArchetype(config, p.archetype, legacyGeneration, null);
+  else if (legacyGeneration.layout) config = applyGenerationLayout(config, legacyGeneration.layout, classicLayoutBounds(config.template_key));
+  const assembled = config;
+  config = expressionWrite(config, facts.signals);
+  return { authority, legacyGeneration, assembled, config, recomposed: assignedLook !== null };
+}
+
+/** The same tail BEFORE WP4 — the literal pre-WP4 statements, no step. */
+function preWp4Tail(facts: RouteFacts, p: RoutePath, model: WebsiteGeneration): WebsiteConfig {
+  let config = generationToConfig(model);
+  if (p.chosenTemplate) config.template_key = p.chosenTemplate;
+  if (p.archetype) config = applyArchetype(config, p.archetype, model, null);
+  else if (model.layout) config = applyGenerationLayout(config, model.layout, classicLayoutBounds(config.template_key));
+  return expressionWrite(config, facts.signals);
+}
+
+/** The route's try / catch around the engine call: what `obtainedAssignment`
+ *  holds afterwards. Set the moment the engine answers; null when it throws. */
+function obtainedAfter(engine: () => ArchitectureAssignment): ArchitectureAssignment | null {
+  let obtainedAssignment: ArchitectureAssignment | null = null;
+  try {
+    const assignment = engine();
+    obtainedAssignment = assignment;
+  } catch {
+    // the route warns "Architecture assignment skipped" and carries on
+  }
+  return obtainedAssignment;
+}
+
+const recipeOf = (grid: unknown): string => (isRecipeGrid(grid) ? String(grid) : 'none');
+const WP4_NICHES: unknown[] = [undefined, 'general', 'jewelry', 'tech', 'food', 'home'];
+
+console.log('\n[33] Phase 14 WP4 — the route obtains Assignment before it pins the template');
+{
+  const count = (source: string, needle: string): number => source.split(needle).length - 1;
+  check('route source read, WP4 block found between its two markers, above POST',
+    WP4_ROUTE_SOURCE.length > 0 && WP4_BLOCK.length > 0 && count(WP4_ROUTE_SOURCE, WP4_BEGIN) === 1 && count(WP4_ROUTE_SOURCE, WP4_END) === 1 &&
+    WP4_ROUTE_SOURCE.indexOf(WP4_END) < WP4_ROUTE_SOURCE.indexOf('export async function POST'));
+  check('the WP4 block lifts and runs against lib imports alone (no route local, no client, no gate constant in scope)', ROUTE_STEPS !== null, wp4LiftError);
+  check('the four WP4 steps are functions',
+    ROUTE_STEPS !== null && (['routeAuthority', 'carryAuthority', 'applyAssignedLook', 'describeRouteAuthority'] as const).every((name) => typeof ROUTE_STEPS[name] === 'function'));
+  check('the WP4 block is pure: no I/O, no logging, no clock, no randomness, no await',
+    WP4_BLOCK.length > 0 && !/\b(await|async|console|process|fetch|require|import|supabase|admin|Date|setTimeout)\b|Math\.random/.test(WP4_BLOCK), WP4_BLOCK.match(/\b(await|async|console|process|fetch|require|import|supabase|admin|Date|setTimeout)\b|Math\.random/)?.[0]);
+  check('the WP4 block never reads the gate constant — the gate reaches it as an argument', !WP4_BLOCK.includes('RITUAL_RECIPE_GENERATION_ENABLED'));
+
+  // ── Order inside POST. Every anchor must exist, once, in this sequence.
+  const at = (needle: string | RegExp): number => (typeof needle === 'string' ? WP4_POST.indexOf(needle) : WP4_POST.search(needle));
+  const anchors: Array<[string, number]> = [
+    ['the engine call', at('const assignment = assignArchitecture({')],
+    ['the decision is carried out of the block', at('obtainedAssignment = assignment;')],
+    ['the block\'s catch', at("console.warn('[generate-website] Architecture assignment skipped:'")],
+    ['step 1: the authority is obtained', at('const authority = routeAuthority(')],
+    ['the prompt is built', at('const templateConstraint = concept')],
+    ['the model is called', at("callerName: 'generate-website',")],
+    ['step 2: the authority is carried onto the generation', at('const legacyGeneration = carryAuthority(modelGeneration, authority);')],
+    ['the config is assembled', at('let config = generationToConfig(legacyGeneration);')],
+    ['the existing template pin', at(/if \(chosenTemplate\) \{\s*config\.template_key = chosenTemplate;\s*\}/)],
+    ['the WP4 template pin', at(/if \(authority\) \{\s*config\.template_key = authority\.template;\s*\}/)],
+    ['step 3: the assigned look', at('const assignedLook = applyAssignedLook(config, archetype, legacyGeneration.layout, authority);')],
+    ['the existing archetype carrier', at('config = applyArchetype(config, archetype, legacyGeneration, reviewRows);')],
+    ['the existing layout carrier', at('config = applyGenerationLayout(config, legacyGeneration.layout, classicLayoutBounds(config.template_key));')],
+    ['the expression write', at('const expressionWrite = applyExpressionSelection(config, {')],
+    ['the persist call', at(".rpc('persist_matrix_website'")],
+  ];
+  const missing = anchors.filter(([, i]) => i < 0).map(([name]) => name);
+  const outOfOrder = anchors.filter(([, i], k) => k > 0 && i <= anchors[k - 1][1]).map(([name]) => name);
+  check('POST: every step of the execute tail is present', missing.length === 0, missing);
+  check('POST: Assignment is obtained BEFORE the template is pinned — engine → decision carried out → authority → prompt → model → carried generation → config → pins → carriers → persist', missing.length === 0 && outOfOrder.length === 0, outOfOrder);
+
+  // ── What each step is handed.
+  const argsOf = (callee: string): string[] => {
+    const start = WP4_POST.indexOf(`${callee}(`);
+    if (start === -1) return [];
+    let depth = 0;
+    let piece = '';
+    const out: string[] = [];
+    for (let i = start + callee.length; i < WP4_POST.length; i += 1) {
+      const ch = WP4_POST[i];
+      if (ch === '(' || ch === '{' || ch === '[') { depth += 1; if (depth === 1) continue; }
+      if (ch === ')' || ch === '}' || ch === ']') { depth -= 1; if (depth === 0) break; }
+      if (ch === ',' && depth === 1) { out.push(piece.trim()); piece = ''; } else piece += ch;
+    }
+    if (piece.trim()) out.push(piece.trim());
+    return out;
+  };
+  check('POST: the authority step is handed the gate CONSTANT, the block\'s own assignment object, and the floor template (the seller\'s chosen template, else the category heuristic)',
+    argsOf('routeAuthority').join(' | ') === 'RITUAL_RECIPE_GENERATION_ENABLED | obtainedAssignment | chosenTemplate ?? heuristicTemplate', argsOf('routeAuthority'));
+  check('POST: each WP4 step is called exactly once (the log line twice — one per level)',
+    count(WP4_POST, 'routeAuthority(') === 1 && count(WP4_POST, 'carryAuthority(') === 1 && count(WP4_POST, 'applyAssignedLook(') === 1 && count(WP4_POST, 'describeRouteAuthority(') === 2);
+  check('POST: the decision leaves the assignment block in one place — set right after the engine call, never in the catch, read only by the authority step',
+    count(WP4_ROUTE_SOURCE, 'obtainedAssignment') === 3 && WP4_POST.includes('let obtainedAssignment: ArchitectureAssignment | null = null;') &&
+    /forcedTemplate,\s*\}\);\s*obtainedAssignment = assignment;/.test(WP4_POST) && count(WP4_POST, 'obtainedAssignment = ') === 1);
+  check('POST: the model\'s own generation is named twice — where it is destructured and where it is handed to the carry step — so no carrier can read it directly',
+    count(WP4_POST, 'modelGeneration') === 2 && WP4_POST.includes('const { brand_tokens, matrix_theme, ...modelGeneration } = generation;') && !/\bgeneration\.(layout|template_key)\b/.test(WP4_POST));
+  check('POST: template_key is written by exactly two statements — the existing pin, then Assignment\'s', count(WP4_POST, 'config.template_key = ') === 2);
+  check('POST: the assigned look runs INSTEAD of the archetype carrier, never as well — `if (assignedLook) … else if (archetype) … else if (legacyGeneration.layout)`',
+    /if \(assignedLook\) \{\s*config = assignedLook;\s*console\.log\([^\n]*\);\s*\} else if \(archetype\) \{/.test(WP4_POST) && /\} else if \(legacyGeneration\.layout\) \{\s*config = applyGenerationLayout\(/.test(WP4_POST));
+  // Every read of `authority` in POST's code (whole-line comments set aside)
+  // is one of the nine below: the step that makes it, the two guards, the log
+  // line, the carry step, the pin and the assigned look. Nothing else.
+  const postCode = WP4_POST.split('\n').filter((line) => !line.trim().startsWith('//')).join('\n');
+  const authorityReads = (postCode.match(/\bauthority\b/g) ?? []).length;
+  const accounted =
+    count(postCode, 'const authority = routeAuthority(') + count(postCode, 'if (authority) {') + count(postCode, 'if (authority.decision)') +
+    count(postCode, 'describeRouteAuthority(authority, shop.id)') + count(postCode, 'carryAuthority(modelGeneration, authority)') +
+    count(postCode, 'config.template_key = authority.template;') + count(postCode, 'legacyGeneration.layout, authority);');
+  check('POST: nothing but the WP4 steps and the pin reads the authority — not the prompt, the expression write, the cleanup or the persist call (9 reads, all accounted for)',
+    authorityReads === 9 && accounted === 9 && count(postCode, 'if (authority) {') === 2 && count(postCode, 'describeRouteAuthority(authority, shop.id)') === 2, { authorityReads, accounted });
+}
+
+if (!ROUTE_STEPS) {
+  check('sections [34]–[37] need the lifted WP4 steps — NOT RUN', false, wp4LiftError);
+} else {
+  const R = ROUTE_STEPS;
+
+  console.log('\n[34] Phase 14 WP4 — single origin: the route consumes Assignment and the carrier output (gate open)');
+  {
+    const outcomes = WP4_MERCHANTS.map(([, m]) => {
+      const d = decisionOf(routeFacts(m, WP4_PATHS[0], undefined, true).assignment);
+      return `${d.architecture}/${d.family}/${d.architecture !== 'classic' || d.family === 'subtraction' ? d.template : '*'}`;
+    });
+    check('fixtures: one merchant per outcome (Counter, Gallery, Subtraction, three Classic families)', outcomes.join() === WP4_MERCHANTS.map(([, , want]) => want).join(), outcomes);
+    check(`fixtures: ${WP4_PATHS.length} request paths × ${MODEL_GENERATIONS.length} model generations`, WP4_PATHS.length === 9 && MODEL_GENERATIONS.length === 111);
+
+    const sampled = wp2Merchants().filter((_, i) => i % 577 === 0);
+    const merchants: Merchant[] = [...WP4_MERCHANTS.map(([, m]) => m), ...sampled];
+    let cases = 0;
+    let usable = true;
+    let templateOk = true;
+    let familyOk = true;
+    let gridOk = true;
+    let carrierOk = true;
+    let restOk = true;
+    let carriersOk = true;
+    let resolverOk = true;
+    let valid = true;
+    let modelDiffered = 0;
+    let recomposed = 0;
+    let offender: unknown;
+    const note = (what: string, detail: unknown): void => { offender = offender ?? { what, detail }; };
+    merchants.forEach((m, mi) => {
+      WP4_NICHES.forEach((bodyNiche, ni) => {
+        WP4_PATHS.forEach((p, pi) => {
+          const facts = routeFacts(m, p, bodyNiche, true);
+          const d = decisionOf(facts.assignment);
+          // A rotating window of model generations, so the whole 111 are walked across the matrix.
+          for (let k = 0; k < 7; k += 1) {
+            const model = MODEL_GENERATIONS[(mi * 31 + ni * 17 + pi * 13 + k * 16) % MODEL_GENERATIONS.length];
+            const run4 = routeTail(R, facts, p, model, true);
+            cases += 1;
+            const where = { merchant: mi, bodyNiche, path: p.name, model: `${model.template_key}/${JSON.stringify(model.layout?.storefront_family)}/${JSON.stringify(model.layout?.layout_strategy?.grid)}` };
+            if (!run4.authority || run4.authority.decision !== facts.assignment || run4.authority.floor !== null) { usable = false; note('authority', where); continue; }
+            if (model.template_key !== d.template) modelDiffered += 1;
+            if (run4.recomposed) recomposed += 1;
+            // template_key = Assignment — on the carried generation and on the final config.
+            if (run4.authority.template !== d.template || run4.legacyGeneration.template_key !== d.template || run4.config.template_key !== d.template) { templateOk = false; note('template', { ...where, got: run4.config.template_key, want: d.template }); }
+            // storefront_family = Assignment — carried and final.
+            if (run4.legacyGeneration.layout?.storefront_family !== d.family || run4.config.storefront_family !== d.family) { familyOk = false; note('family', { ...where, got: run4.config.storefront_family, want: d.family }); }
+            // layout_strategy.grid = Assignment — the recipe grid handed to the carriers is the decision's;
+            // on the config it is whatever the generation guard lets through of THAT grid, never the model's.
+            const owned = assignedRecipeGrid(d);
+            const afterGuard = guardRecipeGridPick(owned ?? undefined, d.template);
+            if (recipeOf(run4.legacyGeneration.layout?.layout_strategy?.grid) !== (owned ?? 'none') || recipeOf(run4.config.layout_strategy?.grid) !== recipeOf(afterGuard)) { gridOk = false; note('grid', { ...where, carried: run4.legacyGeneration.layout?.layout_strategy?.grid, config: run4.config.layout_strategy?.grid, owned }); }
+            // The carried layout IS the WP3 carrier's output for this decision.
+            if (JSON.stringify(run4.legacyGeneration.layout) !== JSON.stringify(carryStorefrontDecision(model.layout, d, { gateOpen: true }))) { carrierOk = false; note('carrier output', where); }
+            // Everything else on the generation is the model's own — the same objects.
+            if (run4.legacyGeneration === model || run4.legacyGeneration.hero !== model.hero || run4.legacyGeneration.story !== model.story || run4.legacyGeneration.split_cta !== model.split_cta || run4.legacyGeneration.niche_reasoning !== model.niche_reasoning) { restOk = false; note('generation copy', where); }
+            // The config is what the EXISTING carriers build from that carried generation.
+            const carriedGen = { ...model, template_key: d.template, layout: carryStorefrontDecision(model.layout, d, { gateOpen: true }) ?? undefined };
+            const base = generationToConfig(carriedGen);
+            let expected: WebsiteConfig;
+            if (p.archetype && p.archetype.template_key !== d.template) {
+              const look = composeVisualSystem(p.archetype, d.template);
+              expected = applyGenerationLayout(Object.keys(look.theme).length > 0 ? { ...base, theme: look.theme } : base, carriedGen.layout, look.bounds);
+              if (!run4.recomposed) { carriersOk = false; note('not recomposed', where); }
+            } else if (p.archetype) {
+              expected = applyArchetype(base, p.archetype, carriedGen, null);
+              if (run4.recomposed) { carriersOk = false; note('recomposed on its own template', where); }
+            } else {
+              expected = applyGenerationLayout(base, carriedGen.layout, classicLayoutBounds(d.template));
+              if (run4.recomposed) { carriersOk = false; note('recomposed without an archetype', where); }
+            }
+            if (JSON.stringify(run4.assembled) !== JSON.stringify(expected)) { carriersOk = false; note('carriers', where); }
+            // What the resolver will be asked for is the decision's, as far as the guard allows.
+            const wantRecipe = d.family === 'subtraction' ? 'subtraction' : afterGuard === 'counter' ? 'product-first' : afterGuard === 'gallery' ? 'gallery-led' : 'classic';
+            if (resolveRitualRecipe(run4.config) !== wantRecipe) { resolverOk = false; note('resolver', { ...where, got: resolveRitualRecipe(run4.config), want: wantRecipe }); }
+            if (!WebsiteConfigSchema.safeParse(run4.config).success) { valid = false; note('schema', where); }
+          }
+        });
+      });
+    });
+    check(`the route's authority is the engine's own decision object, unfloored (${cases} builds: ${merchants.length} merchants × ${WP4_NICHES.length} niches × ${WP4_PATHS.length} paths × 7 model generations)`, usable && cases === merchants.length * WP4_NICHES.length * WP4_PATHS.length * 7, offender);
+    check(`template_key = Assignment: the carried generation and the final config carry the decision's template (the model named a different one in ${modelDiffered} builds)`, templateOk && modelDiffered > 500, offender);
+    check('storefront_family = Assignment: the carried layout and the final config carry the decision\'s family', familyOk, offender);
+    check('layout_strategy.grid = Assignment: the recipe grid handed to the carriers is the decision\'s, and the config never holds a recipe grid the decision does not own', gridOk, offender);
+    check('the route consumes the carrier output: the layout the existing carriers read is carryStorefrontDecision\'s, exactly', carrierOk, offender);
+    check('the carried generation is a copy — every non-authority field is the model\'s own object, and the model\'s generation is never written to', restOk, offender);
+    check(`the config is what the existing carriers build from the carried generation — applyArchetype on the archetype's own template, the visual-system composition on a changed one (${recomposed} builds), the layout carrier with no archetype`, carriersOk && recomposed > 100, offender);
+    check('the recipe the resolver will be asked for is the decision\'s (as far as the generation guard lets a grid through)', resolverOk, offender);
+    check('every build validates strictly', valid, offender);
+
+    // Named cases: what Assignment changes, and what it leaves alone.
+    const general = (name: string, pathName: string) => {
+      const m = WP4_MERCHANTS.find(([n]) => n === name)![1];
+      const p = WP4_PATHS.find((x) => x.name === pathName)!;
+      const facts = routeFacts(m, p, 'general', true);
+      return { d: decisionOf(facts.assignment), p, build: (model: WebsiteGeneration) => routeTail(R, facts, p, model, true) };
+    };
+    const editorialModel: WebsiteGeneration = { ...GENERATION, template_key: 'editorial', layout: modelLayout('lifestyle-story', 'gallery') };
+    const counterUnderEditorial = general('counter', 'studio/warm-editorial');
+    const cue = counterUnderEditorial.build(editorialModel);
+    check('Counter merchant, Warm Editorial archetype, model says editorial / lifestyle-story / gallery → Ritual, product-first, Counter grid carried; the archetype\'s look is recomposed and its own paper survives',
+      cue.config.template_key === 'ritual' && cue.config.storefront_family === 'product-first' && cue.legacyGeneration.layout?.layout_strategy?.grid === 'counter' && cue.recomposed &&
+      cue.config.theme?.background === ARCHETYPES['warm-editorial'].theme.background && counterUnderEditorial.d.sellerTemplate?.honoured === false, cue.config.theme);
+    const classicUnderStreet = general('classic story', 'studio/high-contrast-street');
+    const cus = classicUnderStreet.build({ ...GENERATION, template_key: 'ritual', layout: modelLayout('subtraction', 'counter') });
+    check('Classic merchant, High-Contrast Street archetype, model says ritual / subtraction / counter → the seller\'s Vitality template stands, lifestyle-story, no recipe, archetype bundle applied as before',
+      cus.config.template_key === 'vitality' && cus.config.storefront_family === 'lifestyle-story' && recipeOf(cus.config.layout_strategy?.grid) === 'none' && !cus.recomposed && resolveRitualRecipe(cus.config) === 'classic' &&
+      JSON.stringify(cus.config.theme) === JSON.stringify(applyArchetype(generationToConfig(cus.legacyGeneration), ARCHETYPES['high-contrast-street'], cus.legacyGeneration, null).theme));
+    const subtractionOnboarding = general('subtraction', 'onboarding');
+    const so = subtractionOnboarding.build({ ...GENERATION, template_key: 'vitality', layout: undefined });
+    check('Subtraction merchant, Onboarding, model says vitality and returns NO layout → Ritual, Subtraction, hero and wall only',
+      so.config.template_key === 'ritual' && so.config.storefront_family === 'subtraction' && (so.config.blocks ?? []).filter((b) => !b.hidden).map((b) => b.type).join() === 'hero_banner,product_grid' && resolveRitualRecipe(so.config) === 'subtraction', so.config.blocks?.map((b) => `${b.type}${b.hidden ? '(hidden)' : ''}`));
+    const galleryOverride = general('gallery', 'override/vitality');
+    const go = galleryOverride.build({ ...GENERATION, template_key: 'vitality', layout: modelLayout('product-first', 'counter') });
+    check('Gallery merchant, seller override "vitality", model says vitality / product-first / counter → Ritual, lifestyle-story, Gallery grid carried (the override is recorded as not honoured)',
+      go.config.template_key === 'ritual' && go.config.storefront_family === 'lifestyle-story' && go.legacyGeneration.layout?.layout_strategy?.grid === 'gallery' && galleryOverride.d.sellerTemplate?.honoured === false);
+    const classicOnboarding = general('classic story', 'onboarding');
+    const templates = TEMPLATE_KEYS.map((t) => classicOnboarding.build({ ...GENERATION, template_key: t, layout: modelLayout(undefined, undefined) }).config.template_key);
+    check('Classic merchant, Onboarding: the template is the engine\'s category mapping whichever of the three the model names',
+      new Set(templates).size === 1 && templates[0] === classicOnboarding.d.template && classicOnboarding.d.sellerTemplate === null, templates);
+
+    const line = R.describeRouteAuthority({ decision: counterUnderEditorial.d, template: counterUnderEditorial.d.template, floor: null }, 'shop-1');
+    check('the open-gate log line is composed from the authority alone', line === '[generate-website] Assignment authority for shop shop-1: architecture=counter template=ritual family=product-first grid=counter', line);
+  }
+
+  console.log('\n[35] Phase 14 WP4 — the Classic floor: missing, invalid, throwing (gate open)');
+  {
+    const counterD = WP3_DECISIONS[0][1];
+    const galleryD = WP3_DECISIONS[1][1];
+    const subtractionD = WP3_DECISIONS[2][1];
+    const classicD = WP3_DECISIONS[3][1];
+    check('fixtures: the three decisions a floor must never let through, and a plain Classic one', counterD.architecture === 'counter' && galleryD.architecture === 'gallery' && subtractionD.family === 'subtraction' && classicD.architecture === 'classic' && classicD.family === 'lifestyle-story');
+    const engineThrows = (): ArchitectureAssignment => assignArchitecture(null as unknown as ArchitectureAssignmentInput, { gateOpen: true });
+    let threw = false;
+    try { engineThrows(); } catch { threw = true; }
+    check('fixtures: the engine really throws on an input it cannot read', threw);
+    const hostile = new Proxy({}, { get() { throw new Error('unreadable decision'); } }) as unknown as ArchitectureAssignment;
+    const bad = (value: unknown): ArchitectureAssignment => value as ArchitectureAssignment;
+
+    type FloorCase = [string, ArchitectureAssignment | null | undefined, 'missing' | 'invalid' | 'unreadable'];
+    const floorCases: FloorCase[] = [
+      ['missing: null', null, 'missing'],
+      ['missing: undefined', undefined, 'missing'],
+      ['throwing: the engine threw, so the block carried nothing out', obtainedAfter(engineThrows), 'missing'],
+      ['throwing: reading the decision throws', hostile, 'unreadable'],
+      ['invalid: a closed-gate object (no family) while the gate is open', closed({ niche: 'tech', products: photographed(20, 20, ['Phones', 'Laptops', 'Audio']), heroMedia: banner }), 'invalid'],
+      ['invalid: a family that is not a family', bad({ ...counterD, family: 'not-a-family' }), 'invalid'],
+      ['invalid: family removed', bad({ ...subtractionD, family: undefined }), 'invalid'],
+      ['invalid: an architecture that is not an architecture', bad({ ...galleryD, architecture: 'bazaar' }), 'invalid'],
+      ['invalid: a template that is not a template', bad({ ...counterD, template: 'brutalist' }), 'invalid'],
+      ['invalid: template removed', bad({ ...galleryD, template: undefined }), 'invalid'],
+      // On a CLASSIC decision the Ritual-only rule does not apply, so only the
+      // template check stands between a junk template and the pin.
+      ['invalid: a Classic decision whose template is not a template', bad({ ...classicD, template: 'brutalist' }), 'invalid'],
+      ['invalid: a Classic decision with its template removed', bad({ ...classicD, template: undefined }), 'invalid'],
+      ['invalid: a Classic decision whose family is not a family', bad({ ...classicD, family: 'boutique' }), 'invalid'],
+      ['invalid: Counter on a template that cannot render it', bad({ ...counterD, template: 'editorial' }), 'invalid'],
+      ['invalid: Gallery on a template that cannot render it', bad({ ...galleryD, template: 'vitality' }), 'invalid'],
+      ['invalid: Subtraction on a template that cannot render it', bad({ ...subtractionD, template: 'editorial' }), 'invalid'],
+      // Incoherent pairs: every field a known value, on Ritual, but the pair
+      // breaks the StorefrontDecision contract (Subtraction is always Classic).
+      ['invalid: incoherent pair — Subtraction with a Counter architecture', bad({ ...subtractionD, architecture: 'counter' }), 'invalid'],
+      ['invalid: incoherent pair — Subtraction with a Gallery architecture', bad({ ...subtractionD, architecture: 'gallery' }), 'invalid'],
+      ['invalid: incoherent pair — a Counter decision relabelled Subtraction', bad({ ...counterD, family: 'subtraction' }), 'invalid'],
+      ['invalid: incoherent pair — a Gallery decision relabelled Subtraction', bad({ ...galleryD, family: 'subtraction' }), 'invalid'],
+      ['invalid: a string', bad('counter'), 'invalid'],
+      ['invalid: a number', bad(1), 'invalid'],
+      ['invalid: an array', bad([counterD]), 'invalid'],
+      ['invalid: a function', bad(() => counterD), 'invalid'],
+    ];
+    check('fixtures: the throwing engine leaves the route holding no decision', obtainedAfter(engineThrows) === null && obtainedAfter(() => counterD) === counterD);
+
+    // The model pushes as hard as it can, on every template: no layout at
+    // all, Subtraction, both recipe grids, a rhythm family, junk.
+    const pushes: Array<[unknown, unknown]> = [['subtraction', 'counter'], ['subtraction', 'gallery'], ['subtraction', 'masonry'], ['product-first', 'counter'], [undefined, 'gallery'], ['not-a-family', 'counter'], ['menu-occasion', undefined]];
+    const pushy: WebsiteGeneration[] = TEMPLATE_KEYS.flatMap((template_key): WebsiteGeneration[] => [
+      { ...GENERATION, template_key, layout: undefined },
+      ...pushes.map(([family, grid]) => ({ ...GENERATION, template_key, layout: modelLayout(family, grid) })),
+    ]);
+    const counterMerchant = WP4_MERCHANTS[0][1];
+    const subtractionMerchant = WP4_MERCHANTS[2][1];
+    for (const [name, obtained, kind] of floorCases) {
+      let never = true;
+      let reason = true;
+      let classicOk = true;
+      let templateOk = true;
+      let cases = 0;
+      let offender: unknown;
+      let threwHere: string | null = null;
+      try {
+        for (const m of [counterMerchant, subtractionMerchant]) {
+          for (const p of WP4_PATHS) {
+            const facts = routeFacts(m, p, 'general', true);
+            const floorTemplate = p.chosenTemplate ?? facts.heuristicTemplate;
+            const seen = new Set<string>();
+            for (const model of pushy) {
+              const run4 = routeTail(R, facts, p, model, true, { obtained });
+              cases += 1;
+              const where = { path: p.name, model: `${model.template_key}/${JSON.stringify(model.layout?.storefront_family)}/${JSON.stringify(model.layout?.layout_strategy?.grid)}` };
+              if (!run4.authority || run4.authority.decision !== null) { never = false; offender = offender ?? where; continue; }
+              if (run4.authority.floor !== kind) { reason = false; offender = offender ?? { ...where, floor: run4.authority.floor }; }
+              // Classic · no recipe family · no recipe grid — carried and final.
+              const c = run4.config;
+              if (
+                c.storefront_family !== DEFAULT_STOREFRONT_FAMILY || run4.legacyGeneration.layout?.storefront_family !== DEFAULT_STOREFRONT_FAMILY ||
+                isRecipeGrid(c.layout_strategy?.grid) || isRecipeGrid(run4.legacyGeneration.layout?.layout_strategy?.grid) ||
+                c.layout_strategy?.expression !== undefined || resolveRitualRecipe(c) !== 'classic' ||
+                (c.blocks ?? []).some((b) => b.type === 'product_grid' && b.hidden) || !WebsiteConfigSchema.safeParse(c).success
+              ) { classicOk = false; offender = offender ?? { ...where, family: c.storefront_family, grid: c.layout_strategy?.grid }; }
+              // The template is the seller's, else the category heuristic — never the model's.
+              if (c.template_key !== floorTemplate || run4.authority.template !== floorTemplate) { templateOk = false; offender = offender ?? { ...where, got: c.template_key, want: floorTemplate }; }
+              seen.add(`${c.template_key}|${c.storefront_family}|${recipeOf(c.layout_strategy?.grid)}`);
+            }
+            if (seen.size !== 1) { classicOk = false; offender = offender ?? { path: p.name, seen: [...seen] }; }
+          }
+        }
+      } catch (error) {
+        threwHere = String(error);
+      }
+      check(`${name} → Classic, the default family, no recipe grid, no Subtraction; template the seller's or the heuristic's, never the model's (${cases} builds)`,
+        threwHere === null && cases === 2 * WP4_PATHS.length * pushy.length && never && reason && classicOk && templateOk, threwHere ?? offender);
+    }
+
+    // The same merchants WITH their decision: the floor is the difference.
+    const withDecision = routeTail(R, routeFacts(subtractionMerchant, WP4_PATHS[0], 'general', true), WP4_PATHS[0], pushy[0], true);
+    check('contrast: with its decision the Subtraction merchant IS Subtraction on Ritual — the floor above is not the route\'s normal answer', withDecision.config.storefront_family === 'subtraction' && withDecision.config.template_key === 'ritual');
+    // Assignment's own floor (WP1) is a usable decision, and it is Classic too.
+    const engineFloor = assignArchitectureOrFloor(null as unknown as ArchitectureAssignmentInput, { gateOpen: true });
+    const viaEngineFloor = routeTail(R, routeFacts(counterMerchant, WP4_PATHS[0], 'general', true), WP4_PATHS[0], { ...GENERATION, template_key: 'ritual', layout: modelLayout('subtraction', 'counter') }, true, { obtained: engineFloor });
+    check('the engine\'s own floor decision (WP1) is accepted as a decision and is Classic as well',
+      viaEngineFloor.authority?.decision === engineFloor && viaEngineFloor.config.storefront_family === DEFAULT_STOREFRONT_FAMILY && recipeOf(viaEngineFloor.config.layout_strategy?.grid) === 'none' && resolveRitualRecipe(viaEngineFloor.config) === 'classic');
+    const floorLine = R.describeRouteAuthority({ decision: null, template: 'editorial', floor: 'missing' }, 'shop-1');
+    check('the floor is logged as the floor, with its cause', floorLine === '[generate-website] Assignment authority for shop shop-1: CLASSIC FLOOR (decision missing) template=editorial family=lifestyle-story grid=none', floorLine);
+    check('POST: a floored build is logged at warn level, a decided one at log level', /if \(authority\) \{\s*if \(authority\.decision\) console\.log\(describeRouteAuthority\(authority, shop\.id\)\);\s*else console\.warn\(describeRouteAuthority\(authority, shop\.id\)\);\s*\}/.test(WP4_POST));
+    let neverThrows = true;
+    for (const [, obtained] of floorCases) {
+      for (const gateOpen of [true, false]) {
+        try { R.routeAuthority(gateOpen, obtained, 'ritual'); } catch { neverThrows = false; }
+      }
+    }
+    check('the authority step never throws, whatever it is handed, in either gate state', neverThrows);
+
+    // ── Late-throwing decision fields. A decision whose family, architecture
+    // or template reads fine `after` times and throws from then on. The
+    // authority step reads each of the three ONCE (family twice — the type
+    // guard reads it first) inside its try, so:
+    //   · a field that fails during those reads → the Classic floor;
+    //   · the template failing AFTER them → harmless: the pin uses the value
+    //     the step already validated, never a second read of the object;
+    //   · family or architecture failing after them → the WP3 carrier's own
+    //     read throws and the request fails before any config exists. Loud,
+    //     never a leak — and unreachable: the engine returns plain data.
+    const lateThrow = (base: StorefrontDecision, field: 'family' | 'architecture' | 'template', after: number): ArchitectureAssignment => {
+      let reads = 0;
+      const copy = { ...base } as Record<string, unknown>;
+      Object.defineProperty(copy, field, {
+        enumerable: true,
+        get() {
+          reads += 1;
+          if (reads > after) throw new Error(`late ${field}`);
+          return base[field];
+        },
+      });
+      return copy as unknown as ArchitectureAssignment;
+    };
+    const lateFacts = routeFacts(counterMerchant, WP4_PATHS[0], 'general', true);
+    const lateModel: WebsiteGeneration = { ...GENERATION, template_key: 'vitality', layout: modelLayout('subtraction', 'gallery') };
+    const fields = ['family', 'architecture', 'template'] as const;
+    let stepNeverThrows = true;
+    let immediateFloors = true;
+    let neverLeaks = true;
+    let lateCases = 0;
+    const outcomes: Record<string, number> = { floored: 0, followed: 0, failed: 0 };
+    let lateOffender: unknown;
+    for (const base of [counterD, galleryD, subtractionD, classicD]) {
+      for (const field of fields) {
+        for (const after of [0, 1, 2, 3, 5, 8]) {
+          lateCases += 1;
+          let stepAuthority: RouteAuthority | null = null;
+          try { stepAuthority = R.routeAuthority(true, lateThrow(base, field, after), 'editorial'); } catch { stepNeverThrows = false; }
+          if (after === 0 && (stepAuthority?.decision !== null || stepAuthority?.floor !== 'unreadable' || stepAuthority?.template !== 'editorial')) { immediateFloors = false; lateOffender = lateOffender ?? { field, after, stepAuthority }; }
+          try {
+            const run4 = routeTail(R, lateFacts, WP4_PATHS[0], lateModel, true, { obtained: lateThrow(base, field, after) });
+            const c = run4.config;
+            const followed = run4.authority?.decision !== null;
+            if (followed) {
+              outcomes.followed += 1;
+              // Followed means followed EXACTLY: the three keys are the decision's, never the model's.
+              if (c.template_key !== base.template || c.storefront_family !== base.family || recipeOf(run4.legacyGeneration.layout?.layout_strategy?.grid) !== (assignedRecipeGrid(base) ?? 'none')) { neverLeaks = false; lateOffender = lateOffender ?? { field, after, got: `${c.template_key}/${c.storefront_family}` }; }
+            } else {
+              outcomes.floored += 1;
+              if (c.template_key !== lateFacts.heuristicTemplate || c.storefront_family !== DEFAULT_STOREFRONT_FAMILY || isRecipeGrid(c.layout_strategy?.grid) || isRecipeGrid(run4.legacyGeneration.layout?.layout_strategy?.grid) || resolveRitualRecipe(c) !== 'classic') { neverLeaks = false; lateOffender = lateOffender ?? { field, after, got: `${c.template_key}/${c.storefront_family}` }; }
+            }
+          } catch {
+            // No config was produced — nothing can be persisted.
+            outcomes.failed += 1;
+          }
+        }
+      }
+    }
+    check(`late-throwing fields: the authority step itself never throws (${lateCases} decisions: 4 outcomes × 3 fields × 6 read counts)`, stepNeverThrows && lateCases === 72);
+    check('late-throwing fields: a field that cannot be read at all → the Classic floor ("unreadable"), on the floor template', immediateFloors, lateOffender);
+    check(`late-throwing fields: every build is the Classic floor, the decision followed exactly, or no config at all — never the model's template, family or grid (${outcomes.floored} floored, ${outcomes.followed} followed, ${outcomes.failed} failed loudly)`,
+      neverLeaks && outcomes.floored > 0 && outcomes.followed > 0 && outcomes.floored + outcomes.followed + outcomes.failed === lateCases, lateOffender ?? outcomes);
+    // The template specifically: once validated it is never read from the object again.
+    let templateReadOnce = true;
+    for (const base of [counterD, galleryD, subtractionD, classicD]) {
+      const run4 = routeTail(R, lateFacts, WP4_PATHS[0], lateModel, true, { obtained: lateThrow(base, 'template', 1) });
+      if (run4.authority?.decision === null || run4.authority?.template !== base.template || run4.config.template_key !== base.template) templateReadOnce = false;
+    }
+    check('late-throwing template: a template that can be read once and never again still pins the validated value — the route does not re-read it', templateReadOnce);
+  }
+
+  console.log('\n[36] Phase 14 WP4 — no authority leakage: the model\'s template, family and grid do not decide (gate open)');
+  {
+    let cases = 0;
+    let stable = true;
+    let owned = true;
+    let offender: unknown;
+    let modelTemplateIgnored = 0;
+    let modelFamilyIgnored = 0;
+    let modelGridIgnored = 0;
+    for (const [name, m] of WP4_MERCHANTS) {
+      for (const p of WP4_PATHS) {
+        const facts = routeFacts(m, p, 'general', true);
+        const d = decisionOf(facts.assignment);
+        const ownedGrid = assignedRecipeGrid(d) ?? 'none';
+        const seen = new Set<string>();
+        for (const model of MODEL_GENERATIONS) {
+          const run4 = routeTail(R, facts, p, model, true);
+          cases += 1;
+          const c = run4.config;
+          const carriedGrid = recipeOf(run4.legacyGeneration.layout?.layout_strategy?.grid);
+          seen.add(`${c.template_key}|${c.storefront_family}|${carriedGrid}|${recipeOf(c.layout_strategy?.grid)}|${resolveRitualRecipe(c)}|${c.layout_strategy?.expression ?? 'none'}`);
+          if (c.template_key !== d.template || c.storefront_family !== d.family || carriedGrid !== ownedGrid) { owned = false; offender = offender ?? { name, path: p.name, model: model.template_key, layout: model.layout }; }
+          if (model.template_key !== d.template) modelTemplateIgnored += 1;
+          if (model.layout?.storefront_family !== d.family) modelFamilyIgnored += 1;
+          if (recipeOf(model.layout?.layout_strategy?.grid) !== ownedGrid) modelGridIgnored += 1;
+        }
+        if (seen.size !== 1) { stable = false; offender = offender ?? { name, path: p.name, seen: [...seen] }; }
+      }
+    }
+    check(`one merchant on one path gets ONE template, family, recipe grid, resolver request and expression across all ${MODEL_GENERATIONS.length} model generations (${cases} builds)`, stable && cases === WP4_MERCHANTS.length * WP4_PATHS.length * MODEL_GENERATIONS.length, offender);
+    check(`model template ignored: the config's template is the decision's in every build, including the ${modelTemplateIgnored} where the model named another`, owned && modelTemplateIgnored > 1000, offender);
+    check(`model family ignored: the config's family is the decision's in every build, including the ${modelFamilyIgnored} where the model named another, none, or junk`, owned && modelFamilyIgnored > 1000, offender);
+    check(`model grid ignored: the recipe grid the carriers read is the decision's in every build, including the ${modelGridIgnored} where the model named a different recipe grid or none`, owned && modelGridIgnored > 1000, offender);
+
+    // What the model still owns: presentation. It must keep it. (A Classic
+    // merchant whose seller chose Ritual — a template that renders every lever.)
+    const ritualPath = WP4_PATHS.find((p) => p.name === 'override/ritual')!;
+    const facts = routeFacts(WP4_MERCHANTS[3][1], ritualPath, 'general', true);
+    const masonry = routeTail(R, facts, ritualPath, { ...GENERATION, template_key: 'editorial', layout: modelLayout('subtraction', 'masonry') }, true).config;
+    const standard = routeTail(R, facts, ritualPath, { ...GENERATION, template_key: 'editorial', layout: modelLayout('subtraction', 'standard') }, true).config;
+    check('the model keeps what is not authority: its presentation grid, hero variant, section order and display mode still arrive',
+      masonry.template_key === 'ritual' && masonry.storefront_family === 'lifestyle-story' &&
+      masonry.layout_strategy?.grid === 'masonry' && standard.layout_strategy?.grid === 'standard' && masonry.layout_strategy?.hero === 'split' &&
+      masonry.blocks?.map((b) => b.type).join() === 'hero_banner,product_grid,value_props,story_text,cta_banner' && masonry.blocks?.find((b) => b.type === 'product_grid')?.displayMode === 'carousel', masonry.layout_strategy);
+
+    // The seller's theme does not decide either (the route-level form of [30]).
+    for (const [name, m, want] of WP4_MERCHANTS.slice(0, 3)) {
+      const builds = WP4_PATHS.map((p, k) => {
+        const f = routeFacts(m, p, 'general', true);
+        const c = routeTail(R, f, p, MODEL_GENERATIONS[(k * 29 + 5) % MODEL_GENERATIONS.length], true).config;
+        return `${decisionOf(f.assignment).architecture}/${c.storefront_family}/${c.template_key}`;
+      });
+      check(`${name} merchant: the same architecture, family and template on all ${WP4_PATHS.length} request paths — Onboarding, every archetype, a concept, a manual override`, new Set(builds).size === 1 && builds[0] === want, builds);
+    }
+  }
+
+  console.log('\n[37] Phase 14 WP4 — gate matrix, CLOSED: the route is the pre-WP4 route');
+  {
+    check('the generation gate constant is still false — production runs the closed path', RITUAL_RECIPE_GENERATION_ENABLED === false);
+    const decisions: Array<ArchitectureAssignment | null | undefined> = [null, undefined, ...WP3_DECISIONS.map(([, d]) => d), closed({ niche: 'tech', products: photographed(20, 20, ['Phones', 'Laptops', 'Audio']), heroMedia: banner })];
+    check('closed: the authority step returns null whatever it is handed — an open-gate decision included',
+      decisions.every((d) => TEMPLATE_KEYS.every((t) => R.routeAuthority(false, d, t) === null)) && R.routeAuthority(RITUAL_RECIPE_GENERATION_ENABLED, WP3_DECISIONS[0][1], 'ritual') === null);
+    check('closed: with no authority the carry step returns the SAME generation object, for every model generation', MODEL_GENERATIONS.every((g) => R.carryAuthority(g, null) === g));
+    check('closed: with no authority there is no assigned look, for every archetype and template',
+      ARCHETYPE_KEYS.every((key) => TEMPLATE_KEYS.every((t) => R.applyAssignedLook(generationToConfig({ ...GENERATION, template_key: t }), ARCHETYPES[key], modelLayout('subtraction', 'counter'), null) === null)));
+
+    let cases = 0;
+    let identical = true;
+    let sameReference = true;
+    let noAuthority = true;
+    let offender: unknown;
+    // Frozen copies: a write to the model's generation anywhere in the tail throws.
+    const frozenModels = MODEL_GENERATIONS.map((model) => deepFreeze(JSON.parse(JSON.stringify(model)) as WebsiteGeneration));
+    // The closed tail reads the merchant only through the (inert) expression
+    // signals, so a handful of merchants is the whole space; the paths and the
+    // model generations are walked in full.
+    const closedNiches: unknown[] = [undefined, 'jewelry'];
+    const merchants: Merchant[] = [...WP4_MERCHANTS.slice(0, 4).map(([, m]) => m), wp2Merchants()[2311]];
+    for (const m of merchants) {
+      for (const bodyNiche of closedNiches) {
+        for (const p of WP4_PATHS) {
+          const facts = routeFacts(m, p, bodyNiche, false);
+          for (let k = 0; k < frozenModels.length; k += 1) {
+            const model = MODEL_GENERATIONS[k];
+            const frozen = frozenModels[k];
+            const now = routeTail(R, facts, p, frozen, false);
+            const was = preWp4Tail(facts, p, frozen);
+            cases += 1;
+            if (now.authority !== null || now.recomposed) noAuthority = false;
+            if (now.legacyGeneration !== frozen) sameReference = false;
+            if (JSON.stringify(now.config) !== JSON.stringify(was)) { identical = false; offender = offender ?? { path: p.name, bodyNiche, model: model.template_key, layout: model.layout }; }
+          }
+        }
+      }
+    }
+    // NOTE: both sides of this comparison are script-side tails (the lifted
+    // steps inside the mirror vs the same mirror without them). It proves the
+    // STEPS are inert under a null authority; that the real POST is that
+    // mirror and nothing more is section [39]'s proof, not this one's.
+    check(`closed: with the lifted steps in place the tail's config is byte-identical to the same tail without them (${cases} builds: ${merchants.length} merchants × ${closedNiches.length} niches × ${WP4_PATHS.length} paths × ${MODEL_GENERATIONS.length} model generations)`, identical && cases === merchants.length * closedNiches.length * WP4_PATHS.length * MODEL_GENERATIONS.length, offender);
+    check('closed: the carriers are handed the model\'s own generation object — the same reference — and it is never written to', sameReference);
+    check('closed: no authority exists and nothing is recomposed, in any build', noAuthority);
+    // The closed route still lets the model decide — that is today's behaviour, preserved.
+    const onboarding = routeFacts(WP4_MERCHANTS[0][1], WP4_PATHS[0], undefined, false);
+    const modelWins = routeTail(R, onboarding, WP4_PATHS[0], { ...GENERATION, template_key: 'editorial', layout: modelLayout('menu-occasion', 'masonry') }, false).config;
+    check('closed: Onboarding still takes the model\'s template and family (today\'s behaviour, untouched)', modelWins.template_key === 'editorial' && modelWins.storefront_family === 'menu-occasion' && modelWins.layout_strategy?.grid === 'masonry');
+
+    // ── Source: logs, prompt and persistence.
+    const count = (source: string, needle: string): number => source.split(needle).length - 1;
+    const logCalls = (WP4_ROUTE_SOURCE.match(/console\.(log|warn|error|info|debug)\(/g) ?? []).length;
+    check('logs: the route has the 20 pre-WP4 log statements plus exactly 3 new ones', logCalls === 23, logCalls);
+    check('logs: all 3 new statements sit behind a non-null authority (never reached with the gate closed) — two in `if (authority) { … }`, one in `if (assignedLook) { … }`',
+      /if \(authority\) \{\s*if \(authority\.decision\) console\.log\(describeRouteAuthority\(authority, shop\.id\)\);\s*else console\.warn\(describeRouteAuthority\(authority, shop\.id\)\);\s*\}/.test(WP4_POST) &&
+      /if \(assignedLook\) \{\s*config = assignedLook;\s*console\.log\(`\[generate-website\] Archetype "\$\{archetype\?\.key\}" look carried under assigned template/.test(WP4_POST));
+    check('logs: the assignment and expression log blocks are the same statements, still told the constant',
+      /console\.log\(\s*formatArchitectureAssignment\(assignment, \{\s*shopId: shop\.id,\s*gateOpen: RITUAL_RECIPE_GENERATION_ENABLED,\s*\}\),\s*\);/.test(WP4_POST) &&
+      /formatExpressionSelection\(expressionWrite, \{\s*shopId: shop\.id,\s*gateOpen: RITUAL_RECIPE_GENERATION_ENABLED,\s*assigned: assignedArchitecture,\s*\}\),/.test(WP4_POST));
+    const promptStart = WP4_POST.indexOf('const archetypeDirection = archetype');
+    const promptEnd = WP4_POST.indexOf('const { brand_tokens, matrix_theme, ...modelGeneration } = generation;');
+    const promptRegion = WP4_POST.slice(promptStart, promptEnd);
+    check('prompt: nothing between the authority step and the model\'s answer reads the authority or the decision — the cached block, the dynamic prompt and the layout bounds are untouched (prompt alignment is WP5)',
+      promptStart > 0 && promptEnd > promptStart && promptRegion.includes('const cachedSystem = `<system_context>') && promptRegion.includes('const layoutBoundsText = archetype') &&
+      !/\b(authority|obtainedAssignment|assignedLook|assignment|decision)\b/.test(promptRegion.replace(/\/\/[^\n]*/g, '')), promptRegion.replace(/\/\/[^\n]*/g, '').match(/\b(authority|obtainedAssignment|assignedLook|assignment|decision)\b/)?.[0]);
+    check('prompt: the template constraint and the layout bounds still read the seller\'s chosen template', count(promptRegion, 'chosenTemplate') >= 6 && promptRegion.includes('describeLayoutBounds(classicLayoutBounds(chosenTemplate))'));
+    const rpcStart = WP4_POST.indexOf(".rpc('persist_matrix_website'");
+    const rpc = WP4_POST.slice(rpcStart, WP4_POST.indexOf('});', rpcStart));
+    check('persistence: the RPC call is untouched — it stores the config and its template, and nothing from the authority',
+      rpcStart > 0 && /p_template_key: config\.template_key,/.test(rpc) && /p_config: config,/.test(rpc) && !/authority|assignment|decision/i.test(rpc), rpc.slice(0, 120));
+    check('dry-run harness: still returns the model\'s raw generation and the config', /dryRun: true,[\s\S]{0,400}?generation,\s*config,/.test(WP4_POST));
+  }
+}
+
+console.log('\n[38] Phase 14 WP4 — existing protections');
+{
+  const root = process.cwd();
+  const read = (rel: string): string => {
+    try { return fs.readFileSync(path.join(root, rel), 'utf8'); } catch { return ''; }
+  };
+  const walk = (rel: string, out: string[] = []): string[] => {
+    let entries: fs.Dirent[] = [];
+    try { entries = fs.readdirSync(path.join(root, rel), { withFileTypes: true }); } catch { return out; }
+    for (const e of entries) {
+      if (e.name === 'node_modules' || e.name.startsWith('.')) continue;
+      const child = `${rel}/${e.name}`;
+      if (e.isDirectory()) walk(child, out);
+      else if (/\.(ts|tsx|mts|js|jsx|mjs)$/.test(e.name)) out.push(child);
+    }
+    return out;
+  };
+  const ENGINE_FILE = 'lib/siteTemplates.ts';
+  const WP4_NAMES = /\b(routeAuthority|carryAuthority|applyAssignedLook|describeRouteAuthority|RouteAuthority|obtainedAssignment)\b/;
+  const others = [...walk('app'), ...walk('components'), ...walk('lib')].filter((f) => f !== WP4_ROUTE_FILE);
+  const users = others.filter((f) => WP4_NAMES.test(read(f)));
+  check(`WP4 lives in the generation route alone — no library, component, page or other route names a WP4 step (${others.length} files, the engine file included)`, others.length > 50 && others.includes(ENGINE_FILE) && users.length === 0, users);
+
+  // Authority rules, parity rules and carrier rules: the route calls them, it does not restate them.
+  check('route: no threshold, niche map or eligibility rule is restated in the WP4 block',
+    WP4_BLOCK.length > 0 && !/ritualRecipeEligibility|SUBTRACTION_ASSIGNMENT_RULES|ARCHITECTURE_ASSIGNMENT_RULES|RITUAL_RECIPE_RULES|selectGalleryExhibits|minPictured|alignAssignmentInputs|assignArchitecture/.test(WP4_BLOCK));
+  check('route: the generation guard and the resolver are not called by the WP4 block (no activation, no render change)',
+    WP4_BLOCK.length > 0 && !/guardRecipeGridPick|resolveRitualRecipe|resolveRitualComposition|applyExpressionSelection|RITUAL_RECIPE_GENERATION_ENABLED/.test(WP4_BLOCK));
+  const engine = read(ENGINE_FILE);
+  check('engine file: the gate is still declared closed, in one place', engine.split('export const RITUAL_RECIPE_GENERATION_ENABLED = false;').length - 1 === 1 && !/RITUAL_RECIPE_GENERATION_ENABLED\s*=\s*true/.test(engine));
+
+  // Gate state and the legacy rows, exactly as every earlier section left them.
+  check('the generation gate constant is still false', RITUAL_RECIPE_GENERATION_ENABLED === false);
+  check('guard still strips both recipe grids', guardRecipeGridPick('counter', 'ritual') === undefined && guardRecipeGridPick('gallery', 'ritual') === undefined);
+  const legacy = { template_key: 'ritual' as const, storefront_family: 'lifestyle-story' as const, layout_strategy: { hero: 'split' as const, grid: 'masonry' as const } };
+  check('a legacy ritual row still resolves classic with its raw hero and grid', resolveRitualRecipe(legacy) === 'classic' && JSON.stringify(resolveRitualComposition({ config: legacy, products: photographed(12, 12), heroMedia: banner })) === '{"requested":"classic","recipe":"classic","hero":"split","grid":"masonry","fallback":null,"expressionFallback":null}');
+  check('a stored Subtraction row still resolves Subtraction, and a recipe grid off Ritual still resolves classic', resolveRitualRecipe({ template_key: 'ritual', storefront_family: 'subtraction' }) === 'subtraction' && resolveRitualRecipe({ template_key: 'editorial', layout_strategy: { grid: 'counter' } }) === 'classic');
+  check('the closed-gate engine object keeps its seven keys', Object.keys(closed({ niche: 'jewelry', products: photographed(6, 6), heroMedia: null })).join(',') === CLOSED_KEYS);
+}
+
+console.log('\n[39] Phase 14 WP4 — POST identity: the route is the pre-WP4 route plus WP4\'s edits, and nothing else');
+{
+  // Sections [34]–[37] run a script-side mirror of POST's tail. This section
+  // is what makes that sufficient: every WP4 edit is REVERSED on the real
+  // route source, and what is left must be byte-identical to the pre-WP4
+  // route (its sha256, line endings normalised). So no statement, comment,
+  // log line, prompt character or RPC argument anywhere in the file differs
+  // from the pre-WP4 route except the eight edits named here — there is no
+  // room for an extra writer of template_key, storefront_family or
+  // layout_strategy, an enclosing condition, or a changed closed-gate line.
+  // A LATER package that edits the route on purpose (WP5: the prompt) must
+  // add its own reversal here or re-record the hash — that is the point.
+  const PRE_WP4_ROUTE_SHA256 = 'cdf064342533edc168b986317674c7576e5d288bb6f079628db4dcb4580e68d7';
+  const PRE_WP4_ROUTE_LENGTH = 62881;
+  // A WP4 comment group inside POST: a line naming "Phase 14 WP4 (A3)" and
+  // the comment lines that follow it, up to the statement it introduces.
+  const C = String.raw`(?<=\n)[ \t]*//[^\n]*Phase 14 WP4 \(A3\)[^\n]*\n(?:[ \t]*//[^\n]*\n)*`;
+  const reversals: Array<[string, RegExp, string]> = [
+    ['the WP4 block above POST (header comment through the end marker)', /\/\/ ─+\n\/\/ Phase 14 WP4 — ROUTE INTEGRATION \(A3\)[\s\S]*?\/\/ \[WP4:END\]\n\n/, ''],
+    ['the decision\'s carrier variable', new RegExp(C + String.raw`    let obtainedAssignment: ArchitectureAssignment \| null = null;\n`), ''],
+    ['the decision carried out of the assignment block', /(?<=\n)      obtainedAssignment = assignment;\n/, ''],
+    ['the authority step and its log line', new RegExp(C + String.raw`    const authority = routeAuthority\(\n      RITUAL_RECIPE_GENERATION_ENABLED,\n      obtainedAssignment,\n      chosenTemplate \?\? heuristicTemplate,\n    \);\n    if \(authority\) \{\n      if \(authority\.decision\) console\.log\(describeRouteAuthority\(authority, shop\.id\)\);\n      else console\.warn\(describeRouteAuthority\(authority, shop\.id\)\);\n    \}\n\n`), ''],
+    ['the carry step (and the renamed destructuring binding)', new RegExp(String.raw`\.\.\.modelGeneration \} = generation;\n` + C + String.raw`    const legacyGeneration = carryAuthority\(modelGeneration, authority\);\n`), '...legacyGeneration } = generation;\n'],
+    ['the WP4 template pin', new RegExp(C + String.raw`    if \(authority\) \{\n      config\.template_key = authority\.template;\n    \}\n`), ''],
+    ['the assigned-look branch (and the `else` it put before `if (archetype)`)', new RegExp(C + String.raw`    const assignedLook = applyAssignedLook\(config, archetype, legacyGeneration\.layout, authority\);\n    if \(assignedLook\) \{\n      config = assignedLook;\n      console\.log\([^\n]*\);\n    \} else if \(archetype\) \{\n`), '    if (archetype) {\n'],
+  ];
+  const WP4_IMPORTS = ['ARCHITECTURES', 'DEFAULT_STOREFRONT_FAMILY', 'STOREFRONT_FAMILIES', 'SUBTRACTION_TEMPLATE_KEY', 'assignedRecipeGrid', 'carryStorefrontDecision', 'composeVisualSystem', 'isStorefrontDecision', 'type ArchitectureAssignment', 'type StorefrontDecision', 'type WebsiteConfig', 'type WebsiteGeneration', 'type WebsiteLayout'];
+
+  let restored = WP4_ROUTE_SOURCE;
+  const notOnce: string[] = [];
+  for (const [name, pattern, replacement] of reversals) {
+    const hits = (restored.match(new RegExp(pattern.source, 'g')) ?? []).length;
+    if (hits !== 1) notOnce.push(`${name} (${hits})`);
+    // A function replacement, so `$` in the replacement text is never special.
+    restored = restored.replace(pattern, () => replacement);
+  }
+  const importStart = restored.indexOf('import {\nMatrixWebsiteGenerationSchema,');
+  const importEnd = restored.indexOf("} from '@/lib/siteTemplates';");
+  let importList = importStart !== -1 && importEnd > importStart ? restored.slice(importStart, importEnd) : '';
+  const importsNotOnce: string[] = [];
+  for (const name of WP4_IMPORTS) {
+    const line = `  ${name},\n`;
+    if (importList.split(line).length - 1 !== 1) importsNotOnce.push(name);
+    importList = importList.replace(line, () => '');
+  }
+  if (importList) restored = restored.slice(0, importStart) + importList + restored.slice(importEnd);
+  const digest = crypto.createHash('sha256').update(restored, 'utf8').digest('hex');
+
+  check(`each of WP4's ${reversals.length} edits is found in the route exactly once`, WP4_ROUTE_SOURCE.length > 0 && notOnce.length === 0, notOnce);
+  check(`each of the ${WP4_IMPORTS.length} names WP4 added to the lib import is listed exactly once`, importList.length > 0 && importsNotOnce.length === 0, importsNotOnce);
+  check('POST IDENTITY: with those edits reversed the route is byte-identical to the pre-WP4 route (sha256) — nothing else in the file changed: no other statement, comment, log line, prompt character or RPC argument',
+    digest === PRE_WP4_ROUTE_SHA256 && restored.length === PRE_WP4_ROUTE_LENGTH, { digest, length: restored.length, wantLength: PRE_WP4_ROUTE_LENGTH });
+  check('the reversal really removes WP4: nothing of it is left in the restored text',
+    !/routeAuthority|carryAuthority|applyAssignedLook|describeRouteAuthority|obtainedAssignment|modelGeneration|assignedLook|\bauthority\b|WP4/.test(restored), restored.match(/routeAuthority|carryAuthority|applyAssignedLook|describeRouteAuthority|obtainedAssignment|modelGeneration|assignedLook|\bauthority\b|WP4/)?.[0]);
+  // What the identity buys for the closed gate: outside the lifted block, the
+  // only WP4 code in the file is the six statements reversed above — two that
+  // only assign a local, the authority step (null when closed, [37]), the
+  // carry step (same object under null, [37]), and two branches behind a
+  // non-null authority / assigned look.
+  const outsideBlock = WP4_ROUTE_SOURCE.replace(reversals[0][1], () => '');
+  const wp4Lines = outsideBlock.split('\n').filter((line) => !line.trim().startsWith('//') && /routeAuthority|carryAuthority|applyAssignedLook|describeRouteAuthority|obtainedAssignment|modelGeneration|assignedLook|\bauthority\b/.test(line));
+  check('outside the lifted block, WP4 is 14 lines of code in POST — every one of them part of an edit reversed above', wp4Lines.length === 14, wp4Lines.map((line) => line.trim().slice(0, 60)));
 }
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) FAILED.`);

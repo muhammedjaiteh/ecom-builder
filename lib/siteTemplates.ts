@@ -2451,6 +2451,25 @@ export function resolveRitualComposition(input: {
 //   · Category normalisation below exists for COUNTING ONLY — stored category
 //     strings and every renderer keep their raw casing.
 //   · No I/O, no hashing, no randomness: the same inputs give the same object.
+//
+// Phase 14 WP1 — AUTHORITY FOUNDATION (return values only; nothing wired):
+//   · assignArchitecture takes the gate state as an OPTIONAL input (default:
+//     RITUAL_RECIPE_GENERATION_ENABLED). CLOSED → the Phase 10H object, byte
+//     for byte: same seven keys, same order, same strings, the forced-template
+//     degradation included. Every law above describes the closed state.
+//   · OPEN → the same seven keys plus the FULL DECISION (StorefrontDecision):
+//     the storefront family (Subtraction included), the commerce preference
+//     it was derived from, the Subtraction verdict and what became of a
+//     seller-forced template. Open-gate rules, all ratified in Phase 12–13:
+//       – family is decided FIRST and Subtraction pre-empts Counter / Gallery;
+//       – a forced template never degrades the architecture — Counter,
+//         Gallery and Subtraction return the Ritual template, and a seller's
+//         template stands only when the architecture is Classic;
+//       – "Oud, Fragrance & Home" is desire commerce (Gallery preference).
+//   · NOTHING consumes the open-gate fields: no route, carrier, persistence
+//     or renderer reads them. The route calls assignArchitecture with no gate
+//     argument, so while the constant is false production stays on the closed
+//     path. scripts/verifyArchitectureAssignment.ts proves both states.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const ARCHITECTURES = ['classic', 'counter', 'gallery'] as const;
@@ -2505,7 +2524,53 @@ export type ArchitectureAssignmentInput = {
   /** A template already decided upstream (seller override, archetype pick or
    *  approved concept) — null/undefined when the model will choose. */
   forcedTemplate?: { template: TemplateKey; source: Exclude<AssignmentOverride, null> } | null;
+  /** Phase 14 WP2 — the slice the RESOLVER will judge at render time: the
+   *  ASSIGNMENT_RENDER_WINDOW newest rows of `products`, carrying stock. Read
+   *  ONLY with the gate open, and only for what the resolver re-checks — the
+   *  two recipe verdicts and the exhibit count. Catalog-depth signals and
+   *  the Subtraction rule keep reading `products`. Absent → `products`. */
+  renderProducts?: SiteProduct[] | null;
 };
+
+/** Phase 14 WP2 — how many of the newest products the resolver judges: the
+ *  home page's read (readHomeProducts in app/site/[slug]/siteData.ts,
+ *  `.limit(12)`, created_at desc — the same order as the generation route's
+ *  inventory read). One number so the two can never drift silently;
+ *  scripts/verifyArchitectureAssignment.ts asserts it against the loader. */
+export const ASSIGNMENT_RENDER_WINDOW = 12;
+
+/** Phase 14 WP1 — the gate state, supplied as an INPUT so both states can be
+ *  proven without flipping the constant. Absent → the constant decides. */
+export type ArchitectureAssignmentOptions = {
+  gateOpen?: boolean;
+};
+
+/** Phase 14 WP1 — the FULL decision assignArchitecture returns when the gate
+ *  is open: the Phase 10H object (same seven keys, same order) plus the
+ *  fields below. Return values only — nothing reads them yet. */
+export type StorefrontDecision = ArchitectureAssignment & {
+  /** The Subtraction verdict joins the two recipe verdicts — same shape, same
+   *  stable rule-miss strings. */
+  eligibility: { subtraction: RecipeEligibility };
+  /** The storefront family, decided BEFORE the architecture. 'subtraction'
+   *  always pairs with architecture 'classic' and the Ritual template. */
+  family: StorefrontFamily;
+  /** One fixed sentence from STOREFRONT_FAMILY_REASON_MARKERS — never model
+   *  text, never composed. */
+  familyReason: string;
+  /** The commerce lean the family and the Subtraction rule were derived from:
+   *  'gallery' = desire commerce, 'counter' = catalog commerce, null = none. */
+  commercePreference: Exclude<Architecture, 'classic'> | null;
+  /** What became of a template decided upstream (seller override, archetype
+   *  pick, approved concept). `honoured` is false when Counter, Gallery or
+   *  Subtraction returned Ritual instead. null when nothing was forced. */
+  sellerTemplate: { template: TemplateKey; source: Exclude<AssignmentOverride, null>; honoured: boolean } | null;
+};
+
+/** True for the open-gate object. Pure. */
+export function isStorefrontDecision(a: ArchitectureAssignment): a is StorefrontDecision {
+  return typeof (a as Partial<StorefrontDecision>).family === 'string';
+}
 
 /** Niche → architecture preference (Phase 10F category map). null = no strong
  *  preference: the tie-break flow decides (Classic unless the catalog clearly
@@ -2520,6 +2585,14 @@ const NICHE_ARCHITECTURE_PREFERENCE: Readonly<Partial<Record<StudioNicheId, Excl
   tech: 'counter',
   general: 'counter',
 });
+
+/** Phase 14 WP1 (ratified Phase 13D.1) — niches classified as DESIRE COMMERCE
+ *  that the Phase 10F map above leaves without a lean. Read ONLY with the
+ *  gate open, so the closed-gate object is untouched. "Oud, Fragrance & Home"
+ *  joins fashion and jewelry: the keyword fallback already reads fragrance,
+ *  perfume, attar and oud as gallery, and declaring the niche must not lose
+ *  the lean an undeclared merchant keeps. */
+const DESIRE_COMMERCE_NICHES: ReadonlyArray<StudioNicheId> = ['home'];
 
 /** Free-text / inventory keyword fallbacks — consulted ONLY when no studio
  *  niche id resolves. Culinary words reuse CULINARY_CATEGORY_KEYWORDS. */
@@ -2548,6 +2621,18 @@ export const ARCHITECTURE_ASSIGNMENT_RULES = Object.freeze({
   counterStrong: Object.freeze({ minPriced: 12, minCategories: 3, minPicturedRatio: 0.9 }),
   /** "Preferred" Gallery bar — Phase 10G §3. */
   galleryStrong: Object.freeze({ minExhibits: 3, minAdStudioAssets: 1 }),
+});
+
+/** Phase 14 WP1 — the ratified Subtraction rule's thresholds (Phase 13B.1,
+ *  accepted in Phase 13D). Subtraction is a storefront FAMILY for the desire
+ *  commerce merchant Gallery cannot serve: no hero media, yet a catalog whose
+ *  photography can carry the page alone. */
+export const SUBTRACTION_ASSIGNMENT_RULES = Object.freeze({
+  /** Photographed pieces — the smallest catalog that reads as a wall. */
+  minPicturedProducts: 6,
+  /** Share of the catalog that must carry a real photo — the wall IS the
+   *  page, so the bar is the engine's "strong" photography bar. */
+  minPicturedRatio: 0.9,
 });
 
 /** Category key for COUNTING ONLY: trim, collapse whitespace, lowercase, and a
@@ -2601,18 +2686,36 @@ export const ASSIGNMENT_REASON_MARKERS = Object.freeze({
   preferredLocked: 'fits this niche but is not yet unlocked:',
   tieBreakClassic: 'Neither a counter nor a vitrine is clearly stronger, so the story leads.',
   overrideDegraded: 'which has no recipes.',
+  // Phase 14 WP1 — written ONLY with the gate open (subtraction) or by the
+  // Classic floor (floor); no closed-gate assignment can carry either.
+  subtraction: 'Pieces in this niche sell on the image, so the wall is the page.',
+  floor: 'Assignment unavailable. Classic is the floor.',
+});
+
+/** Phase 14 WP1 — the fixed sentence for each storefront family the engine
+ *  returns with the gate open (StorefrontDecision.familyReason). One per
+ *  family, never composed, never model text. */
+export const STOREFRONT_FAMILY_REASON_MARKERS: Readonly<Record<StorefrontFamily, string>> = Object.freeze({
+  'lifestyle-story': 'The story opens, then the collection.',
+  'product-first': 'Buyers in this niche compare and scan, so the collection opens.',
+  'menu-occasion': 'The occasion opens, then the menu.',
+  subtraction: 'The opener and the wall are the page. Nothing else is drawn.',
 });
 
 /** How an assignment was decided — read back from the reason the engine
  *  wrote (Phase 10I §3). 'seller-override' = a forced non-Ritual template
  *  degraded a recipe; 'niche-preference' = the niche's lean was eligible;
  *  'tie-break' = catalog size decided (Classic included); 'fallback' = a hard
- *  rejection (menu-occasion, service) or a locked preferred recipe. */
-export type AssignmentDecisionSource = 'niche-preference' | 'tie-break' | 'fallback' | 'seller-override';
+ *  rejection (menu-occasion, service) or a locked preferred recipe.
+ *  Phase 14 WP1: 'family-rule' = the Subtraction rule decided (open gate
+ *  only — no closed-gate reason ends with that marker). The Classic floor
+ *  reads back as 'fallback'. */
+export type AssignmentDecisionSource = 'niche-preference' | 'tie-break' | 'fallback' | 'seller-override' | 'family-rule';
 
 export function assignmentDecisionSource(a: Pick<ArchitectureAssignment, 'reason'>): AssignmentDecisionSource {
   const M = ASSIGNMENT_REASON_MARKERS;
   const r = a.reason;
+  if (r.endsWith(M.subtraction)) return 'family-rule';
   if (r.endsWith(M.overrideDegraded)) return 'seller-override';
   if (r.endsWith(M.preferredCounter) || r.endsWith(M.preferredGallery)) return 'niche-preference';
   if (r.endsWith(M.tieBreakCounter) || r.endsWith(M.tieBreakGallery) || r.endsWith(M.tieBreakClassic)) return 'tie-break';
@@ -2640,12 +2743,23 @@ export function formatArchitectureAssignment(
   ].join('\n');
 }
 
-/** Phase 10H — the assignment engine. Pure. See the section comment. */
-export function assignArchitecture(input: ArchitectureAssignmentInput): ArchitectureAssignment {
+/** Phase 10H — the assignment engine. Pure. See the section comment.
+ *  Phase 14 WP1: `options.gateOpen` (default: the generation gate constant)
+ *  selects the object returned — closed → the Phase 10H object, unchanged;
+ *  open → a StorefrontDecision (narrow with isStorefrontDecision). */
+export function assignArchitecture(
+  input: ArchitectureAssignmentInput,
+  options?: ArchitectureAssignmentOptions
+): ArchitectureAssignment {
+  const gateOpen = options?.gateOpen ?? RITUAL_RECIPE_GENERATION_ENABLED;
   const { products, heroMedia } = input;
   const nicheId = resolveStudioNicheId(input.niche);
   const freeText = `${input.niche ?? ''} ${input.dominantCategory ?? ''}`.toLowerCase();
   const forced = input.forcedTemplate ?? null;
+  // Phase 14 WP2 (validator parity): what the resolver re-checks at render
+  // time is judged on the slice it will hold. Open gate only — closed, this
+  // IS `products` (same reference), so the Phase 10H path is untouched.
+  const judged = gateOpen && input.renderProducts ? input.renderProducts : products;
 
   // ── Signals ────────────────────────────────────────────────────────────
   const productCount = products.length;
@@ -2670,8 +2784,8 @@ export function assignArchitecture(input: ArchitectureAssignmentInput): Architec
 
   // ── Eligibility — the existing 10B.1 rules, verbatim ───────────────────
   const storefrontFamily: StorefrontFamily | null = culinary ? 'menu-occasion' : null;
-  const counterRaw = ritualRecipeEligibility('product-first', { products, heroMedia, storefrontFamily });
-  const galleryRaw = ritualRecipeEligibility('gallery-led', { products, heroMedia, storefrontFamily });
+  const counterRaw = ritualRecipeEligibility('product-first', { products: judged, heroMedia, storefrontFamily });
+  const galleryRaw = ritualRecipeEligibility('gallery-led', { products: judged, heroMedia, storefrontFamily });
   // Engine-side additions the render rules do not carry (Phase 10G §3):
   // a total-product floor for Counter and the menu-occasion rejection for
   // Counter (the render rule only rejects Gallery for menu-occasion).
@@ -2692,12 +2806,15 @@ export function assignArchitecture(input: ArchitectureAssignmentInput): Architec
   let preference: Exclude<Architecture, 'classic'> | null = null;
   if (nicheId) {
     preference = NICHE_ARCHITECTURE_PREFERENCE[nicheId] ?? null;
+    // Phase 14 WP1 (13D.1): desire-commerce niches the map leaves unleaned
+    // read as gallery — open gate only, so the closed-gate object is untouched.
+    if (gateOpen && DESIRE_COMMERCE_NICHES.includes(nicheId)) preference = 'gallery';
   } else if (!culinary && !serviceLike) {
     if (GALLERY_CATEGORY_KEYWORDS.some((k) => freeText.includes(k))) preference = 'gallery';
     else if (COUNTER_CATEGORY_KEYWORDS.some((k) => freeText.includes(k))) preference = 'counter';
   }
 
-  const exhibits = selectGalleryExhibits(products).length;
+  const exhibits = selectGalleryExhibits(judged).length;
   const counterStrong =
     pricedCount >= ARCHITECTURE_ASSIGNMENT_RULES.counterStrong.minPriced &&
     categoryCount >= ARCHITECTURE_ASSIGNMENT_RULES.counterStrong.minCategories &&
@@ -2758,6 +2875,81 @@ export function assignArchitecture(input: ArchitectureAssignmentInput): Architec
   // dominant inventory category) so the recommendation equals today's hint.
   const nicheLabel = nicheId ? STUDIO_NICHES.find((n) => n.id === nicheId)?.label ?? null : null;
   const effectiveCategory = nicheLabel ?? (input.niche?.trim() || null) ?? input.dominantCategory ?? null;
+
+  // ── Phase 14 WP1 — the FULL DECISION (open gate only) ──────────────────
+  // Returned and nothing else: no route, carrier, persistence or renderer
+  // reads these fields. The closed-gate path below this block is the Phase
+  // 10H code, untouched — it is never reached with the gate open and this
+  // block is never reached with it closed.
+  if (gateOpen) {
+    // Subtraction (ratified Phase 13B.1 / 13D) — every miss is one stable
+    // sentence, the same shape the recipe verdicts carry.
+    const rules = SUBTRACTION_ASSIGNMENT_RULES;
+    const rawPicturedRatio = productCount === 0 ? 0 : picturedCount / productCount;
+    const subtractionReasons: string[] = [];
+    if (culinary) subtractionReasons.push('menu-occasion merchants are not subtraction merchants');
+    if (serviceLike) subtractionReasons.push('service merchants have no catalog to wall');
+    if (!culinary && !serviceLike && preference !== 'gallery') {
+      subtractionReasons.push('needs a desire-commerce niche (fashion, jewellery, fragrance, artisan)');
+    }
+    if (heroMedia) subtractionReasons.push('has hero media, so Gallery is preferred');
+    if (picturedCount < rules.minPicturedProducts) {
+      subtractionReasons.push(`needs ${rules.minPicturedProducts} photographed pieces (has ${picturedCount})`);
+    }
+    if (rawPicturedRatio < rules.minPicturedRatio) {
+      subtractionReasons.push(`needs ${Math.round(rules.minPicturedRatio * 100)}% photographed products (has ${Math.floor(rawPicturedRatio * 100)}%)`);
+    }
+    const subtraction: RecipeEligibility = { eligible: subtractionReasons.length === 0, reasons: subtractionReasons };
+
+    // Family FIRST (Phase 12): culinary → menu-occasion; the Subtraction rule
+    // → subtraction, which pre-empts Counter and Gallery; a catalog-commerce
+    // lean → product-first; everything else → the default lifestyle-story.
+    let family: StorefrontFamily;
+    if (culinary) {
+      family = 'menu-occasion';
+    } else if (subtraction.eligible) {
+      family = 'subtraction';
+      architecture = 'classic';
+      confidence = 'high';
+      reason = `${picturedCount} photographed ${picturedCount === 1 ? 'piece' : 'pieces'} (${percent(rawPicturedRatio)} of the catalog) and no hero image. ${M.subtraction}`;
+    } else if (preference === 'counter') {
+      family = 'product-first';
+    } else {
+      family = DEFAULT_STOREFRONT_FAMILY;
+    }
+
+    // Template authority output: Counter, Gallery and Subtraction are
+    // Ritual-only, so they return Ritual whatever was forced; a forced
+    // template stands only when the architecture is Classic. The forced
+    // template never degrades the architecture here (that is the closed-gate
+    // behaviour, preserved below).
+    const ritualRequired = family === 'subtraction' || architecture !== 'classic';
+    let decidedTemplate: TemplateKey = ritualRequired ? SUBTRACTION_TEMPLATE_KEY : templateFromCategory(effectiveCategory);
+    let decidedOverride: AssignmentOverride = null;
+    let sellerTemplate: StorefrontDecision['sellerTemplate'] = null;
+    if (forced) {
+      const honoured = !ritualRequired || forced.template === SUBTRACTION_TEMPLATE_KEY;
+      if (!ritualRequired) decidedTemplate = forced.template;
+      if (honoured) decidedOverride = forced.source;
+      sellerTemplate = { template: forced.template, source: forced.source, honoured };
+    }
+
+    const decision: StorefrontDecision = {
+      architecture,
+      template: decidedTemplate,
+      confidence,
+      reason,
+      eligibility: { ...eligibility, subtraction },
+      signals,
+      overriddenBy: decidedOverride,
+      family,
+      familyReason: STOREFRONT_FAMILY_REASON_MARKERS[family],
+      commercePreference: preference,
+      sellerTemplate,
+    };
+    return decision;
+  }
+
   let template: TemplateKey =
     architecture === 'classic' ? templateFromCategory(effectiveCategory) : SUBTRACTION_TEMPLATE_KEY;
   let overriddenBy: AssignmentOverride = null;
@@ -2772,6 +2964,290 @@ export function assignArchitecture(input: ArchitectureAssignmentInput): Architec
   }
 
   return { architecture, template, confidence, reason, eligibility, signals, overriddenBy };
+}
+
+/** Phase 14 WP1 — the CLASSIC FLOOR. What the engine answers when it cannot
+ *  decide: Classic, the default family, no recipe, no Subtraction, both (all)
+ *  verdicts ineligible, and the fixed `floor` reason. Reads the input
+ *  defensively and never throws — it exists for inputs the engine itself
+ *  could not read. A template forced upstream still stands (Classic never
+ *  overrides a seller's template); otherwise the category heuristic answers. */
+function classicFloorAssignment(input: unknown, gateOpen: boolean): ArchitectureAssignment {
+  const raw = (typeof input === 'object' && input !== null ? input : {}) as Record<string, unknown>;
+  const text = (value: unknown): string | null => (typeof value === 'string' && value.trim() ? value.trim() : null);
+
+  const forcedRaw = raw.forcedTemplate;
+  let forced: NonNullable<ArchitectureAssignmentInput['forcedTemplate']> | null = null;
+  if (typeof forcedRaw === 'object' && forcedRaw !== null) {
+    const { template, source } = forcedRaw as Record<string, unknown>;
+    if (
+      typeof template === 'string' &&
+      (TEMPLATE_KEYS as readonly string[]).includes(template) &&
+      (source === 'seller-template' || source === 'seller-archetype' || source === 'concept')
+    ) {
+      forced = { template: template as TemplateKey, source };
+    }
+  }
+
+  const niche = text(raw.niche);
+  const nicheId = resolveStudioNicheId(niche);
+  const nicheLabel = nicheId ? STUDIO_NICHES.find((n) => n.id === nicheId)?.label ?? null : null;
+  const template: TemplateKey = forced
+    ? forced.template
+    : templateFromCategory(nicheLabel ?? niche ?? text(raw.dominantCategory));
+
+  const unavailable = (): RecipeEligibility => ({ eligible: false, reasons: ['assignment unavailable'] });
+  const signals: ArchitectureSignals = {
+    niche: null,
+    productCount: 0,
+    pricedCount: 0,
+    picturedRatio: 0,
+    categoryCount: 0,
+    heroMedia: false,
+    adStudioAssets: 0,
+  };
+  const reason = ASSIGNMENT_REASON_MARKERS.floor;
+  const overriddenBy: AssignmentOverride = forced ? forced.source : null;
+
+  if (!gateOpen) {
+    return {
+      architecture: 'classic',
+      template,
+      confidence: 'low',
+      reason,
+      eligibility: { counter: unavailable(), gallery: unavailable() },
+      signals,
+      overriddenBy,
+    };
+  }
+  const decision: StorefrontDecision = {
+    architecture: 'classic',
+    template,
+    confidence: 'low',
+    reason,
+    eligibility: { counter: unavailable(), gallery: unavailable(), subtraction: unavailable() },
+    signals,
+    overriddenBy,
+    family: DEFAULT_STOREFRONT_FAMILY,
+    familyReason: STOREFRONT_FAMILY_REASON_MARKERS[DEFAULT_STOREFRONT_FAMILY],
+    commercePreference: null,
+    sellerTemplate: forced ? { template: forced.template, source: forced.source, honoured: true } : null,
+  };
+  return decision;
+}
+
+/** Phase 14 WP1 — assignArchitecture with the Classic floor underneath it.
+ *  Same inputs, same gate option, same object when the engine answers; the
+ *  floor when it throws. Never throws. Pure. Not called by the route yet —
+ *  the route still calls assignArchitecture inside its own try/catch. */
+export function assignArchitectureOrFloor(
+  input: ArchitectureAssignmentInput,
+  options?: ArchitectureAssignmentOptions
+): ArchitectureAssignment {
+  try {
+    return assignArchitecture(input, options);
+  } catch {
+    return classicFloorAssignment(input, options?.gateOpen ?? RITUAL_RECIPE_GENERATION_ENABLED);
+  }
+}
+
+// ── Phase 14 WP2 — INPUT + VALIDATOR PARITY (inputs only; no rule changes) ──
+// Two pure helpers the generation route calls around the engine. They change
+// what the engine is GIVEN, never how it decides, and both are inert with the
+// gate closed: alignAssignmentInputs hands the niche back untouched with no
+// render window, and expressionFloorSignals then returns the Phase 10L.4
+// values. They live here, not in the route, because the verification script
+// must be able to run them and a route module cannot be imported by it.
+
+/** The Studio niche that is the ABSENCE of a declaration: the Studio
+ *  preselects it, so the server cannot tell an untouched default from a
+ *  deliberate pick. Ratified Phase 13D (F1): it reaches the engine as no
+ *  niche, so the inventory decides — exactly as it does for Onboarding. */
+const UNDECLARED_STUDIO_NICHE: StudioNicheId = 'general';
+
+export type AssignmentInputAlignment = {
+  /** The niche to hand the engine. Gate closed → exactly what was given. */
+  niche: string | null | undefined;
+  /** The resolver's slice (ArchitectureAssignmentInput.renderProducts).
+   *  Gate closed → undefined, so the engine reads `products` as before. */
+  renderProducts: SiteProduct[] | undefined;
+};
+
+/** Phase 14 WP2 — B1 + C1. Pure.
+ *    B1  an undeclared niche (absent, blank, or the catch-all Studio niche by
+ *        id or label) → null. A declared niche — any other Studio id or
+ *        label, or free text — is handed back exactly as given.
+ *    C1  the render window: the ASSIGNMENT_RENDER_WINDOW newest of
+ *        `products`, the same rows in the same order. Pass rows that carry
+ *        stock_quantity so the exhibit count matches the resolver's.
+ *  `options.gateOpen` defaults to the generation gate constant. */
+export function alignAssignmentInputs(
+  facts: { niche: string | null | undefined; products: SiteProduct[] },
+  options?: ArchitectureAssignmentOptions
+): AssignmentInputAlignment {
+  const gateOpen = options?.gateOpen ?? RITUAL_RECIPE_GENERATION_ENABLED;
+  if (!gateOpen) return { niche: facts.niche, renderProducts: undefined };
+  const declared = typeof facts.niche === 'string' ? facts.niche.trim() : '';
+  const undeclared = declared === '' || resolveStudioNicheId(declared) === UNDECLARED_STUDIO_NICHE;
+  return {
+    niche: undeclared ? null : facts.niche,
+    renderProducts: facts.products.slice(0, ASSIGNMENT_RENDER_WINDOW),
+  };
+}
+
+/** Phase 14 WP2 — C1 for the expression floors. The two product-signal
+ *  inputs selectExpression reads (routine needs categories, scale needs
+ *  exhibits), counted the way the resolver re-counts them at render time:
+ *  normalised categories and exhibits over the render window. No window (the
+ *  gate is closed, or the caller has none) → the Phase 10L.4 values: the
+ *  engine's own category count and the exhibits of `products`. Pure. */
+export function expressionFloorSignals(input: {
+  signals: Pick<ArchitectureSignals, 'categoryCount'>;
+  products: SiteProduct[];
+  renderProducts?: SiteProduct[] | null;
+}): { categoryCount: number; exhibits: number } {
+  const slice = input.renderProducts;
+  if (!slice) {
+    return { categoryCount: input.signals.categoryCount, exhibits: selectGalleryExhibits(input.products).length };
+  }
+  return { categoryCount: normalizedCategoryCount(slice), exhibits: selectGalleryExhibits(slice).length };
+}
+
+// ── Phase 14 WP3 — AUTHORITY CARRIERS (pure; NOTHING calls them) ────────────
+// Two steps that sit between the engine's decision and the existing layout
+// carriers. Neither is called by the generation route, a carrier, the
+// resolver or a renderer — they return values and that is all. The existing
+// carriers are untouched: they still read the family and the grid from the
+// layout object they are handed, so handing them a layout that already holds
+// the decision's values is what carries the decision.
+//   · carryStorefrontDecision stamps the two keys the engine owns on a layout
+//     — storefront_family and the RECIPE grid — whatever the model named.
+//   · composeVisualSystem says what of an archetype's look survives under the
+//     template the engine assigned (ratified Phase 13D, F4).
+
+/** The recipe grid a decision owns: Counter → 'counter', Gallery → 'gallery'.
+ *  Classic and Subtraction own none (null) — their grid is a presentation
+ *  variant, never a recipe. Pure. */
+export function assignedRecipeGrid(decision: Pick<StorefrontDecision, 'architecture' | 'family'>): RecipeGridValue | null {
+  if (decision.family === 'subtraction') return null;
+  if (decision.architecture === 'counter') return 'counter';
+  if (decision.architecture === 'gallery') return 'gallery';
+  return null;
+}
+
+/** Phase 14 WP3 (A4) — the authority-carrying step. Stamps the decision onto
+ *  a generation layout. Pure; the input layout is never written to.
+ *    storefront_family     ← the decision's family, ALWAYS — whatever family
+ *                            the model named, or none.
+ *    layout_strategy.grid  ← the decision's recipe grid when it owns one. When
+ *                            it owns none (Classic, Subtraction) a recipe grid
+ *                            the model named is REMOVED, and a non-recipe pick
+ *                            ('standard' | 'masonry' | 'featured-first') passes
+ *                            through — those are presentation, not architecture.
+ *  Every other layout key (block order, display, rhythm, accent index, face,
+ *  the hero variant) is carried through unchanged.
+ *  Gate CLOSED → the SAME layout reference back, nothing stamped: there is no
+ *  decision to carry (the engine returns the Phase 10H object).
+ *  Gate OPEN with no decision → the Classic floor is stamped (the default
+ *  family, no recipe grid): a missing decision can never leave a model-named
+ *  recipe grid or Subtraction in place. */
+export function carryStorefrontDecision(
+  layout: WebsiteLayout | null | undefined,
+  assignment: ArchitectureAssignment | null | undefined,
+  options?: ArchitectureAssignmentOptions
+): WebsiteLayout | null | undefined {
+  const gateOpen = options?.gateOpen ?? RITUAL_RECIPE_GENERATION_ENABLED;
+  if (!gateOpen) return layout;
+
+  const decision =
+    assignment && isStorefrontDecision(assignment) && StorefrontFamilySchema.safeParse(assignment.family).success
+      ? assignment
+      : null;
+  const family: StorefrontFamily = decision ? decision.family : DEFAULT_STOREFRONT_FAMILY;
+  const recipeGrid = decision ? assignedRecipeGrid(decision) : null;
+
+  const base: WebsiteLayout = layout ?? {};
+  const modelGrid = base.layout_strategy?.grid;
+  const grid: LayoutStrategy['grid'] = recipeGrid ?? (isRecipeGridValue(modelGrid) ? undefined : modelGrid);
+  const strategy: LayoutStrategy = { ...(base.layout_strategy ?? {}) };
+  if (grid) strategy.grid = grid;
+  else delete strategy.grid;
+
+  const carried: WebsiteLayout = { ...base, storefront_family: family };
+  if (Object.keys(strategy).length > 0) carried.layout_strategy = strategy;
+  else delete carried.layout_strategy;
+  return carried;
+}
+
+/** Phase 14 WP3 (A5) — what composeVisualSystem returns: the look a build
+ *  takes when an archetype is presented on the template the engine assigned. */
+export type VisualSystemComposition = {
+  /** The template the build renders on (the engine's, not the archetype's). */
+  templateKey: TemplateKey;
+  /** False when the assigned template is the archetype's own. Informational. */
+  templateChanged: boolean;
+  /** Element by element, what survived (ratified Phase 13D, F4). */
+  survives: { copyVoice: true; typography: boolean; palette: boolean; accents: boolean; sectionMix: false };
+  /** The theme to seat under the assigned template: ONLY the surviving keys.
+   *  An absent key renders the assigned template's own default. */
+  theme: SiteTheme;
+  /** Lever bounds for the build: the assigned template's own, with the
+   *  archetype's accent presets and faces where those survive. */
+  bounds: LayoutBounds;
+  /** Copy voice — always the archetype's. */
+  copyDirection: string;
+  vibe: string;
+};
+
+/** Phase 14 WP3 (A5) — the visual-system composition step. Pure. The ratified
+ *  inheritance rule, exactly:
+ *    copy voice   survives, always (it is a text direction, not a template fact);
+ *    typography   survives only when ARCHETYPE-OWNED — the archetype names a
+ *                 display face of its own;
+ *    palette      survives only when ARCHETYPE-OWNED — the archetype declares
+ *                 its own paper AND ink (primary travels with them);
+ *    accents      survive only when ARCHETYPE-OWNED — they travel with the
+ *                 archetype's own paper, the surface they were contrast-
+ *                 checked against. An archetype whose paper is its template's
+ *                 owns no accents;
+ *    section mix  never survives — the assigned template's own mix stands and
+ *                 the architecture decides which sections exist.
+ *  Where an element does not survive, the assigned template's default
+ *  applies. Corner language and the sticky-nav toggle are not among the five
+ *  elements; they are theme keys the archetype declares itself, so they are
+ *  carried when declared. */
+export function composeVisualSystem(archetype: SiteArchetype, assignedTemplate: TemplateKey): VisualSystemComposition {
+  const own = archetype.theme;
+  const typography = own.display_font !== undefined;
+  const ownsPaper = own.background !== undefined && own.text !== undefined;
+  const palette = ownsPaper;
+  const accents = ownsPaper;
+
+  const theme: SiteTheme = {};
+  if (accents && own.accent !== undefined) theme.accent = own.accent;
+  if (typography) theme.display_font = own.display_font;
+  if (palette) {
+    theme.background = own.background;
+    theme.text = own.text;
+    if (own.primary !== undefined) theme.primary = own.primary;
+  }
+  if (own.button_radius !== undefined) theme.button_radius = own.button_radius;
+  if (own.sticky_nav !== undefined) theme.sticky_nav = own.sticky_nav;
+
+  const template = classicLayoutBounds(assignedTemplate);
+  return {
+    templateKey: assignedTemplate,
+    templateChanged: assignedTemplate !== archetype.template_key,
+    survives: { copyVoice: true, typography, palette, accents, sectionMix: false },
+    theme,
+    bounds: {
+      ...template,
+      accentPresets: accents ? archetype.accentPresets : template.accentPresets,
+      displayFonts: typography ? archetype.displayFonts : template.displayFonts,
+    },
+    copyDirection: archetype.copyDirection,
+    vibe: archetype.vibe,
+  };
 }
 
 /** Merchant-facing explanation (Phase 10G §6) — three terse lines composed
