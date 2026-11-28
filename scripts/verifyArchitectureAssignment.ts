@@ -46,14 +46,30 @@
 // that mirror to the real file — the route with WP4's edits reversed must be
 // byte-identical (sha256) to the pre-WP4 route, so POST is the pre-WP4 POST
 // plus exactly WP4's statements and nothing else.
+//
+// Phase 14 WP5 (sections [40]–[45]) — prompt alignment (A6). With the gate
+// open the execute-step prompt follows the authority: the template, the
+// storefront family and an owned recipe grid are STATED as fixed and the model
+// is no longer asked to choose them; the bounds it is shown are the bounds the
+// build applies; split_cta is asked for only when the archetype bundle is
+// applied. With the gate closed the prompt step hands back the object it was
+// given, so both AI steps send the pre-WP5 text byte for byte. The route's WP5
+// block, its two prompt helpers and POST's own prompt statements are LIFTED
+// and run here in both gate states — nothing below compares against a
+// script-side copy of the prompt. Sections [33], [37] and [39] were re-pointed
+// for WP5 (not removed): the authority now has one more reader, the closed-
+// gate prompt statements end where the WP5 step begins, and the POST-identity
+// proof reverses WP5's edits before WP4's against the SAME pre-WP4 hash.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as ts from 'typescript';
+import { ELITE_COPY_RULES } from '../lib/adCopy';
 import { TEMPLATE_THEMES, contrastRatio, judgeAccent } from '../lib/siteTheme';
 import {
+  ACCENT_PRESET_SLOTS,
   ARCHETYPES,
   ARCHETYPE_KEYS,
   ARCHITECTURES,
@@ -61,8 +77,11 @@ import {
   ASSIGNMENT_RENDER_WINDOW,
   CLASSIC_BLOCK_MIX,
   DEFAULT_STOREFRONT_FAMILY,
+  SITE_FONT_KEYS,
+  SITE_TEMPLATES,
   STUDIO_NICHES,
   SUBTRACTION_TEMPLATE_KEY,
+  SiteConceptSchema,
   SiteThemeSchema,
   TEMPLATE_KEYS,
   WebsiteConfigSchema,
@@ -104,7 +123,9 @@ import {
   type ArchitectureAssignmentInput,
   type ExpressionSignals,
   type HeroMedia,
+  type LayoutBounds,
   type SiteArchetype,
+  type SiteConcept,
   type SiteProduct,
   type StorefrontDecision,
   type TemplateKey,
@@ -2355,6 +2376,8 @@ console.log('\n[33] Phase 14 WP4 — the route obtains Assignment before it pins
     ['the block\'s catch', at("console.warn('[generate-website] Architecture assignment skipped:'")],
     ['step 1: the authority is obtained', at('const authority = routeAuthority(')],
     ['the prompt is built', at('const templateConstraint = concept')],
+    // Phase 14 WP5: the one place the authority reaches the prompt ([40]).
+    ['WP5: the prompt step is handed the authority', at('const executePrompt = alignPromptToAuthority(')],
     ['the model is called', at("callerName: 'generate-website',")],
     ['step 2: the authority is carried onto the generation', at('const legacyGeneration = carryAuthority(modelGeneration, authority);')],
     ['the config is assembled', at('let config = generationToConfig(legacyGeneration);')],
@@ -2369,7 +2392,7 @@ console.log('\n[33] Phase 14 WP4 — the route obtains Assignment before it pins
   const missing = anchors.filter(([, i]) => i < 0).map(([name]) => name);
   const outOfOrder = anchors.filter(([, i], k) => k > 0 && i <= anchors[k - 1][1]).map(([name]) => name);
   check('POST: every step of the execute tail is present', missing.length === 0, missing);
-  check('POST: Assignment is obtained BEFORE the template is pinned — engine → decision carried out → authority → prompt → model → carried generation → config → pins → carriers → persist', missing.length === 0 && outOfOrder.length === 0, outOfOrder);
+  check('POST: Assignment is obtained BEFORE the template is pinned — engine → decision carried out → authority → prompt → prompt step (WP5) → model → carried generation → config → pins → carriers → persist', missing.length === 0 && outOfOrder.length === 0, outOfOrder);
 
   // ── What each step is handed.
   const argsOf = (callee: string): string[] => {
@@ -2400,16 +2423,19 @@ console.log('\n[33] Phase 14 WP4 — the route obtains Assignment before it pins
   check('POST: the assigned look runs INSTEAD of the archetype carrier, never as well — `if (assignedLook) … else if (archetype) … else if (legacyGeneration.layout)`',
     /if \(assignedLook\) \{\s*config = assignedLook;\s*console\.log\([^\n]*\);\s*\} else if \(archetype\) \{/.test(WP4_POST) && /\} else if \(legacyGeneration\.layout\) \{\s*config = applyGenerationLayout\(/.test(WP4_POST));
   // Every read of `authority` in POST's code (whole-line comments set aside)
-  // is one of the nine below: the step that makes it, the two guards, the log
-  // line, the carry step, the pin and the assigned look. Nothing else.
+  // is one of the ten below: the step that makes it, the two guards, the log
+  // line, the carry step, the pin, the assigned look and — since Phase 14 WP5
+  // — the prompt step it is handed to ([40]). Nothing else.
   const postCode = WP4_POST.split('\n').filter((line) => !line.trim().startsWith('//')).join('\n');
   const authorityReads = (postCode.match(/\bauthority\b/g) ?? []).length;
-  const accounted =
+  const wp4Reads =
     count(postCode, 'const authority = routeAuthority(') + count(postCode, 'if (authority) {') + count(postCode, 'if (authority.decision)') +
     count(postCode, 'describeRouteAuthority(authority, shop.id)') + count(postCode, 'carryAuthority(modelGeneration, authority)') +
     count(postCode, 'config.template_key = authority.template;') + count(postCode, 'legacyGeneration.layout, authority);');
-  check('POST: nothing but the WP4 steps and the pin reads the authority — not the prompt, the expression write, the cleanup or the persist call (9 reads, all accounted for)',
-    authorityReads === 9 && accounted === 9 && count(postCode, 'if (authority) {') === 2 && count(postCode, 'describeRouteAuthority(authority, shop.id)') === 2, { authorityReads, accounted });
+  const wp5Reads = count(postCode, 'alignPromptToAuthority({ cachedSystem, prompt, layoutBoundsText }, authority, {');
+  const accounted = wp4Reads + wp5Reads;
+  check('POST: nothing but the WP4 steps, the pin and the WP5 prompt step reads the authority — not the closed-gate prompt statements, the expression write, the cleanup or the persist call (10 reads, all accounted for: 9 WP4, 1 WP5)',
+    authorityReads === 10 && accounted === 10 && wp4Reads === 9 && wp5Reads === 1 && count(postCode, 'if (authority) {') === 2 && count(postCode, 'describeRouteAuthority(authority, shop.id)') === 2, { authorityReads, accounted, wp4Reads, wp5Reads });
 }
 
 if (!ROUTE_STEPS) {
@@ -2843,12 +2869,23 @@ if (!ROUTE_STEPS) {
     check('logs: the assignment and expression log blocks are the same statements, still told the constant',
       /console\.log\(\s*formatArchitectureAssignment\(assignment, \{\s*shopId: shop\.id,\s*gateOpen: RITUAL_RECIPE_GENERATION_ENABLED,\s*\}\),\s*\);/.test(WP4_POST) &&
       /formatExpressionSelection\(expressionWrite, \{\s*shopId: shop\.id,\s*gateOpen: RITUAL_RECIPE_GENERATION_ENABLED,\s*assigned: assignedArchitecture,\s*\}\),/.test(WP4_POST));
+    // Phase 14 WP5 re-point. The region between the authority step and the
+    // model's answer now holds two things: the closed-gate prompt statements
+    // (unchanged — everything up to the WP5 comment) and the WP5 prompt step.
+    // The first still reads nothing of the authority or the decision; the
+    // second is the ONLY reader, and under a null authority it returns the
+    // object it was handed ([41] runs it; [39] hashes the statements).
     const promptStart = WP4_POST.indexOf('const archetypeDirection = archetype');
     const promptEnd = WP4_POST.indexOf('const { brand_tokens, matrix_theme, ...modelGeneration } = generation;');
-    const promptRegion = WP4_POST.slice(promptStart, promptEnd);
-    check('prompt: nothing between the authority step and the model\'s answer reads the authority or the decision — the cached block, the dynamic prompt and the layout bounds are untouched (prompt alignment is WP5)',
-      promptStart > 0 && promptEnd > promptStart && promptRegion.includes('const cachedSystem = `<system_context>') && promptRegion.includes('const layoutBoundsText = archetype') &&
+    const stepStart = WP4_POST.indexOf('// ── Phase 14 WP5 (A6)');
+    const promptRegion = WP4_POST.slice(promptStart, stepStart);
+    const stepRegion = WP4_POST.slice(stepStart, promptEnd).replace(/\/\/[^\n]*/g, '');
+    check('prompt: the closed-gate prompt statements — the cached block, the dynamic prompt and the layout bounds — read nothing of the authority or the decision; they are untouched',
+      promptStart > 0 && stepStart > promptStart && promptEnd > stepStart && promptRegion.includes('const cachedSystem = `<system_context>') && promptRegion.includes('const layoutBoundsText = archetype') && promptRegion.includes('const prompt = `<seller_data>') &&
       !/\b(authority|obtainedAssignment|assignedLook|assignment|decision)\b/.test(promptRegion.replace(/\/\/[^\n]*/g, '')), promptRegion.replace(/\/\/[^\n]*/g, '').match(/\b(authority|obtainedAssignment|assignedLook|assignment|decision)\b/)?.[0]);
+    check('prompt: between those statements and the model\'s answer the authority is read ONCE — by the WP5 prompt step — and the decision, the assignment object and the assigned look are not read at all',
+      (stepRegion.match(/\bauthority\b/g) ?? []).length === 1 && count(stepRegion, 'alignPromptToAuthority({ cachedSystem, prompt, layoutBoundsText }, authority, {') === 1 &&
+      !/\b(obtainedAssignment|assignedLook|assignment|decision)\b/.test(stepRegion), stepRegion.match(/\b(obtainedAssignment|assignedLook|assignment|decision)\b/)?.[0]);
     check('prompt: the template constraint and the layout bounds still read the seller\'s chosen template', count(promptRegion, 'chosenTemplate') >= 6 && promptRegion.includes('describeLayoutBounds(classicLayoutBounds(chosenTemplate))'));
     const rpcStart = WP4_POST.indexOf(".rpc('persist_matrix_website'");
     const rpc = WP4_POST.slice(rpcStart, WP4_POST.indexOf('});', rpcStart));
@@ -2908,10 +2945,30 @@ console.log('\n[39] Phase 14 WP4 — POST identity: the route is the pre-WP4 rou
   // from the pre-WP4 route except the eight edits named here — there is no
   // room for an extra writer of template_key, storefront_family or
   // layout_strategy, an enclosing condition, or a changed closed-gate line.
-  // A LATER package that edits the route on purpose (WP5: the prompt) must
-  // add its own reversal here or re-record the hash — that is the point.
+  // A LATER package that edits the route on purpose must add its own reversal
+  // here or re-record the hash — that is the point. Phase 14 WP5 (the prompt)
+  // did the former: its four edits are reversed FIRST, then WP4's seven, and
+  // the hash below is still the pre-WP4 route's — not re-recorded. So the
+  // closed-gate prompt statements, the concepts step and everything else in
+  // the file are the pre-WP4 text, character for character.
   const PRE_WP4_ROUTE_SHA256 = 'cdf064342533edc168b986317674c7576e5d288bb6f079628db4dcb4580e68d7';
   const PRE_WP4_ROUTE_LENGTH = 62881;
+  // A WP5 comment group inside POST, in the same form as WP4's below.
+  const C5 = String.raw`(?<=\n)[ \t]*//[^\n]*Phase 14 WP5 \(A6\)[^\n]*\n(?:[ \t]*//[^\n]*\n)*`;
+  const wp5Reversals: Array<[string, RegExp, string]> = [
+    ['the WP5 block above POST (header comment through the end marker)', /\/\/ ─+\n\/\/ Phase 14 WP5 — PROMPT ALIGNMENT \(A6\)[\s\S]*?\/\/ \[WP5:END\]\n\n/, ''],
+    ['the prompt step', new RegExp(C5 + String.raw`    const executePrompt = alignPromptToAuthority\(\{ cachedSystem, prompt, layoutBoundsText \}, authority, \{\n(?:      [A-Za-z]+(?:: [A-Za-z_.]+)?,\n)+    \}\);\n\n`), ''],
+    ['the model call reading the step\'s output', /(?<=\n)      prompt: executePrompt\.prompt,\n      cachedSystem: executePrompt\.cachedSystem,\n/, '      prompt,\n      cachedSystem,\n'],
+    ['the dry-run harness reporting the bounds that were sent', /(?<=\n)        layout_bounds: executePrompt\.layoutBoundsText,\n/, '        layout_bounds: layoutBoundsText,\n'],
+  ];
+  const WP5_NAMES = /alignPromptToAuthority|assignedBuildBounds|executePrompt|ASSIGNED_[A-Z_]+|ExecutePrompt|AssignedPromptFacts|WP5/;
+  let withoutWp5 = WP4_ROUTE_SOURCE;
+  const wp5NotOnce: string[] = [];
+  for (const [name, pattern, replacement] of wp5Reversals) {
+    const hits = (withoutWp5.match(new RegExp(pattern.source, 'g')) ?? []).length;
+    if (hits !== 1) wp5NotOnce.push(`${name} (${hits})`);
+    withoutWp5 = withoutWp5.replace(pattern, () => replacement);
+  }
   // A WP4 comment group inside POST: a line naming "Phase 14 WP4 (A3)" and
   // the comment lines that follow it, up to the statement it introduces.
   const C = String.raw`(?<=\n)[ \t]*//[^\n]*Phase 14 WP4 \(A3\)[^\n]*\n(?:[ \t]*//[^\n]*\n)*`;
@@ -2926,7 +2983,7 @@ console.log('\n[39] Phase 14 WP4 — POST identity: the route is the pre-WP4 rou
   ];
   const WP4_IMPORTS = ['ARCHITECTURES', 'DEFAULT_STOREFRONT_FAMILY', 'STOREFRONT_FAMILIES', 'SUBTRACTION_TEMPLATE_KEY', 'assignedRecipeGrid', 'carryStorefrontDecision', 'composeVisualSystem', 'isStorefrontDecision', 'type ArchitectureAssignment', 'type StorefrontDecision', 'type WebsiteConfig', 'type WebsiteGeneration', 'type WebsiteLayout'];
 
-  let restored = WP4_ROUTE_SOURCE;
+  let restored = withoutWp5;
   const notOnce: string[] = [];
   for (const [name, pattern, replacement] of reversals) {
     const hits = (restored.match(new RegExp(pattern.source, 'g')) ?? []).length;
@@ -2946,20 +3003,726 @@ console.log('\n[39] Phase 14 WP4 — POST identity: the route is the pre-WP4 rou
   if (importList) restored = restored.slice(0, importStart) + importList + restored.slice(importEnd);
   const digest = crypto.createHash('sha256').update(restored, 'utf8').digest('hex');
 
+  check(`each of WP5's ${wp5Reversals.length} edits is found in the route exactly once`, WP4_ROUTE_SOURCE.length > 0 && wp5NotOnce.length === 0, wp5NotOnce);
+  check('the WP5 reversal really removes WP5: nothing of it is left once its edits are reversed, and WP5 added no name to the lib import', !WP5_NAMES.test(withoutWp5), withoutWp5.match(WP5_NAMES)?.[0]);
+  // The two block reversals delete a header comment as well as the lifted
+  // code. Only the code BETWEEN the markers is lifted, run and scanned, so the
+  // span above each BEGIN marker must hold nothing but comment lines —
+  // otherwise a module-level statement placed there would be hashed away
+  // without any section ever running or reading it.
+  const headerAbove = (pattern: RegExp, begin: string): string[] => {
+    const matched = WP4_ROUTE_SOURCE.match(pattern)?.[0] ?? '';
+    const at = matched.indexOf(begin);
+    return at === -1 ? ['<begin marker not found>'] : matched.slice(0, at).split('\n').filter((line) => line !== '');
+  };
+  const headerLines = [...headerAbove(wp5Reversals[0][1], '// [WP5:BEGIN]'), ...headerAbove(reversals[0][1], '// [WP4:BEGIN]')];
+  check('the header spans the two block reversals delete — everything above the WP5 and WP4 BEGIN markers — are comment lines only: no statement can sit where it is neither lifted nor hashed',
+    headerLines.length > 20 && headerLines.every((line) => line.startsWith('//')), headerLines.filter((line) => !line.startsWith('//')).slice(0, 3));
   check(`each of WP4's ${reversals.length} edits is found in the route exactly once`, WP4_ROUTE_SOURCE.length > 0 && notOnce.length === 0, notOnce);
   check(`each of the ${WP4_IMPORTS.length} names WP4 added to the lib import is listed exactly once`, importList.length > 0 && importsNotOnce.length === 0, importsNotOnce);
-  check('POST IDENTITY: with those edits reversed the route is byte-identical to the pre-WP4 route (sha256) — nothing else in the file changed: no other statement, comment, log line, prompt character or RPC argument',
+  check('POST IDENTITY: with WP5\'s and WP4\'s edits reversed the route is byte-identical to the pre-WP4 route (sha256) — nothing else in the file changed: no other statement, comment, log line, prompt character or RPC argument',
     digest === PRE_WP4_ROUTE_SHA256 && restored.length === PRE_WP4_ROUTE_LENGTH, { digest, length: restored.length, wantLength: PRE_WP4_ROUTE_LENGTH });
-  check('the reversal really removes WP4: nothing of it is left in the restored text',
-    !/routeAuthority|carryAuthority|applyAssignedLook|describeRouteAuthority|obtainedAssignment|modelGeneration|assignedLook|\bauthority\b|WP4/.test(restored), restored.match(/routeAuthority|carryAuthority|applyAssignedLook|describeRouteAuthority|obtainedAssignment|modelGeneration|assignedLook|\bauthority\b|WP4/)?.[0]);
+  check('the reversal really removes WP4 and WP5: nothing of either is left in the restored text',
+    !/routeAuthority|carryAuthority|applyAssignedLook|describeRouteAuthority|obtainedAssignment|modelGeneration|assignedLook|\bauthority\b|WP4/.test(restored) && !WP5_NAMES.test(restored), restored.match(/routeAuthority|carryAuthority|applyAssignedLook|describeRouteAuthority|obtainedAssignment|modelGeneration|assignedLook|\bauthority\b|WP4/)?.[0] ?? restored.match(WP5_NAMES)?.[0]);
   // What the identity buys for the closed gate: outside the lifted block, the
   // only WP4 code in the file is the six statements reversed above — two that
   // only assign a local, the authority step (null when closed, [37]), the
   // carry step (same object under null, [37]), and two branches behind a
-  // non-null authority / assigned look.
-  const outsideBlock = WP4_ROUTE_SOURCE.replace(reversals[0][1], () => '');
+  // non-null authority / assigned look. (Counted with WP5's edits reversed:
+  // its prompt step is handed the authority and is counted on its own below.)
+  const outsideBlock = withoutWp5.replace(reversals[0][1], () => '');
   const wp4Lines = outsideBlock.split('\n').filter((line) => !line.trim().startsWith('//') && /routeAuthority|carryAuthority|applyAssignedLook|describeRouteAuthority|obtainedAssignment|modelGeneration|assignedLook|\bauthority\b/.test(line));
   check('outside the lifted block, WP4 is 14 lines of code in POST — every one of them part of an edit reversed above', wp4Lines.length === 14, wp4Lines.map((line) => line.trim().slice(0, 60)));
+  // The same for WP5: outside ITS lifted block it is four lines of code in
+  // POST — the step's opening line (the one new reader of the authority), the
+  // two model-call arguments and the dry-run field — each part of a reversal.
+  const outsideWp5Block = WP4_ROUTE_SOURCE.replace(wp5Reversals[0][1], () => '');
+  const wp5Lines = outsideWp5Block.split('\n').filter((line) => !line.trim().startsWith('//') && WP5_NAMES.test(line));
+  check('outside its lifted block, WP5 is 4 lines of code in POST — every one of them part of an edit reversed above', wp5Lines.length === 4, wp5Lines.map((line) => line.trim().slice(0, 60)));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 14 WP5 — PROMPT ALIGNMENT (A6). Shared fixtures for [40]–[45].
+// Three pieces of the route are LIFTED from its source and run here, in both
+// gate states:
+//   · the WP5 block (between its two markers): the second cached block, the
+//     bounds step and the prompt step;
+//   · the two module-level prompt helpers that block uses (describeLayoutBounds
+//     and the copy-integrity directives);
+//   · POST's OWN execute-step prompt statements — everything from
+//     `const archetypeDirection` to the model call, the WP5 step included — so
+//     what is examined below is what POST hands generateWithFallback, built by
+//     POST's statements, not a script-side copy of them.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const WP5_BEGIN = '// [WP5:BEGIN]';
+const WP5_END = '// [WP5:END]';
+const sliceFrom = (source: string, from: string, to: string, includeTo = false): string => {
+  const a = source.indexOf(from);
+  const b = a === -1 ? -1 : source.indexOf(to, a + from.length);
+  return a === -1 || b === -1 ? '' : source.slice(a, includeTo ? b + to.length : b);
+};
+const WP5_BLOCK = sliceFrom(WP4_ROUTE_SOURCE, WP5_BEGIN, WP5_END).slice(WP5_BEGIN.length);
+/** The route's two module-level prompt helpers (they sit above the WP4 block). */
+const ROUTE_PROMPT_HELPERS = sliceFrom(WP4_ROUTE_SOURCE, 'function describeLayoutBounds(bounds: LayoutBounds): string {', '</copy_integrity>`;', true);
+const POST_MODEL_CALL = 'const { data: generation, provider } = await generateWithFallback({';
+/** POST's execute-step prompt statements: the template catalog, then every
+ *  statement from the archetype direction to (not including) the model call. */
+const POST_PROMPT_STATEMENTS =
+  sliceFrom(WP4_POST, 'const templateCatalog = Object.values(SITE_TEMPLATES)', ".join('\\n');", true) + '\n' +
+  sliceFrom(WP4_POST, 'const archetypeDirection = archetype', POST_MODEL_CALL);
+/** The concepts step, whole: from its guard to the execute step's banner. */
+const POST_CONCEPTS_STEP = sliceFrom(WP4_POST, "if (step === 'concepts') {", '// STEP 2 — Execution');
+
+const sha256 = (text: string): string => crypto.createHash('sha256').update(text, 'utf8').digest('hex');
+const transpileFragment = (source: string): string =>
+  ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.ESNext } }).outputText;
+/** Evaluate a fragment of the route in strict mode with ONLY `scope` and
+ *  `params` in reach — a reference to anything else throws. */
+function liftFragment<T>(source: string, scope: Record<string, unknown>, params: readonly string[], returns: readonly string[]): (...args: unknown[]) => T {
+  const names = Object.keys(scope);
+  const factory = new Function(...names, ...params, `'use strict';\n${transpileFragment(source)}\nreturn { ${returns.join(', ')} };`);
+  return (...args: unknown[]): T => factory(...names.map((n) => scope[n]), ...args) as T;
+}
+
+type ExecutePrompt = { cachedSystem: string; prompt: string; layoutBoundsText: string };
+type PromptFacts = {
+  shopName: string;
+  shopBio: string | null;
+  nicheLabel: string | null;
+  featuredBlock: string;
+  productCount: number;
+  inventorySummary: string;
+  concept: SiteConcept | null;
+  archetype: SiteArchetype | null;
+  entropyEngine: string;
+};
+type PromptHelpers = { describeLayoutBounds: (bounds: LayoutBounds) => string; COPY_INTEGRITY_DIRECTIVES: string };
+type PromptSteps = {
+  ASSIGNED_CACHED_SYSTEM: string;
+  assignedBuildBounds: (authority: RouteAuthority, archetype: SiteArchetype | null) => { bounds: LayoutBounds; bundleApplied: boolean };
+  alignPromptToAuthority: (closedGate: ExecutePrompt, authority: RouteAuthority | null, facts: PromptFacts) => ExecutePrompt;
+};
+/** What POST's prompt statements read: route locals, as fixtures. */
+type PostPromptInputs = {
+  archetype: SiteArchetype | null;
+  concept: SiteConcept | null;
+  chosenTemplate: TemplateKey | undefined;
+  nicheContext: string;
+  heuristicTemplate: TemplateKey;
+  variationSeed: string | null;
+  shop: { shop_name: string; bio: string | null };
+  nicheLabel: string | null;
+  featuredBlock: string;
+  products: unknown[];
+  inventorySummary: string;
+  authority: RouteAuthority | null;
+};
+const POST_PROMPT_INPUTS = ['archetype', 'concept', 'chosenTemplate', 'nicheContext', 'heuristicTemplate', 'variationSeed', 'shop', 'nicheLabel', 'featuredBlock', 'products', 'inventorySummary', 'authority'] as const;
+/** What those statements leave behind: the closed-gate prompt POST built
+ *  (cachedSystem / prompt / layoutBoundsText) and what the WP5 step returned
+ *  — `executePrompt`, the object the model call and the dry-run harness read. */
+type PostPromptRun = ExecutePrompt & { executePrompt: ExecutePrompt };
+
+/** Every outside name the lifted WP5 block may use: lib exports, the shared
+ *  copy rules, and (added below) the route's own two prompt helpers. */
+const WP5_SCOPE: Record<string, unknown> = {
+  ACCENT_PRESET_SLOTS,
+  DEFAULT_STOREFRONT_FAMILY,
+  ELITE_COPY_RULES,
+  SITE_TEMPLATES,
+  archetypeLayoutBounds,
+  assignedRecipeGrid,
+  classicLayoutBounds,
+  composeVisualSystem,
+};
+const WP5_STEP_NAMES = ['ASSIGNED_CACHED_SYSTEM', 'assignedBuildBounds', 'alignPromptToAuthority'] as const;
+
+type PromptPath = RoutePath & { concept: SiteConcept | null };
+const WP5_CONCEPT: SiteConcept = SiteConceptSchema.parse({
+  template_key: 'editorial',
+  concept_name: 'CONCEPTSENTINEL Amber Hour',
+  tagline: 'Oils pressed for slow mornings',
+  vibe: 'Cold-pressed marula, bottled in amber glass and blended weekly.',
+  palette: 'Nine oils and serums for one calm routine.',
+  hero_headline: 'Skin Drinks Golden Light',
+  hero_subheadline: 'Cold-pressed oils for skin that keeps its glow.',
+});
+/** The nine WP4 request paths — the two concept paths now carrying their
+ *  approved concept — plus a concept whose template_key DRIFTED from its
+ *  archetype's (the archetype's template wins in the route's resolution). */
+const WP5_PATHS: PromptPath[] = [
+  ...WP4_PATHS.map((p): PromptPath => ({
+    ...p,
+    concept: p.name.startsWith('concept') ? { ...WP5_CONCEPT, template_key: p.chosenTemplate ?? WP5_CONCEPT.template_key, ...(p.archetype ? { archetype_key: p.archetype.key } : {}) } : null,
+  })),
+  { name: 'concept-drifted/deep-luxury', archetype: ARCHETYPES['deep-luxury'], chosenTemplate: ARCHETYPES['deep-luxury'].template_key, forcedTemplate: { template: ARCHETYPES['deep-luxury'].template_key, source: 'concept' }, concept: { ...WP5_CONCEPT, template_key: 'vitality', archetype_key: 'deep-luxury' } },
+];
+/** What varies per request besides the path: the seed, the declared niche, the bio. */
+type PromptRequest = { seed: string | null; nicheLabel: string | null; bio: string | null };
+const WP5_REQUESTS: PromptRequest[] = [
+  { seed: null, nicheLabel: null, bio: null },
+  { seed: 'SEEDSENTINEL-7', nicheLabel: null, bio: 'BIOSENTINEL — pressed in small batches.' },
+  { seed: null, nicheLabel: 'NICHESENTINEL Atelier', bio: null },
+  { seed: 'SEEDSENTINEL-9', nicheLabel: 'NICHESENTINEL Atelier', bio: 'BIOSENTINEL — pressed in small batches.' },
+];
+/** A marker inside every per-request value — none may reach a cached block. */
+const WP5_SENTINELS = ['SHOPSENTINEL', 'BIOSENTINEL', 'NICHESENTINEL', 'SEEDSENTINEL', 'FEATUREDSENTINEL', 'INVENTORYSENTINEL', 'CONCEPTSENTINEL'];
+const WP5_FEATURED_BLOCK = 'FEATURED PRODUCTS (the 2 pieces the storefront displays in the hero and collection grid — story, product_grid intro and hero copy must reference ONLY these):\n1. FEATUREDSENTINEL Marula Oil (Serums, D450): Cold-pressed.\n2. Baobab Serum (Serums, D520)';
+const WP5_INVENTORY_SUMMARY = '- INVENTORYSENTINEL Marula Oil (Serums, D450): Cold-pressed.\n- Baobab Serum (Serums, D520)\n- Shea Balm (Balms, D300)';
+function postPromptInputs(p: PromptPath, q: PromptRequest, heuristicTemplate: TemplateKey, authority: RouteAuthority | null): PostPromptInputs {
+  return {
+    archetype: p.archetype,
+    concept: p.concept,
+    chosenTemplate: p.chosenTemplate,
+    // The route's own two forms of this line (declared niche / inventory only).
+    nicheContext: q.nicheLabel
+      ? `seller-declared niche "${q.nicheLabel}" (inventory's dominant category: "serums") — tailor every structural and copy decision to this niche`
+      : 'dominant category "serums"',
+    heuristicTemplate,
+    variationSeed: q.seed,
+    shop: { shop_name: 'SHOPSENTINEL Oils', bio: q.bio },
+    nicheLabel: q.nicheLabel,
+    featuredBlock: WP5_FEATURED_BLOCK,
+    products: new Array(9).fill(null),
+    inventorySummary: WP5_INVENTORY_SUMMARY,
+    authority,
+  };
+}
+const promptFactsOf = (p: PromptPath, q: PromptRequest): PromptFacts => ({
+  shopName: 'SHOPSENTINEL Oils', shopBio: q.bio, nicheLabel: q.nicheLabel, featuredBlock: WP5_FEATURED_BLOCK, productCount: 9,
+  inventorySummary: WP5_INVENTORY_SUMMARY, concept: p.concept, archetype: p.archetype, entropyEngine: q.seed ? `\n\n<entropy_engine>\nVariation Seed: ${q.seed}\n</entropy_engine>` : '',
+});
+
+let wp5LiftError: string | null = null;
+const PROMPT_HELPERS: PromptHelpers | null = ((): PromptHelpers | null => {
+  if (!ROUTE_PROMPT_HELPERS) { wp5LiftError = 'the route\'s prompt helpers (describeLayoutBounds … COPY_INTEGRITY_DIRECTIVES) were not found'; return null; }
+  try {
+    return liftFragment<PromptHelpers>(ROUTE_PROMPT_HELPERS, {}, [], ['describeLayoutBounds', 'COPY_INTEGRITY_DIRECTIVES'])();
+  } catch (error) {
+    wp5LiftError = `prompt helpers: ${String(error)}`;
+    return null;
+  }
+})();
+const PROMPT_STEPS: PromptSteps | null = ((): PromptSteps | null => {
+  if (!PROMPT_HELPERS) return null;
+  if (!WP5_BLOCK) { wp5LiftError = 'WP5 markers not found in the route'; return null; }
+  try {
+    return liftFragment<PromptSteps>(WP5_BLOCK, { ...WP5_SCOPE, ...PROMPT_HELPERS }, [], WP5_STEP_NAMES)();
+  } catch (error) {
+    wp5LiftError = `WP5 block: ${String(error)}`;
+    return null;
+  }
+})();
+const POST_PROMPT: ((inputs: PostPromptInputs) => PostPromptRun) | null = ((): ((inputs: PostPromptInputs) => PostPromptRun) | null => {
+  if (!PROMPT_HELPERS || !PROMPT_STEPS) return null;
+  try {
+    const scope = { ACCENT_PRESET_SLOTS, ELITE_COPY_RULES, SITE_TEMPLATES, TEMPLATE_KEYS, archetypeLayoutBounds, classicLayoutBounds, ...PROMPT_HELPERS, alignPromptToAuthority: PROMPT_STEPS.alignPromptToAuthority };
+    const statements = liftFragment<PostPromptRun>(POST_PROMPT_STATEMENTS, scope, POST_PROMPT_INPUTS, ['cachedSystem', 'prompt', 'layoutBoundsText', 'executePrompt']);
+    const runIt = (inputs: PostPromptInputs): PostPromptRun => statements(...POST_PROMPT_INPUTS.map((name) => inputs[name]));
+    // One run per branch of the statements, so a stray reference surfaces here.
+    for (const p of WP5_PATHS) for (const q of WP5_REQUESTS) runIt(postPromptInputs(p, q, 'ritual', null));
+    return runIt;
+  } catch (error) {
+    wp5LiftError = `POST prompt statements: ${String(error)}`;
+    return null;
+  }
+})();
+
+console.log('\n[40] Phase 14 WP5 — the prompt step: lifted, pure, and handed the authority alone');
+{
+  const count = (source: string, needle: string): number => source.split(needle).length - 1;
+  check('route source: the WP5 block is found between its two markers, after the WP4 block and above POST',
+    WP5_BLOCK.length > 0 && count(WP4_ROUTE_SOURCE, WP5_BEGIN) === 1 && count(WP4_ROUTE_SOURCE, WP5_END) === 1 &&
+    WP4_ROUTE_SOURCE.indexOf(WP4_END) < WP4_ROUTE_SOURCE.indexOf(WP5_BEGIN) && WP4_ROUTE_SOURCE.indexOf(WP5_END) < WP4_ROUTE_SOURCE.indexOf('export async function POST'));
+  check('the route\'s two prompt helpers lift and run with NOTHING in scope (no import, no route local)',
+    PROMPT_HELPERS !== null && typeof PROMPT_HELPERS.describeLayoutBounds === 'function' && typeof PROMPT_HELPERS.COPY_INTEGRITY_DIRECTIVES === 'string' && PROMPT_HELPERS.COPY_INTEGRITY_DIRECTIVES.startsWith('<copy_integrity>'), wp5LiftError);
+  check('the WP5 block lifts and runs against lib exports, the shared copy rules and those two helpers alone (no route local, no client, no gate constant, no WP4 step in scope)',
+    PROMPT_STEPS !== null && typeof PROMPT_STEPS.ASSIGNED_CACHED_SYSTEM === 'string' && typeof PROMPT_STEPS.assignedBuildBounds === 'function' && typeof PROMPT_STEPS.alignPromptToAuthority === 'function', wp5LiftError);
+  check('POST\'s own execute-step prompt statements lift and run — `const archetypeDirection` through the WP5 step, on every request path — so the prompts below are built by POST\'s statements, not by a mirror',
+    POST_PROMPT !== null && POST_PROMPT_STATEMENTS.includes('const cachedSystem = `<system_context>') && POST_PROMPT_STATEMENTS.includes('const prompt = `<seller_data>') && POST_PROMPT_STATEMENTS.includes('const executePrompt = alignPromptToAuthority('), wp5LiftError);
+
+  const impure = /\b(await|async|console|process|fetch|require|import|supabase|admin|Date|setTimeout)\b|Math\.random/;
+  check('the WP5 block is pure: no I/O, no logging, no clock, no randomness, no await', WP5_BLOCK.length > 0 && !impure.test(WP5_BLOCK), WP5_BLOCK.match(impure)?.[0]);
+  const reDerives = /RITUAL_RECIPE_GENERATION_ENABLED|\bgateOpen\b|obtainedAssignment|assignArchitecture|ArchitectureAssignment|alignAssignmentInputs|isStorefrontDecision|STOREFRONT_FAMILIES|\bARCHITECTURES\b|TEMPLATE_KEYS|SUBTRACTION_TEMPLATE_KEY|routeAuthority|carryAuthority|applyAssignedLook|describeRouteAuthority|carryStorefrontDecision|guardRecipeGridPick|templateFromCategory|chosenTemplate|heuristicTemplate|templateOverride|forcedTemplate/;
+  check('the WP5 block does not re-derive or re-validate the authority: it never names the gate, the assignment object or engine, a validator, a WP4 step, a guard, or the seller\'s / heuristic template',
+    WP5_BLOCK.length > 0 && !reDerives.test(WP5_BLOCK), WP5_BLOCK.match(reDerives)?.[0]);
+  const reads = [...new Set([...WP5_BLOCK.matchAll(/\bauthority\.(\w+(?:\.\w+)?)/g)].map((m) => m[1]))].sort();
+  const decisionFields = /\.(architecture|eligibility|signals|reason|confidence|sellerTemplate|overriddenBy|commercePreference|familyReason|floor)\b/;
+  check('the WP5 block consumes the authority only: its template, whether it holds a decision, and that decision\'s family — the recipe grid through assignedRecipeGrid, exactly as the WP4 log line does; no other field of the decision',
+    reads.join() === 'decision,decision.family,template' && count(WP5_BLOCK, 'assignedRecipeGrid(authority.decision)') === 1 && count(WP5_BLOCK, 'assignedRecipeGrid(') === 1 && !decisionFields.test(WP5_BLOCK), { reads, field: WP5_BLOCK.match(decisionFields)?.[0] });
+  check('the WP5 block does not recompute template ownership: it compares no template keys (no `.template_key` read) and takes "is the archetype on its own template?" from the WP3 composition',
+    WP5_BLOCK.length > 0 && !/\.template_key\b/.test(WP5_BLOCK) && count(WP5_BLOCK, 'composeVisualSystem(archetype, authority.template)') === 1 && count(WP5_BLOCK, 'composeVisualSystem(') === 1 && count(WP5_BLOCK, 'look.templateChanged') === 1);
+
+  check('POST: the prompt step is called once — handed the closed-gate prompt POST just built, the authority, and seller / creative facts only (no template, no gate, no assignment)',
+    count(WP4_POST, 'alignPromptToAuthority(') === 1 &&
+    /const executePrompt = alignPromptToAuthority\(\{ cachedSystem, prompt, layoutBoundsText \}, authority, \{\s*shopName: shop\.shop_name,\s*shopBio: shop\.bio,\s*nicheLabel,\s*featuredBlock,\s*productCount: products\.length,\s*inventorySummary,\s*concept,\s*archetype,\s*entropyEngine,\s*\}\);/.test(WP4_POST));
+  check('POST: the model is sent the step\'s output and nothing else — `executePrompt` is named four times: where it is made, the two model-call arguments, and the dry-run harness\'s layout_bounds',
+    count(WP4_POST, 'executePrompt') === 4 && WP4_POST.includes('layout_bounds: executePrompt.layoutBoundsText,') &&
+    /generateWithFallback\(\{\s*schema: MatrixWebsiteGenerationSchema,\s*prompt: executePrompt\.prompt,\s*cachedSystem: executePrompt\.cachedSystem,\s*callerName: 'generate-website',/.test(WP4_POST));
+  check('POST: the concepts step still sends its own cached block and prompt — the WP5 step is not in it',
+    POST_CONCEPTS_STEP.length > 0 && /generateWithFallback\(\{\s*schema: ConceptPairSchema,\s*prompt,\s*cachedSystem,\s*callerName: 'generate-website:concepts',/.test(POST_CONCEPTS_STEP) &&
+    !/authority|executePrompt|alignPromptToAuthority|ASSIGNED_|WP5/.test(POST_CONCEPTS_STEP));
+
+  const root = process.cwd();
+  const read = (rel: string): string => {
+    try { return fs.readFileSync(path.join(root, rel), 'utf8'); } catch { return ''; }
+  };
+  const walk = (rel: string, out: string[] = []): string[] => {
+    let entries: fs.Dirent[] = [];
+    try { entries = fs.readdirSync(path.join(root, rel), { withFileTypes: true }); } catch { return out; }
+    for (const e of entries) {
+      if (e.name === 'node_modules' || e.name.startsWith('.')) continue;
+      const child = `${rel}/${e.name}`;
+      if (e.isDirectory()) walk(child, out);
+      else if (/\.(ts|tsx|mts|js|jsx|mjs)$/.test(e.name)) out.push(child);
+    }
+    return out;
+  };
+  const WP5_STEP_NAMES_RE = /\b(alignPromptToAuthority|assignedBuildBounds|ASSIGNED_CACHED_SYSTEM|ASSIGNED_FAMILY_FACTS|ASSIGNED_GRID_FACTS|AssignedPromptFacts)\b/;
+  const others = [...walk('app'), ...walk('components'), ...walk('lib')].filter((f) => f !== WP4_ROUTE_FILE);
+  const users = others.filter((f) => WP5_STEP_NAMES_RE.test(read(f)));
+  check(`WP5 lives in the generation route alone — no library, component, page or other route names a WP5 step (${others.length} files, the engine file included)`, others.length > 50 && others.includes('lib/siteTemplates.ts') && users.length === 0, users);
+}
+
+if (!ROUTE_STEPS || !PROMPT_HELPERS || !PROMPT_STEPS || !POST_PROMPT) {
+  check('sections [41]–[45] need the lifted WP4 steps, the lifted WP5 block and POST\'s lifted prompt statements — NOT RUN', false, wp4LiftError ?? wp5LiftError);
+} else {
+  const R = ROUTE_STEPS;
+  const H = PROMPT_HELPERS;
+  const S = PROMPT_STEPS;
+  const postPrompt = POST_PROMPT;
+  const count = (source: string, needle: string): number => source.split(needle).length - 1;
+  /** Which of `values` a text names as a quoted token — `"ritual"`, `"subtraction"`, `"counter"`. */
+  const named = (text: string, values: readonly string[]): string[] => values.filter((v) => text.includes(`"${v}"`));
+  /** What the pre-WP5 prompt says where it asks the model to CHOOSE an Assignment-owned value. */
+  const CHOICE_PHRASES = [
+    'TEMPLATE SELECTION', 'choose the single best template_key', 'Heuristic suggestion', 'AVAILABLE TEMPLATES', 'IF template_key is',
+    'the seller has explicitly chosen', 'the seller approved the "', 'You MUST set template_key', 'why this template',
+    'ALWAYS set this', 'SUBTRACTION RULES', 'SUBTRACTION DEFAULTS', 'route the section rhythm', 'keep choosing',
+    `one of ${TEMPLATE_KEYS.map((k) => `"${k}"`).join(' | ')}`,
+  ];
+  const CHOICE_PATTERN = /\b(choose|select|pick|prefer)\b[^.\n]{0,120}\b(template|template_key|storefront_family|storefront family|family)\b/i;
+  const asksToChoose = (text: string): string | null => CHOICE_PHRASES.find((phrase) => text.includes(phrase)) ?? text.match(CHOICE_PATTERN)?.[0] ?? null;
+  const RECIPE_GRIDS = ['counter', 'gallery'] as const;
+
+  console.log('\n[41] Phase 14 WP5 — gate matrix, CLOSED: both AI steps send the pre-WP5 prompt, byte for byte');
+  {
+    // Recorded from the route as it stood BEFORE WP5 (commit 752dd09), by
+    // running that file's own prompt statements over the matrix below.
+    const PRE_WP5_CACHED_SHA256 = '64a1a9179205f746933a0027ba96e643a19ab2d836d4794c390a1cf94f9e4b1f';
+    const PRE_WP5_CACHED_LENGTH = 10649;
+    const PRE_WP5_DYNAMIC_SHA256 = 'c92017e0b9d2ddb4f639ebb05d3ebf847c41ffe61b9d00dc35af3d9054859cdb';
+    const PRE_WP5_CONCEPTS_STEP_SHA256 = 'd383a1dd9ba4d2a1780452d4aa283519b605e749e281f9c321a7d8f717d91fec';
+
+    check('the generation gate constant is still false — production sends the closed-gate prompt', RITUAL_RECIPE_GENERATION_ENABLED === false);
+    check('closed: the authority POST hands the prompt step is null, whatever Assignment returned',
+      [null, undefined, ...WP3_DECISIONS.map(([, d]) => d)].every((d) => R.routeAuthority(RITUAL_RECIPE_GENERATION_ENABLED, d, 'ritual') === null));
+
+    // The step itself: under a null authority it returns the object it was handed.
+    const handed: ExecutePrompt = Object.freeze({ cachedSystem: 'CACHED', prompt: 'PROMPT', layoutBoundsText: 'BOUNDS' });
+    let passThrough = true;
+    let passCases = 0;
+    for (const p of WP5_PATHS) {
+      for (const q of WP5_REQUESTS) {
+        passCases += 1;
+        if (S.alignPromptToAuthority(handed, null, promptFactsOf(p, q)) !== handed) passThrough = false;
+      }
+    }
+    check(`closed: with no authority the prompt step returns the SAME object it was handed — never a copy, never rebuilt (${passCases} requests: ${WP5_PATHS.length} paths × ${WP5_REQUESTS.length} request shapes; the handed object is frozen)`, passThrough && passCases === WP5_PATHS.length * WP5_REQUESTS.length);
+
+    // POST's own statements, run for every request path with a null authority.
+    const runs: Array<{ name: string; run: PostPromptRun }> = [];
+    for (const p of WP5_PATHS) {
+      for (const q of WP5_REQUESTS) {
+        for (const heuristic of TEMPLATE_KEYS) {
+          runs.push({ name: `${p.name}|seed=${q.seed}|niche=${q.nicheLabel}|bio=${q.bio !== null}|heuristic=${heuristic}`, run: postPrompt(postPromptInputs(p, q, heuristic, null)) });
+        }
+      }
+    }
+    const sent = runs.every(({ run }) => run.executePrompt.cachedSystem === run.cachedSystem && run.executePrompt.prompt === run.prompt && run.executePrompt.layoutBoundsText === run.layoutBoundsText);
+    check(`closed: what POST sends the model IS what its closed-gate statements built — cached block, dynamic prompt and the dry-run bounds text, on every request path (${runs.length} requests: ${WP5_PATHS.length} paths × ${WP5_REQUESTS.length} request shapes × ${TEMPLATE_KEYS.length} heuristic templates)`,
+      sent && runs.length === WP5_PATHS.length * WP5_REQUESTS.length * TEMPLATE_KEYS.length);
+    const cachedBlocks = [...new Set(runs.map(({ run }) => run.executePrompt.cachedSystem))];
+    check('closed: the cached block is ONE string on every request path — and it is byte-identical to the pre-WP5 cached block (sha256 + length recorded from the pre-WP5 route)',
+      cachedBlocks.length === 1 && sha256(cachedBlocks[0]) === PRE_WP5_CACHED_SHA256 && cachedBlocks[0].length === PRE_WP5_CACHED_LENGTH, { blocks: cachedBlocks.length, digest: sha256(cachedBlocks[0] ?? ''), length: cachedBlocks[0]?.length });
+    const dynamicDigest = sha256(JSON.stringify(runs.map(({ name, run }) => [name, run.executePrompt.prompt, run.executePrompt.layoutBoundsText])));
+    check(`closed: the dynamic prompt and the bounds text are byte-identical to the pre-WP5 route's on all ${runs.length} requests (sha256 over the whole matrix, recorded from the pre-WP5 route)`, dynamicDigest === PRE_WP5_DYNAMIC_SHA256, dynamicDigest);
+    check('closed: the second cached block is never sent and the prompt carries no <assignment> section',
+      runs.every(({ run }) => run.executePrompt.cachedSystem !== S.ASSIGNED_CACHED_SYSTEM && !run.executePrompt.prompt.includes('<assignment>') && !run.executePrompt.cachedSystem.includes('<assignment')));
+    // Today's behaviour, preserved: the closed prompt still asks the model to choose.
+    const onboardingClosed = runs.find(({ name }) => name.startsWith('onboarding|'))!.run.executePrompt;
+    check('closed: the model is still asked to choose the template, the family and Subtraction (today\'s behaviour, untouched) — the detector section [42] uses fires on it',
+      onboardingClosed.prompt.includes('TEMPLATE SELECTION: choose the single best template_key') && onboardingClosed.cachedSystem.includes('"storefront_family"    : ALWAYS set this') && onboardingClosed.cachedSystem.includes('SUBTRACTION RULES') &&
+      asksToChoose(onboardingClosed.cachedSystem) !== null && asksToChoose(onboardingClosed.prompt) !== null);
+    check('closed: split_cta is asked for whenever an archetype is in play — as before WP5',
+      runs.every(({ name, run }) => run.executePrompt.prompt.includes('Write the split_cta object') === (WP5_PATHS.find((p) => name.startsWith(`${p.name}|`))!.archetype !== null)));
+
+    // The concepts step is out of WP5's scope: its source is the pre-WP5 text.
+    check('concepts step: its whole source — cached block, dynamic prompt, model call, pinning, log line and response — is byte-identical to the pre-WP5 route (sha256)',
+      POST_CONCEPTS_STEP.length > 0 && sha256(POST_CONCEPTS_STEP) === PRE_WP5_CONCEPTS_STEP_SHA256, sha256(POST_CONCEPTS_STEP));
+
+    // Logs, config, persistence.
+    const logCalls = (WP4_ROUTE_SOURCE.match(/console\.(log|warn|error|info|debug)\(/g) ?? []).length;
+    check('logs: WP5 adds no log statement — the route still has the 23 it had after WP4, none of them in the WP5 block', logCalls === 23 && !/console\./.test(WP5_BLOCK), logCalls);
+    const tailStart = WP4_POST.indexOf('const { brand_tokens, matrix_theme, ...modelGeneration } = generation;');
+    const tail = WP4_POST.slice(tailStart).split('\n').filter((line) => !line.trim().startsWith('//')).join('\n');
+    check('config and persistence: after the model answers, the step\'s output is read ONCE — the dry-run harness\'s layout_bounds — so no carrier, pin, expression write, cleanup or RPC argument can depend on the prompt step ([37] and [39] prove the tail itself is unchanged)',
+      tailStart > 0 && count(tail, 'executePrompt') === 1 && count(tail, 'layout_bounds: executePrompt.layoutBoundsText,') === 1 && !/alignPromptToAuthority|ASSIGNED_/.test(tail));
+  }
+
+  // ── Open gate. One build per (merchant × niche × request path), plus the
+  // Classic floor reached five ways. For each: the authority the route's own
+  // step returns, and the prompt POST's own statements then build from it.
+  type OpenBuild = {
+    label: string;
+    p: PromptPath;
+    q: PromptRequest;
+    facts: RouteFacts;
+    floorCase: { obtained: ArchitectureAssignment | null | undefined } | undefined;
+    authority: RouteAuthority;
+    family: string;
+    grid: string | null;
+    sent: ExecutePrompt;
+    full: string;
+  };
+  const hostileDecision = new Proxy({}, { get() { throw new Error('unreadable decision'); } }) as unknown as ArchitectureAssignment;
+  const counterDecision = WP3_DECISIONS[0][1];
+  const FLOORS: Array<[string, ArchitectureAssignment | null | undefined]> = [
+    ['missing: null', null],
+    ['missing: undefined', undefined],
+    ['unreadable: reading the decision throws', hostileDecision],
+    ['invalid: a closed-gate object while the gate is open', closed({ niche: 'tech', products: photographed(20, 20, ['Phones', 'Laptops', 'Audio']), heroMedia: banner })],
+    ['invalid: a family that is not a family', { ...counterDecision, family: 'not-a-family' } as unknown as ArchitectureAssignment],
+    ['invalid: Counter on a template that cannot render it', { ...counterDecision, template: 'editorial' } as unknown as ArchitectureAssignment],
+    ['invalid: a Counter decision relabelled Subtraction', { ...counterDecision, family: 'subtraction' } as unknown as ArchitectureAssignment],
+  ];
+  const openBuilds: OpenBuild[] = [];
+  let openBuildError: string | null = null;
+  let openMerchants = 0;
+  try {
+    const sampled = wp2Merchants().filter((_, i) => i % 577 === 0);
+    const merchants: Merchant[] = [...WP4_MERCHANTS.map(([, m]) => m), ...sampled];
+    openMerchants = merchants.length;
+    const push = (label: string, m: Merchant, p: PromptPath, bodyNiche: unknown, q: PromptRequest, floorCase?: { obtained: ArchitectureAssignment | null | undefined }): void => {
+      const facts = routeFacts(m, p, bodyNiche, true);
+      const authority = R.routeAuthority(true, floorCase ? floorCase.obtained : facts.assignment, p.chosenTemplate ?? facts.heuristicTemplate);
+      if (!authority) throw new Error(`gate open returned no authority (${label})`);
+      const sent = postPrompt(postPromptInputs(p, q, facts.heuristicTemplate, authority)).executePrompt;
+      openBuilds.push({
+        label, p, q, facts, floorCase, authority,
+        family: authority.decision ? authority.decision.family : DEFAULT_STOREFRONT_FAMILY,
+        grid: authority.decision ? assignedRecipeGrid(authority.decision) : null,
+        sent, full: `${sent.cachedSystem}\n${sent.prompt}`,
+      });
+    };
+    merchants.forEach((m, mi) => WP4_NICHES.forEach((bodyNiche, ni) => WP5_PATHS.forEach((p, pi) => {
+      push(`merchant ${mi} / niche ${String(bodyNiche)} / ${p.name}`, m, p, bodyNiche, WP5_REQUESTS[(mi + ni + pi) % WP5_REQUESTS.length]);
+    })));
+    FLOORS.forEach(([name, obtained], fi) => [WP4_MERCHANTS[0][1], WP4_MERCHANTS[2][1]].forEach((m, mi) => WP5_PATHS.forEach((p, pi) => {
+      push(`floor (${name}) / merchant ${mi} / ${p.name}`, m, p, 'general', WP5_REQUESTS[(fi + mi + pi) % WP5_REQUESTS.length], { obtained });
+    })));
+  } catch (error) {
+    openBuildError = String(error);
+  }
+  const decided = openBuilds.filter((b) => b.authority.decision !== null);
+  const floored = openBuilds.filter((b) => b.authority.decision === null);
+  /** The model pushing against every Assignment-owned value at once, twice
+   *  over — whatever the authority is, at least one of these differs from it
+   *  in the template, the family and the recipe grid. */
+  const pushyModels: WebsiteGeneration[] = [
+    { ...GENERATION, template_key: 'vitality', layout: modelLayout('subtraction', 'counter') },
+    { ...GENERATION, template_key: 'editorial', layout: modelLayout('menu-occasion', 'gallery') },
+    { ...GENERATION, template_key: 'ritual', layout: modelLayout('product-first', 'masonry') },
+  ];
+  const tailOf = (b: OpenBuild, model: WebsiteGeneration, steps: RouteSteps = R) => routeTail(steps, b.facts, b.p, model, true, b.floorCase);
+  const section = (text: string, tag: string): string => sliceFrom(text, `<${tag}>\n`, `\n</${tag}>`).slice(tag.length + 3);
+
+  console.log('\n[42] Phase 14 WP5 — gate OPEN, ownership: the prompt states the authority\'s template, family and recipe grid, and asks the model for none of them');
+  {
+    const outcomes = [...new Set(decided.map((b) => `${b.authority.decision!.architecture}/${b.family}`))].sort();
+    const floorKinds = [...new Set(floored.map((b) => b.authority.floor))].sort();
+    check(`fixtures: ${openBuilds.length} open-gate prompts built by POST's own statements (${openMerchants} merchants × ${WP4_NICHES.length} niches × ${WP5_PATHS.length} paths, plus ${FLOORS.length} floors × 2 merchants × ${WP5_PATHS.length} paths) — every decision outcome (${outcomes.join(', ')}) and the Classic floor reached as ${floorKinds.join(' / ')}`,
+      openBuildError === null && openMerchants > WP4_MERCHANTS.length && decided.length === openMerchants * WP4_NICHES.length * WP5_PATHS.length && floored.length === FLOORS.length * 2 * WP5_PATHS.length &&
+      ['classic/lifestyle-story', 'classic/menu-occasion', 'classic/product-first', 'classic/subtraction', 'counter/product-first', 'gallery/lifestyle-story'].every((outcome) => outcomes.includes(outcome)) && floorKinds.join() === 'invalid,missing,unreadable',
+      openBuildError ?? { decided: decided.length, floored: floored.length, outcomes, floorKinds });
+
+    let templateOk = true;
+    let familyOk = true;
+    let gridOk = true;
+    let builtOk = true;
+    let reasoningOk = true;
+    let noChoice = true;
+    let tagsOk = true;
+    let sellerDataOk = true;
+    let discardedSeller = 0;
+    let discardedConcept = 0;
+    let discardedHeuristic = 0;
+    let ownedGrids = 0;
+    let offender: unknown;
+    const note = (what: string, b: OpenBuild, detail?: unknown): void => { offender = offender ?? { what, build: b.label, detail }; };
+    for (const b of openBuilds) {
+      const t = b.authority.template;
+      const assignment = section(b.sent.prompt, 'assignment');
+      // TEMPLATE — stated as fixed; the only template the whole prompt names.
+      if (
+        named(b.full, TEMPLATE_KEYS).join() !== t || !assignment.includes(`TEMPLATE — FIXED: "${t}" (${SITE_TEMPLATES[t].name} — ${SITE_TEMPLATES[t].niche}).`) ||
+        !assignment.includes(`Set template_key to "${t}".`) || count(assignment, 'TEMPLATE — FIXED:') !== 1
+      ) { templateOk = false; note('template', b, named(b.full, TEMPLATE_KEYS)); }
+      if (b.p.chosenTemplate && b.p.chosenTemplate !== t) discardedSeller += 1;
+      if (b.p.concept && b.p.concept.template_key !== t) discardedConcept += 1;
+      if (b.facts.heuristicTemplate !== t) discardedHeuristic += 1;
+      // FAMILY — stated as fixed; the only family the whole prompt names; never a key the dynamic prompt asks for.
+      if (
+        named(b.full, STOREFRONT_FAMILIES).join() !== b.family || !assignment.includes(`STOREFRONT FAMILY — FIXED: "${b.family}".`) || count(assignment, 'STOREFRONT FAMILY — FIXED:') !== 1 ||
+        b.sent.prompt.includes('storefront_family') || count(b.sent.cachedSystem, 'storefront_family') !== 1 || !b.sent.cachedSystem.includes('never write "layout.storefront_family"')
+      ) { familyOk = false; note('family', b, named(b.full, STOREFRONT_FAMILIES)); }
+      // RECIPE GRID — stated as fixed when owned; otherwise the presentation grid is the model's and no recipe grid is named.
+      const fixedLine = count(assignment, 'COLLECTION GRID — FIXED:');
+      const yoursLine = count(assignment, 'COLLECTION GRID — YOURS:');
+      if (b.grid) ownedGrids += 1;
+      if (
+        named(b.full, RECIPE_GRIDS).join() !== (b.grid ?? '') ||
+        (b.grid ? fixedLine !== 1 || yoursLine !== 0 || !assignment.includes(`COLLECTION GRID — FIXED: "${b.grid}"`) || !assignment.includes('Do not write layout_strategy.grid.') : fixedLine !== 0 || yoursLine !== 1)
+      ) { gridOk = false; note('grid', b, { named: named(b.full, RECIPE_GRIDS), owned: b.grid }); }
+      // What is stated is what the build does, whatever the model answers.
+      for (const model of pushyModels) {
+        const run4 = tailOf(b, model);
+        if (run4.config.template_key !== t || run4.config.storefront_family !== b.family || recipeOf(run4.legacyGeneration.layout?.layout_strategy?.grid) !== (b.grid ?? 'none')) {
+          builtOk = false; note('built', b, { config: `${run4.config.template_key}/${run4.config.storefront_family}/${recipeOf(run4.legacyGeneration.layout?.layout_strategy?.grid)}`, stated: `${t}/${b.family}/${b.grid ?? 'none'}` });
+        }
+      }
+      // NICHE REASONING — explains the authority's template.
+      if (
+        !assignment.includes(`NICHE REASONING: write niche_reasoning explaining how the "${t}" template is styled for this inventory.`) || count(b.sent.prompt, 'niche_reasoning') !== 1 ||
+        !b.sent.cachedSystem.includes('- "niche_reasoning"  : 1-2 sentences on how the assigned template and your structural choices fit this inventory')
+      ) { reasoningOk = false; note('niche reasoning', b); }
+      // No request to choose an Assignment-owned value, anywhere in the prompt.
+      const asked = asksToChoose(b.full);
+      if (asked !== null) { noChoice = false; note('choice', b, asked); }
+      // Every section the cached block points the model at is in the user message.
+      const wantsDirection = b.p.concept !== null || b.p.archetype !== null;
+      // (Tags are counted as SECTION openers — on a line of their own — since
+      // the prose may refer to <layout_bounds> by name.)
+      const opens = (tag: string): number => count(`\n${b.sent.prompt}`, `\n<${tag}>\n`);
+      const at = (needle: string): number => b.sent.prompt.indexOf(needle);
+      if (
+        opens('seller_data') !== 1 || opens('assignment') !== 1 || count(b.sent.prompt, '\n</assignment>\n') !== 1 || opens('layout_bounds') !== 1 || opens('copy_integrity') !== 1 ||
+        opens('chosen_archetype') !== (wantsDirection ? 1 : 0) || opens('entropy_engine') !== (b.q.seed ? 1 : 0) ||
+        !(at('\n</seller_data>\n') < at('\n<assignment>\n') && at('\n</assignment>\n') < at('\n<layout_bounds>\n') && at('\n</layout_bounds>\n') < at('\n<copy_integrity>\n')) ||
+        (wantsDirection && !(at('\n</assignment>\n') < at('\n<chosen_archetype>\n') && at('\n</chosen_archetype>\n') < at('\n<layout_bounds>\n')))
+      ) { tagsOk = false; note('sections', b); }
+      // The seller data is the closed-gate prompt's, character for character.
+      const closedPrompt = postPrompt(postPromptInputs(b.p, b.q, b.facts.heuristicTemplate, null)).executePrompt.prompt;
+      const sellerEnd = '</seller_data>';
+      if (b.sent.prompt.slice(0, b.sent.prompt.indexOf(sellerEnd)) !== closedPrompt.slice(0, closedPrompt.indexOf(sellerEnd)) || !b.sent.prompt.endsWith(closedPrompt.slice(closedPrompt.indexOf('<copy_integrity>')))) { sellerDataOk = false; note('seller data', b); }
+    }
+    check(`TEMPLATE: every open-gate prompt states the authority's template as FIXED and names no other template anywhere — cached block or user message (${openBuilds.length} prompts)`, templateOk && openBuilds.length > 0, offender);
+    check(`TEMPLATE: the seller's own template (${discardedSeller} prompts), an approved concept's template (${discardedConcept}) and the category heuristic's (${discardedHeuristic}) are never named once Assignment set them aside — the prompt never requests a template the build will not use`,
+      templateOk && discardedSeller > 100 && discardedConcept > 20 && discardedHeuristic > 100, { discardedSeller, discardedConcept, discardedHeuristic });
+    check('FAMILY: every open-gate prompt states the authority\'s family as FIXED (the default family at the Classic floor), names no other family, and tells the model never to write the key', familyOk, offender);
+    check(`RECIPE GRID: where the authority owns one it is stated as FIXED and the model is told not to write the grid (${ownedGrids} prompts); where it owns none, no recipe grid is named and the presentation grid is marked the model's`, gridOk && ownedGrids > 100, offender);
+    check(`what the prompt states is what the build does: for each prompt, the config POST's tail assembles carries that template, that family and that recipe grid whatever the model answers (${openBuilds.length} prompts × ${pushyModels.length} model generations pushing the other way)`, builtOk, offender);
+    check('NICHE REASONING: the prompt asks the model to explain the authority\'s template — the only template it names — and the field spec speaks of "the assigned template"', reasoningOk, offender);
+    check('NO CHOICE: no open-gate prompt asks the model to choose, select or prefer a template or a family, and none carries a pre-WP5 selection instruction (TEMPLATE SELECTION, AVAILABLE TEMPLATES, "ALWAYS set this", SUBTRACTION RULES / DEFAULTS, the per-template bounds list)', noChoice, offender);
+    check('no contradiction by omission: every section the cached block points at is in the user message, once, in order — <seller_data>, <assignment>, <chosen_archetype> exactly when a concept or archetype was approved, <layout_bounds>, <entropy_engine> exactly when a seed was posted', tagsOk, offender);
+    check('the seller data, the copy-integrity directives and the entropy block are the closed-gate prompt\'s own text, character for character — WP5 changed what the model is told about ownership, nothing else', sellerDataOk, offender);
+
+    // The Classic floor.
+    let floorOk = true;
+    let floorWords = true;
+    let floorOffender: unknown;
+    const FLOOR_BANNED = /subtraction|recipe|\bcounter\b|\bgallery\b/i;
+    for (const b of floored) {
+      const floorTemplate = b.p.chosenTemplate ?? b.facts.heuristicTemplate;
+      const assignment = section(b.sent.prompt, 'assignment');
+      if (b.authority.template !== floorTemplate || b.family !== DEFAULT_STOREFRONT_FAMILY || b.grid !== null || !assignment.includes(`TEMPLATE — FIXED: "${floorTemplate}"`) || !assignment.includes(`STOREFRONT FAMILY — FIXED: "${DEFAULT_STOREFRONT_FAMILY}".`) || !assignment.includes('COLLECTION GRID — YOURS:')) { floorOk = false; floorOffender = floorOffender ?? b.label; }
+      if (FLOOR_BANNED.test(b.full)) { floorWords = false; floorOffender = floorOffender ?? { build: b.label, word: b.full.match(FLOOR_BANNED)?.[0] }; }
+    }
+    check(`CLASSIC FLOOR: with no usable decision the prompt states the floor template (the seller's, else the category heuristic's) and the default family as FIXED (${floored.length} prompts: ${FLOORS.length} floors × 2 merchants × ${WP5_PATHS.length} paths)`, floorOk && floored.length > 0, floorOffender);
+    check('CLASSIC FLOOR: the whole prompt — cached block and user message — never mentions Subtraction, a recipe, or a recipe grid', floorWords && floored.length > 0, floorOffender);
+    // Decisions that own no recipe grid read the same way; Subtraction is named only when it is the assigned family.
+    const subtractionOnlyWhenAssigned = decided.every((b) => /subtraction/i.test(b.full) === (b.family === 'subtraction'));
+    const recipeOnlyWhenOwned = decided.every((b) => /recipe/i.test(b.full) === false && (/\bcounter\b|\bgallery\b/i.test(b.full) === (b.grid !== null)));
+    check('Subtraction is mentioned only where it is the ASSIGNED family (stated, never offered), and Counter / Gallery only where the authority owns that grid — no Subtraction selection rules or defaults in any open-gate prompt',
+      subtractionOnlyWhenAssigned && recipeOnlyWhenOwned && decided.some((b) => b.family === 'subtraction') && !openBuilds.some((b) => /SUBTRACTION (RULES|DEFAULTS)/.test(b.full)));
+    // The decision the prompt consumed is the one the WP4 log line reports.
+    const logAgrees = openBuilds.every((b) => R.describeRouteAuthority(b.authority, 'shop-1').endsWith(`template=${b.authority.template} family=${b.family} grid=${b.grid ?? 'none'}`));
+    check('the template, family and grid the prompt states are the ones the WP4 authority log line reports for the same authority', logAgrees);
+  }
+
+  console.log('\n[43] Phase 14 WP5 — gate OPEN, bounds parity: the bounds the prompt advertises are the bounds the build applies');
+  {
+    // The WP4 steps lifted a second time with ONE change to their scope: the
+    // layout carrier records the bounds it is handed. So for an archetype on
+    // a changed template the "applied" bounds below are the very object the
+    // route's applyAssignedLook passed — not a recomputation of it.
+    const handedBounds: LayoutBounds[] = [];
+    let spied: RouteSteps | null = null;
+    try {
+      const scope: Record<string, unknown> = { ...WP4_SCOPE, applyGenerationLayout: (config: WebsiteConfig, layout: WebsiteLayout | null | undefined, bounds: LayoutBounds) => { handedBounds.push(bounds); return applyGenerationLayout(config, layout, bounds); } };
+      spied = liftFragment<RouteSteps>(WP4_BLOCK, scope, [], ['routeAuthority', 'carryAuthority', 'applyAssignedLook', 'describeRouteAuthority'])();
+    } catch {
+      spied = null;
+    }
+    check('the WP4 steps lift a second time with a recording layout carrier in scope', spied !== null);
+
+    const seenCases: Record<string, number> = { 'archetype on its own template': 0, 'archetype on a changed template': 0, 'no archetype': 0 };
+    let parity = true;
+    let textOk = true;
+    let caseOk = true;
+    let leversOk = true;
+    let leverProbes = 0;
+    let offender: unknown;
+    const note = (what: string, b: OpenBuild, detail?: unknown): void => { offender = offender ?? { what, build: b.label, detail }; };
+    const model: WebsiteGeneration = { ...GENERATION, template_key: 'vitality', layout: modelLayout('subtraction', 'gallery') };
+    openBuilds.forEach((b, index) => {
+      if (!spied) return;
+      const advertised = S.assignedBuildBounds(b.authority, b.p.archetype);
+      handedBounds.length = 0;
+      const run4 = tailOf(b, model, spied);
+      const which = run4.recomposed ? 'archetype on a changed template' : b.p.archetype ? 'archetype on its own template' : 'no archetype';
+      seenCases[which] += 1;
+      // The bounds the route applies, case by case.
+      const applied: LayoutBounds | undefined =
+        run4.recomposed ? handedBounds[handedBounds.length - 1]             // the object applyAssignedLook handed the carrier
+        : b.p.archetype ? archetypeLayoutBounds(b.p.archetype)              // applyArchetype's own bounds (its last statement)
+        : classicLayoutBounds(run4.config.template_key);                    // POST's `classicLayoutBounds(config.template_key)`, template pinned
+      if (!applied || JSON.stringify(advertised.bounds) !== JSON.stringify(applied) || advertised.bounds.templateKey !== run4.config.template_key) { parity = false; note('bounds', b, { which, advertised: advertised.bounds, applied }); }
+      if (run4.recomposed !== (handedBounds.length === 1) || advertised.bundleApplied !== (which === 'archetype on its own template')) { caseOk = false; note('case', b, { which, handed: handedBounds.length, bundleApplied: advertised.bundleApplied }); }
+      // …and the text the model reads is those bounds, described by the route's own helper — one set, never the per-template list.
+      const shown = section(b.sent.prompt, 'layout_bounds');
+      if (!applied || shown !== H.describeLayoutBounds(applied) || b.sent.layoutBoundsText !== shown || shown.includes('IF template_key is')) { textOk = false; note('bounds text', b, shown.slice(0, 120)); }
+      // Behaviour, lever by lever (a rotating third of the builds): what the
+      // advertised bounds offer is honoured by the build, what they do not
+      // offer is not.
+      if (index % 3 !== 0) return;
+      const build = (layout: WebsiteLayout): WebsiteConfig => tailOf(b, { ...GENERATION, template_key: 'editorial', layout }).config;
+      const baseline = build({});
+      for (let i = 0; i < ACCENT_PRESET_SLOTS; i += 1) {
+        leverProbes += 1;
+        const want = i < advertised.bounds.accentPresets.length ? advertised.bounds.accentPresets[i].hex : baseline.theme?.accent;
+        const got = build({ theme_preset_index: i }).theme?.accent;
+        if (got !== want) { leversOk = false; note('accent lever', b, { index: i, got, want }); }
+      }
+      for (const face of SITE_FONT_KEYS) {
+        leverProbes += 1;
+        const want = advertised.bounds.displayFonts.includes(face) ? face : baseline.theme?.display_font;
+        const got = build({ display_font: face }).theme?.display_font;
+        if (got !== want) { leversOk = false; note('face lever', b, { face, got, want }); }
+      }
+      leverProbes += 1;
+      const carousel = build({ product_grid_display: 'carousel' }).blocks?.find((block) => block.type === 'product_grid')?.displayMode === 'carousel';
+      if (carousel !== advertised.bounds.carouselHonored) { leversOk = false; note('carousel lever', b, { carousel, advertised: advertised.bounds.carouselHonored }); }
+      // An advertised extra section, placed second, is seated there (the bundle path mints it).
+      leverProbes += 1;
+      const second = build({ block_order: ['hero_banner', 'split_cta', 'product_grid'] }).blocks?.[1]?.type;
+      if ((second === 'split_cta') !== advertised.bounds.blockMix.includes('split_cta')) { leversOk = false; note('section lever', b, { second, mix: advertised.bounds.blockMix }); }
+    });
+    check(`all three cases are walked: archetype on its own template (${seenCases['archetype on its own template']}), archetype on a changed template (${seenCases['archetype on a changed template']}), no archetype (${seenCases['no archetype']}) — decisions and Classic floors alike`,
+      seenCases['archetype on its own template'] > 100 && seenCases['archetype on a changed template'] > 100 && seenCases['no archetype'] > 100 && floored.length > 0, seenCases);
+    check('the prompt step picks the case the route\'s tail picks: bundle bounds exactly when applyArchetype runs, composed bounds exactly when the assigned look is seated, classic bounds with no archetype', caseOk && spied !== null, offender);
+    check(`ADVERTISED = APPLIED: the bounds object behind the prompt deep-equals the bounds the build applies — the archetype's own on its own template, composeVisualSystem(archetype, authority.template).bounds on a changed one (the object the route handed the carrier), classicLayoutBounds(authority.template) with none (${openBuilds.length} builds)`, parity && spied !== null, offender);
+    check('the <layout_bounds> text the model reads — and the dry-run harness reports — is those applied bounds described by the route\'s own helper: one template\'s bounds, never the per-template "IF template_key is" list', textOk && spied !== null, offender);
+    check(`behaviour agrees: every accent preset, every display face, the carousel and an extra section are honoured by the build exactly where the advertised bounds offer them (${leverProbes} lever probes through POST's tail)`, leversOk && leverProbes > 2000, offender ?? leverProbes);
+    // Named: the three cases on one Counter merchant (Assignment pins Ritual).
+    const counterMerchant = WP4_MERCHANTS[0][1];
+    const boundsFor = (pathName: string) => {
+      const p = WP5_PATHS.find((x) => x.name === pathName)!;
+      const facts = routeFacts(counterMerchant, p, 'general', true);
+      const authority = R.routeAuthority(true, facts.assignment, p.chosenTemplate ?? facts.heuristicTemplate)!;
+      return { authority, out: S.assignedBuildBounds(authority, p.archetype) };
+    };
+    const own = boundsFor('studio/deep-luxury');
+    const changed = boundsFor('studio/warm-editorial');
+    const none = boundsFor('override/vitality');
+    check('Counter merchant, Deep Luxury (a Ritual archetype) → the archetype\'s own bounds: its section mix with split_cta and testimonials, its accents, its faces',
+      own.authority.template === 'ritual' && own.out.bundleApplied && JSON.stringify(own.out.bounds) === JSON.stringify(archetypeLayoutBounds(ARCHETYPES['deep-luxury'])) && own.out.bounds.blockMix.includes('split_cta') && own.out.bounds.serverGated.join() === 'testimonials');
+    check('Counter merchant, Warm Editorial (an Editorial archetype) → Ritual\'s own section mix with the archetype\'s surviving accents and faces — no split_cta, no testimonials slot',
+      changed.authority.template === 'ritual' && !changed.out.bundleApplied && JSON.stringify(changed.out.bounds) === JSON.stringify(composeVisualSystem(ARCHETYPES['warm-editorial'], 'ritual').bounds) &&
+      changed.out.bounds.blockMix.join() === CLASSIC_BLOCK_MIX.join() && changed.out.bounds.accentPresets === ARCHETYPES['warm-editorial'].accentPresets && changed.out.bounds.serverGated.length === 0);
+    check('Counter merchant, seller override "vitality", no archetype → Ritual\'s classic bounds (the assigned template\'s, not the seller\'s Vitality)',
+      none.authority.template === 'ritual' && !none.out.bundleApplied && JSON.stringify(none.out.bounds) === JSON.stringify(classicLayoutBounds('ritual')) && JSON.stringify(none.out.bounds) !== JSON.stringify(classicLayoutBounds('vitality')));
+  }
+
+  console.log('\n[44] Phase 14 WP5 — gate OPEN, split_cta: requested only when the archetype bundle is actually applied');
+  {
+    const ASK = 'Write the split_cta object for this site';
+    let agrees = true;
+    let minted = true;
+    let voiceOk = true;
+    let asked = 0;
+    let voiceOnly = 0;
+    let offender: unknown;
+    for (const b of openBuilds) {
+      // GENERATION carries a split_cta, so a bundle that is applied mints the block.
+      const run4 = tailOf(b, { ...GENERATION, template_key: 'editorial', layout: modelLayout('menu-occasion', 'masonry') });
+      const bundleApplied = b.p.archetype !== null && !run4.recomposed;
+      const asks = b.sent.prompt.includes(ASK);
+      if (asks) asked += 1;
+      // Outside <layout_bounds> (where the bundle's section mix lists the slot) the key is named by the request alone.
+      const outsideBounds = b.sent.prompt.replace(section(b.sent.prompt, 'layout_bounds'), '');
+      if (asks !== bundleApplied || count(outsideBounds, 'split_cta') !== (asks ? 1 : 0) || section(b.sent.prompt, 'layout_bounds').includes('split_cta') !== bundleApplied) { agrees = false; offender = offender ?? { build: b.label, asks, bundleApplied }; }
+      const hasBlock = (run4.config.blocks ?? []).some((block) => block.type === 'split_cta');
+      if (hasBlock !== asks) { minted = false; offender = offender ?? { build: b.label, asks, hasBlock }; }
+      // The archetype's voice survives either way; only the bundle's spread does not.
+      if (b.p.archetype) {
+        const direction = section(b.sent.prompt, 'chosen_archetype');
+        if (!direction.includes(`"${b.p.archetype.name}". ${b.p.archetype.vibe}\nVOICE: ${b.p.archetype.copyDirection}`)) { voiceOk = false; offender = offender ?? { build: b.label, what: 'voice' }; }
+        if (!bundleApplied) voiceOnly += 1;
+      }
+    }
+    check(`split_cta is requested in exactly the prompts whose build applies the archetype bundle — an archetype on the template Assignment kept (${asked} prompts) — and in no other: not on a changed template (${voiceOnly}), not without an archetype — and the split_cta slot is in the advertised section mix exactly where it is requested`, agrees && asked > 100 && voiceOnly > 100, offender);
+    check('…and the build agrees: with a model that writes split_cta, the assembled config carries the block exactly where the prompt asked for it — never an unrequested spread, never a requested one dropped', minted, offender);
+    check('an archetype on a changed template keeps its voice in the prompt (name, vibe, copy direction — the WP3 survival rule) and loses only the split_cta request', voiceOk, offender);
+    check('the cached block keeps the rule the request depends on: split_cta is written ONLY when the user message asks for it', S.ASSIGNED_CACHED_SYSTEM.includes('- "split_cta"        : OPTIONAL — write it ONLY when the user\'s instructions ask for it.'));
+    // Named: the same Counter merchant under a Ritual and an Editorial archetype.
+    const promptFor = (pathName: string): string => openBuilds.find((b) => b.label === `merchant 0 / niche general / ${pathName}`)!.sent.prompt;
+    check('Counter merchant: Deep Luxury (Ritual — bundle applied) is asked for split_cta; Warm Editorial (Editorial — look carried under Ritual) is not',
+      promptFor('studio/deep-luxury').includes(ASK) && !promptFor('studio/warm-editorial').includes(ASK) && promptFor('studio/warm-editorial').includes('ARCHETYPE DIRECTION — the approved direction is "Warm Editorial".'));
+  }
+
+  console.log('\n[45] Phase 14 WP5 — the open-gate cached block: one byte-stable string, and no contradiction with the user message');
+  {
+    // Recorded when WP5 shipped. Any edit to the block — or to a constant it
+    // interpolates — opens a new prompt-cache namespace, and must be made here on purpose.
+    const OPEN_CACHED_SHA256 = '847340823e636a9ea6034ddf7c91dad479210b0c9fdd0bf5c235e20daeaaef07';
+    const OPEN_CACHED_LENGTH = 8893;
+    const block = S.ASSIGNED_CACHED_SYSTEM;
+    const closedBlock = postPrompt(postPromptInputs(WP5_PATHS[0], WP5_REQUESTS[0], 'ritual', null)).executePrompt.cachedSystem;
+    check(`every open-gate request is sent the SAME cached block — one string across ${openBuilds.length} prompts: every decision outcome, every floor, every path, seed, niche and bio`, openBuilds.length > 0 && openBuilds.every((b) => b.sent.cachedSystem === block) && block !== closedBlock);
+    check('byte-stable: the block matches its recorded sha256 and length', sha256(block) === OPEN_CACHED_SHA256 && block.length === OPEN_CACHED_LENGTH, { digest: sha256(block), length: block.length });
+    check('no per-request value reaches it: none of the shop, bio, niche, seed, featured, inventory or concept markers appears in the block (they all appear in the user message)',
+      WP5_SENTINELS.every((marker) => !block.includes(marker)) && WP5_SENTINELS.every((marker) => openBuilds.some((b) => b.sent.prompt.includes(marker))), WP5_SENTINELS.filter((marker) => block.includes(marker)));
+    // Structure: a module-level constant — built once, outside any function —
+    // whose only interpolations are module constants.
+    const declaration = sliceFrom(WP5_BLOCK, '\nconst ASSIGNED_CACHED_SYSTEM = `', '`;\n', true);
+    const interpolations = [...new Set([...declaration.matchAll(/\$\{([^}]*)\}/g)].map((m) => m[1].trim()))].sort();
+    check('no per-request interpolation is possible: the block is a module-level constant (declared at column 0, outside every function, assigned once) whose only interpolations are ELITE_COPY_RULES and ACCENT_PRESET_SLOTS',
+      declaration.length > 0 && count(WP5_BLOCK, 'ASSIGNED_CACHED_SYSTEM =') === 1 && interpolations.join(' | ') === 'ACCENT_PRESET_SLOTS - 1 | ELITE_COPY_RULES' &&
+      WP5_BLOCK.indexOf('\nconst ASSIGNED_CACHED_SYSTEM = `') < WP5_BLOCK.indexOf('\nfunction ') && count(WP5_BLOCK, 'cachedSystem: ASSIGNED_CACHED_SYSTEM') === 1, interpolations);
+    // What the block must not say — it is sent at the Classic floor too.
+    const blockNames = [...named(block, TEMPLATE_KEYS), ...named(block, STOREFRONT_FAMILIES), ...named(block, RECIPE_GRIDS)];
+    check('the block names no template, no family and no recipe grid, lists no template catalog, and never mentions Subtraction or a recipe — those values arrive only in <assignment>',
+      blockNames.length === 0 && !/subtraction|recipe|\bcounter\b|\bgallery\b/i.test(block) && !block.includes('AVAILABLE TEMPLATES') && asksToChoose(block) === null, blockNames);
+    // What it must still say: everything of the pre-WP5 block that is not about ownership.
+    const fieldSpec = (text: string): string[] => text.split('\n').filter((line) => /^- "(matrix_theme|brand_tokens|hero|value_props|product_grid|story|cta|seo|split_cta|layout)"/.test(line) || /^ {4}"(tagline|headline|subheadline|title|intro|block_order|product_grid_display|block_padding|block_align|theme_preset_index|display_font|layout_strategy)"/.test(line) || /^ {8}"hero" :/.test(line));
+    const kept = fieldSpec(closedBlock);
+    check(`nothing but ownership changed in the field spec: all ${kept.length} pre-WP5 spec lines for the copy fields and the model-owned levers (matrix_theme through display_font, the hero variant) are in the open block verbatim, with the copy rules and the brevity mandate`,
+      kept.length >= 18 && kept.every((line) => block.includes(line)) && block.includes(ELITE_COPY_RULES) && block.includes('BREVITY MANDATE — BINDING FOR EVERY FIELD:') && block.includes('<system_context>') && block.includes('3. Zero-Clutter Integrity:') && block.includes('4. Matrix Routing & Brand Tokens:'),
+      kept.filter((line) => !block.includes(line)));
+    // Cached block ⇄ user message: each rule the block states has its fact in <assignment>.
+    check('cached ⇄ dynamic, template: the block says to set template_key to the template <assignment> names; every user message names exactly one',
+      block.includes('- "template_key"     : the template <assignment> names, verbatim — assigned, never chosen') && openBuilds.every((b) => count(b.sent.prompt, 'Set template_key to "') === 1));
+    check('cached ⇄ dynamic, grid: the block says to write layout_strategy.grid ONLY when <assignment> marks the collection grid YOURS; every user message marks it exactly one way — FIXED or YOURS',
+      block.includes('ONLY when <assignment> marks the collection grid as YOURS') && openBuilds.every((b) => count(b.sent.prompt, 'COLLECTION GRID — FIXED:') + count(b.sent.prompt, 'COLLECTION GRID — YOURS:') === 1) &&
+      ['"masonry"', '"featured-first"', '"standard"'].every((value) => block.includes(value)));
+    check('cached ⇄ dynamic, precedence: the block says <assignment> stands over a creative direction — and no approved-concept text in a user message names a template',
+      block.includes('Where a creative direction in the user message and <assignment> differ, <assignment> stands.') &&
+      openBuilds.filter((b) => b.p.concept).every((b) => named(section(b.sent.prompt, 'chosen_archetype'), TEMPLATE_KEYS).length === 0 && section(b.sent.prompt, 'chosen_archetype').includes('APPROVED CREATIVE DIRECTION')));
+    check('the generation gate constant is still false, and the guard still strips both recipe grids — WP5 activated nothing',
+      RITUAL_RECIPE_GENERATION_ENABLED === false && guardRecipeGridPick('counter', 'ritual') === undefined && guardRecipeGridPick('gallery', 'ritual') === undefined);
+  }
 }
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) FAILED.`);

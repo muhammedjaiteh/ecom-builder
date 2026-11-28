@@ -294,6 +294,245 @@ function describeRouteAuthority(authority: RouteAuthority, shopId: string): stri
 }
 // [WP4:END]
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 14 WP5 — PROMPT ALIGNMENT (A6). What the execute-step model is TOLD,
+// brought in line with what WP4 makes the build DO. One pure step, called by
+// POST after it has built the closed-gate prompt and before the model call.
+//   · Gate CLOSED (authority null — production today): the step returns the
+//     SAME object it was handed. The model is sent the cached block and the
+//     prompt POST built, byte for byte; the second cached block below is
+//     never sent.
+//   · Gate OPEN: the model is sent the second cached block and a prompt with
+//     an <assignment> section. The authority's template, its family and — when
+//     it owns one — its recipe grid are STATED as fixed; nothing asks the
+//     model to choose them, and no template the build will not use is named.
+//     The bounds shown are the bounds the build applies (the three cases of
+//     assignedBuildBounds), and split_cta is asked for only when the archetype
+//     bundle is the thing applied.
+//   · CLASSIC FLOOR (gate open, no decision): the floor template and the
+//     default family are stated the same way, and the collection grid stays
+//     the model's presentation pick. Nothing sent at the floor mentions
+//     Subtraction or a recipe grid — which is why the second cached block
+//     names no template, family or grid value at all: those arrive only in
+//     the <assignment> section.
+// The step CONSUMES the authority: its template, whether it holds a decision,
+// that decision's family, and the recipe grid lib derives from it — the same
+// reads as the WP4 log line. It validates nothing, derives nothing, and never
+// sees the assignment object, the gate, or the seller's own template pick.
+// It changes no decision, carrier, pin, log line or persisted value, and the
+// concepts step does not call it.
+// scripts/verifyArchitectureAssignment.ts lifts the code between the two WP5
+// markers and RUNS it in both gate states (together with POST's own prompt
+// statements), so the block must stay self-contained: the only outside names
+// it may use are lib exports, ELITE_COPY_RULES, and this file's
+// describeLayoutBounds and COPY_INTEGRITY_DIRECTIVES.
+// ─────────────────────────────────────────────────────────────────────────────
+// [WP5:BEGIN]
+/** The SECOND cached block — sent only with the gate open. CACHE LAW, as for
+ *  the first: byte-stable. It is a module constant, built once from module
+ *  constants (ELITE_COPY_RULES, ACCENT_PRESET_SLOTS), so no request value can
+ *  reach it. It is the first block with its three selection passages removed
+ *  (the template catalog, the storefront_family menu with its Subtraction
+ *  rules, the section-order advice keyed to the commerce model) and the
+ *  <assignment_authority> rule added. It names no template, no family and no
+ *  recipe grid: the same bytes are sent at the Classic floor. */
+const ASSIGNED_CACHED_SYSTEM = `<system_context>
+Role: Principal E-Commerce Architect (Sanndikaa Studio).
+Objective: Generate an elite, top 1% global e-commerce storefront for the provided seller.
+Mandate: You are not filling out a template. You are engineering a bespoke, high-converting software interface powered by the $50k Matrix Engine. No two generations should ever be identical.
+</system_context>
+
+<assignment_authority>
+Three structural facts are decided before you are called. They arrive in the <assignment> block of the user message and are FIXED for this build:
+- The template. Set "template_key" to exactly the template <assignment> names.
+- The storefront family. It is applied for you — never write "layout.storefront_family".
+- The collection grid, when <assignment> marks it FIXED. It is applied for you — write "layout.layout_strategy.grid" ONLY when <assignment> marks the collection grid as YOURS.
+Write the site for these facts. Do not replace or argue with them: a value you write for a fixed key is discarded. Where a creative direction in the user message and <assignment> differ, <assignment> stands.
+</assignment_authority>
+
+<architectural_rules>
+1. Top-of-Food-Chain UX — already engineered; write for it:
+   - Every page ships mobile-first: each product detail page carries a sticky bottom buy bar (price, variant chip, action button), the cart is a slide-out drawer (never a cart page), and every touch target is at least 44px. None of this is a field you output. Write copy that assumes this execution: lines that survive a phone screen, headlines that land above the fold, button labels that fit a thumb-width pill.
+2. Dynamic Structural Permutation:
+   - Analyze the <seller_data>. Do not just change the words — change the layout hierarchy to the seller's strengths through the "layout" object (field spec below): section order and inclusion, grid vs carousel for the collection, spacing and alignment rhythm per section, the accent preset, the display face. The <layout_bounds> in the user message state exactly what this build may draw from.
+   - Visual-led inventory (fashion, craft, beauty, objects that sell on imagery): carousel collection, spacious rhythm — let the products carry the page.
+   - Spec-led inventory (tech, supplements, tools, anything bought on facts): grid collection, compact rhythm.
+3. Zero-Clutter Integrity:
+   - NEVER use placeholder text (lorem ipsum) or generic marketing gibberish.
+   - Write highly persuasive, niche-specific copy.
+   - Use honest data. No fake countdown timers, invented counts, or fabricated reviews — testimonials are filled server-side from real reviews only.
+4. Matrix Routing & Brand Tokens:
+   - Select the most appropriate "matrix_theme" ("dakar-minimal" for fashion/apparel/luxury goods, "banjul-noir" for cosmetics/jewelry/artisanal crafts, "sahara-tech" for electronics/fitness/tools).
+   - Output "brand_tokens" following character limits ruthlessly in a restrained, material-aware editorial tone.
+</architectural_rules>
+
+<generation_task>
+Given the <seller_data>, the <assignment> and — when one is present — the <chosen_archetype> creative direction in the user message, output the complete, production-ready JSON structure mapping to our Next.js template anatomy — the field spec below. The user message also carries the <layout_bounds> and, when present, the <entropy_engine> seed.
+</generation_task>
+
+Write every copy field in the elite voice. The site must read like a brand that has existed for years — confident, specific to THIS inventory, never generic. Reference actual product qualities (materials, ingredients, categories) from the inventory the user provides.
+
+${ELITE_COPY_RULES}
+
+BREVITY MANDATE — BINDING FOR EVERY FIELD:
+- Extreme brevity is the luxury register. Aim well under every cap below; whitespace is the product.
+- No conversational filler, no marketing throat-clearing, no lead-ins ("Welcome to", "Discover our", "At [shop], we"). Open on the substance.
+- Every field has a hard cap AND a TARGET well under it. Write to the target; the cap is a ceiling, never a goal.
+- One idea per field. If a sentence can lose a clause and keep its meaning, lose the clause.
+
+Return a JSON object:
+- "template_key"     : the template <assignment> names, verbatim — assigned, never chosen
+- "matrix_theme"     : one of "dakar-minimal" | "banjul-noir" | "sahara-tech"
+- "brand_tokens"     : strict identity tokens object matching schema bounds
+- "niche_reasoning"  : 1-2 sentences on how the assigned template and your structural choices fit this inventory
+- "hero"             : the opening banner block — {
+    "tagline"     : 3-6 word brand essence line (target ~30 chars, max 80)
+    "headline"    : 4-8 word headline (target ~45 chars, max 90) — sensory, not salesy
+    "subheadline" : ONE short sentence (target ~110 chars, max 200)
+  }
+- "value_props"      : the trust band block — 2 to 4 items (3 when unsure), each { "title": 2-4 words (target ~25 chars, max 60), "body": one tight sentence (target ~90 chars, max 200) }
+- "product_grid"     : the collection section block — {
+    "title" : 2-4 word collection heading (target ~20 chars, max 60)
+    "intro" : one sentence introducing the products (target ~110 chars, max 240)
+  }
+- "story"            : the brand-story block — { "body": 2-3 short sentences of origin/craft in the brand's voice (target ~280 chars, max 600) }
+- "cta"              : the closing banner block — { "headline": target ~40 chars, max 90; "subtext": one sentence, target ~90 chars, max 200; "button_label": 2-5 words }
+- "seo"              : { "title": max 70 chars including the shop name, "description": target ~140 chars, max 170 }
+- "split_cta"        : OPTIONAL — write it ONLY when the user's instructions ask for it. A two-panel conversion spread, distinct from "cta" (never repeat its copy): { "headline": target ~40 chars, max 90; "body": one sentence, target ~90 chars, max 200; "button_label": 2-5 words }
+- "layout"           : OPTIONAL structural choices — every key optional, each validated against the <layout_bounds>; anything absent or outside them falls back to the default, so choose deliberately: {
+    "block_order"          : ordered section types to show — hero_banner MUST be first, product_grid MUST be present, only types the bounds list, no repeats. Types you leave out ship hidden (the seller can restore them)
+    "product_grid_display" : "grid" | "carousel"
+    "block_padding"        : { <section type>: "compact" | "default" | "spacious" } — rhythm per section
+    "block_align"          : { <section type>: "left" | "center" }
+    "theme_preset_index"   : integer 0-${ACCENT_PRESET_SLOTS - 1} into the bounds' accent presets (0 = the default) — never a color value
+    "display_font"         : one of the bounds' display faces
+    "layout_strategy"      : OPTIONAL structural variants — select them DYNAMICALLY from the inventory and the vibe, never by default: {
+        "hero" : "split" for high-fashion / editorial inventory (two-panel: type beside a tall 4:5 image) | "standard" full-bleed visual for bold, image-led products (food, objects, crafts, anything that sells on one hero shot) | "text-centric" for minimal or service-led vibes (consultancy, skincare clinics, bespoke tailoring) where the words carry the fold
+        "grid" : ONLY when <assignment> marks the collection grid as YOURS — "masonry" when product imagery has varied aspect ratios or reads as lifestyle photography | "featured-first" when the <seller_data> shows one clear flagship product (a hero SKU, a signature piece, the top seller) that should lead oversized before the rest | "standard" for uniform catalogs of like-for-like items
+      }
+  }`;
+
+/** What the assigned family means for the page — the first block's own
+ *  wording for the three rhythms, now stated as a fact about ONE family (the
+ *  model is told its family, never shown the list). */
+const ASSIGNED_FAMILY_FACTS: Record<StorefrontDecision['family'], string> = {
+  'lifestyle-story': 'It re-seats the core sections of <layout_bounds> in its rhythm — Hero → Story → Collection → Trust band → CTA (the boutique lookbook: narrative before catalog) — and a block_order you write still arranges them within the bounds.',
+  'product-first': 'It re-seats the core sections of <layout_bounds> in its rhythm — Hero → Collection → Trust band → Story → CTA (shoppers land straight in the catalog) — and a block_order you write still arranges them within the bounds.',
+  'menu-occasion': 'It re-seats the core sections of <layout_bounds> in its rhythm — Hero → Trust band → Story → Collection → CTA (occasion and vibe first, then the menu) — and a block_order you write still arranges them within the bounds.',
+  subtraction: 'Only the hero and the collection render: every other section you write ships hidden (the seller can restore it), whatever block_order names.',
+};
+
+/** What an owned recipe grid means for the page (the layout carrier's own
+ *  defaults for each: what ships hidden when no block_order names it). */
+const ASSIGNED_GRID_FACTS: Record<NonNullable<ReturnType<typeof assignedRecipeGrid>>, string> = {
+  counter: 'the full catalog behind a sticky category strip. Unless a block_order you write names them, the story and the closing banners ship hidden.',
+  gallery: 'each piece shown at full-screen scale ahead of the catalog. Unless a block_order you write names it, the closing banner ships hidden.',
+};
+
+/** The execute-step prompt as the model call reads it — and the bounds text
+ *  the dry-run harness reports. */
+type ExecutePrompt = { cachedSystem: string; prompt: string; layoutBoundsText: string };
+
+/** Everything the open-gate prompt says that is NOT authority: the seller
+ *  data, the approved creative direction, the seed block. No template here. */
+type AssignedPromptFacts = {
+  shopName: string;
+  shopBio: string | null;
+  nicheLabel: string | null;
+  featuredBlock: string;
+  productCount: number;
+  inventorySummary: string;
+  concept: SiteConcept | null;
+  archetype: SiteArchetype | null;
+  entropyEngine: string;
+};
+
+/** The bounds an open-gate build applies — so the bounds the prompt shows.
+ *  Pure. Three cases, the same three the build's tail takes:
+ *    no archetype                     → the assigned template's classic bounds;
+ *    archetype on its own template    → the archetype's bounds (the bundle is
+ *                                       applied: `bundleApplied`);
+ *    archetype on a changed template  → the WP3 composition's bounds (only the
+ *                                       surviving look is seated — no bundle).
+ *  "Changed" is the composition's own answer, not a comparison made here. */
+function assignedBuildBounds(authority: RouteAuthority, archetype: SiteArchetype | null): { bounds: LayoutBounds; bundleApplied: boolean } {
+  if (!archetype) return { bounds: classicLayoutBounds(authority.template), bundleApplied: false };
+  const look = composeVisualSystem(archetype, authority.template);
+  return look.templateChanged
+    ? { bounds: look.bounds, bundleApplied: false }
+    : { bounds: archetypeLayoutBounds(archetype), bundleApplied: true };
+}
+
+/** WP5 — the prompt the model is sent. Pure.
+ *  No authority (gate closed) → the SAME object back: POST's closed-gate
+ *  cached block, prompt and bounds text, untouched.
+ *  Otherwise the second cached block and a prompt that states what the build
+ *  will follow — the authority's template, its family (the default family at
+ *  the Classic floor) and its recipe grid when it owns one — with the bounds
+ *  that build applies. The seller data, the copy-integrity directives and the
+ *  seed block are the closed-gate prompt's own text. */
+function alignPromptToAuthority(closedGate: ExecutePrompt, authority: RouteAuthority | null, facts: AssignedPromptFacts): ExecutePrompt {
+  if (!authority) return closedGate;
+
+  const template = SITE_TEMPLATES[authority.template];
+  const family = authority.decision ? authority.decision.family : DEFAULT_STOREFRONT_FAMILY;
+  const recipeGrid = authority.decision ? assignedRecipeGrid(authority.decision) : null;
+  const { bounds, bundleApplied } = assignedBuildBounds(authority, facts.archetype);
+  const layoutBoundsText = describeLayoutBounds(bounds);
+
+  const collectionGrid = recipeGrid
+    ? `COLLECTION GRID — FIXED: "${recipeGrid}" — ${ASSIGNED_GRID_FACTS[recipeGrid]} Do not write layout_strategy.grid.`
+    : 'COLLECTION GRID — YOURS: choose layout_strategy.grid from the field spec.';
+
+  // The approved creative direction is copy, and it survives. What it no
+  // longer carries is a template: the concept's own key is never repeated.
+  const approvedDirection = facts.concept
+    ? `APPROVED CREATIVE DIRECTION — the seller approved this concept. Honor it precisely, refine and expand it into the full site, never contradict it:
+- Concept: ${facts.concept.concept_name}
+- Tagline direction: ${facts.concept.tagline}
+- Vibe: ${facts.concept.vibe}
+- Palette & styling: ${facts.concept.palette}
+- Approved hero direction: "${facts.concept.hero_headline}" — "${facts.concept.hero_subheadline}"`
+    : '';
+  // The archetype's voice survives on any template (WP3). Its split_cta
+  // spread exists only where the bundle itself is applied.
+  const archetypeDirection = !facts.archetype
+    ? ''
+    : bundleApplied
+      ? `ARCHETYPE DIRECTION — the approved bundle is "${facts.archetype.name}". ${facts.archetype.vibe}\nVOICE: ${facts.archetype.copyDirection}\nWrite the split_cta object for this site (see the field spec) — it renders as the two-panel conversion spread this archetype composes.`
+      : `ARCHETYPE DIRECTION — the approved direction is "${facts.archetype.name}". ${facts.archetype.vibe}\nVOICE: ${facts.archetype.copyDirection}`;
+  const direction = [approvedDirection, archetypeDirection].filter((part) => part !== '').join('\n\n');
+  const chosenArchetype = direction ? `<chosen_archetype>\n${direction}\n</chosen_archetype>\n\n` : '';
+
+  const prompt = `<seller_data>
+SHOP:
+- Name: ${facts.shopName}
+${facts.shopBio ? `- Bio: ${facts.shopBio}` : ''}
+${facts.nicheLabel ? `- Declared niche: ${facts.nicheLabel} — the seller chose this niche explicitly; tailor the storefront to it` : ''}
+
+${facts.featuredBlock}
+
+INVENTORY (${facts.productCount} products, first 15 shown):
+${facts.inventorySummary}
+</seller_data>
+
+<assignment>
+TEMPLATE — FIXED: "${template.key}" (${template.name} — ${template.niche}). Set template_key to "${template.key}". Template reference: ${template.description}
+STOREFRONT FAMILY — FIXED: "${family}". Assigned from this merchant's commerce model, never chosen by you. ${ASSIGNED_FAMILY_FACTS[family]}
+${collectionGrid}
+NICHE REASONING: write niche_reasoning explaining how the "${template.key}" template is styled for this inventory.
+</assignment>
+
+${chosenArchetype}<layout_bounds>
+${layoutBoundsText}
+</layout_bounds>
+
+${COPY_INTEGRITY_DIRECTIVES}${facts.entropyEngine}`;
+
+  return { cachedSystem: ASSIGNED_CACHED_SYSTEM, prompt, layoutBoundsText };
+}
+// [WP5:END]
+
 export async function POST(req: Request) {
   try {
     const supabase = createServerClient(
@@ -1042,10 +1281,29 @@ ${layoutBoundsText}
 
 ${COPY_INTEGRITY_DIRECTIVES}${entropyEngine}`;
 
+    // ── Phase 14 WP5 (A6) — prompt alignment. The model is sent what this
+    // step returns. Gate closed → the authority is null and the step returns
+    // the SAME object it is handed here: the cachedSystem and prompt built
+    // above, byte for byte (and the same bounds text for the dry-run harness).
+    // Gate open → the second cached block and a prompt that states the
+    // authority's template, family and recipe grid as fixed and shows the
+    // bounds the build applies. The authority is all it reads of Assignment.
+    const executePrompt = alignPromptToAuthority({ cachedSystem, prompt, layoutBoundsText }, authority, {
+      shopName: shop.shop_name,
+      shopBio: shop.bio,
+      nicheLabel,
+      featuredBlock,
+      productCount: products.length,
+      inventorySummary,
+      concept,
+      archetype,
+      entropyEngine,
+    });
+
     const { data: generation, provider } = await generateWithFallback({
       schema: MatrixWebsiteGenerationSchema,
-      prompt,
-      cachedSystem,
+      prompt: executePrompt.prompt,
+      cachedSystem: executePrompt.cachedSystem,
       callerName: 'generate-website',
       primaryOverride: FLAGSHIP_CREATIVE_PROVIDER,
     });
@@ -1186,7 +1444,7 @@ ${COPY_INTEGRITY_DIRECTIVES}${entropyEngine}`;
         matrix_theme,
         brand_tokens,
         variationSeed,
-        layout_bounds: layoutBoundsText,
+        layout_bounds: executePrompt.layoutBoundsText,
         generation,
         config,
       });
